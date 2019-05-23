@@ -1,5 +1,5 @@
 @testset "Initialization" begin
-    decode = GNSSDecoder.init_decode()
+    decode = init_decode()
     decode(0xf3d7b3701b55108d,64)
     decode(0xd3c1fd964174aeec,64)
     decode(0x2a5aff6f0939fc0b,64)
@@ -32,7 +32,7 @@
 @test decode.found_preambles.found_inverted_preamble == true
 @test decode.found_preambles.preamble_pos == 62
 #@show decode.data.t_oe
-GNSSDecoder.calcSatPosition(478800,decode.data,decode.satPosition_param)
+calcSatPosition(478800,decode.data,decode.satPosition_param)
 @show decode.satPosition_param
 @show decode.found_preambles.preamble_pos
 end

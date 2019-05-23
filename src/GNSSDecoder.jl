@@ -98,7 +98,6 @@ module GNSSDecoder
     end
 
     function _decode(buffer, data, data_bits::UInt64, num_bits, found_preambles, parameters1,satPosition_param, n_b)
-        println("has entrado en la funcion")
 
         a = num_bits - n_b.num_bits_prev
         n_b.num_bits_prev = num_bits
