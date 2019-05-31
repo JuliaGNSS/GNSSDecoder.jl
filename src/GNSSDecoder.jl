@@ -3,8 +3,8 @@ module GNSSDecoder
     using DocStringExtensions, Parameters, FixedPointNumbers
 
     export init_decode,
-    calcSatPosition
-
+    calcSatPosition,
+    satPosition
 
     abstract type GNSSData end
 
@@ -72,13 +72,6 @@ module GNSSDecoder
         _𝛀_0::Union{Nothing, BitArray{1}} = nothing
         _i_0::Union{Nothing, BitArray{1}} = nothing
         _ω::Union{Nothing, BitArray{1}} = nothing
-    end
-
-    @with_kw mutable struct satPosition_parameters
-        x::Union{Nothing,Float64}=nothing
-        y::Union{Nothing,Float64}=nothing
-        z::Union{Nothing,Float64}=nothing
-        Ek::Union{Nothing,Float64}=nothing #eccentric anomaly
     end
 
     @with_kw mutable struct nb
@@ -158,23 +151,11 @@ module GNSSDecoder
 
                 println("DECODING COMPLETED")
 
-        #        println("SATELLITE POSITION...")
-        #        satPosition_param.x,satPosition_param.y,satPosition_param.z,satPosition_param.Ek = satPosition(data, 1219755798)
-        #        println("SATELLITE POSITION COMPLETED")
-
             end #end if found_preamble
 
         end #end for
 
     end #end function _decode
-
-    function calcSatPosition(t, data, satPosition_param)
-
-            println("SATELLITE POSITION...")
-            satPosition_param.x,satPosition_param.y,satPosition_param.z,satPosition_param.Ek = satPosition(data, t)
-            println("SATELLITE POSITION COMPLETED")
-
-    end
 
     include("bin2dec.jl")
     include("getword.jl")
