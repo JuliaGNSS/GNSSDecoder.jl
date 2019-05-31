@@ -82,14 +82,13 @@ module GNSSDecoder
         data = GPSData()
         found_preambles = preambles()
         parameters1 = parameters()
-        satPosition_param = satPosition_parameters()
         n_b = nb()
 
-        (data_bits, num_bits) ->_decode(buffer, data, data_bits, num_bits, found_preambles, parameters1, satPosition_param, n_b)
+        (data_bits, num_bits) ->_decode(buffer, data, data_bits, num_bits, found_preambles, parameters1, n_b)
 
     end
 
-    function _decode(buffer, data, data_bits::UInt64, num_bits, found_preambles, parameters1,satPosition_param, n_b)
+    function _decode(buffer, data, data_bits::UInt64, num_bits, found_preambles, parameters1, n_b)
 
         a = num_bits - n_b.num_bits_prev
         n_b.num_bits_prev = num_bits
