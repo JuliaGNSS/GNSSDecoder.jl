@@ -2,7 +2,7 @@
 This functions provide the satellite's antenna phase centre position in the WGS-84 ECEF
 =#
 function satPosition(data, tc)
-
+#tc is the satellite time of transmission corrected for transit
     mu = 3.986005e14
     OmegadotE = 7.2921151467e-5
 

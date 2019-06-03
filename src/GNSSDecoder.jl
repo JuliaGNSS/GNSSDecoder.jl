@@ -3,7 +3,7 @@ module GNSSDecoder
     using DocStringExtensions, Parameters, FixedPointNumbers
 
     export init_decode,
-    calcSatPosition
+    satPosition
 
 
     abstract type GNSSData end
@@ -74,13 +74,6 @@ module GNSSDecoder
         _ω::Union{Nothing, BitArray{1}} = nothing
     end
 
-    @with_kw mutable struct satPosition_parameters
-        x::Union{Nothing,Float64}=nothing
-        y::Union{Nothing,Float64}=nothing
-        z::Union{Nothing,Float64}=nothing
-        Ek::Union{Nothing,Float64}=nothing #eccentric anomaly
-    end
-
     @with_kw mutable struct nb
         num_bits_prev::Int = 0
     end
@@ -90,14 +83,13 @@ module GNSSDecoder
         data = GPSData()
         found_preambles = preambles()
         parameters1 = parameters()
-        satPosition_param = satPosition_parameters()
         n_b = nb()
 
-        (data_bits, num_bits) ->_decode(buffer, data, data_bits, num_bits, found_preambles, parameters1, satPosition_param, n_b)
+        (data_bits, num_bits) ->_decode(buffer, data, data_bits, num_bits, found_preambles, parameters1, n_b)
 
     end
 
-    function _decode(buffer, data, data_bits::UInt64, num_bits, found_preambles, parameters1,satPosition_param, n_b)
+    function _decode(buffer, data, data_bits::UInt64, num_bits, found_preambles, parameters1, n_b)
 
         a = num_bits - n_b.num_bits_prev
         n_b.num_bits_prev = num_bits
@@ -158,23 +150,11 @@ module GNSSDecoder
 
                 println("DECODING COMPLETED")
 
-        #        println("SATELLITE POSITION...")
-        #        satPosition_param.x,satPosition_param.y,satPosition_param.z,satPosition_param.Ek = satPosition(data, 1219755798)
-        #        println("SATELLITE POSITION COMPLETED")
-
             end #end if found_preamble
 
         end #end for
 
     end #end function _decode
-
-    function calcSatPosition(t, data, satPosition_param)
-
-            println("SATELLITE POSITION...")
-            satPosition_param.x,satPosition_param.y,satPosition_param.z,satPosition_param.Ek = satPosition(data, t)
-            println("SATELLITE POSITION COMPLETED")
-
-    end
 
     include("bin2dec.jl")
     include("getword.jl")
