@@ -4,10 +4,6 @@ module GNSSDecoder
 
     export init_decode,
     satPosition
-<<<<<<< HEAD
-
-=======
->>>>>>> 8bcd12aad65b3555a01212f6b02f20a5bc5cd0bd
 
     abstract type GNSSData end
 
