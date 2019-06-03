@@ -32,7 +32,5 @@
 @test decode.found_preambles.found_inverted_preamble == true
 @test decode.found_preambles.preamble_pos == 62
 #@show decode.data.t_oe
-calcSatPosition(478800,decode.data,decode.satPosition_param)
-@show decode.satPosition_param
 @show decode.found_preambles.preamble_pos
 end
