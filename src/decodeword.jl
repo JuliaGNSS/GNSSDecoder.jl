@@ -15,6 +15,10 @@ function decodeword(word,data,parameters,intermediate)
     #Bits 20,21 and 22 of the HOW provide the ID of the subframe
     subframe_bits = reverse(word[9:11])
     subframe_bits==[0;0;1] ? parameters.subframe_count=1 : (subframe_bits==[0;1;0] ? parameters.subframe_count=2 : (subframe_bits==[0;1;1] ? parameters.subframe_count=3 : (subframe_bits==[1;0;0] ? parameters.subframe_count=4 : parameters.subframe_count=5)))
+    parameters.subframe_count == 1 ? parameters.first_subframe = true : (parameters.subframe_count == 2 ? parameters.second_subframe = true : (parameters.subframe_count == 3 ? parameters.third_subframe = true : (parameters.subframe_count == 4 ? parameters.fourth_subframe = true : parameters.fifth_subframe = true)))
+        if  parameters.first_subframe && parameters.second_subframe && parameters.third_subframe && parameters.fourth_subframe && parameters.fifth_subframe
+            parameters.decoding_completed
+        end
     @show parameters.subframe_count
     #decode tow-count only if it has not been read yet
         if data.tow == nothing

@@ -62,6 +62,12 @@ module GNSSDecoder
         word_window::Int = 1
         data_integrity::Bool = true
         new_data_requ::Bool = false #IODE must be equal to the 8 LSB of the IODC. If they don't match new data must be collected
+        first_subframe::Bool = false
+        second_subframe::Bool = false
+        third_subframe::Bool = false
+        fourth_subframe::Bool = false
+        fifth_subframe::Bool = false
+        decoding_completed::Bool = false #flag to indicate that a whole frame (1500 bits) has been decoded
     end
 
     @with_kw mutable struct GPSData_interm
