@@ -17,7 +17,7 @@ function decodeword(word,data,parameters,intermediate)
     subframe_bits==[0;0;1] ? parameters.subframe_count=1 : (subframe_bits==[0;1;0] ? parameters.subframe_count=2 : (subframe_bits==[0;1;1] ? parameters.subframe_count=3 : (subframe_bits==[1;0;0] ? parameters.subframe_count=4 : parameters.subframe_count=5)))
     parameters.subframe_count == 1 ? parameters.first_subframe = true : (parameters.subframe_count == 2 ? parameters.second_subframe = true : (parameters.subframe_count == 3 ? parameters.third_subframe = true : (parameters.subframe_count == 4 ? parameters.fourth_subframe = true : parameters.fifth_subframe = true)))
         if  parameters.first_subframe && parameters.second_subframe && parameters.third_subframe && parameters.fourth_subframe && parameters.fifth_subframe
-            parameters.decoding_completed
+            parameters.decoding_completed = true
         end
     @show parameters.subframe_count
     #decode tow-count only if it has not been read yet
