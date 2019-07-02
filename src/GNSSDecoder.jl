@@ -153,6 +153,8 @@ module GNSSDecoder
                     decodeword(word, data, parameters1,_interm)
                 end
 
+                parameters1.word_window = 1
+
                 println("DECODING COMPLETED")
 
             end #end if found_preamble
