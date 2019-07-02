@@ -157,6 +157,30 @@ module GNSSDecoder
 
             end #end if found_preamble
 
+            if (found_preambles.found_preamble && length(buffer) > 1500 + found_preambles.preamble_pos) && (length(buffer)-found_preambles.preamble_pos % 300 != 0)
+
+                if found_preambles.found_inverted_preamble
+                    buffer[1] = map(!,buffer[1])
+                end
+
+            end
+
+            if (found_preambles.found_preamble && length(buffer) > 1500 + found_preambles.preamble_pos) && (length(buffer)-found_preambles.preamble_pos % 300 == 0)
+
+                if found_preambles.found_inverted_preamble
+                    buffer[1] = map(!,buffer[1])
+                end
+
+                _interm = GPSData_interm() #Intermediate variables for GPSData
+                buffer = buffer[1:300]
+
+                for i=1:1:10
+                    word,parameters1.word_count,parameters1.word_window=getword(buffer,parameters1.word_count,parameters1.word_window)
+                    decodeword(word, data, parameters1,_interm)
+                end
+
+            end
+
         end #end for
 
     end #end function _decode
