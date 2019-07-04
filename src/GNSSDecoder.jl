@@ -180,7 +180,7 @@ module GNSSDecoder
                     word,parameters1.word_count,parameters1.word_window=getword(buffer,parameters1.word_count,parameters1.word_window)
                     decodeword(word, data, parameters1,_interm)
                 end
-
+                parameters1.word_window = 1
             end
 
         end #end for
