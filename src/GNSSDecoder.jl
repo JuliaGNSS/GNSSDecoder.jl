@@ -161,6 +161,7 @@ module GNSSDecoder
 
             if (found_preambles.found_preamble) && (length(buffer) > 1500 + found_preambles.preamble_pos) && (length(buffer)-found_preambles.preamble_pos % 300 != 0)
                 println("entras en la funcion 1")
+                @show (length(buffer)-found_preambles.preamble_pos % 300)
 
                 if found_preambles.found_inverted_preamble
                     buffer[1] = map(!,buffer[1])
