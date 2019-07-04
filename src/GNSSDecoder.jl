@@ -159,7 +159,7 @@ module GNSSDecoder
 
             end #end if found_preamble
 
-            if (found_preambles.found_preamble) && (length(buffer) > 1500 + found_preambles.preamble_pos) && (length(buffer)-found_preambles.preamble_pos % 300 != 0)
+            if (found_preambles.found_preamble) && (length(buffer) > 1500 + found_preambles.preamble_pos) && (((length(buffer)-found_preambles.preamble_pos) % 300) != 0)
                 println("entras en la funcion 1")
                 @show (length(buffer)-found_preambles.preamble_pos % 300)
 
@@ -169,7 +169,7 @@ module GNSSDecoder
 
             end
 
-            if (found_preambles.found_preamble) && (length(buffer) > 1500 + found_preambles.preamble_pos) && (length(buffer)-found_preambles.preamble_pos % 300 == 0)
+            if (found_preambles.found_preamble) && (length(buffer) > 1500 + found_preambles.preamble_pos) && (((length(buffer)-found_preambles.preamble_pos) % 300) == 0)
                 println("entras en la funcion 2")
 
                 if found_preambles.found_inverted_preamble
