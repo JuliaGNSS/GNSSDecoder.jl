@@ -3,7 +3,9 @@ module GNSSDecoder
     using DocStringExtensions, Parameters, FixedPointNumbers
 
     export init_decode,
-    satPosition
+    satPosition,
+    GPSData,
+    GNSSData
 
     abstract type GNSSData end
 
