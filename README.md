@@ -23,3 +23,7 @@ while true
           global i +=1
        end
 end
+
+This loop will stop the moment a complete navigation message (i.e. 1500 bits) has been received (i.e. 1500 bits after the first preamble was reveceived)
+
+decode.found_preambles.preamble_pos stands for the number of bits that were received before the first complete subframe
