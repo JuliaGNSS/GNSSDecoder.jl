@@ -240,6 +240,5 @@ function decodeword(word,data,parameters,intermediate)
 
     parameters.word_count = 0
 
-    end #end  del if word_count==10
-    #return data,parameters,intermediate
+    end #end if word_count==10
 end
