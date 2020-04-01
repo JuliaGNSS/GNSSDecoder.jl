@@ -1,0 +1,13 @@
+name = "GNSSDecoder"
+uuid = "bf6b1ec8-12ad-4501-972c-3dec0d675c2b"
+authors = ["Erik Deinzer <erikdeinzer@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
+GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
