@@ -14,14 +14,14 @@ julia> ]
 
 ### Prerequiries:
 
-To set up the Workspace, the modules 
+To set up the Workspace, the module
 * [Tracking.jl](https://github.com/JuliaGNSS/Tracking.jl "JuliaGNSS:Tracking.jl")
-* [GNSSSignals.jl](https://github.com/JuliaGNSS/GNSSSignals.jl "JuliaGNSS:Tracking.jl")
 
-are required. The definition of sample frequency and the size of the Array of Signals finalize the Preparation. 
+is required. The definition of sample frequency and the size of the Array of Signals finalize the Preparation. 
 ```julia
-using GNSSDecoder, Tracking, GNSSSignals
+using GNSSDecoder, Tracking
 using Tracking: Hz, s
+```
 
 ### Initialization
 Before Decoding, the signals have to be acquired for each PRN. The decoder is initialized in this state.
