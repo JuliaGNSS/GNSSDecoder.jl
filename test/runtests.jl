@@ -1,5 +1,7 @@
-using Test, GNSSDecoder, LinearAlgebra, DataStructures, StaticArrays
+using Test, Suppressor, GNSSDecoder
 
-include("bin2dec.jl")
-include("GNSSDecoder.jl")
-include("decodeword.jl")
+include("test_data.jl")
+include("bin_2_dec.jl")
+include("find_preamble.jl")
+include("decode_words.jl")
+include("parity_check.jl")
