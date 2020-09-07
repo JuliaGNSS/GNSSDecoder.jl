@@ -111,7 +111,7 @@ function decode_words(dc::GNSSDecoderState, words_in_subframes)
         TLM_HOW, subframe_2_data = decode_subframe_2(words_in_subframes[2])
         dc.subframes_decoded[2] = true
         TLM_HOW, subframe_3_data = decode_subframe_3(words_in_subframes[3])
-        dc.subframes_decoded[1] = true
+        dc.subframes_decoded[3] = true
         TLM_HOW = decode_subframe_4(words_in_subframes[4])
         dc.subframes_decoded[4] = true
         TLM_HOW = decode_subframe_5(words_in_subframes[5])

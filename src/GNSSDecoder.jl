@@ -8,6 +8,7 @@ module GNSSDecoder
 
     export decode,
         GNSSDecoderState,
+        GPSData,
         GPSL1Constants
     
 
