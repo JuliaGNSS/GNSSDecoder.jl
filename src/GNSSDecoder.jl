@@ -1,6 +1,6 @@
 module GNSSDecoder
     
-    using DocStringExtensions, GNSSSignals, Parameters, FixedPointNumbers, StaticArrays, Logging, LinearAlgebra
+    using DocStringExtensions, GNSSSignals, Parameters, FixedPointNumbers, StaticArrays, LinearAlgebra
     using Unitful: Hz
 
     BUFFER_LENGTH = 1502 #Size of Buffer - All 5 Subframes + the last 2 Bits are stored
@@ -11,10 +11,7 @@ module GNSSDecoder
         GPSData,
         GPSL1Constants
     
-
-
     include("gpsl1_structs.jl")
-
     
     """
         stores element in a bitbuffer
