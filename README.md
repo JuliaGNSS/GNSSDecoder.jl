@@ -8,7 +8,7 @@ This is still very much work in progress. Expect changes to this module.
 #### Install: 
 ```julia
 julia> ]
-pkg> add GNSSDecoder
+pkg> add git@github.com:JuliaGNSS/GNSSDecoder.jl.git
 ```
 
 ### Initialization
