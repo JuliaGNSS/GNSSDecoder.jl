@@ -1,6 +1,7 @@
-# GNSSDecoder.jl
+# GNSSDecoder.jl (WIP)
 
 Decodes GPSL1 satellite signals.
+This is still very much work in progress. Expect changes to this module.
 
 ## Usage
 
