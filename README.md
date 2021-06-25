@@ -17,7 +17,7 @@ decoder = GNSSDecoderState(PRN = 1) #Initialization of Decoder
 ```
 
 ### Decoding
-The filtered Bits for decoding are supplied by the Tracking module.
+Pass bits to decoder as an integer value and let the decoder decode the message.
 ```julia
 for i in 1:iterations
     # Track signal for example with Tracking.jl
