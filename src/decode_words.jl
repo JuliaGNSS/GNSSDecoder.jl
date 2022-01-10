@@ -3,6 +3,8 @@ struct ParityError <: Exception
     text
 end
 
+PRINT_ON = false
+new_DATA_PRINT = true
 
 """
     Controls the Buffer for Parity Errors
@@ -14,14 +16,11 @@ end
     # Details
     # Controls every Word for Parity Errors
 """
-function buffer_control(dc::GNSSDecoderState, words_in_subframes)
+## NEEDS modification for word wise decoding for loop has to be removed
+function buffer_control(dc::GNSSDecoderState, words_in_subframe)
     
 
-    parity_buffer = vcat(words_in_subframes[1], 
-                        words_in_subframes[2],
-                        words_in_subframes[3],
-                        words_in_subframes[4],
-                        words_in_subframes[5])
+    parity_buffer = words_in_subframe
     
     dc.data_integrity = true
     for i in 1:length(parity_buffer)                    
@@ -32,7 +31,7 @@ function buffer_control(dc::GNSSDecoderState, words_in_subframes)
             if parity_check(parity_buffer[i], dc.prev_29, dc.prev_30)
                 
             else
-                @warn("Parity Error: Word , ", i)
+                @warn("Parity Error: Word , ", i, dc.PRN)
                 dc.data_integrity = false
             end
         else
@@ -44,7 +43,7 @@ function buffer_control(dc::GNSSDecoderState, words_in_subframes)
             end
             if parity_check(parity_buffer[i], dc.prev_29, dc.prev_30)
             else
-                @warn("Parity Error: Word , ", i)
+                @warn("Parity Error: Word , ", i, dc.PRN)
                 dc.data_integrity = false
             end
         end
@@ -88,6 +87,46 @@ function control_data(TLM_HOW_Data::TLM_HOW_Data_Struct,
     return status
 end
 
+"""
+    Controls Data for Errors (IODC and matching IODEs)
+    $(SIGNATURES)
+
+    ´next_data´: Data of next potential data
+
+    # Details
+    #checks if IODE of subframe 2 matches the 8 LSB of th in Subframe 1 transmitted IODC
+"""
+function control_data_sub2(next_data::GPSData,
+    subfr_2_data::Subframe_2_Data)
+
+    status = true
+    if subfr_2_data.IODE != next_data.IODC[3:10] # IODE and the 8 LSB of IODC must match
+        @info "new data required, IODC and IODE of Subframe 2 do not match (CEI data set cutover)"
+        status = false
+    end
+    return status
+end
+
+"""
+    Controls Data for Errors (IODC and matching IODEs)
+    $(SIGNATURES)
+
+    ´next_data´: Data of next potential data
+
+    # Details
+    #checks if IODE of subframe 3 matches the 8 LSB of th in Subframe 1 transmitted IODC
+"""
+function control_data_sub3(next_data::GPSData,
+    subfr_3_data::Subframe_3_Data)
+
+    status = true
+    if subfr_3_data.IODE != next_data.IODC[3:10] # IODE and the 8 LSB of IODC must match
+        @info "new data required, IODC and IODE of Subframe 3 do not match (CEI data set cutover)"
+        status = false
+    end
+    return status
+end
+
 
 
 """
@@ -102,30 +141,75 @@ end
     # Decodes complete subframe from the buffer, saves data for position computing in ´dc.data´. It returns the decoder, ´dc´. 
     #The number of saved Bits is resetted to 2 due to the Buffer length of 1502. Those 2 Bits will be the previous 2 Bits to the next 5 Subframes.  
 """
-function decode_words(dc::GNSSDecoderState, words_in_subframes)
+function decode_words(dc::GNSSDecoderState, words_in_subframe)
 
-    dc = buffer_control(dc, words_in_subframes)
+    control_state = false
+
+    dc = buffer_control(dc, words_in_subframe) 
     if dc.data_integrity == true
-        TLM_HOW, subframe_1_data = decode_subframe_1(words_in_subframes[1])
-        dc.subframes_decoded[1] = true
-        TLM_HOW, subframe_2_data = decode_subframe_2(words_in_subframes[2])
-        dc.subframes_decoded[2] = true
-        TLM_HOW, subframe_3_data = decode_subframe_3(words_in_subframes[3])
-        dc.subframes_decoded[3] = true
-        TLM_HOW = decode_subframe_4(words_in_subframes[4])
-        dc.subframes_decoded[4] = true
-        TLM_HOW = decode_subframe_5(words_in_subframes[5])
-        dc.subframes_decoded[5] = true
+        if dc.subframes_decoded_new == [0,0,0,0,0]
+            TLM_HOW, subframe_1_data = decode_subframe_1(words_in_subframe)
+            dc.data_next = create_data_sub1(TLM_HOW, subframe_1_data)
+            control_state = true
+            dc.subframes_decoded_new[1] = control_state
+            dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+            if PRINT_ON
+                println("DECODED SUB1!")
+            end
+        elseif dc.subframes_decoded_new == [1,0,0,0,0]
+            TLM_HOW, subframe_2_data = decode_subframe_2(words_in_subframe)
+            control_state = control_data_sub2(dc.data_next, subframe_2_data)
+            dc.subframes_decoded_new[2] = control_state
+            if control_state
+                dc.data_next = create_data_sub2(dc.data_next, TLM_HOW, subframe_2_data)
+                dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+                if PRINT_ON
+                    println("DECODED SUB2!")
+                end
+            end
+        elseif dc.subframes_decoded_new == [1,1,0,0,0]
+            TLM_HOW, subframe_3_data = decode_subframe_3(words_in_subframe)
+            control_state = control_data_sub3(dc.data_next, subframe_3_data)
+            dc.subframes_decoded_new[3] = control_state
+            if control_state
+                dc.data_next = create_data_sub3(dc.data_next, TLM_HOW, subframe_3_data)
+                dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+                if PRINT_ON
+                    println("DECODED SUB3!")
+                end
+            end
+        elseif dc.subframes_decoded_new == [1,1,1,0,0]
+            TLM_HOW = decode_subframe_4(words_in_subframe)
+            #dc.data_next = create_data_new_TLM(dc.data_next, TLM_HOW)
+            control_state = true
+            dc.subframes_decoded_new[4] = control_state
+            dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+            if PRINT_ON
+                println("DECODED SUB4!")
+            end
+        elseif dc.subframes_decoded_new == [1,1,1,1,0]
+            TLM_HOW = decode_subframe_5(words_in_subframe)
+            dc.data_next = create_data_new_TLM(dc.data_next, TLM_HOW)
+            control_state = true
+            dc.subframes_decoded_new[5] = control_state
+            if PRINT_ON
+                println("DECODING OF FRAME FINISHED!")
+            end
+        end
 
-
-        if control_data(TLM_HOW, subframe_1_data, subframe_2_data, subframe_3_data)  # Checks for Data Errors
-            data = create_data(TLM_HOW, subframe_1_data, subframe_2_data, subframe_3_data) # Creates GPSData from single, subframe specific data and the TLM Word
-            dc.data = data
-            println(" DECODING COMPLETED!")
+        if dc.subframes_decoded_new == [1,1,1,1,1]
+            dc.subframes_decoded = dc.subframes_decoded_new
+            dc.subframes_decoded_new = [0,0,0,0,0]
+            dc.data = dc.data_next
+            if PRINT_ON || new_DATA_PRINT
+                println("PRN",dc.PRN," NEW DECODED DATA!")
+            end
+        elseif !control_state
+            dc.subframes_decoded_new = [0,0,0,0,0]
         end
     end
 
-    dc.num_bits_buffered = 2 # Due to Buffer length of 1502 and the need to save the last two bits, only 1500 Bits have to been read in the next loop.
+    dc.num_bits_buffered = 10 # Due to Buffer length of 1502 and the need to save the last two bits, only 1500 Bits have to been read in the next loop.
     return dc
 end
 

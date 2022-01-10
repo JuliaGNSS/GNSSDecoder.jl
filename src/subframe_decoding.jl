@@ -88,7 +88,9 @@ end
     # Decodes the first substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
 function decode_subframe_1(words)
-    println("Decoding subframe 1...")
+    if PRINT_ON
+        println("Decoding subframe 1...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -169,7 +171,9 @@ end
     # Decodes the second substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
 function decode_subframe_2(words)
-    println("Decoding subframe 2...")
+    if PRINT_ON
+        println("Decoding subframe 2...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -246,8 +250,9 @@ end
     # Decodes the third substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
 function decode_subframe_3(words)
-
-    println("Decoding subframe 3...")
+    if PRINT_ON
+        println("Decoding subframe 3...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -305,8 +310,10 @@ end
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
 function decode_subframe_4(words)
-    println("Decoding subframe 4...")
-    
+    if PRINT_ON
+        println("Decoding subframe 4...")
+    end
+
     TLM_HOW = decode_TLM_HOW(words[1:2])
     return TLM_HOW
 end
@@ -322,13 +329,13 @@ end
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
 function decode_subframe_5(words)
-    println("Decoding subframe 5...")
+    if PRINT_ON
+        println("Decoding subframe 5...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     return TLM_HOW
 end
-
-
 
 function create_data(
     TLM_HOW_Data::TLM_HOW_Data_Struct,
@@ -381,3 +388,195 @@ function create_data(
 end
 
 
+function create_data_sub1(
+    TLM_HOW_Data::TLM_HOW_Data_Struct,
+    subfr_1_data::Subframe_1_Data)
+    
+
+    data = GPSData(
+        TLM_HOW_Data.integrity_status_flag,
+        TLM_HOW_Data.TOW,
+        TLM_HOW_Data.alert_flag,
+        TLM_HOW_Data.anti_spoof_flag,
+
+        subfr_1_data.trans_week,
+        subfr_1_data.codeonl2,
+        subfr_1_data.ura,
+        subfr_1_data.svhealth,
+        subfr_1_data.IODC,
+        subfr_1_data.l2pcode,
+        subfr_1_data.T_GD,
+        subfr_1_data.t_oc,
+        subfr_1_data.a_f2,
+        subfr_1_data.a_f1,
+        subfr_1_data.a_f0,
+
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing
+    )
+    return data
+end
+
+function create_data_sub2(
+    prev_data::GPSData,
+    TLM_HOW_Data::TLM_HOW_Data_Struct,
+    subfr_2_data::Subframe_2_Data)
+    
+
+    data = GPSData(
+        TLM_HOW_Data.integrity_status_flag,
+        TLM_HOW_Data.TOW,
+        TLM_HOW_Data.alert_flag,
+        TLM_HOW_Data.anti_spoof_flag,
+
+        prev_data.trans_week,
+        prev_data.codeonl2,
+        prev_data.ura,
+        prev_data.svhealth,
+        prev_data.IODC,
+        prev_data.l2pcode,
+        prev_data.T_GD,
+        prev_data.t_oc,
+        prev_data.a_f2,
+        prev_data.a_f1,
+        prev_data.a_f0,
+
+        subfr_2_data.IODE,
+        subfr_2_data.C_rs,
+        subfr_2_data.Δn,
+        subfr_2_data.M_0,
+        subfr_2_data.C_uc,
+        subfr_2_data.e,
+        subfr_2_data.C_us,
+        subfr_2_data.sqrt_A,
+        subfr_2_data.t_oe,
+        subfr_2_data.fit_interval,
+        subfr_2_data.AODO,
+
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing
+    )
+    return data
+end
+
+function create_data_sub3(
+    prev_data::GPSData,
+    TLM_HOW_Data::TLM_HOW_Data_Struct,
+    subfr_3_data::Subframe_3_Data)
+    
+
+    data = GPSData(
+        TLM_HOW_Data.integrity_status_flag,
+        TLM_HOW_Data.TOW,
+        TLM_HOW_Data.alert_flag,
+        TLM_HOW_Data.anti_spoof_flag,
+
+        prev_data.trans_week,
+        prev_data.codeonl2,
+        prev_data.ura,
+        prev_data.svhealth,
+        prev_data.IODC,
+        prev_data.l2pcode,
+        prev_data.T_GD,
+        prev_data.t_oc,
+        prev_data.a_f2,
+        prev_data.a_f1,
+        prev_data.a_f0,
+
+        prev_data.IODE_Sub_2,
+        prev_data.C_rs,
+        prev_data.Δn,
+        prev_data.M_0,
+        prev_data.C_uc,
+        prev_data.e,
+        prev_data.C_us,
+        prev_data.sqrt_A,
+        prev_data.t_oe,
+        prev_data.fit_interval,
+        prev_data.AODO,
+
+        subfr_3_data.C_ic,
+        subfr_3_data.Ω_0,
+        subfr_3_data.C_is,
+        subfr_3_data.i_0,
+        subfr_3_data.C_rc,
+        subfr_3_data.ω,
+        subfr_3_data.Ω_dot,
+        subfr_3_data.IODE,
+        subfr_3_data.IDOT
+    )
+    return data
+end
+
+function create_data_new_TLM(
+    prev_data::GPSData,
+    TLM_HOW_Data::TLM_HOW_Data_Struct)
+    
+    data = GPSData(
+        TLM_HOW_Data.integrity_status_flag,
+        TLM_HOW_Data.TOW,
+        TLM_HOW_Data.alert_flag,
+        TLM_HOW_Data.anti_spoof_flag,
+
+        prev_data.trans_week,
+        prev_data.codeonl2,
+        prev_data.ura,
+        prev_data.svhealth,
+        prev_data.IODC,
+        prev_data.l2pcode,
+        prev_data.T_GD,
+        prev_data.t_oc,
+        prev_data.a_f2,
+        prev_data.a_f1,
+        prev_data.a_f0,
+
+        prev_data.IODE_Sub_2,
+        prev_data.C_rs,
+        prev_data.Δn,
+        prev_data.M_0,
+        prev_data.C_uc,
+        prev_data.e,
+        prev_data.C_us,
+        prev_data.sqrt_A,
+        prev_data.t_oe,
+        prev_data.fit_interval,
+        prev_data.AODO,
+
+        prev_data.C_ic,
+        prev_data.Ω_0,
+        prev_data.C_is,
+        prev_data.i_0,
+        prev_data.C_rc,
+        prev_data.ω,
+        prev_data.Ω_dot,
+        prev_data.IODE_Sub_3,
+        prev_data.IDOT
+    )
+    return data
+end

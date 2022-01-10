@@ -54,6 +54,7 @@
         PRN::Int64
         buffer::BitArray{1} = falses(BUFFER_LENGTH)
         data::GPSData = GPSData()
+        data_next::GPSData = GPSData() #NEEDED for earlier decoding not valid data!!
         constants::GPSL1Constants = GPSL1Constants()
         preamble_found::Bool = false
         subframe_count::Int = 0
@@ -62,6 +63,8 @@
         data_integrity::Bool = true # pass of parity check
         new_data_needed::Bool = false # IODE must be equal to the 8 LSB of the IODC. If they don't match new data must be collected
         subframes_decoded::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
+        subframes_decoded_new::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
         nb_prev::Int = 0
         num_bits_buffered::Int = 0
+        bits_buffered_offset::Int = 0
     end
