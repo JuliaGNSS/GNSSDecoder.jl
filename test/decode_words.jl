@@ -40,8 +40,11 @@ test_IDOT =  -3.4465721349922174e-10
     dc.prev_30 = PREV_30
     dc.prev_29 = PREV_29
     buff = deepcopy(BUFFER_TEST_TRUE)
-    GNSSDecoder.decode_words(dc, buff)
-
+    for i = 1:5
+        dc = GNSSDecoder.decode_words(dc, buff[i])
+        dc.prev_30 = buff[i][10][30]
+        dc.prev_29 = buff[i][10][29]
+    end
     
     @test dc.data.integrity_status_flag == test_integrity_status_flag #1
     @test dc.data.TOW == test_TOW #2
@@ -91,7 +94,11 @@ end
     dc.prev_30 = PREV_30_FALSE
     dc.prev_29 = PREV_29_FALSE
     buff = deepcopy(BUFFER_TEST_TRUE)
-    GNSSDecoder.decode_words(dc, buff)
+    for i = 1:5
+        dc = GNSSDecoder.decode_words(dc, buff[i])
+        dc.prev_30 = PREV_30_FALSE
+        dc.prev_29 = PREV_30_FALSE
+    end
     end
     @test dc.data_integrity == false
 
@@ -102,8 +109,12 @@ end
         dc.prev_30 = PREV_30
         dc.prev_29 = PREV_29
         buff = deepcopy(BUFFER_TEST_TRUE)
-        buff[3][3] = BAD_LINE
-        GNSSDecoder.decode_words(dc, buff)
+        buff[5][2] = BAD_LINE
+        for i = 1:5
+            dc = GNSSDecoder.decode_words(dc, buff[i])
+            dc.prev_30 = buff[i][10][30]
+            dc.prev_29 = buff[i][10][29]
+        end
     end
 
     @test dc.data_integrity == false

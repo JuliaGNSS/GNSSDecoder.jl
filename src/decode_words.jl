@@ -11,12 +11,11 @@ new_DATA_PRINT = true
     $(SIGNATURES)
 
     ´dc´: decoder, struct for all ephemeris data
-    ´words_in_subframes´: buffer of 1500 bits, sliced in 5 subframes á 300 bits, which are again sliced in 10 Words á 30 Bits
+    ´words_in_subframe´: buffer of 310 bits, which are again sliced in 10 Words á 30 Bits and 8 Bits prev preamble
      
     # Details
     # Controls every Word for Parity Errors
 """
-## NEEDS modification for word wise decoding for loop has to be removed
 function buffer_control(dc::GNSSDecoderState, words_in_subframe)
     
 
@@ -134,12 +133,12 @@ end
     $(SIGNATURES)
 
     ´dc´: decoder, struct for all Satellite Data
-    ´words_in_subframes´: buffer of 1500 bits, sliced in 5 subframes á 300 bits, which are again sliced in 10 Words á 30 Bits
+    ´words_in_subframe´: buffer of 310 bits, which are again sliced in 10 Words á 30 Bits and 8 Bits prev preamble
 
 
     # Details
     # Decodes complete subframe from the buffer, saves data for position computing in ´dc.data´. It returns the decoder, ´dc´. 
-    #The number of saved Bits is resetted to 2 due to the Buffer length of 1502. Those 2 Bits will be the previous 2 Bits to the next 5 Subframes.  
+    # The number of saved Bits is resetted to 10 due to the Buffer length of 308. Those 10 Bits will be the previous 2 Bits + 8 Bits TOW.  
 """
 function decode_words(dc::GNSSDecoderState, words_in_subframe)
 
@@ -209,7 +208,7 @@ function decode_words(dc::GNSSDecoderState, words_in_subframe)
         end
     end
 
-    dc.num_bits_buffered = 10 # Due to Buffer length of 1502 and the need to save the last two bits, only 1500 Bits have to been read in the next loop.
+    dc.num_bits_buffered = 10 # Due to Buffer length of 1502 and the need to save the last ten bits, only 1500 Bits have to been read in the next loop.
     return dc
 end
 

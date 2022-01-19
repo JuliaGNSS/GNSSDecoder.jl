@@ -66,5 +66,4 @@
         subframes_decoded_new::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
         nb_prev::Int = 0
         num_bits_buffered::Int = 0
-        bits_buffered_offset::Int = 0
     end

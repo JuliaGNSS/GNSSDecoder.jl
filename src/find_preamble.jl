@@ -1,8 +1,6 @@
 
 PREAMBLE = BitArray([1,1,0,1,0,0,0,1]) # Reversed preamble through reversed buffer
 
-
-#FRAME_POSITIONS = [300, 600, 900, 1200, 1500]
 FRAME_POSITIONS = [8,308] #NEEDED for subframe wise decoding
 
 
@@ -22,10 +20,10 @@ end
 
     #Details
     
-    Checks whether there is an preamble at each FRAME_POSITION of the buffer or not. Checks for right order of subframes too by checking the ID. 
+    Checks whether there is an preamble at each FRAME_POSITION of the buffer or not. 
 """
 function find_preamble(buffer)
-    for pos in FRAME_POSITIONS ## NEEDS modification for word wise decoding 
+    for pos in FRAME_POSITIONS 
         # Verify preamble
         data = access_buffer(buffer, pos, 0, 8)
         if data != PREAMBLE && data != .!PREAMBLE

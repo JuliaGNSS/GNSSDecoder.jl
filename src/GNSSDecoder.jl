@@ -3,8 +3,6 @@ module GNSSDecoder
     using DocStringExtensions, GNSSSignals, Parameters, FixedPointNumbers, StaticArrays, LinearAlgebra
     using Unitful: Hz
     
-
-    #BUFFER_LENGTH = 1502 #Size of Buffer - All 5 Subframes + the last 2 Bits are stored 
     BUFFER_LENGTH = 310 ##NEEDS Modification e.g 308 Bit if there are two präamble, then the word wise decoding starts.
     SUBFRAME_LENGTH = 300 #Size of Subframes
 
@@ -56,7 +54,7 @@ module GNSSDecoder
             dc.buffer = push_buffer(dc.buffer, current_bit > 0)
             
             # * Count if Buffer is new to full stored buffer
-            if dc.num_bits_buffered != BUFFER_LENGTH  ##NEEDS modification  
+            if dc.num_bits_buffered != BUFFER_LENGTH 
                 dc.num_bits_buffered += 1
             end
 
@@ -64,31 +62,23 @@ module GNSSDecoder
             # * Find first preamble
             if (!dc.preamble_found) && (dc.num_bits_buffered == BUFFER_LENGTH)
                 dc.preamble_found = find_preamble(dc.buffer)
-                #println("Buffer is filled")
             end
 
             #Check Id of current subframe
             if dc.preamble_found
-                #println("TLM and HOW", reverse(dc.buffer[249:308]))
                 current_id = read_id(dc.buffer)
-                #println("Current Subframe ID: ", current_id)
                 if current_id != sum(dc.subframes_decoded_new)+1 #checks if the current_id is correct
                     dc.preamble_found = false
-                    #println("Subframes: ", dc.subframes_decoded)
-                    #println("SUM+1 Subframes: ", (sum(dc.subframes_decoded)+1) )
-                    #println("Wrong dataset (ID is not correct for decode state)")
                 end
             end
 
             # * Begin decoding after preamble is confirmed
             if dc.preamble_found
-                #println("Start subframe decoding...")
                 rev_buf = reverse(dc.buffer)
                 words_in_subframe  = map(wrd_it -> rev_buf[ wrd_it*30+3 : (wrd_it+1)*30+2 ],0:9) # gets the words of the subframe (word length = 30)
                 dc.prev_29 = rev_buf[1]
                 dc.prev_30 = rev_buf[2]
                 decode_words(dc, words_in_subframe)
-                #println(dc.data_next)
                 dc.preamble_found = false
             end
         end # end of for-loop 
