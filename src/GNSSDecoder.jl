@@ -3,7 +3,7 @@ module GNSSDecoder
     using DocStringExtensions, GNSSSignals, Parameters, FixedPointNumbers, StaticArrays, LinearAlgebra
     using Unitful: Hz
     
-    BUFFER_LENGTH = 310 ##NEEDS Modification e.g 308 Bit if there are two präamble, then the word wise decoding starts.
+    BUFFER_LENGTH = 310 # 2 Bits previous subfram + 300 Bits current subframe + 8 Bits following TOW 
     SUBFRAME_LENGTH = 300 #Size of Subframes
 
     export decode,

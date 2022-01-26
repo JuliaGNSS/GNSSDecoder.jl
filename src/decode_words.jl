@@ -148,10 +148,10 @@ function decode_words(dc::GNSSDecoderState, words_in_subframe)
     if dc.data_integrity == true
         if dc.subframes_decoded_new == [0,0,0,0,0]
             TLM_HOW, subframe_1_data = decode_subframe_1(words_in_subframe)
-            dc.data_next = create_data_sub1(TLM_HOW, subframe_1_data)
+            dc.data_next = GPSData(TLM_HOW, subframe_1_data)
             control_state = true
             dc.subframes_decoded_new[1] = control_state
-            dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+            dc.data = GPSData(dc.data, TLM_HOW)
             if PRINT_ON
                 println("DECODED SUB1!")
             end
@@ -160,8 +160,8 @@ function decode_words(dc::GNSSDecoderState, words_in_subframe)
             control_state = control_data_sub2(dc.data_next, subframe_2_data)
             dc.subframes_decoded_new[2] = control_state
             if control_state
-                dc.data_next = create_data_sub2(dc.data_next, TLM_HOW, subframe_2_data)
-                dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+                dc.data_next = GPSData(dc.data_next, TLM_HOW, subframe_2_data)
+                dc.data = GPSData(dc.data, TLM_HOW)
                 if PRINT_ON
                     println("DECODED SUB2!")
                 end
@@ -171,24 +171,23 @@ function decode_words(dc::GNSSDecoderState, words_in_subframe)
             control_state = control_data_sub3(dc.data_next, subframe_3_data)
             dc.subframes_decoded_new[3] = control_state
             if control_state
-                dc.data_next = create_data_sub3(dc.data_next, TLM_HOW, subframe_3_data)
-                dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+                dc.data_next = GPSData(dc.data_next, TLM_HOW, subframe_3_data)
+                dc.data = GPSData(dc.data, TLM_HOW)
                 if PRINT_ON
                     println("DECODED SUB3!")
                 end
             end
         elseif dc.subframes_decoded_new == [1,1,1,0,0]
             TLM_HOW = decode_subframe_4(words_in_subframe)
-            #dc.data_next = create_data_new_TLM(dc.data_next, TLM_HOW)
             control_state = true
             dc.subframes_decoded_new[4] = control_state
-            dc.data = create_data_new_TLM(dc.data, TLM_HOW)
+            dc.data = GPSData(dc.data, TLM_HOW)
             if PRINT_ON
                 println("DECODED SUB4!")
             end
         elseif dc.subframes_decoded_new == [1,1,1,1,0]
             TLM_HOW = decode_subframe_5(words_in_subframe)
-            dc.data_next = create_data_new_TLM(dc.data_next, TLM_HOW)
+            dc.data_next = GPSData(dc.data_next, TLM_HOW)
             control_state = true
             dc.subframes_decoded_new[5] = control_state
             if PRINT_ON
