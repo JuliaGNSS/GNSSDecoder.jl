@@ -35,8 +35,8 @@ end
     # Details
     # Decodes the first substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_1(words)
-    if PRINT_ON
+function decode_subframe_1(words, debug)
+    if debug
         println("Decoding subframe 1...")
     end
 
@@ -118,8 +118,8 @@ end
     Details:
     # Decodes the second substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_2(words)
-    if PRINT_ON
+function decode_subframe_2(words, debug)
+    if debug
         println("Decoding subframe 2...")
     end
 
@@ -197,8 +197,8 @@ end
     # Details
     # Decodes the third substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_3(words)
-    if PRINT_ON
+function decode_subframe_3(words, debug)
+    if debug
         println("Decoding subframe 3...")
     end
 
@@ -257,8 +257,8 @@ end
     # Details
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
-function decode_subframe_4(words)
-    if PRINT_ON
+function decode_subframe_4(words, debug)
+    if debug
         println("Decoding subframe 4...")
     end
 
@@ -276,8 +276,8 @@ end
     # Details
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
-function decode_subframe_5(words)
-    if PRINT_ON
+function decode_subframe_5(words, debug)
+    if debug
         println("Decoding subframe 5...")
     end
 

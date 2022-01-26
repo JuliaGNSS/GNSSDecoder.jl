@@ -3,9 +3,6 @@ struct ParityError <: Exception
     text
 end
 
-PRINT_ON = false
-new_DATA_PRINT = true
-
 """
     Controls the Buffer for Parity Errors
     $(SIGNATURES)
@@ -90,40 +87,58 @@ end
     Controls Data for Errors (IODC and matching IODEs)
     $(SIGNATURES)
 
-    ´next_data´: Data of next potential data
+    ´data´: Data
 
     # Details
-    #checks if IODE of subframe 2 matches the 8 LSB of th in Subframe 1 transmitted IODC
+    #checks if IODE of subframe 1 matches the 8 LSB of th in Subframe 1 transmitted IODC
 """
-function control_data_sub2(next_data::GPSData,
-    subfr_2_data::Subframe_2_Data)
+function control_data_sub1(data::GPSData,
+    subfr_1_data::Subframe_1_Data)
 
-    status = true
-    if subfr_2_data.IODE != next_data.IODC[3:10] # IODE and the 8 LSB of IODC must match
-        @info "new data required, IODC and IODE of Subframe 2 do not match (CEI data set cutover)"
-        status = false
+    is_error = !isnothing(data.IODE_Sub_2) && subfr_1_data.IODC[3:10] != data.IODE_Sub_2 ||
+        !isnothing(data.IODE_Sub_3) && subfr_1_data.IODC[3:10] != data.IODE_Sub_3 # IODE and the 8 LSB of IODC must match
+    if is_error
+        @info "new data required, IODC and IODE of Subframe 1 do not match (CEI data set cutover)"
     end
-    return status
+    return !is_error
 end
 
 """
     Controls Data for Errors (IODC and matching IODEs)
     $(SIGNATURES)
 
-    ´next_data´: Data of next potential data
+    ´data´: Data
+
+    # Details
+    #checks if IODE of subframe 2 matches the 8 LSB of th in Subframe 1 transmitted IODC
+"""
+function control_data_sub2(data::GPSData,
+    subfr_2_data::Subframe_2_Data)
+
+    is_error = !isnothing(data.IODC) && subfr_2_data.IODE != data.IODC[3:10] # IODE and the 8 LSB of IODC must match
+    if is_error
+        @info "new data required, IODC and IODE of Subframe 2 do not match (CEI data set cutover)"
+    end
+    return !is_error
+end
+
+"""
+    Controls Data for Errors (IODC and matching IODEs)
+    $(SIGNATURES)
+
+    ´data´: Data
 
     # Details
     #checks if IODE of subframe 3 matches the 8 LSB of th in Subframe 1 transmitted IODC
 """
-function control_data_sub3(next_data::GPSData,
+function control_data_sub3(data::GPSData,
     subfr_3_data::Subframe_3_Data)
 
-    status = true
-    if subfr_3_data.IODE != next_data.IODC[3:10] # IODE and the 8 LSB of IODC must match
+    is_error = !isnothing(data.IODC) && subfr_3_data.IODE != data.IODC[3:10] # IODE and the 8 LSB of IODC must match
+    if is_error
         @info "new data required, IODC and IODE of Subframe 3 do not match (CEI data set cutover)"
-        status = false
     end
-    return status
+    return !is_error
 end
 
 
@@ -140,66 +155,66 @@ end
     # Decodes complete subframe from the buffer, saves data for position computing in ´dc.data´. It returns the decoder, ´dc´. 
     # The number of saved Bits is resetted to 10 due to the Buffer length of 308. Those 10 Bits will be the previous 2 Bits + 8 Bits TOW.  
 """
-function decode_words(dc::GNSSDecoderState, words_in_subframe)
+function decode_words(dc::GNSSDecoderState, words_in_subframe, debug)
 
     control_state = false
 
     dc = buffer_control(dc, words_in_subframe) 
     if dc.data_integrity == true
-        if dc.subframes_decoded_new == [0,0,0,0,0]
-            TLM_HOW, subframe_1_data = decode_subframe_1(words_in_subframe)
-            dc.data_next = GPSData(TLM_HOW, subframe_1_data)
-            control_state = true
-            dc.subframes_decoded_new[1] = control_state
+        current_subframe_id = read_id(dc.buffer)
+        if current_subframe_id == 1
+            TLM_HOW, subframe_1_data = decode_subframe_1(words_in_subframe, debug)
+            dc.data = GPSData(dc.data, subframe_1_data)
             dc.data = GPSData(dc.data, TLM_HOW)
-            if PRINT_ON
+            control_state = control_data_sub1(dc.data, subframe_1_data)
+            dc.subframes_decoded_new[1] = control_state
+            if debug
                 println("DECODED SUB1!")
             end
-        elseif dc.subframes_decoded_new == [1,0,0,0,0]
-            TLM_HOW, subframe_2_data = decode_subframe_2(words_in_subframe)
-            control_state = control_data_sub2(dc.data_next, subframe_2_data)
+        elseif current_subframe_id == 2
+            TLM_HOW, subframe_2_data = decode_subframe_2(words_in_subframe, debug)
+            control_state = control_data_sub2(dc.data, subframe_2_data)
             dc.subframes_decoded_new[2] = control_state
             if control_state
-                dc.data_next = GPSData(dc.data_next, TLM_HOW, subframe_2_data)
+                dc.data = GPSData(dc.data, subframe_2_data)
                 dc.data = GPSData(dc.data, TLM_HOW)
-                if PRINT_ON
+                if debug
                     println("DECODED SUB2!")
                 end
             end
-        elseif dc.subframes_decoded_new == [1,1,0,0,0]
-            TLM_HOW, subframe_3_data = decode_subframe_3(words_in_subframe)
-            control_state = control_data_sub3(dc.data_next, subframe_3_data)
+        elseif current_subframe_id == 3
+            TLM_HOW, subframe_3_data = decode_subframe_3(words_in_subframe, debug)
+            control_state = control_data_sub3(dc.data, subframe_3_data)
             dc.subframes_decoded_new[3] = control_state
             if control_state
-                dc.data_next = GPSData(dc.data_next, TLM_HOW, subframe_3_data)
+                dc.data = GPSData(dc.data, subframe_3_data)
                 dc.data = GPSData(dc.data, TLM_HOW)
-                if PRINT_ON
+                if debug
                     println("DECODED SUB3!")
                 end
             end
-        elseif dc.subframes_decoded_new == [1,1,1,0,0]
-            TLM_HOW = decode_subframe_4(words_in_subframe)
+        elseif current_subframe_id == 4
+            TLM_HOW = decode_subframe_4(words_in_subframe, debug)
             control_state = true
             dc.subframes_decoded_new[4] = control_state
             dc.data = GPSData(dc.data, TLM_HOW)
-            if PRINT_ON
+            if debug
                 println("DECODED SUB4!")
             end
-        elseif dc.subframes_decoded_new == [1,1,1,1,0]
-            TLM_HOW = decode_subframe_5(words_in_subframe)
-            dc.data_next = GPSData(dc.data_next, TLM_HOW)
+        elseif current_subframe_id == 5
+            TLM_HOW = decode_subframe_5(words_in_subframe, debug)
+            dc.data = GPSData(dc.data, TLM_HOW)
             control_state = true
             dc.subframes_decoded_new[5] = control_state
-            if PRINT_ON
-                println("DECODING OF FRAME FINISHED!")
+            if debug
+                println("DECODED SUB5!")
             end
         end
 
         if dc.subframes_decoded_new == [1,1,1,1,1]
             dc.subframes_decoded = dc.subframes_decoded_new
             dc.subframes_decoded_new = [0,0,0,0,0]
-            dc.data = dc.data_next
-            if PRINT_ON || new_DATA_PRINT
+            if debug
                 println("PRN",dc.PRN," NEW DECODED DATA!")
             end
         elseif !control_state

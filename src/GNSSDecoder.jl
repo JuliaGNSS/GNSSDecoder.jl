@@ -3,8 +3,9 @@ module GNSSDecoder
     using DocStringExtensions, GNSSSignals, Parameters, FixedPointNumbers, StaticArrays, LinearAlgebra
     using Unitful: Hz
     
-    BUFFER_LENGTH = 310 # 2 Bits previous subfram + 300 Bits current subframe + 8 Bits following TOW 
-    SUBFRAME_LENGTH = 300 #Size of Subframes
+    const SUBFRAME_LENGTH = 300 # Size of Subframes
+    const BUFFER_LENGTH = SUBFRAME_LENGTH + 2 + 8 # 2 Bits previous subfram + 300 Bits current subframe + 8 Bits following TOW
+    const WORD_LENGTH = 30
 
     export decode,
         GNSSDecoderState,
@@ -36,16 +37,7 @@ module GNSSDecoder
         then tries to find a preamble.
         
     """
-    function decode(dc::GNSSDecoderState, data_bits::UInt64, num_bits)
-    
-        
-        a = num_bits - dc.nb_prev
-        dc.nb_prev = num_bits
-        
-        if a !== 0
-            num_bits = a
-        end
-        
+    function decode(dc::GNSSDecoderState, data_bits::UInt64, num_bits, debug = false)     
         
         for i = num_bits - 1:-1:0
             
@@ -53,33 +45,19 @@ module GNSSDecoder
             
             dc.buffer = push_buffer(dc.buffer, current_bit > 0)
             
-            # * Count if Buffer is new to full stored buffer
+            # Count if Buffer is new to full stored buffer
             if dc.num_bits_buffered != BUFFER_LENGTH 
                 dc.num_bits_buffered += 1
             end
 
-            current_id = 0
-            # * Find first preamble
-            if (!dc.preamble_found) && (dc.num_bits_buffered == BUFFER_LENGTH)
-                dc.preamble_found = find_preamble(dc.buffer)
-            end
-
-            #Check Id of current subframe
-            if dc.preamble_found
-                current_id = read_id(dc.buffer)
-                if current_id != sum(dc.subframes_decoded_new)+1 #checks if the current_id is correct
-                    dc.preamble_found = false
-                end
-            end
-
-            # * Begin decoding after preamble is confirmed
-            if dc.preamble_found
+            # Every time the preamble is found at the correct positions
+            # decode the current subframe
+            if dc.num_bits_buffered == BUFFER_LENGTH && find_preamble(dc.buffer)
                 rev_buf = reverse(dc.buffer)
-                words_in_subframe  = map(wrd_it -> rev_buf[ wrd_it*30+3 : (wrd_it+1)*30+2 ],0:9) # gets the words of the subframe (word length = 30)
+                words_in_subframe  = map(word_idx -> rev_buf[word_idx * WORD_LENGTH + 3:(word_idx + 1) * WORD_LENGTH + 2], 0:9)
                 dc.prev_29 = rev_buf[1]
                 dc.prev_30 = rev_buf[2]
-                decode_words(dc, words_in_subframe)
-                dc.preamble_found = false
+                decode_words(dc, words_in_subframe, debug)
             end
         end # end of for-loop 
     end # end of decode()

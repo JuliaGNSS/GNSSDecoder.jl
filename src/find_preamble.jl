@@ -1,7 +1,7 @@
 
-PREAMBLE = BitArray([1,1,0,1,0,0,0,1]) # Reversed preamble through reversed buffer
+const PREAMBLE = BitArray([1,1,0,1,0,0,0,1]) # Reversed preamble through reversed buffer
 
-FRAME_POSITIONS = [8,308] #NEEDED for subframe wise decoding
+const FRAME_POSITIONS = (8,308) #NEEDED for subframe wise decoding
 
 
 """

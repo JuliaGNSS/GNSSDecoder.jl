@@ -150,15 +150,12 @@ end
 
 
 function GPSData(
-    TLM_HOW_Data::TLM_HOW_Data_Struct,
+    prev_data::GPSData,
     subfr_1_data::Subframe_1_Data)
     
 
     data = GPSData(
-        integrity_status_flag = TLM_HOW_Data.integrity_status_flag,
-        TOW = TLM_HOW_Data.TOW,
-        alert_flag = TLM_HOW_Data.alert_flag,
-        anti_spoof_flag = TLM_HOW_Data.anti_spoof_flag,
+        prev_data,
 
         trans_week = subfr_1_data.trans_week,
         codeonl2 = subfr_1_data.codeonl2,
@@ -177,17 +174,11 @@ end
 
 function GPSData(
     prev_data::GPSData,
-    TLM_HOW_Data::TLM_HOW_Data_Struct,
     subfr_2_data::Subframe_2_Data)
     
 
     data = GPSData(
         prev_data,
-
-        integrity_status_flag = TLM_HOW_Data.integrity_status_flag,
-        TOW = TLM_HOW_Data.TOW,
-        alert_flag = TLM_HOW_Data.alert_flag,
-        anti_spoof_flag = TLM_HOW_Data.anti_spoof_flag,
 
         IODE_Sub_2 = subfr_2_data.IODE,
         C_rs = subfr_2_data.C_rs,
@@ -206,18 +197,11 @@ end
 
 function GPSData(
     prev_data::GPSData,
-    TLM_HOW_Data::TLM_HOW_Data_Struct,
     subfr_3_data::Subframe_3_Data)
     
 
     data = GPSData(
         prev_data,
-        
-        integrity_status_flag = TLM_HOW_Data.integrity_status_flag,
-        TOW = TLM_HOW_Data.TOW,
-        alert_flag = TLM_HOW_Data.alert_flag,
-        anti_spoof_flag = TLM_HOW_Data.anti_spoof_flag,
-
 
         C_ic = subfr_3_data.C_ic,
         Ω_0 = subfr_3_data.Ω_0,
@@ -250,11 +234,11 @@ end
 
 
 @with_kw struct GPSL1Constants
-    PI = 3.1415926535898
-    Ω_dot_e = 7.2921151467e-5 
-    c = 2.99792458e8
-    μ = 3.986005e14    
-    F =  -4.442807633e-10
+    PI::Float64 = 3.1415926535898
+    Ω_dot_e::Float64 = 7.2921151467e-5 
+    c::Float64 = 2.99792458e8
+    μ::Float64 = 3.986005e14    
+    F::Float64 = -4.442807633e-10
 end
 
 
@@ -272,6 +256,5 @@ end
     new_data_needed::Bool = false # IODE must be equal to the 8 LSB of the IODC. If they don't match new data must be collected
     subframes_decoded::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
     subframes_decoded_new::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
-    nb_prev::Int = 0
     num_bits_buffered::Int = 0
 end
