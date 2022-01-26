@@ -246,7 +246,6 @@ end
     PRN::Int64
     buffer::BitArray{1} = falses(BUFFER_LENGTH)
     data::GPSData = GPSData()
-    data_next::GPSData = GPSData() #NEEDED for earlier decoding not valid data!!
     constants::GPSL1Constants = GPSL1Constants()
     preamble_found::Bool = false
     subframe_count::Int = 0
