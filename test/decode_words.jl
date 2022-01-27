@@ -35,13 +35,14 @@ test_Ω_dot =  -7.383521839035659e-9
 test_IODE_Sub_3 =  "01001000"
 test_IDOT =  -3.4465721349922174e-10
 
+
 @testset "Test Decoding true data" begin
     dc = deepcopy(DECODER)
     dc.prev_30 = PREV_30
     dc.prev_29 = PREV_29
     buff = deepcopy(BUFFER_TEST_TRUE)
     for i = 1:5
-        dc = GNSSDecoder.decode_words(dc, buff[i])
+        dc = GNSSDecoder.decode_words(dc, i, buff[i], false)
         dc.prev_30 = buff[i][10][30]
         dc.prev_29 = buff[i][10][29]
     end
@@ -91,14 +92,14 @@ end
     PREV_30_FALSE = 1
     dc = deepcopy(DECODER)
     @suppress begin
-    dc.prev_30 = PREV_30_FALSE
-    dc.prev_29 = PREV_29_FALSE
-    buff = deepcopy(BUFFER_TEST_TRUE)
-    for i = 1:5
-        dc = GNSSDecoder.decode_words(dc, buff[i])
         dc.prev_30 = PREV_30_FALSE
-        dc.prev_29 = PREV_30_FALSE
-    end
+        dc.prev_29 = PREV_29_FALSE
+        buff = deepcopy(BUFFER_TEST_TRUE)
+        for i = 1:5
+            dc = GNSSDecoder.decode_words(dc, i, buff[i], false)
+            dc.prev_30 = PREV_30_FALSE
+            dc.prev_29 = PREV_30_FALSE
+        end
     end
     @test dc.data_integrity == false
 
@@ -111,7 +112,7 @@ end
         buff = deepcopy(BUFFER_TEST_TRUE)
         buff[5][2] = BAD_LINE
         for i = 1:5
-            dc = GNSSDecoder.decode_words(dc, buff[i])
+            dc = GNSSDecoder.decode_words(dc, i, buff[i], false)
             dc.prev_30 = buff[i][10][30]
             dc.prev_29 = buff[i][10][29]
         end
@@ -136,18 +137,15 @@ end
     dc.prev_29 = PREV_29
     buff = deepcopy(BUFFER_TEST_TRUE)
     buff[1][8] = IODC_CHANGE_LSB
-    out = true
-    @suppress begin
-        TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1])
-        TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2])
-        TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3])
-    
-        out = GNSSDecoder.control_data(TLM_HOW_data, sub_1_data, sub_2_data, sub_3_data)
-    end
 
-    @test out == false
+    TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1], false)
+    dc.data = GPSData(dc.data, sub_1_data)
+    dc.data = GPSData(dc.data, TLM_HOW_data)
 
-    out = true
+    TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2], false)
+    @test GNSSDecoder.check_data_sub2(dc.data, sub_2_data) == false
+    TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3], false)
+    @test GNSSDecoder.check_data_sub3(dc.data, sub_3_data) == false
 
     IODE_SUB2_CHANGE = BitArray([1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0])
     dc = deepcopy(DECODER)
@@ -155,19 +153,17 @@ end
     dc.prev_29 = PREV_29
     buff = deepcopy(BUFFER_TEST_TRUE)
     buff[2][3] = IODE_SUB2_CHANGE
-    @suppress begin
-        TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1])
-        TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2])
-        TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3])
+
+
+    @suppress TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1], false)
+    dc.data = GPSData(dc.data, sub_1_data)
+    dc.data = GPSData(dc.data, TLM_HOW_data)
+
+    @suppress TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2], false)
+    @test @suppress(GNSSDecoder.check_data_sub2(dc.data, sub_2_data)) == false
+    @suppress TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3], false)
+    @test @suppress(GNSSDecoder.check_data_sub3(dc.data, sub_3_data)) == false
     
-    out = GNSSDecoder.control_data(TLM_HOW_data, sub_1_data, sub_2_data, sub_3_data)
-    end
-    @test out == false
-
-
-
-
-    out = true
     IODE_SUB3_CHANGE = BitArray([1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0])
     dc = deepcopy(DECODER)
     dc.prev_30 = PREV_30
@@ -175,12 +171,14 @@ end
     buff = deepcopy(BUFFER_TEST_TRUE)
     buff[3][10] = IODE_SUB3_CHANGE
     
-    @suppress begin
-        TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1])
-        TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2])
-        TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3])
-        out = GNSSDecoder.control_data(TLM_HOW_data, sub_1_data, sub_2_data, sub_3_data)
-    end
-    @test out == false
+    @suppress TLM_HOW_data,sub_1_data = GNSSDecoder.decode_subframe_1(buff[1], false)
+    dc.data = GPSData(dc.data, sub_1_data)
+    dc.data = GPSData(dc.data, TLM_HOW_data)
+
+    @suppress TLM_HOW_data,sub_2_data = GNSSDecoder.decode_subframe_2(buff[2], false)
+    @test @suppress(GNSSDecoder.check_data_sub2(dc.data, sub_2_data)) == true
+
+    @suppress TLM_HOW_data,sub_3_data = GNSSDecoder.decode_subframe_3(buff[3], false)
+    @test @suppress(GNSSDecoder.check_data_sub3(dc.data, sub_3_data)) == false
     
 end

@@ -1,7 +1,7 @@
-DECODER = GNSSDecoderState(PRN = 1)
-PREV_29 = 0
-PREV_30 = 0
-BUFFER_TEST_TRUE = [
+const DECODER = GNSSDecoderState(PRN = 1)
+const PREV_29 = 0
+const PREV_30 = 0
+const BUFFER_TEST_TRUE = [
 [
     BitArray([1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]), 
     BitArray([1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0]), 

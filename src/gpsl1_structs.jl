@@ -95,59 +95,7 @@ end
     Ω_dot::Union{Nothing,Float64} = nothing
     IODE_Sub_3::Union{Nothing,String} = nothing
     IDOT::Union{Nothing,Float64} = nothing
-end 
-
-
-function GPSData(
-    TLM_HOW_Data::TLM_HOW_Data_Struct,
-    subfr_1_data::Subframe_1_Data,
-    subfr_2_data::Subframe_2_Data,
-    subfr_3_data::Subframe_3_Data)
-    
-
-    data = GPSData(
-        TLM_HOW_Data.integrity_status_flag,
-        TLM_HOW_Data.TOW,
-        TLM_HOW_Data.alert_flag,
-        TLM_HOW_Data.anti_spoof_flag,
-
-        subfr_1_data.trans_week,
-        subfr_1_data.codeonl2,
-        subfr_1_data.ura,
-        subfr_1_data.svhealth,
-        subfr_1_data.IODC,
-        subfr_1_data.l2pcode,
-        subfr_1_data.T_GD,
-        subfr_1_data.t_oc,
-        subfr_1_data.a_f2,
-        subfr_1_data.a_f1,
-        subfr_1_data.a_f0,
-
-        subfr_2_data.IODE,
-        subfr_2_data.C_rs,
-        subfr_2_data.Δn,
-        subfr_2_data.M_0,
-        subfr_2_data.C_uc,
-        subfr_2_data.e,
-        subfr_2_data.C_us,
-        subfr_2_data.sqrt_A,
-        subfr_2_data.t_oe,
-        subfr_2_data.fit_interval,
-        subfr_2_data.AODO,
-
-        subfr_3_data.C_ic,
-        subfr_3_data.Ω_0,
-        subfr_3_data.C_is,
-        subfr_3_data.i_0,
-        subfr_3_data.C_rc,
-        subfr_3_data.ω,
-        subfr_3_data.Ω_dot,
-        subfr_3_data.IODE,
-        subfr_3_data.IDOT
-    )
-    return data
 end
-
 
 function GPSData(
     prev_data::GPSData,
@@ -254,6 +202,5 @@ end
     data_integrity::Bool = true # pass of parity check
     new_data_needed::Bool = false # IODE must be equal to the 8 LSB of the IODC. If they don't match new data must be collected
     subframes_decoded::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
-    subframes_decoded_new::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
     num_bits_buffered::Int = 0
 end

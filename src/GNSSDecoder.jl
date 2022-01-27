@@ -57,7 +57,7 @@ module GNSSDecoder
                 words_in_subframe  = map(word_idx -> rev_buf[word_idx * WORD_LENGTH + 3:(word_idx + 1) * WORD_LENGTH + 2], 0:9)
                 dc.prev_29 = rev_buf[1]
                 dc.prev_30 = rev_buf[2]
-                decode_words(dc, words_in_subframe, debug)
+                decode_words(dc, read_id(dc.buffer), words_in_subframe, debug)
             end
         end # end of for-loop 
     end # end of decode()
