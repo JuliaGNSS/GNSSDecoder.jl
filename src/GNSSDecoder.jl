@@ -63,7 +63,7 @@ module GNSSDecoder
                 dc.prev_30 = rev_buf[2]
                 decode_words(dc, read_id(dc.buffer), words_in_subframe, debug)
                 if dc.data.integrity_status_flag == false
-                    dc.num_bits_after_valid_subframe = 0
+                    dc.num_bits_after_valid_subframe = 8
                 end
             end
         end # end of for-loop 
