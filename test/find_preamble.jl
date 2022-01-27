@@ -22,49 +22,34 @@ push!(test_buffer_inv, make_subframe_inv([1,0,0]))
 push!(test_buffer_inv, make_subframe_inv([1,0,1]))
 
 false_frame = zeros(300)
+false_preamble = zeros(8)
 
 @testset "Test Not Inverted Preamble" begin
-    buffer = vcat(test_buffer_ninv[5], test_buffer_ninv[4], test_buffer_ninv[3], test_buffer_ninv[2], test_buffer_ninv[1])
+    buffer = vcat(PREAMBLE, test_buffer_ninv[1])
     out = GNSSDecoder.find_preamble(buffer)
     @test out == true
 
-
-    buffer = vcat(false_frame, test_buffer_ninv[4], test_buffer_ninv[3], test_buffer_ninv[2], test_buffer_ninv[1])
+    buffer = vcat(.!PREAMBLE, test_buffer_ninv[1])
     out = GNSSDecoder.find_preamble(buffer)
-    @test out == false
+    @test out == true
 
-    buffer = vcat(test_buffer_ninv[1], test_buffer_ninv[2], test_buffer_ninv[3], test_buffer_ninv[4], test_buffer_ninv[5])
+    buffer = vcat(false_preamble, test_buffer_ninv[1])
     out = GNSSDecoder.find_preamble(buffer)
     @test out == false
 
 end
 
 @testset "Test Inverted Preamble" begin
-    buffer = vcat(test_buffer_inv[5], test_buffer_inv[4], test_buffer_inv[3], test_buffer_inv[2], test_buffer_inv[1])
+    buffer = vcat(PREAMBLE, test_buffer_inv[1])
+    out = GNSSDecoder.find_preamble(buffer)
+    @test out == true
+
+    buffer = vcat(.!PREAMBLE, test_buffer_inv[1])
     out = GNSSDecoder.find_preamble(buffer)
     @test out == true
 
 
-    buffer = vcat(false_frame, test_buffer_inv[4], test_buffer_inv[3], test_buffer_inv[2], test_buffer_inv[1])
-    out = GNSSDecoder.find_preamble(buffer)
-    @test out == false
-
-    buffer = vcat(test_buffer_inv[1], test_buffer_inv[2], test_buffer_inv[3], test_buffer_inv[4], test_buffer_inv[5])
-    out = GNSSDecoder.find_preamble(buffer)
-    @test out == false
-end
-
-@testset "Test Mixed Preamble" begin
-    buffer = vcat(test_buffer_inv[5], test_buffer_ninv[4], test_buffer_inv[3], test_buffer_ninv[2], test_buffer_inv[1])
-    out = GNSSDecoder.find_preamble(buffer)
-    @test out == true
-
-
-    buffer = vcat(false_frame, test_buffer_ninv[4], test_buffer_ninv[3], test_buffer_inv[2], test_buffer_inv[1])
-    out = GNSSDecoder.find_preamble(buffer)
-    @test out == false
-
-    buffer = vcat(test_buffer_ninv[1], test_buffer_inv[2], test_buffer_inv[3], test_buffer_inv[4], test_buffer_ninv[5])
+    buffer = vcat(false_preamble, test_buffer_inv[1])
     out = GNSSDecoder.find_preamble(buffer)
     @test out == false
 end

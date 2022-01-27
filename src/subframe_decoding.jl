@@ -1,59 +1,7 @@
+
 GPS_PI = 3.1415926535898
 
-struct TLM_HOW_Data_Struct
-    integrity_status_flag::Bool
-    TOW::Int64
-    alert_flag::Bool
-    anti_spoof_flag::Bool
-end
-
-
-struct Subframe_1_Data
-    trans_week::Int64
-    codeonl2::Int64
-    ura::Float64
-    svhealth::String
-    IODC::String
-    l2pcode::Bool
-    T_GD::Float64
-    t_oc::Int64
-    a_f2::Float64
-    a_f1::Float64
-    a_f0::Float64
-end
-
-struct Subframe_2_Data
-    IODE::String
-    C_rs::Float64
-    Δn::Float64
-    M_0::Float64
-    C_uc::Float64
-    e::Float64
-    C_us::Float64
-    sqrt_A::Float64
-    t_oe::Int64
-    fit_interval::Bool
-    AODO::Int64
-end
-
-struct Subframe_3_Data
-    C_ic::Float64
-    Ω_0::Float64
-    C_is::Float64
-    i_0::Float64
-    C_rc::Float64
-    ω::Float64
-    Ω_dot::Float64
-    IODE::String
-    IDOT::Float64
-end
-
-struct Subframe_4_Data
-end
-
-struct Subframe_5_Data
-end
-
+#include("gpsl1_structs.jl")
 
 """
     Decodes words of the first two Words of a subframe
@@ -87,8 +35,10 @@ end
     # Details
     # Decodes the first substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_1(words)
-    println("Decoding subframe 1...")
+function decode_subframe_1(words, debug)
+    if debug
+        println("Decoding subframe 1...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -168,8 +118,10 @@ end
     Details:
     # Decodes the second substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_2(words)
-    println("Decoding subframe 2...")
+function decode_subframe_2(words, debug)
+    if debug
+        println("Decoding subframe 2...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -245,9 +197,10 @@ end
     # Details
     # Decodes the third substring of the Substring and returns a custom struct for these values alongside the computed HOW and TLM Data
 """
-function decode_subframe_3(words)
-
-    println("Decoding subframe 3...")
+function decode_subframe_3(words, debug)
+    if debug
+        println("Decoding subframe 3...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     # * Decoding Word 3
@@ -304,9 +257,11 @@ end
     # Details
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
-function decode_subframe_4(words)
-    println("Decoding subframe 4...")
-    
+function decode_subframe_4(words, debug)
+    if debug
+        println("Decoding subframe 4...")
+    end
+
     TLM_HOW = decode_TLM_HOW(words[1:2])
     return TLM_HOW
 end
@@ -321,63 +276,11 @@ end
     # Details
     # Does mot do anything at the Moment, except calling the TLM_HOW Decoder and returns its return
 """
-function decode_subframe_5(words)
-    println("Decoding subframe 5...")
+function decode_subframe_5(words, debug)
+    if debug
+        println("Decoding subframe 5...")
+    end
 
     TLM_HOW = decode_TLM_HOW(words[1:2])
     return TLM_HOW
 end
-
-
-
-function create_data(
-    TLM_HOW_Data::TLM_HOW_Data_Struct,
-    subfr_1_data::Subframe_1_Data,
-    subfr_2_data::Subframe_2_Data,
-    subfr_3_data::Subframe_3_Data)
-    
-
-    data = GPSData(
-        TLM_HOW_Data.integrity_status_flag,
-        TLM_HOW_Data.TOW,
-        TLM_HOW_Data.alert_flag,
-        TLM_HOW_Data.anti_spoof_flag,
-
-        subfr_1_data.trans_week,
-        subfr_1_data.codeonl2,
-        subfr_1_data.ura,
-        subfr_1_data.svhealth,
-        subfr_1_data.IODC,
-        subfr_1_data.l2pcode,
-        subfr_1_data.T_GD,
-        subfr_1_data.t_oc,
-        subfr_1_data.a_f2,
-        subfr_1_data.a_f1,
-        subfr_1_data.a_f0,
-
-        subfr_2_data.IODE,
-        subfr_2_data.C_rs,
-        subfr_2_data.Δn,
-        subfr_2_data.M_0,
-        subfr_2_data.C_uc,
-        subfr_2_data.e,
-        subfr_2_data.C_us,
-        subfr_2_data.sqrt_A,
-        subfr_2_data.t_oe,
-        subfr_2_data.fit_interval,
-        subfr_2_data.AODO,
-
-        subfr_3_data.C_ic,
-        subfr_3_data.Ω_0,
-        subfr_3_data.C_is,
-        subfr_3_data.i_0,
-        subfr_3_data.C_rc,
-        subfr_3_data.ω,
-        subfr_3_data.Ω_dot,
-        subfr_3_data.IODE,
-        subfr_3_data.IDOT
-    )
-    return data
-end
-
-
