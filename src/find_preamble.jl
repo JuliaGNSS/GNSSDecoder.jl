@@ -29,9 +29,7 @@ function find_preamble(buffer)
         if data != PREAMBLE && data != .!PREAMBLE
             return false
         end
-        # -> Preambles at expected Position
     end
-    #println("DECODING...")
     return true
 end
 

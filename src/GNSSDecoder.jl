@@ -50,6 +50,10 @@ module GNSSDecoder
                 dc.num_bits_buffered += 1
             end
 
+            if !isnothing(dc.data.TOW)
+                dc.num_bits_after_valid_subframe += 1
+            end
+
             # Every time the preamble is found at the correct positions
             # decode the current subframe
             if dc.num_bits_buffered == BUFFER_LENGTH && find_preamble(dc.buffer)
@@ -58,6 +62,9 @@ module GNSSDecoder
                 dc.prev_29 = rev_buf[1]
                 dc.prev_30 = rev_buf[2]
                 decode_words(dc, read_id(dc.buffer), words_in_subframe, debug)
+                if dc.data.integrity_status_flag == false
+                    dc.num_bits_after_valid_subframe = 0
+                end
             end
         end # end of for-loop 
     end # end of decode()

@@ -200,4 +200,5 @@ end
     data_integrity::Bool = true # pass of parity check
     subframes_decoded::MVector{5,Bool} = MVector{5,Bool}(false, false, false, false, false)
     num_bits_buffered::Int = 0
+    num_bits_after_valid_subframe::Int = 0
 end
