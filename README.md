@@ -1,13 +1,14 @@
-# GNSSDecoder.jl
+# GNSSDecoder.jl (WIP)
 
 Decodes GPSL1 satellite signals.
+This is still very much work in progress. Expect changes to this module.
 
 ## Usage
 
 #### Install: 
 ```julia
 julia> ]
-pkg> add GNSSDecoder
+pkg> add git@github.com:JuliaGNSS/GNSSDecoder.jl.git
 ```
 
 ### Initialization

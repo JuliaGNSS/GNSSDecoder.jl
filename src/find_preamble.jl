@@ -1,8 +1,8 @@
 
-PREAMBLE = BitArray([1,1,0,1,0,0,0,1]) # Reversed preamble through reversed buffer
+const PREAMBLE = BitArray([1,1,0,1,0,0,0,1]) # Reversed preamble through reversed buffer
 
+const FRAME_POSITIONS = (8,308) #NEEDED for subframe wise decoding
 
-FRAME_POSITIONS = [300, 600, 900, 1200, 1500]
 
 """
     Accesses Buffer at a position with an offset and length of searched word
@@ -20,35 +20,37 @@ end
 
     #Details
     
-    Checks whether there is an preamble at each FRAME_POSITION of the buffer or not. Checks for right order of subframes too by checking the ID. 
-    To prevent combining data of different datasets the Order must always be subframe 1,2,3,4,5. Because the Buffer is reversed, it is checked for 
-    the sequence 5,4,3,2,1. 
+    Checks whether there is an preamble at each FRAME_POSITION of the buffer or not. 
 """
 function find_preamble(buffer)
-    expected_seq = 5
-    for pos in FRAME_POSITIONS
+    for pos in FRAME_POSITIONS 
         # Verify preamble
         data = access_buffer(buffer, pos, 0, 8)
         if data != PREAMBLE && data != .!PREAMBLE
             return false
         end
-        # -> Preambles at expected Position
-
-        # Verify order of sequence numbers
-        inverting_bit = access_buffer(buffer, pos, 30, 1)[1]
-        id = access_buffer(buffer, pos, 49, 3)
-        id = reverse(id) #Databit are reversed in Buffer
-        if inverting_bit #If last Bit of previous Word is set the next Word gets inverted -> ID gets inverted
-            id = .!id
-        end
-
-        id = bin2dec(id) 
-        if id != expected_seq
-            return false
-        end
-        expected_seq -= 1
     end
-    println("DECODING...")
     return true
 end
+
+"""
+    Reads ID of Subframe in sorted buffer
+    $(SIGNATURES)
+
+    #Details
+    
+    Reads the ID of the, in buffer stored, subframe. Buffer must be in the order, that at the begining and the end are preambles.
+"""
+function read_id(buffer)
+    pos = FRAME_POSITIONS[2]
+    inverting_bit = access_buffer(buffer, pos, 30, 1)[1]
+    id = access_buffer(buffer, pos, 49, 3)
+    id = reverse(id) #Databit are reversed in Buffer
+    if inverting_bit #If last Bit of previous Word is set the next Word gets inverted -> ID gets inverted
+        id = .!id
+    end
+
+    id = bin2dec(id)
+end
+
 
