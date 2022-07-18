@@ -1,7 +1,8 @@
-# GNSSDecoder.jl (WIP)
+# GNSSDecoder.jl
 
-Decodes GPSL1 satellite signals.
-This is still very much work in progress. Expect changes to this module.
+Decodes various GNSS satellite signals.
+Currently implemented:
+ * GPS L1
 
 ## Usage
 
@@ -14,27 +15,25 @@ pkg> add git@github.com:JuliaGNSS/GNSSDecoder.jl.git
 ### Initialization
 The decoder must be initialized beforehand.
 ```julia
-decoder = GNSSDecoderState(PRN = 1) #Initialization of Decoder
+decoder = GPSL1DecoderState(1) #Initialization of decoder with PRN = 1
 ```
 
 ### Decoding
-Pass bits to decoder as an integer value and let the decoder decode the message.
+Pass bits to decoder as an unsigned integer value and let the decoder decode the message.
 ```julia
 for i in 1:iterations
     # Track signal for example with Tracking.jl
     track_res = track(signal, track_state, decoder.PRN , sampling_freq)
     track_state = get_state(track_res)
-    decode(decoder, get_bits(track_res), get_num_bits(track_res))
+    decoder = decode(decoder, get_bits(track_res), get_num_bits(track_res))
 end
 ```
 
-The following Output for each PRN will show: 
-```t
-DECODING...
-Decoding subframe 1...
-Decoding subframe 2...
-Decoding subframe 3...
-Decoding subframe 4...
-Decoding subframe 5...
-DECODING COMPLETED!
+The data can be retrieved by
+```julia
+decoder.data
 ```
+
+Note that GNSSDecoder decodes each time a complete subframe has been retrieved.
+`decoder.raw_data` holds the raw data. `decoder.data` hold data that has been checked for consistency.
+`decoder.num_bits_after_valid_subframe` counts the number of bits after a valid subframe has been retrieved.
