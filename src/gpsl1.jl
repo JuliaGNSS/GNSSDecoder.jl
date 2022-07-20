@@ -2,7 +2,7 @@
 # which holds at least a complete GPS L1 subframe
 BitIntegers.@define_integers 320
 
-@with_kw struct GPSL1Constants <: AbstractGNSSConstants
+Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
     subframe_length::Int = 300
     preamble::UInt8 = 0b10001011
     preamble_length::Int = 8
@@ -14,7 +14,8 @@ BitIntegers.@define_integers 320
     F::Float64 = -4.442807633e-10
 end
 
-@with_kw struct GPSL1Data <: AbstractGNSSData
+Base.@kwdef struct GPSL1Data <: AbstractGNSSData
+    last_subframe_id::Int = 0
     integrity_status_flag::Union{Nothing,Bool} = nothing
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing
@@ -53,6 +54,85 @@ end
     Ω_dot::Union{Nothing,Float64} = nothing
     IODE_Sub_3::Union{Nothing,String} = nothing
     IDOT::Union{Nothing,Float64} = nothing
+end
+
+function GPSL1Data(
+    data::GPSL1Data;
+    last_subframe_id = data.last_subframe_id,
+    integrity_status_flag = data.integrity_status_flag,
+    TOW = data.TOW,
+    alert_flag = data.alert_flag,
+    anti_spoof_flag = data.anti_spoof_flag,
+    trans_week = data.trans_week,
+    codeonl2 = data.codeonl2,
+    ura = data.ura,
+    svhealth = data.svhealth,
+    IODC = data.IODC,
+    l2pcode = data.l2pcode,
+    T_GD = data.T_GD,
+    t_oc = data.t_oc,
+    a_f2 = data.a_f2,
+    a_f1 = data.a_f1,
+    a_f0 = data.a_f0,
+    IODE_Sub_2 = data.IODE_Sub_2,
+    C_rs = data.C_rs,
+    Δn = data.Δn,
+    M_0 = data.M_0,
+    C_uc = data.C_uc,
+    e = data.e,
+    C_us = data.C_us,
+    sqrt_A = data.sqrt_A,
+    t_oe = data.t_oe,
+    fit_interval = data.fit_interval,
+    AODO = data.AODO,
+    C_ic = data.C_ic,
+    Ω_0 = data.Ω_0,
+    C_is = data.C_is,
+    i_0 = data.i_0,
+    C_rc = data.C_rc,
+    ω = data.ω,
+    Ω_dot = data.Ω_dot,
+    IODE_Sub_3 = data.IODE_Sub_3,
+    IDOT = data.IDOT,
+)
+    GPSL1Data(
+        last_subframe_id,
+        integrity_status_flag,
+        TOW,
+        alert_flag,
+        anti_spoof_flag,
+        trans_week,
+        codeonl2,
+        ura,
+        svhealth,
+        IODC,
+        l2pcode,
+        T_GD,
+        t_oc,
+        a_f2,
+        a_f1,
+        a_f0,
+        IODE_Sub_2,
+        C_rs,
+        Δn,
+        M_0,
+        C_uc,
+        e,
+        C_us,
+        sqrt_A,
+        t_oe,
+        fit_interval,
+        AODO,
+        C_ic,
+        Ω_0,
+        C_is,
+        i_0,
+        C_rc,
+        ω,
+        Ω_dot,
+        IODE_Sub_3,
+        IDOT,
+    )
 end
 
 function is_subframe1_decoded(data::GPSL1Data)
@@ -166,46 +246,37 @@ function can_decode_two_words(decode_bits::Function, state::GNSSDecoderState, wo
 end
 
 function read_tlm_and_how_words(state)
-    tlm_word = get_word(state, 1)
-    if check_gpsl1_parity(tlm_word)
+    state = can_decode_word(state, 1) do tlm_word, state
         integrity_status_flag = get_bit(tlm_word, 30, 23)
-        state = GNSSDecoderState(state, raw_data = GPSL1Data(
-            state.raw_data;
-            integrity_status_flag
-        ))
+        GPSL1Data(state.raw_data; integrity_status_flag)
     end
-    subframe_id = 0
-    prev_30 = get_bit(tlm_word, 30, 30)
-    how_word = get_word(state, 2)  
-    if check_gpsl1_parity(how_word, get_bit(tlm_word, 30, 29), prev_30)
-        how_word = prev_30 ? ~how_word : how_word
+    prev_TOW = state.raw_data.TOW
+    state = can_decode_word(state, 2) do how_word, state
         TOW = get_bits(how_word, 30, 1, 17)
-        # TOW plausability check
-        if !isnothing(state.raw_data.TOW) && state.raw_data.TOW + 1 != TOW
-            # Decoding TOW went wrong
-            TOW = nothing
-        end
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
-        subframe_id = Int(get_bits(how_word, 30, 20, 3))
-        state = GNSSDecoderState(state, raw_data = GPSL1Data(
+        last_subframe_id = get_bits(how_word, 30, 20, 3)
+        GPSL1Data(
             state.raw_data;
+            last_subframe_id,
             TOW,
             alert_flag,
             anti_spoof_flag
-        ))
-    else
+        )
+    end
+    if !isnothing(prev_TOW) && prev_TOW + 1 != state.raw_data.TOW
         # Time of week must be decodable
         state = GNSSDecoderState(state, raw_data = GPSL1Data(
             state.raw_data;
             TOW = nothing
         ))
     end
-    state, subframe_id
+    state
 end
 
 function decode_frame(state::GNSSDecoderState{<:GPSL1Data})
-    state, subframe_id = read_tlm_and_how_words(state)
+    state = read_tlm_and_how_words(state)
+    subframe_id = state.raw_data.last_subframe_id
 
     if subframe_id == 1
         state = can_decode_word(state, 3) do word3, state

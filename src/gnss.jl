@@ -1,7 +1,7 @@
 abstract type AbstractGNSSConstants end    
 abstract type AbstractGNSSData end
 
-@with_kw struct GNSSDecoderState{D <: AbstractGNSSData, C <: AbstractGNSSConstants, B <: Unsigned}
+Base.@kwdef struct GNSSDecoderState{D <: AbstractGNSSData, C <: AbstractGNSSConstants, B <: Unsigned}
     prn::Int
     raw_buffer::B
     buffer::B
@@ -10,6 +10,26 @@ abstract type AbstractGNSSData end
     constants::C
     num_bits_buffered::Int = 0
     num_bits_after_valid_subframe::Union{Nothing, Int} = 0
+end
+
+function GNSSDecoderState(state::GNSSDecoderState;
+    raw_buffer = state.raw_buffer,
+    buffer = state.buffer,
+    raw_data = state.raw_data,
+    data = state.data,
+    num_bits_buffered = state.num_bits_buffered,
+    num_bits_after_valid_subframe = state.num_bits_after_valid_subframe
+)
+    GNSSDecoderState(
+        state.prn,
+        raw_buffer,
+        buffer,
+        raw_data,
+        data,
+        state.constants,
+        num_bits_buffered,
+        num_bits_after_valid_subframe
+    )
 end
 
 function push_bit(state::GNSSDecoderState, current_bit)
@@ -67,6 +87,7 @@ function decode(
             if !decode_once || !is_decoding_completed_for_positioning(state.data)
                 state = validate_data(state)
             end
+            state = GNSSDecoderState(state, num_bits_buffered = state.constants.preamble_length)
         end
     end
     return state

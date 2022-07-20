@@ -1,6 +1,6 @@
 module GNSSDecoder
     
-    using DocStringExtensions, GNSSSignals, Parameters, BitIntegers
+    using DocStringExtensions, GNSSSignals, BitIntegers
 
     export decode,
         GPSL1DecoderState
