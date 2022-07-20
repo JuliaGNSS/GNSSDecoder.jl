@@ -194,7 +194,7 @@ function is_decoding_completed_for_positioning(data::GPSL1Data)
 end
 
 function GPSL1DecoderState(prn)
-    GNSSDecoderState(prn, UInt320(0), UInt320(0), GPSL1Data(), GPSL1Data(), GPSL1Constants(), 0, nothing)
+    GNSSDecoderState(prn, UInt320(0), UInt320(0), GPSL1Data(), GPSL1Data(), GPSL1Constants(), 0, nothing, false)
 end
 
 function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)

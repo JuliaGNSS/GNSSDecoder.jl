@@ -10,6 +10,7 @@ Base.@kwdef struct GNSSDecoderState{D <: AbstractGNSSData, C <: AbstractGNSSCons
     constants::C
     num_bits_buffered::Int = 0
     num_bits_after_valid_subframe::Union{Nothing, Int} = 0
+    is_shifted_by_180_degrees = false
 end
 
 function GNSSDecoderState(state::GNSSDecoderState;
@@ -18,7 +19,8 @@ function GNSSDecoderState(state::GNSSDecoderState;
     raw_data = state.raw_data,
     data = state.data,
     num_bits_buffered = state.num_bits_buffered,
-    num_bits_after_valid_subframe = state.num_bits_after_valid_subframe
+    num_bits_after_valid_subframe = state.num_bits_after_valid_subframe,
+    is_shifted_by_180_degrees = state.is_shifted_by_180_degrees
 )
     GNSSDecoderState(
         state.prn,
@@ -28,7 +30,8 @@ function GNSSDecoderState(state::GNSSDecoderState;
         data,
         state.constants,
         num_bits_buffered,
-        num_bits_after_valid_subframe
+        num_bits_after_valid_subframe,
+        is_shifted_by_180_degrees
     )
 end
 
@@ -56,9 +59,9 @@ end
 
 function complement_buffer_if_necessary(state::GNSSDecoderState)
     if state.raw_buffer & calc_preamble_mask(state) == ~state.constants.preamble
-        return GNSSDecoderState(state, buffer = ~state.raw_buffer)
+        return GNSSDecoderState(state, buffer = ~state.raw_buffer, is_shifted_by_180_degrees = true)
     else
-        return GNSSDecoderState(state, buffer = state.raw_buffer)
+        return GNSSDecoderState(state, buffer = state.raw_buffer, is_shifted_by_180_degrees = false)
     end
 end
 

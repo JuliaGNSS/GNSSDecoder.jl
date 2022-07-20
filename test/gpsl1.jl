@@ -27,18 +27,18 @@ const GPSL1DATA = uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe16
     @test constants.subframe_length == 300
 
     raw_buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing)
+    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
     @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = raw_buffer)
+    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = raw_buffer, is_shifted_by_180_degrees = false)
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == true
 
     raw_buffer = UInt320(~constants.preamble) << UInt(300) + UInt320(~constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing)
+    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
     @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = ~raw_buffer)
+    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = ~raw_buffer, is_shifted_by_180_degrees = true)
 
     buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble) + UInt320(1) << UInt(8)
-    state = GNSSDecoder.GNSSDecoderState(1, buffer, buffer, GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing)
+    state = GNSSDecoder.GNSSDecoderState(1, buffer, buffer, GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
     @test GNSSDecoder.get_word(state, 10) == 1
 end
 
@@ -46,6 +46,7 @@ end
     decoder = GPSL1DecoderState(1)
 
     test_data = GNSSDecoder.GPSL1Data(
+        last_subframe_id = 5,
         integrity_status_flag = false,
         TOW = 34945,
         alert_flag = false,
