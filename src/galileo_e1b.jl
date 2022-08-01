@@ -307,3 +307,7 @@ function validate_data(state::GNSSDecoderState{<:GalileoE1BData})
     end
     return state
 end
+
+function is_sat_healthy(state::GNSSDecoderState{<:GalileoE1BData})
+    state.data.signal_health_e1b == SignalHealth.signal_ok && state.data.data_validity_status_e1b == DataValidityStatus.navigation_data_valid
+end

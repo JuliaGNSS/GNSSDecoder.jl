@@ -480,4 +480,8 @@ function validate_data(state::GNSSDecoderState{<:GPSL1Data})
         state = GNSSDecoderState(state, data = state.raw_data, num_bits_after_valid_syncro_sequence = 8)
     end
     return state
-end 
+end
+
+function is_sat_healthy(state::GNSSDecoderState{<:GPSL1Data})
+    state.data.svhealth == "000000"
+end
