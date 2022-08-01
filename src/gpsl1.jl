@@ -1,18 +1,21 @@
 # UInt320 buffer for GPS L1 (more efficient than UInt312)
-# which holds at least a complete GPS L1 subframe
+# which holds at least a complete GPS L1 subframe plus
+# 8 extra syncronization bíts
 BitIntegers.@define_integers 320
 
 Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
-    subframe_length::Int = 300
+    syncro_sequence_length::Int = 300
     preamble::UInt8 = 0b10001011
     preamble_length::Int = 8
     word_length::Int = 30
     PI::Float64 = 3.1415926535898
-    Ω_dot_e::Float64 = 7.2921151467e-5 
+    Ω_dot_e::Float64 = 7.2921151467e-5
     c::Float64 = 2.99792458e8
-    μ::Float64 = 3.986005e14    
+    μ::Float64 = 3.986005e14
     F::Float64 = -4.442807633e-10
 end
+
+struct GPSL1Cache <: AbstractGNSSCache end
 
 Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     last_subframe_id::Int = 0
@@ -28,7 +31,7 @@ Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     IODC::Union{Nothing,String} = nothing
     l2pcode::Union{Nothing,Bool} = nothing
     T_GD::Union{Nothing,Float64} = nothing
-    t_oc::Union{Nothing,Int64} = nothing
+    t_0c::Union{Nothing,Int64} = nothing
     a_f2::Union{Nothing,Float64} = nothing
     a_f1::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
@@ -41,7 +44,7 @@ Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     e::Union{Nothing,Float64} = nothing
     C_us::Union{Nothing,Float64} = nothing
     sqrt_A::Union{Nothing,Float64} = nothing
-    t_oe::Union{Nothing,Int64} = nothing
+    t_0e::Union{Nothing,Int64} = nothing
     fit_interval::Union{Nothing,Bool} = nothing
     AODO::Union{Nothing,Int64} = nothing
 
@@ -70,7 +73,7 @@ function GPSL1Data(
     IODC = data.IODC,
     l2pcode = data.l2pcode,
     T_GD = data.T_GD,
-    t_oc = data.t_oc,
+    t_0c = data.t_0c,
     a_f2 = data.a_f2,
     a_f1 = data.a_f1,
     a_f0 = data.a_f0,
@@ -82,7 +85,7 @@ function GPSL1Data(
     e = data.e,
     C_us = data.C_us,
     sqrt_A = data.sqrt_A,
-    t_oe = data.t_oe,
+    t_0e = data.t_0e,
     fit_interval = data.fit_interval,
     AODO = data.AODO,
     C_ic = data.C_ic,
@@ -108,7 +111,7 @@ function GPSL1Data(
         IODC,
         l2pcode,
         T_GD,
-        t_oc,
+        t_0c,
         a_f2,
         a_f1,
         a_f0,
@@ -120,7 +123,7 @@ function GPSL1Data(
         e,
         C_us,
         sqrt_A,
-        t_oe,
+        t_0e,
         fit_interval,
         AODO,
         C_ic,
@@ -143,7 +146,7 @@ function is_subframe1_decoded(data::GPSL1Data)
         !isnothing(data.IODC) &&
         !isnothing(data.l2pcode) &&
         !isnothing(data.T_GD) &&
-        !isnothing(data.t_oc) &&
+        !isnothing(data.t_0c) &&
         !isnothing(data.a_f2) &&
         !isnothing(data.a_f1) &&
         !isnothing(data.a_f0)
@@ -158,7 +161,7 @@ function is_subframe2_decoded(data::GPSL1Data)
         !isnothing(data.e) &&
         !isnothing(data.C_us) &&
         !isnothing(data.sqrt_A) &&
-        !isnothing(data.t_oe) &&
+        !isnothing(data.t_0e) &&
         !isnothing(data.fit_interval) &&
         !isnothing(data.AODO)
 end
@@ -194,7 +197,18 @@ function is_decoding_completed_for_positioning(data::GPSL1Data)
 end
 
 function GPSL1DecoderState(prn)
-    GNSSDecoderState(prn, UInt320(0), UInt320(0), GPSL1Data(), GPSL1Data(), GPSL1Constants(), 0, nothing, false)
+    GNSSDecoderState(
+        prn,
+        UInt320(0),
+        UInt320(0),
+        GPSL1Data(),
+        GPSL1Data(),
+        GPSL1Constants(),
+        GPSL1Cache(),
+        0,
+        nothing,
+        false
+    )
 end
 
 function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
@@ -211,6 +225,12 @@ function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
     D_30 = prev_29 ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(8) ⊻ bit(9) ⊻ bit(10) ⊻ bit(11) ⊻ bit(13) ⊻ bit(15) ⊻ bit(19) ⊻ bit(22) ⊻ bit(23) ⊻ bit(24)
     computed_parity_bits = ((((D_25 << UInt(1) + D_26) << UInt(1) + D_27) << UInt(1) + D_28) << UInt(1) + D_29) << UInt(1) + D_30
     computed_parity_bits == get_bits(word, 30, 25, 6)
+end
+
+function get_word(state::GNSSDecoderState{<:GPSL1Data}, word_number::Int)
+    num_words = Int(state.constants.syncro_sequence_length / state.constants.word_length)
+    word = state.buffer >> UInt(state.constants.word_length * (num_words - word_number) + state.constants.preamble_length)
+    UInt(word & (UInt(1) << UInt(state.constants.word_length) - UInt(1)))
 end
 
 function can_decode_word(decode_bits::Function, state::GNSSDecoderState, word_number::Int)
@@ -252,7 +272,7 @@ function read_tlm_and_how_words(state)
     end
     prev_TOW = state.raw_data.TOW
     state = can_decode_word(state, 2) do how_word, state
-        TOW = get_bits(how_word, 30, 1, 17)
+        TOW = get_bits(how_word, 30, 1, 17) * 6
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
         last_subframe_id = get_bits(how_word, 30, 20, 3)
@@ -274,7 +294,7 @@ function read_tlm_and_how_words(state)
     state
 end
 
-function decode_frame(state::GNSSDecoderState{<:GPSL1Data})
+function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
     state = read_tlm_and_how_words(state)
     subframe_id = state.raw_data.last_subframe_id
 
@@ -327,8 +347,8 @@ function decode_frame(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_word(state, 8) do word8, state
             # Clock data reference
-            t_oc = get_bits(word8, 30, 9, 16) << 4
-            GPSL1Data(state.raw_data; t_oc)
+            t_0c = get_bits(word8, 30, 9, 16) << 4
+            GPSL1Data(state.raw_data; t_0c)
         end
 
         state = can_decode_word(state, 9) do word9, state
@@ -391,10 +411,10 @@ function decode_frame(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_word(state, 10) do word10, state
             # Reference Time ephemeris
-            t_oe = get_bits(word10, 30, 1, 16) << 4
+            t_0e = get_bits(word10, 30, 1, 16) << 4
             fit_interval = get_bit(word10, 30, 17)
             AODO = get_bits(word10, 30, 18, 5)
-            GPSL1Data(state.raw_data; t_oe, fit_interval, AODO)
+            GPSL1Data(state.raw_data; t_0e, fit_interval, AODO)
         end
     elseif subframe_id == 3
         state = can_decode_word(state, 3) do word3, state
@@ -457,7 +477,7 @@ end
 function validate_data(state::GNSSDecoderState{<:GPSL1Data})
     if is_decoding_completed_for_positioning(state.raw_data) &&
         state.raw_data.IODC[3:10] == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
-        state = GNSSDecoderState(state, data = state.raw_data, num_bits_after_valid_subframe = 8)
+        state = GNSSDecoderState(state, data = state.raw_data, num_bits_after_valid_syncro_sequence = 8)
     end
     return state
 end 

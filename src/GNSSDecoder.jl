@@ -1,11 +1,13 @@
 module GNSSDecoder
     
-    using DocStringExtensions, GNSSSignals, BitIntegers
+    using DocStringExtensions, GNSSSignals, BitIntegers, ViterbiDecoder
 
     export decode,
-        GPSL1DecoderState
+        GPSL1DecoderState,
+        GalileoE1BDecoderState
 
     include("gnss.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
-end# end of module
+    include("galileo_e1b.jl")
+end

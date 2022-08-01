@@ -7,7 +7,7 @@ const GPSL1DATA = uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe16
 
     @test decoder.prn == 1
     @test decoder.num_bits_buffered == 0
-    @test isnothing(decoder.num_bits_after_valid_subframe)
+    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
     @test decoder.raw_buffer == UInt(0)
     @test decoder.buffer == UInt(0)
     @test GNSSDecoder.calc_preamble_mask(decoder) == 0b11111111
@@ -16,7 +16,7 @@ const GPSL1DATA = uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe16
     @test state.num_bits_buffered == 1
     @test state.raw_buffer == UInt(1)
     @test state.buffer == UInt(0)
-    @test isnothing(state.num_bits_after_valid_subframe)
+    @test isnothing(state.num_bits_after_valid_syncro_sequence)
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == false
     @test GNSSDecoder.find_preamble(state) == false
 
@@ -24,21 +24,54 @@ const GPSL1DATA = uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe16
     @test constants.preamble == 0b10001011
     @test constants.preamble_length == 8
     @test constants.word_length == 30
-    @test constants.subframe_length == 300
+    @test constants.syncro_sequence_length == 300
 
     raw_buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
+    state = GNSSDecoder.GNSSDecoderState(
+        1,
+        raw_buffer,
+        UInt320(0),
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Constants(),
+        GNSSDecoder.GPSL1Cache(),
+        308,
+        nothing,
+        false
+    )
     @test GNSSDecoder.find_preamble(state) == true
     @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = raw_buffer, is_shifted_by_180_degrees = false)
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == true
 
     raw_buffer = UInt320(~constants.preamble) << UInt(300) + UInt320(~constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(1, raw_buffer, UInt320(0), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
+    state = GNSSDecoder.GNSSDecoderState(
+        1,
+        raw_buffer,
+        UInt320(0),
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Constants(),
+        GNSSDecoder.GPSL1Cache(),
+        308,
+        nothing,
+        false
+    )
     @test GNSSDecoder.find_preamble(state) == true
     @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = ~raw_buffer, is_shifted_by_180_degrees = true)
 
     buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble) + UInt320(1) << UInt(8)
-    state = GNSSDecoder.GNSSDecoderState(1, buffer, buffer, GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Data(), GNSSDecoder.GPSL1Constants(), 308, nothing, false)
+    state = GNSSDecoder.GNSSDecoderState(
+        1,
+        buffer,
+        buffer,
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Data(),
+        GNSSDecoder.GPSL1Constants(),
+        GNSSDecoder.GPSL1Cache(),
+        308,
+        nothing,
+        false
+    )
     @test GNSSDecoder.get_word(state, 10) == 1
 end
 
@@ -48,7 +81,7 @@ end
     test_data = GNSSDecoder.GPSL1Data(
         last_subframe_id = 5,
         integrity_status_flag = false,
-        TOW = 34945,
+        TOW = 34945 * 6,
         alert_flag = false,
         anti_spoof_flag = true,
         trans_week = 67,
@@ -58,7 +91,7 @@ end
         IODC = "0001001000",
         l2pcode = false,
         T_GD = -1.0710209608078003e-8,
-        t_oc = 216000,
+        t_0c = 216000,
         a_f2 = 0.0,
         a_f1 = -4.774847184307873e-12,
         a_f0 = -0.00018549291417002678,
@@ -70,7 +103,7 @@ end
         e = 0.01144192845094949,
         C_us = 1.3023614883422852e-5,
         sqrt_A = 5153.7995529174805,
-        t_oe = 216000,
+        t_0e = 216000,
         fit_interval = false,
         AODO = 31,
         C_ic = -1.73225998878479e-7,
