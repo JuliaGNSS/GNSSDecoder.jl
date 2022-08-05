@@ -6,6 +6,7 @@ version = "0.0.1"
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
+CRC = "44b605c4-b955-5f2b-9b6d-d2bd01d3d205"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

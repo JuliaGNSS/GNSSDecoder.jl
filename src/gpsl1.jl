@@ -56,7 +56,7 @@ Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     ω::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     IODE_Sub_3::Union{Nothing,String} = nothing
-    IDOT::Union{Nothing,Float64} = nothing
+    i_dot::Union{Nothing,Float64} = nothing
 end
 
 function GPSL1Data(
@@ -96,7 +96,7 @@ function GPSL1Data(
     ω = data.ω,
     Ω_dot = data.Ω_dot,
     IODE_Sub_3 = data.IODE_Sub_3,
-    IDOT = data.IDOT,
+    i_dot = data.i_dot,
 )
     GPSL1Data(
         last_subframe_id,
@@ -134,7 +134,7 @@ function GPSL1Data(
         ω,
         Ω_dot,
         IODE_Sub_3,
-        IDOT,
+        i_dot,
     )
 end
 
@@ -175,7 +175,7 @@ function is_subframe3_decoded(data::GPSL1Data)
         !isnothing(data.ω) &&
         !isnothing(data.Ω_dot) &&
         !isnothing(data.IODE_Sub_3) &&
-        !isnothing(data.IDOT)
+        !isnothing(data.i_dot)
 end
 
 function is_subframe4_decoded(data::GPSL1Data)
@@ -466,8 +466,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             # Issue of Ephemeris Data
             IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[end-7:end]
             # Rate of Inclination Angle
-            IDOT = get_two_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
-            GPSL1Data(state.raw_data; IODE_Sub_3, IDOT)
+            i_dot = get_two_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
+            GPSL1Data(state.raw_data; IODE_Sub_3, i_dot)
         end
     end
 
