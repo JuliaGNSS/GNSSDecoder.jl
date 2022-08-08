@@ -341,7 +341,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_word(state, 7) do word7, state
             # group time differential
-            T_GD = get_two_complement_num(word7, 30, 17, 8) / 1 << 31
+            T_GD = get_twos_complement_num(word7, 30, 17, 8) / 1 << 31
             GPSL1Data(state.raw_data; T_GD)
         end
 
@@ -353,41 +353,41 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_word(state, 9) do word9, state
             # clock correction parameter a_f2
-            a_f2 = get_two_complement_num(word9, 30, 1, 8) / 1 << 55
+            a_f2 = get_twos_complement_num(word9, 30, 1, 8) / 1 << 55
             # clock correction parameter a_f1
-            a_f1 = get_two_complement_num(word9, 30, 9, 16) / 1 << 43
+            a_f1 = get_twos_complement_num(word9, 30, 9, 16) / 1 << 43
             GPSL1Data(state.raw_data; a_f2, a_f1)
         end
 
         state = can_decode_word(state, 10) do word10, state
             # Clock data reference
-            a_f0 = get_two_complement_num(word10, 30, 1, 22) / 1 << 31
+            a_f0 = get_twos_complement_num(word10, 30, 1, 22) / 1 << 31
             GPSL1Data(state.raw_data; a_f0)
         end
     elseif subframe_id == 2
         state = can_decode_word(state, 3) do word3, state
             # Issue of ephemeris data
             IODE_Sub_2 = bitstring(get_bits(word3, 30, 1, 8))[end-7:end]
-            C_rs = get_two_complement_num(word3, 30, 9, 16) / 1 << 5
+            C_rs = get_twos_complement_num(word3, 30, 9, 16) / 1 << 5
             GPSL1Data(state.raw_data; IODE_Sub_2, C_rs)
         end
 
         state = can_decode_word(state, 4) do word4, state
             # Mean motion difference from computed value
-            Δn = get_two_complement_num(word4, 30, 1, 16) * state.constants.PI / 1 << 43
+            Δn = get_twos_complement_num(word4, 30, 1, 16) * state.constants.PI / 1 << 43
             GPSL1Data(state.raw_data; Δn)
         end
 
         state = can_decode_two_words(state, 4, 5) do word4, word5, state
             # Mean motion difference from computed value
             combined_word = UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
-            M_0 = get_two_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            M_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
             GPSL1Data(state.raw_data; M_0)
         end
 
         state = can_decode_word(state, 6) do word6, state
             # Amplitude of the Cosine Harmonic Correction Term to the Argument Latitude
-            C_uc = get_two_complement_num(word6, 30, 1, 16) / 1 << 29
+            C_uc = get_twos_complement_num(word6, 30, 1, 16) / 1 << 29
             GPSL1Data(state.raw_data; C_uc)
         end
         
@@ -399,7 +399,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_word(state, 8) do word8, state
             # Amplitude of the Sine Harmonic Correction Term to the Argument of Latitude
-            C_us = get_two_complement_num(word8, 30, 1, 16) / 1 << 29
+            C_us = get_twos_complement_num(word8, 30, 1, 16) / 1 << 29
             GPSL1Data(state.raw_data; C_us)
         end
 
@@ -419,46 +419,46 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
     elseif subframe_id == 3
         state = can_decode_word(state, 3) do word3, state
             # Amplitude of the Cosine Harmonic Correction to Angle of Inclination
-            C_ic = get_two_complement_num(word3, 30, 1, 16) / 1 << 29
+            C_ic = get_twos_complement_num(word3, 30, 1, 16) / 1 << 29
             GPSL1Data(state.raw_data; C_ic)
         end
 
         state = can_decode_two_words(state, 3, 4) do word3, word4, state
             # Longitude of Ascending Node of Orbit Plane at Weekly Epoch
             combined_word = UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
-            Ω_0 = get_two_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            Ω_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
             GPSL1Data(state.raw_data; Ω_0)
         end
 
         state = can_decode_word(state, 5) do word5, state
             # Amplitude of the sine harmonic correction term to angle of Inclination
-            C_is = get_two_complement_num(word5, 30, 1, 16) / 1 << 29
+            C_is = get_twos_complement_num(word5, 30, 1, 16) / 1 << 29
             GPSL1Data(state.raw_data; C_is)
         end
 
         state = can_decode_two_words(state, 5, 6) do word5, word6, state
             # inclination Angle at reference time
             combined_word = UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
-            i_0 = get_two_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            i_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
             GPSL1Data(state.raw_data; i_0)
         end
 
         state = can_decode_word(state, 7) do word7, state
             # Amplitude of the cosine harmonic correction term to orbit Radius
-            C_rc = get_two_complement_num(word7, 30, 1, 16) / 1 << 5
+            C_rc = get_twos_complement_num(word7, 30, 1, 16) / 1 << 5
             GPSL1Data(state.raw_data; C_rc)
         end
 
         state = can_decode_two_words(state, 7, 8) do word7, word8, state
             # Argument of Perigee
             combined_word = UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
-            ω = get_two_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            ω = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
             GPSL1Data(state.raw_data; ω)
         end
 
         state = can_decode_word(state, 9) do word9, state
             # Amplitude of the cosine harmonic correction term to orbit Radius
-            Ω_dot = get_two_complement_num(word9, 30, 1, 24) * state.constants.PI / 1 << 43
+            Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI / 1 << 43
             GPSL1Data(state.raw_data; Ω_dot)
         end
 
@@ -466,7 +466,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             # Issue of Ephemeris Data
             IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[end-7:end]
             # Rate of Inclination Angle
-            i_dot = get_two_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
+            i_dot = get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
             GPSL1Data(state.raw_data; IODE_Sub_3, i_dot)
         end
     end

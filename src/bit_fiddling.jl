@@ -6,14 +6,10 @@ function get_bits(word::T, word_length::Int, start::Int, length::Int) where T <:
     T((word >> (word_length - start - length + 1)) & (T(1) << length - T(1)))
 end
 
-function get_two_complement_num(word::Unsigned, word_length::Int, start::Int, length::Int)
-    sign = get_bit(word, word_length, start)
-    value = Int(get_bits(word, word_length, start, length))
-    if sign
-        return -1 << length + value
-    else
-        return value
-    end
+function get_twos_complement_num(word::Unsigned, word_length::Int, start::Int, length::Int)
+    value = UInt(get_bits(word, word_length, start, length))
+    num_shift_bits = sizeof(value) * 8 - length
+    signed(value << num_shift_bits) >> num_shift_bits
 end
 
 function deinterleave(bits::String, columns, rows)

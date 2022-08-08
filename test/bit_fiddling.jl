@@ -15,12 +15,12 @@
     @test GNSSDecoder.get_bit(0b101, 4, 3) == false
     @test GNSSDecoder.get_bit(0b101, 4, 4) == true
 
-    @test GNSSDecoder.get_two_complement_num(0b000, 3, 1, 3) == 0
-    @test GNSSDecoder.get_two_complement_num(0b001, 3, 1, 3) == 1
-    @test GNSSDecoder.get_two_complement_num(0b011, 3, 1, 3) == 3
-    @test GNSSDecoder.get_two_complement_num(0b111, 3, 1, 3) == -1
-    @test GNSSDecoder.get_two_complement_num(0b100, 3, 1, 3) == -4
-    @test GNSSDecoder.get_two_complement_num(0b101, 3, 1, 3) == -3
+    @test GNSSDecoder.get_twos_complement_num(0b000, 3, 1, 3) == 0
+    @test GNSSDecoder.get_twos_complement_num(0b001, 3, 1, 3) == 1
+    @test GNSSDecoder.get_twos_complement_num(0b011, 3, 1, 3) == 3
+    @test GNSSDecoder.get_twos_complement_num(0b111, 3, 1, 3) == -1
+    @test GNSSDecoder.get_twos_complement_num(0b100, 3, 1, 3) == -4
+    @test GNSSDecoder.get_twos_complement_num(0b101, 3, 1, 3) == -3
 
     # examplary bits from Galileo specification
     ex_encoded_bits = "101000000101111110001100111100000101111010100000000110011110001110101000010100000100111101010111011110001000011011111010111001111001100000011111111000100000100111110110000010011100011101100000100101110100100011000110110110010000011100111010"
