@@ -119,7 +119,9 @@ end
 
     state = decode(decoder, GPSL1DATA, 1508)
     @test state.data == test_data
+    @test is_sat_healthy(state) == true
 
     state = decode(decoder, ~GPSL1DATA, 1508)
     @test state.data == test_data
+    @test is_sat_healthy(state) == true
 end

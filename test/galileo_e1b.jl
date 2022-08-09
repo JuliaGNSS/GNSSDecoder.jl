@@ -44,9 +44,11 @@ const GALILEO_E1B_DATA = uint7520"0xffea400000b780000261fffff953e562a175eec2f802
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == true
     @test state.num_bits_after_valid_syncro_sequence == 665
+    @test is_sat_healthy(state) == true
 
     state = decode(decoder, ~GALILEO_E1B_DATA, 7000)
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == false
     @test state.num_bits_after_valid_syncro_sequence == 665
+    @test is_sat_healthy(state) == true
 end
