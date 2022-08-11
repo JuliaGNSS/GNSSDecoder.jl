@@ -211,6 +211,21 @@ function GalileoE1BDecoderState(prn)
     )
 end
 
+function GNSSDecoderState(system::GalileoE1B, prn)
+    GNSSDecoderState(
+        prn,
+        UInt288(0),
+        UInt288(0),
+        GalileoE1BData(),
+        GalileoE1BData(),
+        GalileoE1BConstants(),
+        GalileoE1BCache(),
+        0,
+        nothing,
+        false
+    )
+end
+
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
     encoded_bits = bitstring(state.buffer >> state.constants.preamble_length)[sizeof(state.buffer) * 8 - state.constants.syncro_sequence_length + state.constants.preamble_length + 1:end]
     deinterleaved_encoded_bits = deinterleave(encoded_bits, 30, 8)

@@ -211,6 +211,21 @@ function GPSL1DecoderState(prn)
     )
 end
 
+function GNSSDecoderState(system::GPSL1, prn)
+    GNSSDecoderState(
+        prn,
+        UInt320(0),
+        UInt320(0),
+        GPSL1Data(),
+        GPSL1Data(),
+        GPSL1Constants(),
+        GPSL1Cache(),
+        0,
+        nothing,
+        false
+    )
+end
+
 function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
     function bit(bit_number)
         cbit = get_bit(word, 30, bit_number)
