@@ -3,6 +3,7 @@
 Decodes various GNSS satellite signals.
 Currently implemented:
  * GPS L1
+ * Galileo E1B
 
 ## Usage
 
