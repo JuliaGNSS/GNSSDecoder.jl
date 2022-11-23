@@ -1,7 +1,5 @@
-using Test, Suppressor, GNSSDecoder
+using Test, GNSSDecoder, BitIntegers, ViterbiDecoder, GNSSSignals
 
-include("test_data.jl")
-include("bin_2_dec.jl")
-include("find_preamble.jl")
-include("decode_words.jl")
-include("parity_check.jl")
+include("bit_fiddling.jl")
+include("gpsl1.jl")
+include("galileo_e1b.jl")
