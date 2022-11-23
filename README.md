@@ -10,7 +10,7 @@ Currently implemented:
 #### Install: 
 ```julia
 julia> ]
-pkg> add git@github.com:JuliaGNSS/GNSSDecoder.jl.git
+pkg> add GNSSDecoder
 ```
 
 ### Initialization
