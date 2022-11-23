@@ -72,8 +72,8 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     data_validity_status_e1b::Union{Nothing,DataValidityStatus} = nothing
     data_validity_status_e5b::Union{Nothing,DataValidityStatus} = nothing
 
-    broadcast_group_delay_e1_e5a::Union{Nothing, Float64} = nothing
-    broadcast_group_delay_e1_e5b::Union{Nothing, Float64} = nothing
+    broadcast_group_delay_e1_e5a::Union{Nothing,Float64} = nothing
+    broadcast_group_delay_e1_e5b::Union{Nothing,Float64} = nothing
 end
 
 function GalileoE1BData(
@@ -96,23 +96,19 @@ function GalileoE1BData(
     C_rs = data.C_rs,
     C_ic = data.C_ic,
     C_is = data.C_is,
-
     t_0c = data.t_0c,
     a_f0 = data.a_f0,
     a_f1 = data.a_f1,
     a_f2 = data.a_f2,
-
     IOD_nav1 = data.IOD_nav1,
     IOD_nav2 = data.IOD_nav2,
     IOD_nav3 = data.IOD_nav3,
     IOD_nav4 = data.IOD_nav4,
     num_pages_after_last_TOW = data.num_pages_after_last_TOW,
-
     signal_health_e1b = data.signal_health_e1b,
     signal_health_e5b = data.signal_health_e5b,
     data_validity_status_e1b = data.data_validity_status_e1b,
     data_validity_status_e5b = data.data_validity_status_e5b,
-
     broadcast_group_delay_e1_e5a = data.broadcast_group_delay_e1_e5a,
     broadcast_group_delay_e1_e5b = data.broadcast_group_delay_e1_e5b,
 )
@@ -149,7 +145,7 @@ function GalileoE1BData(
         data_validity_status_e1b,
         data_validity_status_e5b,
         broadcast_group_delay_e1_e5a,
-        broadcast_group_delay_e1_e5b
+        broadcast_group_delay_e1_e5b,
     )
 end
 
@@ -207,7 +203,7 @@ function GalileoE1BDecoderState(prn)
         GalileoE1BCache(),
         0,
         nothing,
-        false
+        false,
     )
 end
 
@@ -222,58 +218,116 @@ function GNSSDecoderState(system::GalileoE1B, prn)
         GalileoE1BCache(),
         0,
         nothing,
-        false
+        false,
     )
 end
 
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
-    encoded_bits = bitstring(state.buffer >> state.constants.preamble_length)[sizeof(state.buffer) * 8 - state.constants.syncro_sequence_length + state.constants.preamble_length + 1:end]
+    encoded_bits = bitstring(state.buffer >> state.constants.preamble_length)[sizeof(
+        state.buffer,
+    )*8-state.constants.syncro_sequence_length+state.constants.preamble_length+1:end]
     deinterleaved_encoded_bits = deinterleave(encoded_bits, 30, 8)
     inv_deinterleaved_encoded_bits = invert_every_second_bit(deinterleaved_encoded_bits)
     decoded_bits = viterbi_decode(7, [79, 109], inv_deinterleaved_encoded_bits)
-    bits = parse(UInt128, decoded_bits, base = 2)
+    bits = parse(UInt128, decoded_bits; base = 2)
     is_even = !get_bit(bits, 114, 1)
     is_nominal_page = !get_bit(bits, 114, 2)
-    state = GNSSDecoderState(state, raw_data = GalileoE1BData(
-        state.raw_data,
-        num_pages_after_last_TOW = state.raw_data.num_pages_after_last_TOW + 1
-    ))
+    state = GNSSDecoderState(
+        state;
+        raw_data = GalileoE1BData(
+            state.raw_data;
+            num_pages_after_last_TOW = state.raw_data.num_pages_after_last_TOW + 1,
+        ),
+    )
     if is_even
-        state = GNSSDecoderState(state, cache = GalileoE1BCache(is_nominal_page ? bits : UInt128(0)))
+        state = GNSSDecoderState(
+            state;
+            cache = GalileoE1BCache(is_nominal_page ? bits : UInt128(0)),
+        )
     elseif state.cache.even_page_part_bits != 0 && is_nominal_page
-        data = get_bits(state.cache.even_page_part_bits, 114, 3, 112) << 16 + get_bits(bits, 114, 3, 16)
-        bits_to_check_CRC = UInt288(state.cache.even_page_part_bits) << 106 + get_bits(bits, 114, 1, 106)
-        if galCRC24(reverse(digits(UInt8, bits_to_check_CRC, base=256))) == 0
+        data =
+            get_bits(state.cache.even_page_part_bits, 114, 3, 112) << 16 +
+            get_bits(bits, 114, 3, 16)
+        bits_to_check_CRC =
+            UInt288(state.cache.even_page_part_bits) << 106 + get_bits(bits, 114, 1, 106)
+        if galCRC24(reverse(digits(UInt8, bits_to_check_CRC; base = 256))) == 0
             data_type = get_bits(data, 128, 1, 6)
             if data_type == 0
                 if get_bits(data, 128, 7, 2) == 2 # '10'
                     WN = get_bits(data, 128, 97, 12)
                     TOW = get_bits(data, 128, 109, 20)
-                    state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; WN, TOW, num_pages_after_last_TOW = 1))
+                    state = GNSSDecoderState(
+                        state;
+                        raw_data = GalileoE1BData(
+                            state.raw_data;
+                            WN,
+                            TOW,
+                            num_pages_after_last_TOW = 1,
+                        ),
+                    )
                 end
             elseif data_type == 1
                 IOD_nav1 = get_bits(data, 128, 7, 10)
                 t_0e = get_bits(data, 128, 17, 14) * 60
-                M_0 = get_twos_complement_num(data, 128, 31, 32) * state.constants.PI / 1 << 31
+                M_0 =
+                    get_twos_complement_num(data, 128, 31, 32) * state.constants.PI /
+                    1 << 31
                 e = get_bits(data, 128, 63, 32) / 1 << 33
                 sqrt_A = get_bits(data, 128, 95, 32) / 1 << 19
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; IOD_nav1, t_0e, M_0, e, sqrt_A))
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_nav1,
+                        t_0e,
+                        M_0,
+                        e,
+                        sqrt_A,
+                    ),
+                )
             elseif data_type == 2
                 IOD_nav2 = get_bits(data, 128, 7, 10)
-                Ω_0 = get_twos_complement_num(data, 128, 17, 32) * state.constants.PI / 1 << 31
-                i_0 = get_twos_complement_num(data, 128, 49, 32) * state.constants.PI / 1 << 31
-                ω = get_twos_complement_num(data, 128, 81, 32) * state.constants.PI / 1 << 31
-                i_dot = get_twos_complement_num(data, 128, 113, 14) * state.constants.PI / 1 << 43
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; IOD_nav2, Ω_0, i_0, ω, i_dot))
+                Ω_0 =
+                    get_twos_complement_num(data, 128, 17, 32) * state.constants.PI /
+                    1 << 31
+                i_0 =
+                    get_twos_complement_num(data, 128, 49, 32) * state.constants.PI /
+                    1 << 31
+                ω =
+                    get_twos_complement_num(data, 128, 81, 32) * state.constants.PI /
+                    1 << 31
+                i_dot =
+                    get_twos_complement_num(data, 128, 113, 14) * state.constants.PI /
+                    1 << 43
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(state.raw_data; IOD_nav2, Ω_0, i_0, ω, i_dot),
+                )
             elseif data_type == 3
                 IOD_nav3 = get_bits(data, 128, 7, 10)
-                Ω_dot = get_twos_complement_num(data, 128, 17, 24) * state.constants.PI / 1 << 43
-                Δn = get_twos_complement_num(data, 128, 41, 16) * state.constants.PI / 1 << 43
+                Ω_dot =
+                    get_twos_complement_num(data, 128, 17, 24) * state.constants.PI /
+                    1 << 43
+                Δn =
+                    get_twos_complement_num(data, 128, 41, 16) * state.constants.PI /
+                    1 << 43
                 C_uc = get_twos_complement_num(data, 128, 57, 16) / 1 << 29
                 C_us = get_twos_complement_num(data, 128, 73, 16) / 1 << 29
                 C_rc = get_twos_complement_num(data, 128, 89, 16) / 1 << 5
                 C_rs = get_twos_complement_num(data, 128, 105, 16) / 1 << 5
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; IOD_nav3, Ω_dot, Δn, C_uc, C_us, C_rc, C_rs))
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_nav3,
+                        Ω_dot,
+                        Δn,
+                        C_uc,
+                        C_us,
+                        C_rc,
+                        C_rs,
+                    ),
+                )
             elseif data_type == 4
                 IOD_nav4 = get_bits(data, 128, 7, 10)
                 C_ic = get_twos_complement_num(data, 128, 23, 16) / 1 << 29
@@ -282,31 +336,55 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 a_f0 = get_twos_complement_num(data, 128, 69, 31) / 1 << 34
                 a_f1 = get_twos_complement_num(data, 128, 100, 21) / 1 << 46
                 a_f2 = get_twos_complement_num(data, 128, 121, 6) / 1 << 59
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; IOD_nav4, C_ic, C_is, t_0c, a_f0, a_f1, a_f2))
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_nav4,
+                        C_ic,
+                        C_is,
+                        t_0c,
+                        a_f0,
+                        a_f1,
+                        a_f2,
+                    ),
+                )
             elseif data_type == 5
-                broadcast_group_delay_e1_e5a = get_twos_complement_num(data, 128, 48, 10) / 1 << 32
-                broadcast_group_delay_e1_e5b = get_twos_complement_num(data, 128, 58, 10) / 1 << 32
+                broadcast_group_delay_e1_e5a =
+                    get_twos_complement_num(data, 128, 48, 10) / 1 << 32
+                broadcast_group_delay_e1_e5b =
+                    get_twos_complement_num(data, 128, 58, 10) / 1 << 32
                 signal_health_e5b = SignalHealth(get_bits(data, 128, 68, 2))
                 signal_health_e1b = SignalHealth(get_bits(data, 128, 70, 2))
                 data_validity_status_e5b = DataValidityStatus(get_bit(data, 128, 72))
                 data_validity_status_e1b = DataValidityStatus(get_bit(data, 128, 73))
                 WN = get_bits(data, 128, 74, 12)
                 TOW = get_bits(data, 128, 86, 20)
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(
-                    state.raw_data;
-                    broadcast_group_delay_e1_e5a,
-                    broadcast_group_delay_e1_e5b,
-                    signal_health_e5b,
-                    signal_health_e1b,
-                    data_validity_status_e5b,
-                    data_validity_status_e1b,
-                    WN,
-                    TOW,
-                    num_pages_after_last_TOW = 1
-                ))
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        broadcast_group_delay_e1_e5a,
+                        broadcast_group_delay_e1_e5b,
+                        signal_health_e5b,
+                        signal_health_e1b,
+                        data_validity_status_e5b,
+                        data_validity_status_e1b,
+                        WN,
+                        TOW,
+                        num_pages_after_last_TOW = 1,
+                    ),
+                )
             elseif data_type == 6
                 TOW = get_bits(data, 128, 106, 20)
-                state = GNSSDecoderState(state, raw_data = GalileoE1BData(state.raw_data; TOW, num_pages_after_last_TOW = 1))
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        TOW,
+                        num_pages_after_last_TOW = 1,
+                    ),
+                )
             end
         end
     end
@@ -315,16 +393,23 @@ end
 
 function validate_data(state::GNSSDecoderState{<:GalileoE1BData})
     if is_decoding_completed_for_positioning(state.raw_data) &&
-        state.raw_data.IOD_nav1 == state.raw_data.IOD_nav2 == state.raw_data.IOD_nav3 == state.raw_data.IOD_nav4
+       state.raw_data.IOD_nav1 ==
+       state.raw_data.IOD_nav2 ==
+       state.raw_data.IOD_nav3 ==
+       state.raw_data.IOD_nav4
         state = GNSSDecoderState(
-            state,
+            state;
             data = state.raw_data,
-            num_bits_after_valid_syncro_sequence = 10 + (state.raw_data.num_pages_after_last_TOW + 1) * 250
+            num_bits_after_valid_syncro_sequence = 10 +
+                                                   (
+                state.raw_data.num_pages_after_last_TOW + 1
+            ) * 250,
         )
     end
     return state
 end
 
 function is_sat_healthy(state::GNSSDecoderState{<:GalileoE1BData})
-    state.data.signal_health_e1b == signal_ok && state.data.data_validity_status_e1b == navigation_data_valid
+    state.data.signal_health_e1b == signal_ok &&
+        state.data.data_validity_status_e1b == navigation_data_valid
 end

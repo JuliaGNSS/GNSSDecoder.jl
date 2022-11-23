@@ -4,7 +4,6 @@ authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael 
 version = "0.1.0"
 
 [deps]
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
 CRC = "44b605c4-b955-5f2b-9b6d-d2bd01d3d205"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
@@ -14,6 +13,7 @@ ViterbiDecoder = "5f0870c7-49c9-4542-b5f1-5d9ed4caea51"
 
 [compat]
 BitIntegers = "0.2.6"
+CRC = "4"
 DocStringExtensions = "0.6, 0.7, 0.8"
 GNSSSignals = "0.14, 0.15, 0.16"
 ViterbiDecoder = "0.1.0"
