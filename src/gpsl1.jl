@@ -207,7 +207,7 @@ function GPSL1DecoderState(prn)
         GPSL1Cache(),
         0,
         nothing,
-        false
+        false,
     )
 end
 
@@ -222,7 +222,7 @@ function GNSSDecoderState(system::GPSL1, prn)
         GPSL1Cache(),
         0,
         nothing,
-        false
+        false,
     )
 end
 
@@ -232,19 +232,39 @@ function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
         prev_30 ? !cbit : cbit
     end
     # Parity check to verify the data integrity:
-    D_25 = prev_29 ⊻ bit(1) ⊻ bit(2) ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(10) ⊻ bit(11) ⊻ bit(12) ⊻ bit(13) ⊻ bit(14) ⊻ bit(17) ⊻ bit(18) ⊻ bit(20) ⊻ bit(23)
-    D_26 = prev_30 ⊻ bit(2) ⊻ bit(3) ⊻ bit(4) ⊻ bit(6) ⊻ bit(7) ⊻ bit(11) ⊻ bit(12) ⊻ bit(13) ⊻ bit(14) ⊻ bit(15) ⊻ bit(18) ⊻ bit(19) ⊻ bit(21) ⊻ bit(24)
-    D_27 = prev_29 ⊻ bit(1) ⊻ bit(3) ⊻ bit(4) ⊻ bit(5) ⊻ bit(7) ⊻ bit(8) ⊻ bit(12) ⊻ bit(13) ⊻ bit(14) ⊻ bit(15) ⊻ bit(16) ⊻ bit(19) ⊻ bit(20) ⊻ bit(22)
-    D_28 = prev_30 ⊻ bit(2) ⊻ bit(4) ⊻ bit(5) ⊻ bit(6) ⊻ bit(8) ⊻ bit(9) ⊻ bit(13) ⊻ bit(14) ⊻ bit(15) ⊻ bit(16) ⊻ bit(17) ⊻ bit(20) ⊻ bit(21) ⊻ bit(23)
-    D_29 = prev_30 ⊻ bit(1) ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(7) ⊻ bit(9) ⊻ bit(10) ⊻ bit(14) ⊻ bit(15) ⊻ bit(16) ⊻ bit(17) ⊻ bit(18) ⊻ bit(21) ⊻ bit(22) ⊻ bit(24)
-    D_30 = prev_29 ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(8) ⊻ bit(9) ⊻ bit(10) ⊻ bit(11) ⊻ bit(13) ⊻ bit(15) ⊻ bit(19) ⊻ bit(22) ⊻ bit(23) ⊻ bit(24)
-    computed_parity_bits = ((((D_25 << UInt(1) + D_26) << UInt(1) + D_27) << UInt(1) + D_28) << UInt(1) + D_29) << UInt(1) + D_30
+    D_25 =
+        prev_29 ⊻ bit(1) ⊻ bit(2) ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(10) ⊻ bit(11) ⊻ bit(12) ⊻
+        bit(13) ⊻ bit(14) ⊻ bit(17) ⊻ bit(18) ⊻ bit(20) ⊻ bit(23)
+    D_26 =
+        prev_30 ⊻ bit(2) ⊻ bit(3) ⊻ bit(4) ⊻ bit(6) ⊻ bit(7) ⊻ bit(11) ⊻ bit(12) ⊻ bit(13) ⊻
+        bit(14) ⊻ bit(15) ⊻ bit(18) ⊻ bit(19) ⊻ bit(21) ⊻ bit(24)
+    D_27 =
+        prev_29 ⊻ bit(1) ⊻ bit(3) ⊻ bit(4) ⊻ bit(5) ⊻ bit(7) ⊻ bit(8) ⊻ bit(12) ⊻ bit(13) ⊻
+        bit(14) ⊻ bit(15) ⊻ bit(16) ⊻ bit(19) ⊻ bit(20) ⊻ bit(22)
+    D_28 =
+        prev_30 ⊻ bit(2) ⊻ bit(4) ⊻ bit(5) ⊻ bit(6) ⊻ bit(8) ⊻ bit(9) ⊻ bit(13) ⊻ bit(14) ⊻
+        bit(15) ⊻ bit(16) ⊻ bit(17) ⊻ bit(20) ⊻ bit(21) ⊻ bit(23)
+    D_29 =
+        prev_30 ⊻ bit(1) ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(7) ⊻ bit(9) ⊻ bit(10) ⊻ bit(14) ⊻
+        bit(15) ⊻ bit(16) ⊻ bit(17) ⊻ bit(18) ⊻ bit(21) ⊻ bit(22) ⊻ bit(24)
+    D_30 =
+        prev_29 ⊻ bit(3) ⊻ bit(5) ⊻ bit(6) ⊻ bit(8) ⊻ bit(9) ⊻ bit(10) ⊻ bit(11) ⊻ bit(13) ⊻
+        bit(15) ⊻ bit(19) ⊻ bit(22) ⊻ bit(23) ⊻ bit(24)
+    computed_parity_bits =
+        (
+            (((D_25 << UInt(1) + D_26) << UInt(1) + D_27) << UInt(1) + D_28) << UInt(1) +
+            D_29
+        ) << UInt(1) + D_30
     computed_parity_bits == get_bits(word, 30, 25, 6)
 end
 
 function get_word(state::GNSSDecoderState{<:GPSL1Data}, word_number::Int)
     num_words = Int(state.constants.syncro_sequence_length / state.constants.word_length)
-    word = state.buffer >> UInt(state.constants.word_length * (num_words - word_number) + state.constants.preamble_length)
+    word =
+        state.buffer >> UInt(
+            state.constants.word_length * (num_words - word_number) +
+            state.constants.preamble_length,
+        )
     UInt(word & (UInt(1) << UInt(state.constants.word_length) - UInt(1)))
 end
 
@@ -253,15 +273,24 @@ function can_decode_word(decode_bits::Function, state::GNSSDecoderState, word_nu
     prev_word = get_word(state, word_number - 1)
     prev_word_bit_30 = get_bit(prev_word, 30, 30)
     is_checked_word = word_number != 1 && word_number != 3
-    if check_gpsl1_parity(word, is_checked_word * get_bit(prev_word, 30, 29), is_checked_word * prev_word_bit_30)
+    if check_gpsl1_parity(
+        word,
+        is_checked_word * get_bit(prev_word, 30, 29),
+        is_checked_word * prev_word_bit_30,
+    )
         word_comp = (is_checked_word * prev_word_bit_30) ? ~word : word
         data = decode_bits(word_comp, state)
-        state = GNSSDecoderState(state, raw_data = data)
+        state = GNSSDecoderState(state; raw_data = data)
     end
     return state
 end
 
-function can_decode_two_words(decode_bits::Function, state::GNSSDecoderState, word_number1::Int, word_number2::Int)
+function can_decode_two_words(
+    decode_bits::Function,
+    state::GNSSDecoderState,
+    word_number1::Int,
+    word_number2::Int,
+)
     word1 = get_word(state, word_number1)
     prev_word1 = get_word(state, word_number1 - 1)
     prev_word1_bit_30 = get_bit(prev_word1, 30, 30)
@@ -270,12 +299,19 @@ function can_decode_two_words(decode_bits::Function, state::GNSSDecoderState, wo
     prev_word2 = get_word(state, word_number2 - 1)
     prev_word2_bit_30 = get_bit(prev_word2, 30, 30)
     is_checked_word2 = word_number2 != 1 && word_number2 != 3
-    if check_gpsl1_parity(word1, is_checked_word1 * get_bit(prev_word1, 30, 29), is_checked_word1 * prev_word1_bit_30) &&
-        check_gpsl1_parity(word2, is_checked_word2 * get_bit(prev_word2, 30, 29), is_checked_word2 * prev_word2_bit_30)
+    if check_gpsl1_parity(
+        word1,
+        is_checked_word1 * get_bit(prev_word1, 30, 29),
+        is_checked_word1 * prev_word1_bit_30,
+    ) && check_gpsl1_parity(
+        word2,
+        is_checked_word2 * get_bit(prev_word2, 30, 29),
+        is_checked_word2 * prev_word2_bit_30,
+    )
         word1_comp = (is_checked_word1 * prev_word1_bit_30) ? ~word1 : word1
         word2_comp = (is_checked_word2 * prev_word2_bit_30) ? ~word2 : word2
         data = decode_bits(word1_comp, word2_comp, state)
-        state = GNSSDecoderState(state, raw_data = data)
+        state = GNSSDecoderState(state; raw_data = data)
     end
     return state
 end
@@ -291,20 +327,11 @@ function read_tlm_and_how_words(state)
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
         last_subframe_id = get_bits(how_word, 30, 20, 3)
-        GPSL1Data(
-            state.raw_data;
-            last_subframe_id,
-            TOW,
-            alert_flag,
-            anti_spoof_flag
-        )
+        GPSL1Data(state.raw_data; last_subframe_id, TOW, alert_flag, anti_spoof_flag)
     end
     if !isnothing(prev_TOW) && prev_TOW + 1 != state.raw_data.TOW
         # Time of week must be decodable
-        state = GNSSDecoderState(state, raw_data = GPSL1Data(
-            state.raw_data;
-            TOW = nothing
-        ))
+        state = GNSSDecoderState(state; raw_data = GPSL1Data(state.raw_data; TOW = nothing))
     end
     state
 end
@@ -321,7 +348,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             codeonl2 = get_bits(word3, 30, 11, 2)
 
             # SV Accuracy, user range accuracy
-            ura  = get_bits(word3, 30, 13, 4)
+            ura = get_bits(word3, 30, 13, 4)
             if ura <= 6
                 ura = 2^(1 + (ura / 2))
             elseif 6 < ura <= 14
@@ -330,9 +357,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
                 ura = nothing
             end
 
-            
             # Satellite Health
-            svhealth = bitstring(get_bits(word3, 30, 17, 6))[end - 5:end]
+            svhealth = bitstring(get_bits(word3, 30, 17, 6))[end-5:end]
             if get_bit(word3, 30, 17)
                 @warn "Bad LNAV Data, SV-Health critical", svhealth
             end
@@ -340,11 +366,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             GPSL1Data(state.raw_data; trans_week, codeonl2, ura, svhealth)
         end
 
-
         state = can_decode_two_words(state, 3, 8) do word3, word8, state
             # Issue of Data Clock
             # 2 MSB in Word 2, LSB 8 in Word 8
-            IODC = bitstring(get_bits(word3, 30, 23, 2))[end - 1:end] * bitstring(get_bits(word8, 30, 1, 8))[end - 7:end]
+            IODC =
+                bitstring(get_bits(word3, 30, 23, 2))[end-1:end] *
+                bitstring(get_bits(word8, 30, 1, 8))[end-7:end]
             GPSL1Data(state.raw_data; IODC)
         end
 
@@ -395,8 +422,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_two_words(state, 4, 5) do word4, word5, state
             # Mean motion difference from computed value
-            combined_word = UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
-            M_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            combined_word =
+                UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
+            M_0 =
+                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
+                1 << 31
             GPSL1Data(state.raw_data; M_0)
         end
 
@@ -405,7 +435,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             C_uc = get_twos_complement_num(word6, 30, 1, 16) / 1 << 29
             GPSL1Data(state.raw_data; C_uc)
         end
-        
+
         state = can_decode_two_words(state, 6, 7) do word6, word7, state
             # Eccentricity
             e = (get_bits(word6, 30, 17, 8) << 24 + get_bits(word7, 30, 1, 24)) / 1 << 33
@@ -420,7 +450,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_two_words(state, 8, 9) do word8, word9, state
             # Square Root of Semi-Major Axis
-            sqrt_A = (get_bits(word8, 30, 17, 8) << 24 + get_bits(word9, 30, 1, 24)) / 1 << 19
+            sqrt_A =
+                (get_bits(word8, 30, 17, 8) << 24 + get_bits(word9, 30, 1, 24)) / 1 << 19
             GPSL1Data(state.raw_data; sqrt_A)
         end
 
@@ -440,8 +471,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_two_words(state, 3, 4) do word3, word4, state
             # Longitude of Ascending Node of Orbit Plane at Weekly Epoch
-            combined_word = UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
-            Ω_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            combined_word =
+                UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
+            Ω_0 =
+                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
+                1 << 31
             GPSL1Data(state.raw_data; Ω_0)
         end
 
@@ -453,8 +487,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_two_words(state, 5, 6) do word5, word6, state
             # inclination Angle at reference time
-            combined_word = UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
-            i_0 = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            combined_word =
+                UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
+            i_0 =
+                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
+                1 << 31
             GPSL1Data(state.raw_data; i_0)
         end
 
@@ -466,8 +503,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
 
         state = can_decode_two_words(state, 7, 8) do word7, word8, state
             # Argument of Perigee
-            combined_word = UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
-            ω = get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI / 1 << 31
+            combined_word =
+                UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
+            ω =
+                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
+                1 << 31
             GPSL1Data(state.raw_data; ω)
         end
 
@@ -481,7 +521,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
             # Issue of Ephemeris Data
             IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[end-7:end]
             # Rate of Inclination Angle
-            i_dot = get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
+            i_dot =
+                get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
             GPSL1Data(state.raw_data; IODE_Sub_3, i_dot)
         end
     end
@@ -491,8 +532,12 @@ end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1Data})
     if is_decoding_completed_for_positioning(state.raw_data) &&
-        state.raw_data.IODC[3:10] == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
-        state = GNSSDecoderState(state, data = state.raw_data, num_bits_after_valid_syncro_sequence = 8)
+       state.raw_data.IODC[3:10] == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
+        state = GNSSDecoderState(
+            state;
+            data = state.raw_data,
+            num_bits_after_valid_syncro_sequence = 8,
+        )
     end
     return state
 end

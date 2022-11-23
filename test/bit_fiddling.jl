@@ -1,5 +1,4 @@
 @testset "Bit fiddling" begin
-    
     @test GNSSDecoder.get_bits(0b111, 4, 2, 3) == 0b111
     @test GNSSDecoder.get_bits(0b111, 5, 3, 3) == 0b111
     @test GNSSDecoder.get_bits(0b111, 5, 3, 2) == 0b11
@@ -28,7 +27,8 @@
     @test GNSSDecoder.deinterleave(ex_encoded_bits, 30, 8) == ex_deinterleaved_bits
 
     ex_inv_deinterleaved_bits = "110110010100111111111111001001100110010000001111001110100000110000101101110000000000000011011001100110111111000011000101111100111101000101010111010101110100111011001100101111100000100101001101111011101010100010101000101100010000011001110111"
-    @test GNSSDecoder.invert_every_second_bit(ex_deinterleaved_bits) == ex_inv_deinterleaved_bits
+    @test GNSSDecoder.invert_every_second_bit(ex_deinterleaved_bits) ==
+          ex_inv_deinterleaved_bits
 
     ex_true_bits = "111111111111000011001100101010100000000000001111001100110101010111100011111011001101111110001010000111000001001101000000"
     @test viterbi_decode(7, [79, 109], ex_inv_deinterleaved_bits) == ex_true_bits[1:114]

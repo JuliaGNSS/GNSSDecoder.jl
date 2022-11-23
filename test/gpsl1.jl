@@ -1,6 +1,7 @@
 BitIntegers.@define_integers 1536
 BitIntegers.@define_integers 320
-const GPSL1DATA = uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe163920d2f0bff00295b9ebf9f88b010c06ef035644808d518abf98cb9d2094bfe1c3e92dbb769706d42853f19a83172d0e0748b010c06ef014ecffa302d1c9d38430077d85c9473c27eef4e6ac5a0325b0050c0cedc3c47c8b010c06eeff39075aaaac5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8b010c06eefd21840aaaab2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8b"
+const GPSL1DATA =
+    uint1536"0x8b010c06ef056f410d000004def4351756ed43ed2357f4afe163920d2f0bff00295b9ebf9f88b010c06ef035644808d518abf98cb9d2094bfe1c3e92dbb769706d42853f19a83172d0e0748b010c06ef014ecffa302d1c9d38430077d85c9473c27eef4e6ac5a0325b0050c0cedc3c47c8b010c06eeff39075aaaac5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8b010c06eefd21840aaaab2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8b"
 
 @testset "GPS L1 constructor" begin
     gpsl1 = GPSL1()
@@ -43,10 +44,14 @@ end
         GNSSDecoder.GPSL1Cache(),
         308,
         nothing,
-        false
+        false,
     )
     @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = raw_buffer, is_shifted_by_180_degrees = false)
+    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(
+        state;
+        buffer = raw_buffer,
+        is_shifted_by_180_degrees = false,
+    )
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == true
 
     raw_buffer = UInt320(~constants.preamble) << UInt(300) + UInt320(~constants.preamble)
@@ -60,12 +65,19 @@ end
         GNSSDecoder.GPSL1Cache(),
         308,
         nothing,
-        false
+        false,
     )
     @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(state, buffer = ~raw_buffer, is_shifted_by_180_degrees = true)
+    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(
+        state;
+        buffer = ~raw_buffer,
+        is_shifted_by_180_degrees = true,
+    )
 
-    buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble) + UInt320(1) << UInt(8)
+    buffer =
+        UInt320(constants.preamble) << UInt(300) +
+        UInt320(constants.preamble) +
+        UInt320(1) << UInt(8)
     state = GNSSDecoder.GNSSDecoderState(
         1,
         buffer,
@@ -76,7 +88,7 @@ end
         GNSSDecoder.GPSL1Cache(),
         308,
         nothing,
-        false
+        false,
     )
     @test GNSSDecoder.get_word(state, 10) == 1
 end
@@ -84,7 +96,7 @@ end
 @testset "GPS L1 test data decoding" begin
     decoder = GPSL1DecoderState(1)
 
-    test_data = GNSSDecoder.GPSL1Data(
+    test_data = GNSSDecoder.GPSL1Data(;
         last_subframe_id = 5,
         integrity_status_flag = false,
         TOW = 34945 * 6,
@@ -92,7 +104,7 @@ end
         anti_spoof_flag = true,
         trans_week = 67,
         codeonl2 = 1,
-        ura =  2.0,
+        ura = 2.0,
         svhealth = "000000",
         IODC = "0001001000",
         l2pcode = false,
