@@ -400,7 +400,9 @@ function validate_data(state::GNSSDecoderState{<:GalileoE1BData})
         state = GNSSDecoderState(
             state;
             data = state.raw_data,
-            num_bits_after_valid_syncro_sequence = 10 +
+            num_bits_after_valid_syncro_sequence = state.data.TOW == state.raw_data.TOW ?
+                                                   state.num_bits_after_valid_syncro_sequence :
+                                                   10 +
                                                    (
                 state.raw_data.num_pages_after_last_TOW + 1
             ) * 250,
