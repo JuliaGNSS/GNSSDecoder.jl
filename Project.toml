@@ -1,7 +1,7 @@
 name = "GNSSDecoder"
 uuid = "bf6b1ec8-12ad-4501-972c-3dec0d675c2b"
 authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de>", "Erik Deinzer <erikdeinzer@gmail.com>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
@@ -15,7 +15,7 @@ ViterbiDecoder = "5f0870c7-49c9-4542-b5f1-5d9ed4caea51"
 BitIntegers = "0.2.6"
 CRC = "4"
 DocStringExtensions = "0.6, 0.7, 0.8"
-GNSSSignals = "0.14, 0.15, 0.16"
+GNSSSignals = "0.14, 0.15, 0.16, 0.17"
 ViterbiDecoder = "0.1.0"
 julia = "1.6"
 
