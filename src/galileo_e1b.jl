@@ -222,6 +222,30 @@ function GNSSDecoderState(system::GalileoE1B, prn)
     )
 end
 
+function reset_decoder_state(state::GNSSDecoderState{<:GalileoE1BData})
+    # Reset bit buffers and TOW data field, while keeping the
+    # remaining parameters in raw_data. This allows a GNSSReceiver
+    # to use a satellite after a reacquisition without waiting for
+    # the decoding of all data fields.
+    # Note: WN is currently not reset as it is broadcast not as
+    # frequently as the TOW and thus may increase the time until
+    # the decoder is available again after an outage. This will
+    # lead to erroneous decoder information for a few seconds after
+    # reacquisition when a new week started during a signal outage.
+    GNSSDecoderState(
+        state;
+        raw_buffer = UInt288(0),
+        buffer = UInt288(0),
+        raw_data = GalileoE1BData(
+            state.raw_data;
+            TOW = nothing,
+        ),
+        data = GalileoE1BData(),
+        num_bits_buffered = 0,
+        num_bits_after_valid_syncro_sequence = nothing
+    )
+end
+
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
     encoded_bits = bitstring(state.buffer >> state.constants.preamble_length)[sizeof(
         state.buffer,
