@@ -226,6 +226,30 @@ function GNSSDecoderState(system::GPSL1, prn)
     )
 end
 
+function reset_decoder_state(state::GNSSDecoderState{<:GPSL1Data})
+    # Reset bit buffers and TOW data field, while keeping the
+    # remaining parameters in raw_data. This allows a GNSSReceiver
+    # to use a satellite after a reacquisition without waiting for
+    # the decoding of all data fields.
+    # Note: trans_week is currently not reset as it is only
+    # broadcast in subframe 1 and thus may increase the time until
+    # the decoder is available again after an outage. This will
+    # lead to erroneous decoder information for a few seconds after
+    # reacquisition when a new GPS week started during a signal outage.
+    GNSSDecoderState(
+        state;
+        raw_buffer = UInt320(0),
+        buffer = UInt320(0),
+        raw_data = GPSL1Data(
+            state.raw_data;
+            TOW = nothing,
+        ),
+        data = GPSL1Data(),
+        num_bits_buffered = 0,
+        num_bits_after_valid_syncro_sequence = nothing
+    )
+end
+
 function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
     function bit(bit_number)
         cbit = get_bit(word, 30, bit_number)
