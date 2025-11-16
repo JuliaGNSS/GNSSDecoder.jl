@@ -58,4 +58,12 @@ end
     @test state.is_shifted_by_180_degrees == false
     @test state.num_bits_after_valid_syncro_sequence == 665
     @test is_sat_healthy(state) == true
+
+    state = reset_decoder_state(state)
+    @test state.raw_buffer == 0
+    @test state.buffer == 0
+    @test isnothing(state.raw_data.TOW)
+    @test isnothing(state.data.TOW)
+    @test state.num_bits_buffered == 0
+    @test isnothing(state.num_bits_after_valid_syncro_sequence)
 end
