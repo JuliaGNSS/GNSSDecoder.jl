@@ -39,6 +39,7 @@ end
         IOD_nav3 = 0x0000000000000020,
         IOD_nav4 = 0x0000000000000020,
         num_pages_after_last_TOW = 1,
+        num_bits_after_valid_syncro_sequence_after_last_TOW = 2010,
         signal_health_e1b = GNSSDecoder.signal_ok,
         signal_health_e5b = GNSSDecoder.signal_ok,
         data_validity_status_e1b = GNSSDecoder.navigation_data_valid,
