@@ -66,6 +66,7 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     IOD_nav3::Union{Nothing,UInt} = nothing
     IOD_nav4::Union{Nothing,UInt} = nothing
     num_pages_after_last_TOW::Int = 0
+    num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
 
     signal_health_e1b::Union{Nothing,SignalHealth} = nothing
     signal_health_e5b::Union{Nothing,SignalHealth} = nothing
@@ -105,6 +106,7 @@ function GalileoE1BData(
     IOD_nav3 = data.IOD_nav3,
     IOD_nav4 = data.IOD_nav4,
     num_pages_after_last_TOW = data.num_pages_after_last_TOW,
+    num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
     signal_health_e1b = data.signal_health_e1b,
     signal_health_e5b = data.signal_health_e5b,
     data_validity_status_e1b = data.data_validity_status_e1b,
@@ -140,6 +142,7 @@ function GalileoE1BData(
         IOD_nav3,
         IOD_nav4,
         num_pages_after_last_TOW,
+        num_bits_after_valid_syncro_sequence_after_last_TOW,
         signal_health_e1b,
         signal_health_e5b,
         data_validity_status_e1b,
@@ -239,6 +242,7 @@ function reset_decoder_state(state::GNSSDecoderState{<:GalileoE1BData})
         raw_data = GalileoE1BData(
             state.raw_data;
             TOW = nothing,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
         ),
         data = GalileoE1BData(),
         num_bits_buffered = 0,
@@ -287,6 +291,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                             WN,
                             TOW,
                             num_pages_after_last_TOW = 1,
+                            num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
                         ),
                     )
                 end
@@ -397,6 +402,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                         WN,
                         TOW,
                         num_pages_after_last_TOW = 1,
+                        num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
                     ),
                 )
             elseif data_type == 6
@@ -407,6 +413,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                         state.raw_data;
                         TOW,
                         num_pages_after_last_TOW = 1,
+                        num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
                     ),
                 )
             end
@@ -421,15 +428,23 @@ function validate_data(state::GNSSDecoderState{<:GalileoE1BData})
        state.raw_data.IOD_nav2 ==
        state.raw_data.IOD_nav3 ==
        state.raw_data.IOD_nav4
+        num_bits_after_valid_syncro_sequence = 0
+        if state.data.TOW == state.raw_data.TOW
+            num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence
+        elseif !isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
+            num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence -
+                (state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW -
+                2 * state.constants.syncro_sequence_length - state.constants.preamble_length)
+        else # first succesful decoding
+            num_bits_after_valid_syncro_sequence = state.constants.preamble_length +
+                (
+                    state.raw_data.num_pages_after_last_TOW + 1
+                ) * 250
+        end
         state = GNSSDecoderState(
             state;
             data = state.raw_data,
-            num_bits_after_valid_syncro_sequence = state.data.TOW == state.raw_data.TOW ?
-                                                   state.num_bits_after_valid_syncro_sequence :
-                                                   10 +
-                                                   (
-                state.raw_data.num_pages_after_last_TOW + 1
-            ) * 250,
+            num_bits_after_valid_syncro_sequence,
         )
     end
     return state
