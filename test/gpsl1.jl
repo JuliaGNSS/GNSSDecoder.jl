@@ -6,7 +6,17 @@ const GPSL1DATA =
 @testset "GPS L1 constructor" begin
     gpsl1 = GPSL1()
 
-    @test GPSL1DecoderState(21) == GNSSDecoderState(gpsl1, 21)
+    state_1 = GPSL1DecoderState(21)
+    state_2 = GNSSDecoderState(gpsl1, 21)
+    @test state_1.prn == state_2.prn &&
+        state_1.raw_buffer == state_2.raw_buffer &&
+        state_1.buffer == state_2.buffer &&
+        state_1.raw_data == state_2.raw_data &&
+        state_1.data == state_2.data &&
+        state_1.constants == state_2.constants &&
+        state_1.num_bits_buffered == state_2.num_bits_buffered &&
+        state_1.num_bits_after_valid_syncro_sequence == state_2.num_bits_after_valid_syncro_sequence &&
+        state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
 end
 
 @testset "GPS L1 decoding" begin
@@ -143,6 +153,27 @@ end
     @test state.data == test_data
     @test is_sat_healthy(state) == true
 
+    # test confirm_data
+    state = GNSSDecoder.GNSSDecoderState(
+        state;
+        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+    )
+    state = GNSSDecoder.confirm_data(state)
+    @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
+    state = GNSSDecoder.GNSSDecoderState(
+        state;
+        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+    )
+    state = GNSSDecoder.confirm_data(state)
+    @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
+    state = GNSSDecoder.GNSSDecoderState(
+        state;
+        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+    )
+    state = GNSSDecoder.confirm_data(state)
+    @test state.data.C_ic == test_data.C_ic+1 # erroneous data accepted as it has been provided more often than true data
+
+    # test reset_decoder_state
     state = reset_decoder_state(state)
     @test state.raw_buffer == 0
     @test state.buffer == 0
