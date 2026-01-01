@@ -15,8 +15,6 @@ Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
     F::Float64 = -4.442807633e-10
 end
 
-struct GPSL1Cache <: AbstractGNSSCache end
-
 Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     last_subframe_id::Int = 0
     integrity_status_flag::Union{Nothing,Bool} = nothing
@@ -136,6 +134,14 @@ function GPSL1Data(
         IODE_Sub_3,
         i_dot,
     )
+end
+
+struct GPSL1Cache <: AbstractGNSSCache
+    old_data::Vector{Tuple{Int, GPSL1Data}}
+end
+
+function GPSL1Cache()
+    GPSL1Cache(Vector{Tuple{Int, GPSL1Data}}())
 end
 
 function is_subframe1_decoded(data::GPSL1Data)
@@ -554,14 +560,129 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1Data})
     return state
 end
 
+function compare_data(data::GPSL1Data, new_data::GPSL1Data)
+    data.IODC == new_data.IODC && # IODE_Sub_2 and IODE_Sub_3 is already checked for in validate_data
+
+    (
+        data.TOW == new_data.TOW ||
+        (data.TOW > new_data.TOW && data.trans_week < new_data.trans_week) ||
+        (data.TOW < new_data.TOW && data.trans_week >= new_data.trans_week)
+    ) &&
+
+    data.T_GD == new_data.T_GD &&
+    data.t_0c == new_data.t_0c &&
+
+    data.a_f0 == new_data.a_f0 &&
+    data.a_f1 == new_data.a_f1 &&
+    data.a_f2 == new_data.a_f2 &&
+    
+    data.C_rs == new_data.C_rs &&
+    data.Δn == new_data.Δn &&
+    data.M_0 == new_data.M_0 &&
+    data.C_uc == new_data.C_uc &&
+    data.e == new_data.e &&
+    data.C_us == new_data.C_us &&
+    data.sqrt_A == new_data.sqrt_A &&
+    data.t_0e == new_data.t_0e &&
+    data.fit_interval == new_data.fit_interval &&
+    data.AODO == new_data.AODO &&
+
+    data.C_ic == new_data.C_ic &&
+    data.Ω_0 == new_data.Ω_0 &&
+    data.C_is == new_data.C_is &&
+    data.i_0 == new_data.i_0 &&
+    data.C_rc == new_data.C_rc &&
+    data.ω == new_data.ω &&
+    data.Ω_dot == new_data.Ω_dot &&
+    data.i_dot == new_data.i_dot
+end
+
+const max_vote = 20
+
+function update_voting(old_vote)
+    min(max_vote, old_vote + 1)
+end
+
+function confirm_data(state)
+    old_data = state.cache.old_data
+
+    # filter old data for current IODC
+    old_data_with_same_iodc = filter(old_data) do old_data_entry
+        old_data_entry[2].IODC == state.raw_data.IODC
+    end
+
+    if !isempty(old_data_with_same_iodc)
+        # check if data set already exists within old data
+        flag_data_set_exists = false
+        best_score = -1
+        curr_score = -1
+        for old_data_with_same_iodc_entry in old_data_with_same_iodc
+            best_score = max(best_score, old_data_with_same_iodc_entry[1])
+            if !flag_data_set_exists && compare_data(old_data_with_same_iodc_entry[2], state.raw_data)
+                flag_data_set_exists = true
+                curr_score = old_data_with_same_iodc_entry[1]
+            end
+        end
+
+        if flag_data_set_exists
+            # data already exists, update and upvote old data
+            state = GNSSDecoderState(
+                state;
+                cache = GPSL1Cache(map(old_data) do old_data_entry
+                    if compare_data(old_data_entry[2], state.raw_data)
+                        (update_voting(old_data_entry[1]), state.raw_data)
+                    else
+                        old_data_entry
+                    end
+                end)
+            )
+
+            if best_score > curr_score
+                # reject new data as there is another entry with a higher score and
+                # reset raw_data to remove potentially erroneously decoded data fields
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GPSL1Data(),
+                )
+                return state
+            elseif curr_score == max_vote && length(state.cache.old_data) > 1
+                # remove other old_data entries
+                state = GNSSDecoderState(
+                    state;
+                    cache = GPSL1Cache(
+                        [(update_voting(curr_score), state.raw_data)]
+                    )
+                )
+            end
+        else
+            # data does not yet exist, add to old data
+            state = GNSSDecoderState(
+                state;
+                cache = GPSL1Cache([old_data; (0, state.raw_data)]),
+                raw_data = GPSL1Data(), # reset raw_data to remove potentially erroneously decoded data fields
+            )
+            return state
+        end
+    else
+        # add decoded data with new IODC to old data
+        state = GNSSDecoderState(
+            state;
+            cache = GPSL1Cache([old_data; (0, state.raw_data)])
+        )
+    end
+
+    # when reaching here, we use the new data
+    state = GNSSDecoderState(
+        state;
+        data = state.raw_data,
+        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+    )
+end
+
 function validate_data(state::GNSSDecoderState{<:GPSL1Data})
     if is_decoding_completed_for_positioning(state.raw_data) &&
        state.raw_data.IODC[3:10] == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
-        state = GNSSDecoderState(
-            state;
-            data = state.raw_data,
-            num_bits_after_valid_syncro_sequence = 8,
-        )
+        state = confirm_data(state)
     end
     return state
 end
