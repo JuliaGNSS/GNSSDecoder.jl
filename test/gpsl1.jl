@@ -172,6 +172,147 @@ end
     )
     state = GNSSDecoder.confirm_data(state)
     @test state.data.C_ic == test_data.C_ic+1 # erroneous data accepted as it has been provided more often than true data
+end
+
+@testset "confirm_data branches" begin
+    # Setup: create a base state with valid data
+    decoder = GPSL1DecoderState(1)
+    state = decode(decoder, GPSL1DATA, 1508)
+    base_data = state.data
+
+    # Branch 1: New IODC (not in cache) - should use data immediately
+    @testset "new IODC - uses data immediately" begin
+        # Start with empty cache
+        state_empty_cache = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache(),
+            raw_data = base_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_empty_cache)
+        @test result.data == base_data  # data is used
+        @test length(result.cache.old_data) == 1  # added to cache
+        @test result.cache.old_data[1].vote == 0  # initial vote is 0
+        @test result.cache.old_data[1].data == base_data
+    end
+
+    # Branch 2: Same IODC but different data - adds to cache, doesn't use data yet
+    @testset "same IODC different data - adds to cache, doesn't use" begin
+        # Create cache with one entry
+        existing_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        state_with_cache = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(5, existing_data)]),
+            raw_data = base_data,  # different data, same IODC
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_with_cache)
+        @test result.data == GNSSDecoder.GPSL1Data()  # data NOT used (empty)
+        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
+        @test length(result.cache.old_data) == 2  # new entry added
+        @test result.cache.old_data[2].vote == 0  # new entry has vote 0
+        @test result.cache.old_data[2].data == base_data
+    end
+
+    # Branch 3: Matching entry exists but another entry has higher score - rejects data
+    @testset "matching entry with lower score than best - rejects data" begin
+        # Create cache with two entries, one with higher score
+        high_score_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        low_score_data = base_data
+        state_with_competing = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([
+                GNSSDecoder.VotedGPSL1Data(10, high_score_data),  # higher score
+                GNSSDecoder.VotedGPSL1Data(2, low_score_data),    # lower score, matches raw_data
+            ]),
+            raw_data = base_data,  # matches low_score_data
+            data = high_score_data,  # currently using high score data
+        )
+        result = GNSSDecoder.confirm_data(state_with_competing)
+        @test result.data == high_score_data  # data NOT changed (still high score data)
+        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
+        @test result.cache.old_data[2].vote == 3  # vote incremented from 2 to 3
+    end
+
+    # Branch 4: Matching entry has best (or tied best) score - uses data
+    @testset "matching entry with best score - uses data" begin
+        state_with_match = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(5, base_data)]),
+            raw_data = base_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_with_match)
+        @test result.data == base_data  # data is used
+        @test result.cache.old_data[1].vote == 6  # vote incremented from 5 to 6
+    end
+
+    # Branch 5: Matching entry at max_vote - removes other entries
+    @testset "max_vote reached - removes other entries" begin
+        other_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        state_at_max = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([
+                GNSSDecoder.VotedGPSL1Data(20, base_data),  # already at max_vote (20)
+                GNSSDecoder.VotedGPSL1Data(5, other_data),  # should be removed
+            ]),
+            raw_data = base_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_at_max)
+        @test result.data == base_data  # data is used
+        @test length(result.cache.old_data) == 1  # only one entry remains
+        @test result.cache.old_data[1].vote == 20  # stays at max_vote (capped)
+        @test result.cache.old_data[1].data == base_data
+    end
+
+    # Branch 6: max_vote reached but only one entry - doesn't try to remove
+    @testset "max_vote reached with single entry - keeps entry" begin
+        state_single_max = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(19, base_data)]),
+            raw_data = base_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_single_max)
+        @test result.data == base_data
+        @test length(result.cache.old_data) == 1
+        @test result.cache.old_data[1].vote == 20
+    end
+
+    # Branch 7: Vote capped at max_vote
+    @testset "vote capped at max_vote" begin
+        state_at_max = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(20, base_data)]),
+            raw_data = base_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_at_max)
+        @test result.cache.old_data[1].vote == 20  # stays at max, doesn't overflow
+    end
+
+    # Edge case: Different IODC added to non-empty cache
+    @testset "different IODC added to existing cache" begin
+        existing_data = GNSSDecoder.GPSL1Data(base_data; IODC = "1111111111")
+        new_data = base_data  # has different IODC
+        state_diff_iodc = GNSSDecoder.GNSSDecoderState(
+            state;
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(10, existing_data)]),
+            raw_data = new_data,
+            data = GNSSDecoder.GPSL1Data(),
+        )
+        result = GNSSDecoder.confirm_data(state_diff_iodc)
+        @test result.data == new_data  # new IODC data is used immediately
+        @test length(result.cache.old_data) == 2  # both entries kept
+        @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
+        @test result.cache.old_data[2].data == new_data  # new entry added
+    end
+end
+
+@testset "GPS L1 reset_decoder_state" begin
+    decoder = GPSL1DecoderState(1)
+    state = decode(decoder, GPSL1DATA, 1508)
 
     # test reset_decoder_state
     state = reset_decoder_state(state)
