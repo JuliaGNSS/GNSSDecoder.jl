@@ -180,8 +180,8 @@ end
     state = decode(decoder, GPSL1DATA, 1508)
     base_data = state.data
 
-    # Branch 1: New IODC (not in cache) - should use data immediately
-    @testset "new IODC - uses data immediately" begin
+    # Branch 1: New IODC (not in cache) and empty data - should use data immediately
+    @testset "new IODC and empty data - uses data immediately" begin
         # Start with empty cache
         state_empty_cache = GNSSDecoder.GNSSDecoderState(
             state;
@@ -298,15 +298,26 @@ end
         new_data = base_data  # has different IODC
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(10, existing_data)]),
+            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(20, existing_data)]),
             raw_data = new_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = existing_data,
         )
         result = GNSSDecoder.confirm_data(state_diff_iodc)
-        @test result.data == new_data  # new IODC data is used immediately
+        @test result.data == existing_data  # data NOT changed (still high score data)
+        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
         @test length(result.cache.old_data) == 2  # both entries kept
         @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry added
+        state_diff_iodc = GNSSDecoder.GNSSDecoderState(
+            result;
+            raw_data = new_data,
+        )
+        result = GNSSDecoder.confirm_data(state_diff_iodc)
+        @test result.data == new_data  # new IODC data is used now
+        @test result.raw_data == new_data  # raw_data is not reset
+        @test length(result.cache.old_data) == 2  # both entries kept
+        @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
+        @test result.cache.old_data[2].data == new_data  # new entry preserved
     end
 end
 
