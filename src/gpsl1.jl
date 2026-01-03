@@ -622,13 +622,21 @@ function confirm_data(state, max_vote = 20)
                 raw_data = GPSL1Data(),
             )
         else
-            # New IODC entirely - add to cache and use data
-            return GNSSDecoderState(
-                state;
-                cache = GPSL1Cache([old_data; VotedGPSL1Data(0, state.raw_data)]),
-                data = state.raw_data,
-                num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
-            )
+            # New IODC entirely
+            return if state.data == GPSL1Data() # no data yet - add to cache and use data
+                GNSSDecoderState(
+                    state;
+                    cache = GPSL1Cache([VotedGPSL1Data(0, state.raw_data)]),
+                    data = state.raw_data,
+                    num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+                )
+            else # add as new entry, don't use data yet
+                GNSSDecoderState(
+                    state;
+                    cache = GPSL1Cache([old_data; VotedGPSL1Data(0, state.raw_data)]),
+                    raw_data = GPSL1Data(),
+                )
+            end
         end
     end
 
