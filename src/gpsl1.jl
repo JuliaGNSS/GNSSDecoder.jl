@@ -3,6 +3,28 @@
 # 8 extra syncronization bíts
 BitIntegers.@define_integers 320
 
+"""
+    GPSL1Constants
+
+WGS 84 constants and LNAV message structure parameters for GPS L1 C/A signal decoding.
+
+The physical constants are defined in IS-GPS-200 (Interface Specification) and are used
+for computing satellite positions and clock corrections from broadcast ephemeris data.
+
+# Fields
+- `syncro_sequence_length::Int`: Length of synchronization sequence in bits (300 bits = 10 words × 30 bits)
+- `preamble::UInt8`: TLM word preamble pattern (10001011 binary, 0x8B)
+- `preamble_length::Int`: Length of preamble in bits (8)
+- `word_length::Int`: Length of each LNAV word in bits (30)
+- `PI::Float64`: Mathematical constant π = 3.1415926535898 (IS-GPS-200 Table 20-IV)
+- `Ω_dot_e::Float64`: WGS 84 Earth rotation rate = 7.2921151467×10⁻⁵ rad/s
+- `c::Float64`: Speed of light = 2.99792458×10⁸ m/s
+- `μ::Float64`: WGS 84 Earth gravitational parameter = 3.986005×10¹⁴ m³/s²
+- `F::Float64`: Relativistic correction constant = -4.442807633×10⁻¹⁰ s/√m
+
+# Reference
+IS-GPS-200N, Section 20.3.3 and Table 20-IV
+"""
 Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
     syncro_sequence_length::Int = 300
     preamble::UInt8 = 0b10001011
@@ -15,6 +37,61 @@ Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
     F::Float64 = -4.442807633e-10
 end
 
+"""
+    GPSL1Data
+
+Decoded GPS L1 C/A LNAV navigation message data.
+
+Contains ephemeris, clock correction, and satellite health parameters decoded from
+subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-200N.
+
+# Telemetry and Handover Word (TLM/HOW) Fields
+- `last_subframe_id::Int`: ID of the last decoded subframe (1-5)
+- `integrity_status_flag::Bool`: LNAV data integrity status (0=OK, 1=bad)
+- `TOW::Int64`: Time of Week at message transmission (seconds, 0-604784)
+- `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
+- `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
+
+# Subframe 1 - Clock Correction Parameters
+- `trans_week::Int64`: GPS week number (modulo 1024)
+- `codeonl2::Int64`: Code on L2 channel (0=invalid, 1=P-code, 2=C/A-code, 3=invalid)
+- `ura::Float64`: User Range Accuracy (meters), derived from URA index
+- `svhealth::String`: 6-bit satellite health status ("000000" = healthy)
+- `IODC::String`: Issue of Data, Clock (10-bit binary string)
+- `l2pcode::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
+- `T_GD::Float64`: L1-L2 group delay correction (seconds)
+- `t_0c::Int64`: Clock reference time (seconds)
+- `a_f0::Float64`: Clock bias correction coefficient (seconds)
+- `a_f1::Float64`: Clock drift correction coefficient (s/s)
+- `a_f2::Float64`: Clock drift rate correction coefficient (s/s²)
+
+# Subframe 2 - Ephemeris Parameters (Part 1)
+- `IODE_Sub_2::String`: Issue of Data, Ephemeris from subframe 2 (8-bit binary string)
+- `C_rs::Float64`: Sine harmonic correction to orbit radius (meters)
+- `Δn::Float64`: Mean motion difference from computed value (semi-circles/s)
+- `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+- `C_uc::Float64`: Cosine harmonic correction to argument of latitude (rad)
+- `e::Float64`: Eccentricity (dimensionless, range 0-0.03)
+- `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
+- `sqrt_A::Float64`: Square root of semi-major axis (√m)
+- `t_0e::Int64`: Ephemeris reference time (seconds)
+- `fit_interval::Bool`: Curve fit interval flag (0=4h, 1=>4h)
+- `AODO::Int64`: Age of Data Offset for NMCT (seconds)
+
+# Subframe 3 - Ephemeris Parameters (Part 2)
+- `C_ic::Float64`: Cosine harmonic correction to inclination (rad)
+- `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
+- `C_is::Float64`: Sine harmonic correction to inclination (rad)
+- `i_0::Float64`: Inclination angle at reference time (semi-circles)
+- `C_rc::Float64`: Cosine harmonic correction to orbit radius (meters)
+- `ω::Float64`: Argument of perigee (semi-circles)
+- `Ω_dot::Float64`: Rate of right ascension (semi-circles/s)
+- `IODE_Sub_3::String`: Issue of Data, Ephemeris from subframe 3 (8-bit binary string)
+- `i_dot::Float64`: Rate of inclination angle (semi-circles/s)
+
+# Reference
+IS-GPS-200N, Tables 20-I, 20-II, 20-III, Sections 20.3.3.3-20.3.3.4
+"""
 Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     last_subframe_id::Int = 0
     integrity_status_flag::Union{Nothing,Bool} = nothing
@@ -207,6 +284,36 @@ function is_decoding_completed_for_positioning(data::GPSL1Data)
         is_subframe3_decoded(data)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Create a decoder state for GPS L1 C/A navigation messages.
+
+Initializes a [`GNSSDecoderState`](@ref) configured for decoding GPS L1 C/A
+(Coarse/Acquisition) civil navigation messages. The decoder extracts ephemeris,
+clock correction, and health data from the 50 bps LNAV data stream.
+
+# Arguments
+- `prn::Int`: Pseudo-Random Noise code identifier (1-32 for GPS satellites)
+
+# Returns
+- `GNSSDecoderState{GPSL1Data}`: Initialized decoder state for GPS L1
+
+# Example
+```julia
+state = GPSL1DecoderState(1)  # Create decoder for PRN 1
+state = decode(state, bits, num_bits)
+if is_sat_healthy(state)
+    # Use state.data for positioning
+end
+```
+
+# See Also
+- [`GNSSDecoderState`](@ref): The underlying state structure
+- [`decode`](@ref): Decode bits using this state
+- [`reset_decoder_state`](@ref): Reset after signal loss
+- [`is_sat_healthy`](@ref): Check satellite health status
+"""
 function GPSL1DecoderState(prn)
     GNSSDecoderState(
         prn,
@@ -237,6 +344,38 @@ function GNSSDecoderState(system::GPSL1, prn)
     )
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Reset the GPS L1 decoder state after a signal loss or reacquisition.
+
+Clears the bit buffers and time-of-week (TOW) field while preserving other
+decoded ephemeris and clock data in `raw_data`. This allows faster recovery
+after brief signal outages without requiring a full re-decode of all subframes.
+
+!!! note
+    The `trans_week` field is intentionally not reset as it is only broadcast
+    in subframe 1. This may cause brief errors if a GPS week rollover occurs
+    during a signal outage.
+
+# Arguments
+- `state::GNSSDecoderState{<:GPSL1Data}`: Current GPS L1 decoder state
+
+# Returns
+- `GNSSDecoderState{<:GPSL1Data}`: Reset decoder state with cleared buffers
+
+# Example
+```julia
+# After detecting signal loss
+state = reset_decoder_state(state)
+# Continue decoding with preserved ephemeris
+state = decode(state, new_bits, num_bits)
+```
+
+# See Also
+- [`GPSL1DecoderState`](@ref): Create a fresh decoder state
+- [`decode`](@ref): Continue decoding after reset
+"""
 function reset_decoder_state(state::GNSSDecoderState{<:GPSL1Data})
     # Reset bit buffers and TOW data field, while keeping the
     # remaining parameters in raw_data. This allows a GNSSReceiver
@@ -677,6 +816,37 @@ function validate_data(state::GNSSDecoderState{<:GPSL1Data})
     return state
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Check if the GPS satellite is healthy and usable for positioning.
+
+Examines the 6-bit satellite health field (`svhealth`) from subframe 1. A satellite
+is considered healthy only if all health bits are zero (`"000000"`).
+
+!!! warning
+    This function requires that subframe 1 has been successfully decoded.
+    Check that `state.data.svhealth` is not `nothing` before relying on this result.
+
+# Arguments
+- `state::GNSSDecoderState{<:GPSL1Data}`: GPS L1 decoder state with decoded data
+
+# Returns
+- `Bool`: `true` if satellite health status indicates normal operation
+
+# Example
+```julia
+state = GPSL1DecoderState(1)
+state = decode(state, bits, num_bits)
+if is_sat_healthy(state)
+    # Safe to use for positioning
+end
+```
+
+# See Also
+- [`GPSL1DecoderState`](@ref): Create decoder state
+- [`decode`](@ref): Decode navigation data
+"""
 function is_sat_healthy(state::GNSSDecoderState{<:GPSL1Data})
     state.data.svhealth == "000000"
 end

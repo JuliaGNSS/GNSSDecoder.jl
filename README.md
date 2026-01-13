@@ -1,40 +1,28 @@
 # GNSSDecoder.jl
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaGNSS.github.io/GNSSDecoder.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaGNSS.github.io/GNSSDecoder.jl/dev/)
+[![Build Status](https://github.com/JuliaGNSS/GNSSDecoder.jl/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/JuliaGNSS/GNSSDecoder.jl/actions/workflows/ci.yml?query=branch%3Amaster)
+[![codecov](https://codecov.io/gh/JuliaGNSS/GNSSDecoder.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaGNSS/GNSSDecoder.jl)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Decodes various GNSS satellite signals.
+
 Currently implemented:
  * GPS L1
  * Galileo E1B
 
-## Usage
+## Installation
 
-#### Install: 
 ```julia
 julia> ]
 pkg> add GNSSDecoder
 ```
 
-### Initialization
-The decoder must be initialized beforehand.
-```julia
-decoder = GPSL1DecoderState(1) #Initialization of decoder with PRN = 1
-```
+## Documentation
 
-### Decoding
-Pass bits to decoder as an unsigned integer value and let the decoder decode the message.
-```julia
-for i in 1:iterations
-    # Track signal for example with Tracking.jl
-    track_res = track(signal, track_state, decoder.PRN , sampling_freq)
-    track_state = get_state(track_res)
-    decoder = decode(decoder, get_bits(track_res), get_num_bits(track_res))
-end
-```
+For usage examples and API reference, see the [documentation](https://JuliaGNSS.github.io/GNSSDecoder.jl/stable/).
 
-The data can be retrieved by
-```julia
-decoder.data
-```
+## License
 
-Note that GNSSDecoder decodes each time a complete subframe has been retrieved.
-`decoder.raw_data` holds the raw data. `decoder.data` hold data that has been checked for consistency.
-`decoder.num_bits_after_valid_subframe` counts the number of bits after a valid subframe has been retrieved.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
