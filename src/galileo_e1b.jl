@@ -3,6 +3,28 @@
 # plus 10 extra syncronization bits
 BitIntegers.@define_integers 288
 
+"""
+    GalileoE1BConstants
+
+GTRF constants and I/NAV message structure parameters for Galileo E1B signal decoding.
+
+The physical constants are defined in the Galileo OS SIS ICD (Open Service Signal-In-Space
+Interface Control Document) and are used for computing satellite positions and clock
+corrections from broadcast ephemeris data.
+
+# Fields
+- `syncro_sequence_length::Int`: Length of synchronization sequence in bits (250 bits per page)
+- `preamble::UInt16`: Page synchronization pattern (0101100000 binary)
+- `preamble_length::Int`: Length of preamble in bits (10)
+- `PI::Float64`: Mathematical constant π = 3.1415926535898 (Galileo OS SIS ICD Table 68)
+- `Ω_dot_e::Float64`: Mean angular velocity of the Earth = 7.2921151467×10⁻⁵ rad/s
+- `c::Float64`: Speed of light = 2.99792458×10⁸ m/s
+- `μ::Float64`: Geocentric gravitational constant = 3.986004418×10¹⁴ m³/s²
+- `F::Float64`: Relativistic correction constant = -4.442807309×10⁻¹⁰ s/√m
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Table 68
+"""
 Base.@kwdef struct GalileoE1BConstants <: AbstractGNSSConstants
     syncro_sequence_length::Int = 250
     preamble::UInt16 = 0b0101100000
@@ -23,6 +45,22 @@ end
 
 GalileoE1BCache() = GalileoE1BCache(UInt128(0))
 
+"""
+    SignalHealth
+
+Galileo signal health status enumeration.
+
+Indicates the operational status of a Galileo signal component as broadcast in word type 5.
+
+# Values
+- `signal_ok`: Signal is operating normally (value 0)
+- `signal_out_of_service`: Signal is out of service (value 1)
+- `signal_will_be_out_of_service`: Signal is in Extended Operations Mode (value 2)
+- `signal_component_currently_in_test`: Signal component is currently in test (value 3)
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Table 84
+"""
 @enum SignalHealth begin
     signal_ok
     signal_out_of_service
@@ -30,11 +68,83 @@ GalileoE1BCache() = GalileoE1BCache(UInt128(0))
     signal_component_currently_in_test
 end
 
+"""
+    DataValidityStatus
+
+Galileo navigation data validity status enumeration.
+
+Indicates whether the broadcast navigation data should be trusted for positioning.
+
+# Values
+- `navigation_data_valid`: Navigation data is valid (value 0)
+- `working_without_guarantee`: Navigation data is working without guarantee (value 1)
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Table 81
+"""
 @enum DataValidityStatus begin
     navigation_data_valid
     working_without_guarantee
 end
 
+"""
+    GalileoE1BData
+
+Decoded Galileo E1B I/NAV navigation message data.
+
+Contains ephemeris, clock correction, signal health, and group delay parameters decoded
+from word types 1-5 of the Galileo I/NAV message. All parameters conform to the Galileo
+OS SIS ICD.
+
+# Galileo System Time (GST) Fields
+- `WN::Int64`: Week Number (0-4095)
+- `TOW::Int64`: Time of Week at message transmission (seconds, 0-604799)
+
+# Ephemeris Parameters (Word Types 1-3)
+- `t_0e::Float64`: Ephemeris reference time (seconds)
+- `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+- `e::Float64`: Eccentricity (dimensionless)
+- `sqrt_A::Float64`: Square root of semi-major axis (√m)
+- `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
+- `i_0::Float64`: Inclination angle at reference time (semi-circles)
+- `ω::Float64`: Argument of perigee (semi-circles)
+- `i_dot::Float64`: Rate of change of inclination angle (semi-circles/s)
+- `Ω_dot::Float64`: Rate of change of right ascension (semi-circles/s)
+- `Δn::Float64`: Mean motion difference from computed value (semi-circles/s)
+- `C_uc::Float64`: Cosine harmonic correction to argument of latitude (rad)
+- `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
+- `C_rc::Float64`: Cosine harmonic correction to orbit radius (meters)
+- `C_rs::Float64`: Sine harmonic correction to orbit radius (meters)
+- `C_ic::Float64`: Cosine harmonic correction to inclination (rad)
+- `C_is::Float64`: Sine harmonic correction to inclination (rad)
+
+# Clock Correction Parameters (Word Type 4)
+- `t_0c::Float64`: Clock correction reference time (seconds)
+- `a_f0::Float64`: SV clock bias correction coefficient (seconds)
+- `a_f1::Float64`: SV clock drift correction coefficient (s/s)
+- `a_f2::Float64`: SV clock drift rate correction coefficient (s/s²)
+
+# Issue of Data (Word Types 1-4)
+- `IOD_nav1::UInt`: Issue of Data from word type 1 (10-bit)
+- `IOD_nav2::UInt`: Issue of Data from word type 2 (10-bit)
+- `IOD_nav3::UInt`: Issue of Data from word type 3 (10-bit)
+- `IOD_nav4::UInt`: Issue of Data from word type 4 (10-bit)
+- `num_pages_after_last_TOW::Int`: Pages decoded since last TOW update
+- `num_bits_after_valid_syncro_sequence_after_last_TOW::Int`: Bits since last TOW sync
+
+# Signal Health and Data Validity (Word Type 5)
+- `signal_health_e1b::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=in test, 3=will be out of service)
+- `signal_health_e5b::SignalHealth`: E5b signal health status
+- `data_validity_status_e1b::DataValidityStatus`: E1-B data validity (0=valid, 1=working without guarantee)
+- `data_validity_status_e5b::DataValidityStatus`: E5b data validity
+
+# Broadcast Group Delay (Word Type 5)
+- `broadcast_group_delay_e1_e5a::Float64`: E1-E5a group delay correction (seconds)
+- `broadcast_group_delay_e1_e5b::Float64`: E1-E5b group delay correction (seconds)
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Tables 42-46, 67, 70, 72
+"""
 Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     WN::Union{Nothing,Int64} = nothing
     TOW::Union{Nothing,Int64} = nothing
@@ -195,6 +305,37 @@ function is_decoding_completed_for_positioning(data::GalileoE1BData)
         is_health_status_decoded(data)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Create a decoder state for Galileo E1B I/NAV navigation messages.
+
+Initializes a [`GNSSDecoderState`](@ref) configured for decoding Galileo E1B
+(Open Service) navigation messages. The decoder extracts ephemeris, clock
+correction, ionospheric parameters, and health data from the 250 bps I/NAV
+data stream using Viterbi decoding.
+
+# Arguments
+- `prn::Int`: Pseudo-Random Noise code identifier (1-36 for Galileo satellites)
+
+# Returns
+- `GNSSDecoderState{GalileoE1BData}`: Initialized decoder state for Galileo E1B
+
+# Example
+```julia
+state = GalileoE1BDecoderState(1)  # Create decoder for PRN 1
+state = decode(state, bits, num_bits)
+if is_sat_healthy(state)
+    # Use state.data for positioning
+end
+```
+
+# See Also
+- [`GNSSDecoderState`](@ref): The underlying state structure
+- [`decode`](@ref): Decode bits using this state
+- [`reset_decoder_state`](@ref): Reset after signal loss
+- [`is_sat_healthy`](@ref): Check satellite health status
+"""
 function GalileoE1BDecoderState(prn)
     GNSSDecoderState(
         prn,
@@ -225,6 +366,38 @@ function GNSSDecoderState(system::GalileoE1B, prn)
     )
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Reset the Galileo E1B decoder state after a signal loss or reacquisition.
+
+Clears the bit buffers and time-of-week (TOW) field while preserving other
+decoded ephemeris and clock data in `raw_data`. This allows faster recovery
+after brief signal outages without requiring a full re-decode of all pages.
+
+!!! note
+    The week number (`WN`) field is intentionally not reset as it is not
+    broadcast as frequently as TOW. This may cause brief errors if a week
+    rollover occurs during a signal outage.
+
+# Arguments
+- `state::GNSSDecoderState{<:GalileoE1BData}`: Current Galileo E1B decoder state
+
+# Returns
+- `GNSSDecoderState{<:GalileoE1BData}`: Reset decoder state with cleared buffers
+
+# Example
+```julia
+# After detecting signal loss
+state = reset_decoder_state(state)
+# Continue decoding with preserved ephemeris
+state = decode(state, new_bits, num_bits)
+```
+
+# See Also
+- [`GalileoE1BDecoderState`](@ref): Create a fresh decoder state
+- [`decode`](@ref): Continue decoding after reset
+"""
 function reset_decoder_state(state::GNSSDecoderState{<:GalileoE1BData})
     # Reset bit buffers and TOW data field, while keeping the
     # remaining parameters in raw_data. This allows a GNSSReceiver
@@ -450,6 +623,41 @@ function validate_data(state::GNSSDecoderState{<:GalileoE1BData})
     return state
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Check if the Galileo satellite is healthy and usable for positioning.
+
+Examines both the signal health status (`signal_health_e1b`) and data validity
+status (`data_validity_status_e1b`) from page type 5. A satellite is considered
+healthy only if both conditions are met:
+- Signal health is `signal_ok`
+- Data validity is `navigation_data_valid`
+
+!!! warning
+    This function requires that page type 5 has been successfully decoded.
+    Check that `state.data.signal_health_e1b` is not `nothing` before relying
+    on this result.
+
+# Arguments
+- `state::GNSSDecoderState{<:GalileoE1BData}`: Galileo E1B decoder state with decoded data
+
+# Returns
+- `Bool`: `true` if satellite health and data validity indicate normal operation
+
+# Example
+```julia
+state = GalileoE1BDecoderState(1)
+state = decode(state, bits, num_bits)
+if is_sat_healthy(state)
+    # Safe to use for positioning
+end
+```
+
+# See Also
+- [`GalileoE1BDecoderState`](@ref): Create decoder state
+- [`decode`](@ref): Decode navigation data
+"""
 function is_sat_healthy(state::GNSSDecoderState{<:GalileoE1BData})
     state.data.signal_health_e1b == signal_ok &&
         state.data.data_validity_status_e1b == navigation_data_valid

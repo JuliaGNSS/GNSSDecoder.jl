@@ -2,21 +2,52 @@ abstract type AbstractGNSSConstants end
 abstract type AbstractGNSSData end
 abstract type AbstractGNSSCache end
 
+"""
+$(TYPEDEF)
+
+Generic decoder state for GNSS signal decoding. This parametric struct holds all state
+required for decoding navigation messages from GNSS satellites.
+
+# Type Parameters
+- `D<:AbstractGNSSData`: The data type holding decoded navigation message fields
+- `C<:AbstractGNSSConstants`: Constants specific to the GNSS system (e.g., preamble, timing)
+- `CA<:AbstractGNSSCache`: Cache for intermediate decoding state
+- `B<:Unsigned`: Buffer type for storing raw bits (sized for the specific GNSS system)
+
+# Fields
+$(TYPEDFIELDS)
+
+# See Also
+- [`GPSL1DecoderState`](@ref): Constructor for GPS L1 C/A decoder state
+- [`GalileoE1BDecoderState`](@ref): Constructor for Galileo E1B decoder state
+- [`decode`](@ref): Main function to decode bits using this state
+- [`reset_decoder_state`](@ref): Reset decoder state after signal loss
+"""
 Base.@kwdef struct GNSSDecoderState{
     D<:AbstractGNSSData,
     C<:AbstractGNSSConstants,
     CA<:AbstractGNSSCache,
     B<:Unsigned,
 }
+    "Pseudo-Random Noise code identifier for the satellite"
     prn::Int
+    "Raw bit buffer before phase correction"
     raw_buffer::B
+    "Bit buffer after phase correction"
     buffer::B
+    "Partially decoded navigation data (not yet validated)"
     raw_data::D
+    "Validated navigation data ready for use"
     data::D
+    "System-specific constants (preamble, timing parameters)"
     constants::C
+    "Cache for intermediate decoding state"
     cache::CA
+    "Number of bits currently stored in buffer"
     num_bits_buffered::Int = 0
+    "Number of bits received after last valid synchronization sequence, or `nothing` if not yet synchronized"
     num_bits_after_valid_syncro_sequence::Union{Nothing,Int} = 0
+    "Whether the signal phase is inverted by 180 degrees"
     is_shifted_by_180_degrees = false
 end
 
@@ -89,6 +120,37 @@ function complement_buffer_if_necessary(state::GNSSDecoderState)
     end
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Decode GNSS navigation message bits and update the decoder state.
+
+Processes incoming bits from a GNSS signal, detecting preambles and decoding
+synchronization sequences to extract navigation data. The function handles
+both normal and 180-degree phase-shifted signals automatically.
+
+# Arguments
+- `state::GNSSDecoderState`: Current decoder state
+- `bits::T`: Unsigned integer containing the bits to decode (MSB first)
+- `num_bits::Int`: Number of valid bits in `bits` to process
+
+# Keywords
+- `decode_once::Bool=false`: If `true`, stops decoding after all required
+  positioning data has been decoded (subframes 1-3 for GPS, pages 1-5 for Galileo)
+
+# Returns
+- `GNSSDecoderState`: Updated decoder state with newly decoded data
+
+# Example
+```julia
+state = GPSL1DecoderState(1)  # PRN 1
+state = decode(state, UInt8(0b10110010), 8)
+```
+
+# See Also
+- [`GNSSDecoderState`](@ref): The state structure being updated
+- [`is_sat_healthy`](@ref): Check if satellite health is good after decoding
+"""
 function decode(
     state::GNSSDecoderState,
     bits::T,
