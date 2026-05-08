@@ -36,15 +36,6 @@ Base.@kwdef struct GalileoE1BConstants <: AbstractGNSSConstants
     F::Float64 = -4.442807309e-10
 end
 
-# Page is splitted in even and odd parts
-# Cache even part and decode after odd part
-# Page contains 120 bits
-struct GalileoE1BCache <: AbstractGNSSCache
-    even_page_part_bits::UInt128
-end
-
-GalileoE1BCache() = GalileoE1BCache(UInt128(0))
-
 """
     SignalHealth
 
@@ -55,7 +46,7 @@ Indicates the operational status of a Galileo signal component as broadcast in w
 # Values
 - `signal_ok`: Signal is operating normally (value 0)
 - `signal_out_of_service`: Signal is out of service (value 1)
-- `signal_will_be_out_of_service`: Signal is in Extended Operations Mode (value 2)
+- `signal_in_extended_operations_mode`: Signal is in Extended Operations Mode (value 2)
 - `signal_component_currently_in_test`: Signal component is currently in test (value 3)
 
 # Reference
@@ -64,7 +55,7 @@ Galileo OS SIS ICD, Issue 2.2, Table 84
 @enum SignalHealth begin
     signal_ok
     signal_out_of_service
-    signal_will_be_out_of_service
+    signal_in_extended_operations_mode
     signal_component_currently_in_test
 end
 
@@ -88,17 +79,176 @@ Galileo OS SIS ICD, Issue 2.2, Table 81
 end
 
 """
+    GalileoAlmanac
+
+Almanac data for one Galileo satellite, decoded from word types 7-10.
+
+The almanac provides reduced-precision orbital and clock parameters for predicting
+satellite positions and selecting satellites for tracking. Differences (`Δsqrt_A`,
+`δi`) are relative to nominal Galileo constellation values (`A_nominal = 29600.318 km`,
+`i_nominal = 56°`).
+
+# Fields
+- `SVID::UInt`: Satellite identifier (1-36 nominal range; 0 = unused entry)
+- `Δsqrt_A::Float64`: Difference of √(semi-major axis) from nominal (√m)
+- `e::Float64`: Eccentricity (dimensionless)
+- `ω::Float64`: Argument of perigee (semi-circles)
+- `δi::Float64`: Inclination delta from nominal (semi-circles)
+- `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
+- `Ω_dot::Float64`: Rate of change of right ascension (semi-circles/s)
+- `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+- `a_f0::Float64`: Truncated SV clock bias (seconds)
+- `a_f1::Float64`: Truncated SV clock drift (s/s)
+- `signal_health_e5b::SignalHealth`: Predicted E5b signal health status
+- `signal_health_e1b::SignalHealth`: Predicted E1-B/C signal health status
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Table 86
+"""
+Base.@kwdef struct GalileoAlmanac
+    SVID::Union{Nothing,UInt} = nothing
+    Δsqrt_A::Union{Nothing,Float64} = nothing
+    e::Union{Nothing,Float64} = nothing
+    ω::Union{Nothing,Float64} = nothing
+    δi::Union{Nothing,Float64} = nothing
+    Ω_0::Union{Nothing,Float64} = nothing
+    Ω_dot::Union{Nothing,Float64} = nothing
+    M_0::Union{Nothing,Float64} = nothing
+    a_f0::Union{Nothing,Float64} = nothing
+    a_f1::Union{Nothing,Float64} = nothing
+    signal_health_e5b::Union{Nothing,SignalHealth} = nothing
+    signal_health_e1b::Union{Nothing,SignalHealth} = nothing
+end
+
+function GalileoAlmanac(
+    a::GalileoAlmanac;
+    SVID = a.SVID,
+    Δsqrt_A = a.Δsqrt_A,
+    e = a.e,
+    ω = a.ω,
+    δi = a.δi,
+    Ω_0 = a.Ω_0,
+    Ω_dot = a.Ω_dot,
+    M_0 = a.M_0,
+    a_f0 = a.a_f0,
+    a_f1 = a.a_f1,
+    signal_health_e5b = a.signal_health_e5b,
+    signal_health_e1b = a.signal_health_e1b,
+)
+    GalileoAlmanac(
+        SVID,
+        Δsqrt_A,
+        e,
+        ω,
+        δi,
+        Ω_0,
+        Ω_dot,
+        M_0,
+        a_f0,
+        a_f1,
+        signal_health_e5b,
+        signal_health_e1b,
+    )
+end
+
+"""
+    GalileoReducedCED
+
+Reduced Clock and Ephemeris Data, decoded from word type 16.
+
+A compact ephemeris/clock set transmitted within a single I/NAV word. Provides
+reduced-accuracy parameters that allow a receiver to compute an initial position
+fix before the full ephemeris (words 1-4) has been collected. Reduced CED
+parameters must NOT be combined with full-precision parameters from words 1-4.
+
+# Fields
+- `ΔA_red::Float64`: Difference of semi-major axis from nominal (meters)
+- `e_x_red::Float64`: Eccentricity vector x-component, e·cos(ω) (dimensionless)
+- `e_y_red::Float64`: Eccentricity vector y-component, e·sin(ω) (dimensionless)
+- `Δi_0_red::Float64`: Inclination delta from nominal (semi-circles)
+- `Ω_0_red::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
+- `λ_0_red::Float64`: Mean argument of latitude, M0+ω (semi-circles)
+- `a_f0_red::Float64`: SV clock bias correction coefficient (seconds)
+- `a_f1_red::Float64`: SV clock drift correction coefficient (s/s)
+
+# Reference
+Galileo OS SIS ICD, Issue 2.2, Table 87
+"""
+Base.@kwdef struct GalileoReducedCED
+    ΔA_red::Union{Nothing,Float64} = nothing
+    e_x_red::Union{Nothing,Float64} = nothing
+    e_y_red::Union{Nothing,Float64} = nothing
+    Δi_0_red::Union{Nothing,Float64} = nothing
+    Ω_0_red::Union{Nothing,Float64} = nothing
+    λ_0_red::Union{Nothing,Float64} = nothing
+    a_f0_red::Union{Nothing,Float64} = nothing
+    a_f1_red::Union{Nothing,Float64} = nothing
+end
+
+# Page is splitted in even and odd parts
+# Cache even part and decode after odd part
+# Page contains 120 bits
+#
+# Almanac chain partials carry across word types 7-10 within one subframe:
+#   WT7  fills SV-position-1 first half
+#   WT8  fills SV-position-1 second half (flush to almanacs[SVID])
+#         and SV-position-2 first half
+#   WT9  fills SV-position-2 second half (flush)
+#         and SV-position-3 first half
+#   WT10 fills SV-position-3 second half (flush)
+# The chain IODa is captured to detect cross-subframe mismatches.
+struct GalileoE1BCache <: AbstractGNSSCache
+    even_page_part_bits::UInt128
+    almanac_chain_iod_a::Union{Nothing,UInt}
+    almanac_chain_pos1::GalileoAlmanac
+    almanac_chain_pos2::GalileoAlmanac
+end
+
+GalileoE1BCache() =
+    GalileoE1BCache(UInt128(0), nothing, GalileoAlmanac(), GalileoAlmanac())
+
+function GalileoE1BCache(
+    cache::GalileoE1BCache;
+    even_page_part_bits = cache.even_page_part_bits,
+    almanac_chain_iod_a = cache.almanac_chain_iod_a,
+    almanac_chain_pos1 = cache.almanac_chain_pos1,
+    almanac_chain_pos2 = cache.almanac_chain_pos2,
+)
+    GalileoE1BCache(
+        even_page_part_bits,
+        almanac_chain_iod_a,
+        almanac_chain_pos1,
+        almanac_chain_pos2,
+    )
+end
+
+# Functional update: copy the 36-slot almanac vector and replace one entry.
+# SVID values outside 1:36 are silently ignored (the ICD reserves >36 for future use).
+function set_almanac(almanacs::Vector{GalileoAlmanac}, svid::Integer, almanac::GalileoAlmanac)
+    if !(1 <= svid <= length(almanacs))
+        return almanacs
+    end
+    new_almanacs = copy(almanacs)
+    new_almanacs[svid] = almanac
+    return new_almanacs
+end
+
+"""
     GalileoE1BData
 
 Decoded Galileo E1B I/NAV navigation message data.
 
-Contains ephemeris, clock correction, signal health, and group delay parameters decoded
-from word types 1-5 of the Galileo I/NAV message. All parameters conform to the Galileo
-OS SIS ICD.
+Contains ephemeris, clock correction, signal health, group delay, ionospheric
+correction, GST-UTC and GST-GPS conversion, almanac, and Reduced CED parameters
+decoded from the Galileo I/NAV message. All parameters conform to the Galileo
+OS SIS ICD, Issue 2.2.
 
 # Galileo System Time (GST) Fields
 - `WN::Int64`: Week Number (0-4095)
 - `TOW::Int64`: Time of Week at message transmission (seconds, 0-604799)
+
+# Satellite Identification (Word Type 4)
+- `SVID::UInt`: Satellite Identifier (1-36 nominal range)
 
 # Ephemeris Parameters (Word Types 1-3)
 - `t_0e::Float64`: Ephemeris reference time (seconds)
@@ -118,6 +268,9 @@ OS SIS ICD.
 - `C_ic::Float64`: Cosine harmonic correction to inclination (rad)
 - `C_is::Float64`: Sine harmonic correction to inclination (rad)
 
+# Signal-In-Space Accuracy (Word Type 3)
+- `SISA_e1_e5b::UInt`: SISA index for dual frequency E1-E5b (Table 91/92; 255 = NAPA)
+
 # Clock Correction Parameters (Word Type 4)
 - `t_0c::Float64`: Clock correction reference time (seconds)
 - `a_f0::Float64`: SV clock bias correction coefficient (seconds)
@@ -133,7 +286,7 @@ OS SIS ICD.
 - `num_bits_after_valid_syncro_sequence_after_last_TOW::Int`: Bits since last TOW sync
 
 # Signal Health and Data Validity (Word Type 5)
-- `signal_health_e1b::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=in test, 3=will be out of service)
+- `signal_health_e1b::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=Extended Operations Mode, 3=in test)
 - `signal_health_e5b::SignalHealth`: E5b signal health status
 - `data_validity_status_e1b::DataValidityStatus`: E1-B data validity (0=valid, 1=working without guarantee)
 - `data_validity_status_e5b::DataValidityStatus`: E5b data validity
@@ -142,12 +295,50 @@ OS SIS ICD.
 - `broadcast_group_delay_e1_e5a::Float64`: E1-E5a group delay correction (seconds)
 - `broadcast_group_delay_e1_e5b::Float64`: E1-E5b group delay correction (seconds)
 
+# Ionospheric Correction (Word Type 5)
+- `a_i0::Float64`: Effective Ionisation Level 1st-order coefficient (sfu)
+- `a_i1::Float64`: Effective Ionisation Level 2nd-order coefficient (sfu/degree)
+- `a_i2::Float64`: Effective Ionisation Level 3rd-order coefficient (sfu/degree²)
+- `iono_storm_flag_region1..5::Bool`: Ionospheric Disturbance (storm) flags for regions 1-5
+
+# GST-UTC Conversion (Word Type 6)
+- `A_0_utc::Float64`: Constant term of polynomial (s)
+- `A_1_utc::Float64`: 1st-order term of polynomial (s/s)
+- `Δt_LS::Int`: Leap Second count before leap second adjustment (s)
+- `t_0t::Int`: UTC data reference Time of Week (s)
+- `WN_0t::UInt`: UTC data reference Week Number (8-bit, modulo 256)
+- `WN_LSF::UInt`: Week Number of leap second adjustment (8-bit, modulo 256)
+- `DN::UInt`: Day Number at end of which leap second becomes effective (1=Sunday … 7=Saturday)
+- `Δt_LSF::Int`: Leap Second count after leap second adjustment (s)
+
+# GST-GPS Conversion / GGTO (Word Type 10)
+- `A_0G::Float64`: Constant term of GST-GPS offset polynomial (s)
+- `A_1G::Float64`: Rate of change of GST-GPS offset (s/s)
+- `t_0G::Int`: GGTO reference time (s)
+- `WN_0G::UInt`: GGTO reference Week Number (6-bit)
+
+# Almanac (Word Types 7-10)
+- `IOD_a7::UInt`, `IOD_a8::UInt`, `IOD_a9::UInt`, `IOD_a10::UInt`: Almanac IOD per source word
+- `WN_a::UInt`: Almanac reference Week Number (2 LSB of GST WN)
+- `t_0a::Int`: Almanac reference time (seconds)
+- `almanacs::Vector{GalileoAlmanac}`: 36-slot table of decoded almanacs indexed by
+  SVID (slot `i` holds the almanac for SVID `i`, 1-based). Entries are filled in
+  as Galileo broadcasts the almanac chain across word types 7→10. Slots not yet
+  decoded contain a default `GalileoAlmanac()` with all `nothing` fields.
+  In-flight chain partials live in [`GalileoE1BCache`](@ref) and are flushed here
+  only once a full almanac for an SVID has been assembled with a consistent IODa.
+
+# Reduced Clock and Ephemeris Data (Word Type 16)
+- `reduced_ced::GalileoReducedCED`: Reduced CED for fast initial fix
+
 # Reference
-Galileo OS SIS ICD, Issue 2.2, Tables 42-46, 67, 70, 72
+Galileo OS SIS ICD, Issue 2.2, Tables 42-55, 67-87
 """
 Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     WN::Union{Nothing,Int64} = nothing
     TOW::Union{Nothing,Int64} = nothing
+
+    SVID::Union{Nothing,UInt} = nothing
 
     t_0e::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
@@ -165,6 +356,8 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     C_rs::Union{Nothing,Float64} = nothing
     C_ic::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
+
+    SISA_e1_e5b::Union{Nothing,UInt} = nothing
 
     t_0c::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
@@ -185,12 +378,46 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
 
     broadcast_group_delay_e1_e5a::Union{Nothing,Float64} = nothing
     broadcast_group_delay_e1_e5b::Union{Nothing,Float64} = nothing
+
+    a_i0::Union{Nothing,Float64} = nothing
+    a_i1::Union{Nothing,Float64} = nothing
+    a_i2::Union{Nothing,Float64} = nothing
+    iono_storm_flag_region1::Union{Nothing,Bool} = nothing
+    iono_storm_flag_region2::Union{Nothing,Bool} = nothing
+    iono_storm_flag_region3::Union{Nothing,Bool} = nothing
+    iono_storm_flag_region4::Union{Nothing,Bool} = nothing
+    iono_storm_flag_region5::Union{Nothing,Bool} = nothing
+
+    A_0_utc::Union{Nothing,Float64} = nothing
+    A_1_utc::Union{Nothing,Float64} = nothing
+    Δt_LS::Union{Nothing,Int} = nothing
+    t_0t::Union{Nothing,Int} = nothing
+    WN_0t::Union{Nothing,UInt} = nothing
+    WN_LSF::Union{Nothing,UInt} = nothing
+    DN::Union{Nothing,UInt} = nothing
+    Δt_LSF::Union{Nothing,Int} = nothing
+
+    A_0G::Union{Nothing,Float64} = nothing
+    A_1G::Union{Nothing,Float64} = nothing
+    t_0G::Union{Nothing,Int} = nothing
+    WN_0G::Union{Nothing,UInt} = nothing
+
+    IOD_a7::Union{Nothing,UInt} = nothing
+    IOD_a8::Union{Nothing,UInt} = nothing
+    IOD_a9::Union{Nothing,UInt} = nothing
+    IOD_a10::Union{Nothing,UInt} = nothing
+    WN_a::Union{Nothing,UInt} = nothing
+    t_0a::Union{Nothing,Int} = nothing
+    almanacs::Vector{GalileoAlmanac} = [GalileoAlmanac() for _ = 1:36]
+
+    reduced_ced::GalileoReducedCED = GalileoReducedCED()
 end
 
 function GalileoE1BData(
     data::GalileoE1BData;
     WN = data.WN,
     TOW = data.TOW,
+    SVID = data.SVID,
     t_0e = data.t_0e,
     M_0 = data.M_0,
     e = data.e,
@@ -207,6 +434,7 @@ function GalileoE1BData(
     C_rs = data.C_rs,
     C_ic = data.C_ic,
     C_is = data.C_is,
+    SISA_e1_e5b = data.SISA_e1_e5b,
     t_0c = data.t_0c,
     a_f0 = data.a_f0,
     a_f1 = data.a_f1,
@@ -223,10 +451,39 @@ function GalileoE1BData(
     data_validity_status_e5b = data.data_validity_status_e5b,
     broadcast_group_delay_e1_e5a = data.broadcast_group_delay_e1_e5a,
     broadcast_group_delay_e1_e5b = data.broadcast_group_delay_e1_e5b,
+    a_i0 = data.a_i0,
+    a_i1 = data.a_i1,
+    a_i2 = data.a_i2,
+    iono_storm_flag_region1 = data.iono_storm_flag_region1,
+    iono_storm_flag_region2 = data.iono_storm_flag_region2,
+    iono_storm_flag_region3 = data.iono_storm_flag_region3,
+    iono_storm_flag_region4 = data.iono_storm_flag_region4,
+    iono_storm_flag_region5 = data.iono_storm_flag_region5,
+    A_0_utc = data.A_0_utc,
+    A_1_utc = data.A_1_utc,
+    Δt_LS = data.Δt_LS,
+    t_0t = data.t_0t,
+    WN_0t = data.WN_0t,
+    WN_LSF = data.WN_LSF,
+    DN = data.DN,
+    Δt_LSF = data.Δt_LSF,
+    A_0G = data.A_0G,
+    A_1G = data.A_1G,
+    t_0G = data.t_0G,
+    WN_0G = data.WN_0G,
+    IOD_a7 = data.IOD_a7,
+    IOD_a8 = data.IOD_a8,
+    IOD_a9 = data.IOD_a9,
+    IOD_a10 = data.IOD_a10,
+    WN_a = data.WN_a,
+    t_0a = data.t_0a,
+    almanacs = data.almanacs,
+    reduced_ced = data.reduced_ced,
 )
     GalileoE1BData(
         WN,
         TOW,
+        SVID,
         t_0e,
         M_0,
         e,
@@ -243,6 +500,7 @@ function GalileoE1BData(
         C_rs,
         C_ic,
         C_is,
+        SISA_e1_e5b,
         t_0c,
         a_f0,
         a_f1,
@@ -259,7 +517,45 @@ function GalileoE1BData(
         data_validity_status_e5b,
         broadcast_group_delay_e1_e5a,
         broadcast_group_delay_e1_e5b,
+        a_i0,
+        a_i1,
+        a_i2,
+        iono_storm_flag_region1,
+        iono_storm_flag_region2,
+        iono_storm_flag_region3,
+        iono_storm_flag_region4,
+        iono_storm_flag_region5,
+        A_0_utc,
+        A_1_utc,
+        Δt_LS,
+        t_0t,
+        WN_0t,
+        WN_LSF,
+        DN,
+        Δt_LSF,
+        A_0G,
+        A_1G,
+        t_0G,
+        WN_0G,
+        IOD_a7,
+        IOD_a8,
+        IOD_a9,
+        IOD_a10,
+        WN_a,
+        t_0a,
+        almanacs,
+        reduced_ced,
     )
+end
+
+# The default `==` for structs falls back to `===`, which is reference equality
+# and so fails for the `almanacs::Vector{GalileoAlmanac}` field even when the
+# contents match. Compare field-by-field.
+function Base.:(==)(a::GalileoE1BData, b::GalileoE1BData)
+    for f in fieldnames(GalileoE1BData)
+        getfield(a, f) == getfield(b, f) || return false
+    end
+    return true
 end
 
 function is_ephemeris_decoded(data::GalileoE1BData)
@@ -443,7 +739,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
     if is_even
         state = GNSSDecoderState(
             state;
-            cache = GalileoE1BCache(is_nominal_page ? bits : UInt128(0)),
+            cache = GalileoE1BCache(
+                state.cache;
+                even_page_part_bits = is_nominal_page ? bits : UInt128(0),
+            ),
         )
     elseif state.cache.even_page_part_bits != 0 && is_nominal_page
         data =
@@ -517,6 +816,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 C_us = get_twos_complement_num(data, 128, 73, 16) / 1 << 29
                 C_rc = get_twos_complement_num(data, 128, 89, 16) / 1 << 5
                 C_rs = get_twos_complement_num(data, 128, 105, 16) / 1 << 5
+                SISA_e1_e5b = get_bits(data, 128, 121, 8)
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
@@ -528,10 +828,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                         C_us,
                         C_rc,
                         C_rs,
+                        SISA_e1_e5b,
                     ),
                 )
             elseif data_type == 4
                 IOD_nav4 = get_bits(data, 128, 7, 10)
+                SVID = get_bits(data, 128, 17, 6)
                 C_ic = get_twos_complement_num(data, 128, 23, 16) / 1 << 29
                 C_is = get_twos_complement_num(data, 128, 39, 16) / 1 << 29
                 t_0c = get_bits(data, 128, 55, 14) * 60
@@ -543,6 +845,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     raw_data = GalileoE1BData(
                         state.raw_data;
                         IOD_nav4,
+                        SVID,
                         C_ic,
                         C_is,
                         t_0c,
@@ -552,6 +855,14 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 5
+                a_i0 = get_bits(data, 128, 7, 11) / 1 << 2
+                a_i1 = get_twos_complement_num(data, 128, 18, 11) / 1 << 8
+                a_i2 = get_twos_complement_num(data, 128, 29, 14) / 1 << 15
+                iono_storm_flag_region1 = get_bit(data, 128, 43)
+                iono_storm_flag_region2 = get_bit(data, 128, 44)
+                iono_storm_flag_region3 = get_bit(data, 128, 45)
+                iono_storm_flag_region4 = get_bit(data, 128, 46)
+                iono_storm_flag_region5 = get_bit(data, 128, 47)
                 broadcast_group_delay_e1_e5a =
                     get_twos_complement_num(data, 128, 48, 10) / 1 << 32
                 broadcast_group_delay_e1_e5b =
@@ -566,6 +877,14 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     state;
                     raw_data = GalileoE1BData(
                         state.raw_data;
+                        a_i0,
+                        a_i1,
+                        a_i2,
+                        iono_storm_flag_region1,
+                        iono_storm_flag_region2,
+                        iono_storm_flag_region3,
+                        iono_storm_flag_region4,
+                        iono_storm_flag_region5,
                         broadcast_group_delay_e1_e5a,
                         broadcast_group_delay_e1_e5b,
                         signal_health_e5b,
@@ -579,15 +898,273 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 6
+                A_0_utc = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
+                A_1_utc = get_twos_complement_num(data, 128, 39, 24) / 1 << 50
+                Δt_LS = Int(get_twos_complement_num(data, 128, 63, 8))
+                t_0t = Int(get_bits(data, 128, 71, 8) * 3600)
+                WN_0t = get_bits(data, 128, 79, 8)
+                WN_LSF = get_bits(data, 128, 87, 8)
+                DN = get_bits(data, 128, 95, 3)
+                Δt_LSF = Int(get_twos_complement_num(data, 128, 98, 8))
                 TOW = get_bits(data, 128, 106, 20)
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
                         state.raw_data;
+                        A_0_utc,
+                        A_1_utc,
+                        Δt_LS,
+                        t_0t,
+                        WN_0t,
+                        WN_LSF,
+                        DN,
+                        Δt_LSF,
                         TOW,
                         num_pages_after_last_TOW = 1,
                         num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
                     ),
+                )
+            elseif data_type == 7
+                IOD_a7 = get_bits(data, 128, 7, 4)
+                WN_a = get_bits(data, 128, 11, 2)
+                t_0a = Int(get_bits(data, 128, 13, 10) * 600)
+                SVID = get_bits(data, 128, 23, 6)
+                Δsqrt_A = get_twos_complement_num(data, 128, 29, 13) / 1 << 9
+                e = get_bits(data, 128, 42, 11) / 1 << 16
+                ω =
+                    get_twos_complement_num(data, 128, 53, 16) * state.constants.PI /
+                    1 << 15
+                δi =
+                    get_twos_complement_num(data, 128, 69, 11) * state.constants.PI /
+                    1 << 14
+                Ω_0 =
+                    get_twos_complement_num(data, 128, 80, 16) * state.constants.PI /
+                    1 << 15
+                Ω_dot =
+                    get_twos_complement_num(data, 128, 96, 11) * state.constants.PI /
+                    1 << 33
+                M_0 =
+                    get_twos_complement_num(data, 128, 107, 16) * state.constants.PI /
+                    1 << 15
+                almanac_pos1 = GalileoAlmanac(;
+                    SVID,
+                    Δsqrt_A,
+                    e,
+                    ω,
+                    δi,
+                    Ω_0,
+                    Ω_dot,
+                    M_0,
+                )
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_a7,
+                        WN_a,
+                        t_0a,
+                    ),
+                    cache = GalileoE1BCache(
+                        state.cache;
+                        almanac_chain_iod_a = IOD_a7,
+                        almanac_chain_pos1 = almanac_pos1,
+                        almanac_chain_pos2 = GalileoAlmanac(),
+                    ),
+                )
+            elseif data_type == 8
+                IOD_a8 = get_bits(data, 128, 7, 4)
+                a_f0_pos1 = get_twos_complement_num(data, 128, 11, 16) / 1 << 19
+                a_f1_pos1 = get_twos_complement_num(data, 128, 27, 13) / 1 << 38
+                signal_health_e5b_pos1 = SignalHealth(get_bits(data, 128, 40, 2))
+                signal_health_e1b_pos1 = SignalHealth(get_bits(data, 128, 42, 2))
+                SVID = get_bits(data, 128, 44, 6)
+                Δsqrt_A = get_twos_complement_num(data, 128, 50, 13) / 1 << 9
+                e = get_bits(data, 128, 63, 11) / 1 << 16
+                ω =
+                    get_twos_complement_num(data, 128, 74, 16) * state.constants.PI /
+                    1 << 15
+                δi =
+                    get_twos_complement_num(data, 128, 90, 11) * state.constants.PI /
+                    1 << 14
+                Ω_0 =
+                    get_twos_complement_num(data, 128, 101, 16) * state.constants.PI /
+                    1 << 15
+                Ω_dot =
+                    get_twos_complement_num(data, 128, 117, 11) * state.constants.PI /
+                    1 << 33
+                # Flush position-1 almanac if its WT7 partial is intact and IODa matches
+                completed_pos1 = GalileoAlmanac(
+                    state.cache.almanac_chain_pos1;
+                    a_f0 = a_f0_pos1,
+                    a_f1 = a_f1_pos1,
+                    signal_health_e5b = signal_health_e5b_pos1,
+                    signal_health_e1b = signal_health_e1b_pos1,
+                )
+                almanacs = state.raw_data.almanacs
+                if state.cache.almanac_chain_iod_a == IOD_a8 &&
+                   !isnothing(completed_pos1.SVID)
+                    almanacs = set_almanac(almanacs, completed_pos1.SVID, completed_pos1)
+                end
+                almanac_pos2 = GalileoAlmanac(;
+                    SVID,
+                    Δsqrt_A,
+                    e,
+                    ω,
+                    δi,
+                    Ω_0,
+                    Ω_dot,
+                )
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_a8,
+                        almanacs,
+                    ),
+                    cache = GalileoE1BCache(
+                        state.cache;
+                        almanac_chain_iod_a = IOD_a8,
+                        almanac_chain_pos1 = GalileoAlmanac(),
+                        almanac_chain_pos2 = almanac_pos2,
+                    ),
+                )
+            elseif data_type == 9
+                IOD_a9 = get_bits(data, 128, 7, 4)
+                WN_a = get_bits(data, 128, 11, 2)
+                t_0a = Int(get_bits(data, 128, 13, 10) * 600)
+                M_0_pos2 =
+                    get_twos_complement_num(data, 128, 23, 16) * state.constants.PI /
+                    1 << 15
+                a_f0_pos2 = get_twos_complement_num(data, 128, 39, 16) / 1 << 19
+                a_f1_pos2 = get_twos_complement_num(data, 128, 55, 13) / 1 << 38
+                signal_health_e5b_pos2 = SignalHealth(get_bits(data, 128, 68, 2))
+                signal_health_e1b_pos2 = SignalHealth(get_bits(data, 128, 70, 2))
+                SVID = get_bits(data, 128, 72, 6)
+                Δsqrt_A = get_twos_complement_num(data, 128, 78, 13) / 1 << 9
+                e = get_bits(data, 128, 91, 11) / 1 << 16
+                ω =
+                    get_twos_complement_num(data, 128, 102, 16) * state.constants.PI /
+                    1 << 15
+                δi =
+                    get_twos_complement_num(data, 128, 118, 11) * state.constants.PI /
+                    1 << 14
+                completed_pos2 = GalileoAlmanac(
+                    state.cache.almanac_chain_pos2;
+                    M_0 = M_0_pos2,
+                    a_f0 = a_f0_pos2,
+                    a_f1 = a_f1_pos2,
+                    signal_health_e5b = signal_health_e5b_pos2,
+                    signal_health_e1b = signal_health_e1b_pos2,
+                )
+                almanacs = state.raw_data.almanacs
+                if state.cache.almanac_chain_iod_a == IOD_a9 &&
+                   !isnothing(completed_pos2.SVID)
+                    almanacs = set_almanac(almanacs, completed_pos2.SVID, completed_pos2)
+                end
+                almanac_pos3 = GalileoAlmanac(;
+                    SVID,
+                    Δsqrt_A,
+                    e,
+                    ω,
+                    δi,
+                )
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_a9,
+                        WN_a,
+                        t_0a,
+                        almanacs,
+                    ),
+                    cache = GalileoE1BCache(
+                        state.cache;
+                        almanac_chain_iod_a = IOD_a9,
+                        almanac_chain_pos1 = almanac_pos3,
+                        almanac_chain_pos2 = GalileoAlmanac(),
+                    ),
+                )
+            elseif data_type == 10
+                IOD_a10 = get_bits(data, 128, 7, 4)
+                Ω_0_pos3 =
+                    get_twos_complement_num(data, 128, 11, 16) * state.constants.PI /
+                    1 << 15
+                Ω_dot_pos3 =
+                    get_twos_complement_num(data, 128, 27, 11) * state.constants.PI /
+                    1 << 33
+                M_0_pos3 =
+                    get_twos_complement_num(data, 128, 38, 16) * state.constants.PI /
+                    1 << 15
+                a_f0_pos3 = get_twos_complement_num(data, 128, 54, 16) / 1 << 19
+                a_f1_pos3 = get_twos_complement_num(data, 128, 70, 13) / 1 << 38
+                signal_health_e5b_pos3 = SignalHealth(get_bits(data, 128, 83, 2))
+                signal_health_e1b_pos3 = SignalHealth(get_bits(data, 128, 85, 2))
+                A_0G = get_twos_complement_num(data, 128, 87, 16) / 1 << 35
+                A_1G = get_twos_complement_num(data, 128, 103, 12) / 1 << 51
+                t_0G = Int(get_bits(data, 128, 115, 8) * 3600)
+                WN_0G = get_bits(data, 128, 123, 6)
+                # Position 3 partial sits in cache pos1 (set by WT9)
+                completed_pos3 = GalileoAlmanac(
+                    state.cache.almanac_chain_pos1;
+                    Ω_0 = Ω_0_pos3,
+                    Ω_dot = Ω_dot_pos3,
+                    M_0 = M_0_pos3,
+                    a_f0 = a_f0_pos3,
+                    a_f1 = a_f1_pos3,
+                    signal_health_e5b = signal_health_e5b_pos3,
+                    signal_health_e1b = signal_health_e1b_pos3,
+                )
+                almanacs = state.raw_data.almanacs
+                if state.cache.almanac_chain_iod_a == IOD_a10 &&
+                   !isnothing(completed_pos3.SVID)
+                    almanacs = set_almanac(almanacs, completed_pos3.SVID, completed_pos3)
+                end
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(
+                        state.raw_data;
+                        IOD_a10,
+                        almanacs,
+                        A_0G,
+                        A_1G,
+                        t_0G,
+                        WN_0G,
+                    ),
+                    cache = GalileoE1BCache(
+                        state.cache;
+                        almanac_chain_iod_a = nothing,
+                        almanac_chain_pos1 = GalileoAlmanac(),
+                        almanac_chain_pos2 = GalileoAlmanac(),
+                    ),
+                )
+            elseif data_type == 16
+                ΔA_red = get_twos_complement_num(data, 128, 7, 5) * 256.0
+                e_x_red = get_twos_complement_num(data, 128, 12, 13) / 1 << 22
+                e_y_red = get_twos_complement_num(data, 128, 25, 13) / 1 << 22
+                Δi_0_red =
+                    get_twos_complement_num(data, 128, 38, 17) * state.constants.PI /
+                    1 << 22
+                Ω_0_red =
+                    get_twos_complement_num(data, 128, 55, 23) * state.constants.PI /
+                    1 << 22
+                λ_0_red =
+                    get_twos_complement_num(data, 128, 78, 23) * state.constants.PI /
+                    1 << 22
+                a_f0_red = get_twos_complement_num(data, 128, 101, 22) / 1 << 26
+                a_f1_red = get_twos_complement_num(data, 128, 123, 6) / 1 << 35
+                reduced_ced = GalileoReducedCED(;
+                    ΔA_red,
+                    e_x_red,
+                    e_y_red,
+                    Δi_0_red,
+                    Ω_0_red,
+                    λ_0_red,
+                    a_f0_red,
+                    a_f1_red,
+                )
+                state = GNSSDecoderState(
+                    state;
+                    raw_data = GalileoE1BData(state.raw_data; reduced_ced),
                 )
             end
         end
