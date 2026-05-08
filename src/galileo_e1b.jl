@@ -325,8 +325,8 @@ OS SIS ICD, Issue 2.2.
   SVID (slot `i` holds the almanac for SVID `i`, 1-based). Entries are filled in
   as Galileo broadcasts the almanac chain across word types 7→10. Slots not yet
   decoded contain a default `GalileoAlmanac()` with all `nothing` fields.
-  In-flight chain partials live in [`GalileoE1BCache`](@ref) and are flushed here
-  only once a full almanac for an SVID has been assembled with a consistent IODa.
+  In-flight chain partials live in the decoder cache and are flushed here only
+  once a full almanac for an SVID has been assembled with a consistent IODa.
 
 # Reduced Clock and Ephemeris Data (Word Type 16)
 - `reduced_ced::GalileoReducedCED`: Reduced CED for fast initial fix
