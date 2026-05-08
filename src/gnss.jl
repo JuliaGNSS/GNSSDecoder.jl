@@ -76,6 +76,18 @@ function GNSSDecoderState(
     )
 end
 
+# The default `==` for structs containing fields with mutable types (like the
+# `Vector{GalileoAlmanac}` inside `GalileoE1BData`) falls back to `===`.
+# Compare field-by-field so that two states with equal-but-not-identical contents
+# are considered equal.
+function Base.:(==)(a::GNSSDecoderState, b::GNSSDecoderState)
+    typeof(a) === typeof(b) || return false
+    for f in fieldnames(typeof(a))
+        getfield(a, f) == getfield(b, f) || return false
+    end
+    return true
+end
+
 function push_bit(state::GNSSDecoderState, current_bit)
     GNSSDecoderState(
         state;
