@@ -89,7 +89,7 @@ satellite positions and selecting satellites for tracking. Differences (`Δsqrt_
 `i_nominal = 56°`).
 
 # Fields
-- `SVID::UInt`: Satellite identifier (1-36 nominal range; 0 = unused entry)
+- `SVID::Int`: Satellite identifier (1-36 nominal range; 0 = unused entry)
 - `Δsqrt_A::Float64`: Difference of √(semi-major axis) from nominal (√m)
 - `e::Float64`: Eccentricity (dimensionless)
 - `ω::Float64`: Argument of perigee (semi-circles)
@@ -106,7 +106,7 @@ satellite positions and selecting satellites for tracking. Differences (`Δsqrt_
 Galileo OS SIS ICD, Issue 2.2, Table 86
 """
 Base.@kwdef struct GalileoAlmanac
-    SVID::Union{Nothing,UInt} = nothing
+    SVID::Union{Nothing,Int} = nothing
     Δsqrt_A::Union{Nothing,Float64} = nothing
     e::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
@@ -199,7 +199,7 @@ end
 # The chain IODa is captured to detect cross-subframe mismatches.
 struct GalileoE1BCache <: AbstractGNSSCache
     even_page_part_bits::UInt128
-    almanac_chain_iod_a::Union{Nothing,UInt}
+    almanac_chain_iod_a::Union{Nothing,Int}
     almanac_chain_pos1::GalileoAlmanac
     almanac_chain_pos2::GalileoAlmanac
 end
@@ -248,7 +248,7 @@ OS SIS ICD, Issue 2.2.
 - `TOW::Int64`: Time of Week at message transmission (seconds, 0-604799)
 
 # Satellite Identification (Word Type 4)
-- `SVID::UInt`: Satellite Identifier (1-36 nominal range)
+- `SVID::Int`: Satellite Identifier (1-36 nominal range)
 
 # Ephemeris Parameters (Word Types 1-3)
 - `t_0e::Float64`: Ephemeris reference time (seconds)
@@ -269,7 +269,7 @@ OS SIS ICD, Issue 2.2.
 - `C_is::Float64`: Sine harmonic correction to inclination (rad)
 
 # Signal-In-Space Accuracy (Word Type 3)
-- `SISA_e1_e5b::UInt`: SISA index for dual frequency E1-E5b (Table 91/92; 255 = NAPA)
+- `SISA_e1_e5b::Int`: SISA index for dual frequency E1-E5b (Table 91/92; 255 = NAPA)
 
 # Clock Correction Parameters (Word Type 4)
 - `t_0c::Float64`: Clock correction reference time (seconds)
@@ -306,20 +306,20 @@ OS SIS ICD, Issue 2.2.
 - `A_1_utc::Float64`: 1st-order term of polynomial (s/s)
 - `Δt_LS::Int`: Leap Second count before leap second adjustment (s)
 - `t_0t::Int`: UTC data reference Time of Week (s)
-- `WN_0t::UInt`: UTC data reference Week Number (8-bit, modulo 256)
-- `WN_LSF::UInt`: Week Number of leap second adjustment (8-bit, modulo 256)
-- `DN::UInt`: Day Number at end of which leap second becomes effective (1=Sunday … 7=Saturday)
+- `WN_0t::Int`: UTC data reference Week Number (8-bit, modulo 256)
+- `WN_LSF::Int`: Week Number of leap second adjustment (8-bit, modulo 256)
+- `DN::Int`: Day Number at end of which leap second becomes effective (1=Sunday … 7=Saturday)
 - `Δt_LSF::Int`: Leap Second count after leap second adjustment (s)
 
 # GST-GPS Conversion / GGTO (Word Type 10)
 - `A_0G::Float64`: Constant term of GST-GPS offset polynomial (s)
 - `A_1G::Float64`: Rate of change of GST-GPS offset (s/s)
 - `t_0G::Int`: GGTO reference time (s)
-- `WN_0G::UInt`: GGTO reference Week Number (6-bit)
+- `WN_0G::Int`: GGTO reference Week Number (6-bit)
 
 # Almanac (Word Types 7-10)
-- `IOD_a7::UInt`, `IOD_a8::UInt`, `IOD_a9::UInt`, `IOD_a10::UInt`: Almanac IOD per source word
-- `WN_a::UInt`: Almanac reference Week Number (2 LSB of GST WN)
+- `IOD_a7::Int`, `IOD_a8::Int`, `IOD_a9::Int`, `IOD_a10::Int`: Almanac IOD per source word
+- `WN_a::Int`: Almanac reference Week Number (2 LSB of GST WN)
 - `t_0a::Int`: Almanac reference time (seconds)
 - `almanacs::Vector{GalileoAlmanac}`: 36-slot table of decoded almanacs indexed by
   SVID (slot `i` holds the almanac for SVID `i`, 1-based). Entries are filled in
@@ -338,7 +338,7 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     WN::Union{Nothing,Int64} = nothing
     TOW::Union{Nothing,Int64} = nothing
 
-    SVID::Union{Nothing,UInt} = nothing
+    SVID::Union{Nothing,Int} = nothing
 
     t_0e::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
@@ -357,7 +357,7 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     C_ic::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
 
-    SISA_e1_e5b::Union{Nothing,UInt} = nothing
+    SISA_e1_e5b::Union{Nothing,Int} = nothing
 
     t_0c::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
@@ -392,21 +392,21 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     A_1_utc::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int} = nothing
     t_0t::Union{Nothing,Int} = nothing
-    WN_0t::Union{Nothing,UInt} = nothing
-    WN_LSF::Union{Nothing,UInt} = nothing
-    DN::Union{Nothing,UInt} = nothing
+    WN_0t::Union{Nothing,Int} = nothing
+    WN_LSF::Union{Nothing,Int} = nothing
+    DN::Union{Nothing,Int} = nothing
     Δt_LSF::Union{Nothing,Int} = nothing
 
     A_0G::Union{Nothing,Float64} = nothing
     A_1G::Union{Nothing,Float64} = nothing
     t_0G::Union{Nothing,Int} = nothing
-    WN_0G::Union{Nothing,UInt} = nothing
+    WN_0G::Union{Nothing,Int} = nothing
 
-    IOD_a7::Union{Nothing,UInt} = nothing
-    IOD_a8::Union{Nothing,UInt} = nothing
-    IOD_a9::Union{Nothing,UInt} = nothing
-    IOD_a10::Union{Nothing,UInt} = nothing
-    WN_a::Union{Nothing,UInt} = nothing
+    IOD_a7::Union{Nothing,Int} = nothing
+    IOD_a8::Union{Nothing,Int} = nothing
+    IOD_a9::Union{Nothing,Int} = nothing
+    IOD_a10::Union{Nothing,Int} = nothing
+    WN_a::Union{Nothing,Int} = nothing
     t_0a::Union{Nothing,Int} = nothing
     almanacs::Vector{GalileoAlmanac} = [GalileoAlmanac() for _ = 1:36]
 
@@ -816,7 +816,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 C_us = get_twos_complement_num(data, 128, 73, 16) / 1 << 29
                 C_rc = get_twos_complement_num(data, 128, 89, 16) / 1 << 5
                 C_rs = get_twos_complement_num(data, 128, 105, 16) / 1 << 5
-                SISA_e1_e5b = get_bits(data, 128, 121, 8)
+                SISA_e1_e5b = Int(get_bits(data, 128, 121, 8))
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
@@ -833,7 +833,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 )
             elseif data_type == 4
                 IOD_nav4 = get_bits(data, 128, 7, 10)
-                SVID = get_bits(data, 128, 17, 6)
+                SVID = Int(get_bits(data, 128, 17, 6))
                 C_ic = get_twos_complement_num(data, 128, 23, 16) / 1 << 29
                 C_is = get_twos_complement_num(data, 128, 39, 16) / 1 << 29
                 t_0c = get_bits(data, 128, 55, 14) * 60
@@ -902,9 +902,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 A_1_utc = get_twos_complement_num(data, 128, 39, 24) / 1 << 50
                 Δt_LS = Int(get_twos_complement_num(data, 128, 63, 8))
                 t_0t = Int(get_bits(data, 128, 71, 8) * 3600)
-                WN_0t = get_bits(data, 128, 79, 8)
-                WN_LSF = get_bits(data, 128, 87, 8)
-                DN = get_bits(data, 128, 95, 3)
+                WN_0t = Int(get_bits(data, 128, 79, 8))
+                WN_LSF = Int(get_bits(data, 128, 87, 8))
+                DN = Int(get_bits(data, 128, 95, 3))
                 Δt_LSF = Int(get_twos_complement_num(data, 128, 98, 8))
                 TOW = get_bits(data, 128, 106, 20)
                 state = GNSSDecoderState(
@@ -925,10 +925,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 7
-                IOD_a7 = get_bits(data, 128, 7, 4)
-                WN_a = get_bits(data, 128, 11, 2)
+                IOD_a7 = Int(get_bits(data, 128, 7, 4))
+                WN_a = Int(get_bits(data, 128, 11, 2))
                 t_0a = Int(get_bits(data, 128, 13, 10) * 600)
-                SVID = get_bits(data, 128, 23, 6)
+                SVID = Int(get_bits(data, 128, 23, 6))
                 Δsqrt_A = get_twos_complement_num(data, 128, 29, 13) / 1 << 9
                 e = get_bits(data, 128, 42, 11) / 1 << 16
                 ω =
@@ -972,12 +972,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 8
-                IOD_a8 = get_bits(data, 128, 7, 4)
+                IOD_a8 = Int(get_bits(data, 128, 7, 4))
                 a_f0_pos1 = get_twos_complement_num(data, 128, 11, 16) / 1 << 19
                 a_f1_pos1 = get_twos_complement_num(data, 128, 27, 13) / 1 << 38
                 signal_health_e5b_pos1 = SignalHealth(get_bits(data, 128, 40, 2))
                 signal_health_e1b_pos1 = SignalHealth(get_bits(data, 128, 42, 2))
-                SVID = get_bits(data, 128, 44, 6)
+                SVID = Int(get_bits(data, 128, 44, 6))
                 Δsqrt_A = get_twos_complement_num(data, 128, 50, 13) / 1 << 9
                 e = get_bits(data, 128, 63, 11) / 1 << 16
                 ω =
@@ -1029,8 +1029,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 9
-                IOD_a9 = get_bits(data, 128, 7, 4)
-                WN_a = get_bits(data, 128, 11, 2)
+                IOD_a9 = Int(get_bits(data, 128, 7, 4))
+                WN_a = Int(get_bits(data, 128, 11, 2))
                 t_0a = Int(get_bits(data, 128, 13, 10) * 600)
                 M_0_pos2 =
                     get_twos_complement_num(data, 128, 23, 16) * state.constants.PI /
@@ -1039,7 +1039,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 a_f1_pos2 = get_twos_complement_num(data, 128, 55, 13) / 1 << 38
                 signal_health_e5b_pos2 = SignalHealth(get_bits(data, 128, 68, 2))
                 signal_health_e1b_pos2 = SignalHealth(get_bits(data, 128, 70, 2))
-                SVID = get_bits(data, 128, 72, 6)
+                SVID = Int(get_bits(data, 128, 72, 6))
                 Δsqrt_A = get_twos_complement_num(data, 128, 78, 13) / 1 << 9
                 e = get_bits(data, 128, 91, 11) / 1 << 16
                 ω =
@@ -1085,7 +1085,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 10
-                IOD_a10 = get_bits(data, 128, 7, 4)
+                IOD_a10 = Int(get_bits(data, 128, 7, 4))
                 Ω_0_pos3 =
                     get_twos_complement_num(data, 128, 11, 16) * state.constants.PI /
                     1 << 15
@@ -1102,7 +1102,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 A_0G = get_twos_complement_num(data, 128, 87, 16) / 1 << 35
                 A_1G = get_twos_complement_num(data, 128, 103, 12) / 1 << 51
                 t_0G = Int(get_bits(data, 128, 115, 8) * 3600)
-                WN_0G = get_bits(data, 128, 123, 6)
+                WN_0G = Int(get_bits(data, 128, 123, 6))
                 # Position 3 partial sits in cache pos1 (set by WT9)
                 completed_pos3 = GalileoAlmanac(
                     state.cache.almanac_chain_pos1;
