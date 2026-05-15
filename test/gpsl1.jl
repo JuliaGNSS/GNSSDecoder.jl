@@ -150,21 +150,27 @@ end
                       -0.8758738183344963,-2.562498053346696,  -0.07783042512675355]
     af0_values     = zeros(31); af0_values[25] = 0.00043487548828125
     af1_values     = zeros(31); af1_values[25] = 2.4920154828578234e-9
-    prns = [5; 16; 20; 12; 24; 28; 30; 17; 8; 1; 23; 22; 19; 6; 11; 31; 9; 14; 3; 29; 7; 25; 4; 13; 21; 2; 27; 18; 26; 10; 15]
-    test_almanac_data = Dict(
-        prn => (
-            e = e_values[prn],
-            t_oa = t_oa_values[prn],
-            δi = δi_values[prn],
-            Ω_dot = Ω_dot_values[prn],
-            sv_health = sv_healths[prn],
-            sqrt_A = sqrt_A_values[prn],
-            Ω_0 = Ω_0_values[prn],
-            ω = ω_values[prn],
-            M_0 = M_0_values[prn],
-            af0 = af0_values[prn],
-            af1 = af1_values[prn],
-        ) for prn in prns
+    # Listed in the order the decoder inserts entries into the almanac
+    # Dictionary (subframe-4 pages 2-5, 7-10 interleaved with subframe-5
+    # pages 1-24). Dictionaries.jl `==` is order-sensitive.
+    prns = [16, 17, 18, 19, 20, 21, 22, 23, 24, 1, 25, 2, 26, 3, 27, 4, 28, 5, 6, 29, 7, 30, 8, 31, 9, 10, 11, 12, 13, 14, 15]
+    test_almanac_data = Dictionary{Int64,NamedTuple}(
+        prns,
+        [
+            (
+                e = e_values[prn],
+                t_oa = t_oa_values[prn],
+                δi = δi_values[prn],
+                Ω_dot = Ω_dot_values[prn],
+                sv_health = sv_healths[prn],
+                sqrt_A = sqrt_A_values[prn],
+                Ω_0 = Ω_0_values[prn],
+                ω = ω_values[prn],
+                M_0 = M_0_values[prn],
+                af0 = af0_values[prn],
+                af1 = af1_values[prn],
+            ) for prn in prns
+        ],
     )
     test_data = GNSSDecoder.GPSL1Data(;
         last_subframe_id = 3,

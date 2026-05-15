@@ -1,6 +1,6 @@
 module GNSSDecoder
 
-using DocStringExtensions, GNSSSignals, BitIntegers, ViterbiDecoder, CRC
+using DocStringExtensions, GNSSSignals, BitIntegers, ViterbiDecoder, CRC, Dictionaries
 
 export decode, GPSL1DecoderState, GalileoE1BDecoderState, is_sat_healthy, GNSSDecoderState, reset_decoder_state
 

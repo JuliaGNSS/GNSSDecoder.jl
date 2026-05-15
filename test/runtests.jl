@@ -1,5 +1,6 @@
 using Test, GNSSDecoder, BitIntegers, ViterbiDecoder, GNSSSignals
 using Aqua
+using Dictionaries
 
 @testset "GNSSDecoder.jl" begin
     @testset "Aqua" begin

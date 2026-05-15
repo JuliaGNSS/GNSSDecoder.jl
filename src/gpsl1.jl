@@ -160,7 +160,7 @@ Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     sv_health_sf4_25::Union{Nothing,Vector{String}} = nothing
 
     # Subframe 5 pages 1-24: Almanac data (stored per SV ID)
-    almanac::Union{Nothing,Dict{Int64,NamedTuple}} = nothing
+    almanac::Union{Nothing,Dictionary{Int64,NamedTuple}} = nothing
 
     # Subframe 5 page 25: SV health for SV 1-24 (6-bit health words)
     sv_health_sf5_25::Union{Nothing,Vector{String}} = nothing
@@ -1139,8 +1139,8 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1Data}, sv_id::Int)
         af1 = alm_af1,
     )
 
-    almanac = something(state.raw_data.almanac, Dict{Int64,NamedTuple}())
-    almanac[sv_id] = almanac_entry
+    almanac = something(state.raw_data.almanac, Dictionary{Int64,NamedTuple}())
+    set!(almanac, sv_id, almanac_entry)
     state = GNSSDecoderState(state; raw_data = GPSL1Data(state.raw_data; almanac))
 
     return state
