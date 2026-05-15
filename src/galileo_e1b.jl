@@ -197,6 +197,8 @@ end
 #         and SV-position-3 first half
 #   WT10 fills SV-position-3 second half (flush)
 # The chain IODa is captured to detect cross-subframe mismatches.
+# Completed almanacs are flushed into the GalileoE1BData.almanacs Dictionary
+# keyed by SVID.
 struct GalileoE1BCache <: AbstractGNSSCache
     even_page_part_bits::UInt128
     almanac_chain_iod_a::Union{Nothing,Int}
@@ -220,17 +222,6 @@ function GalileoE1BCache(
         almanac_chain_pos1,
         almanac_chain_pos2,
     )
-end
-
-# Functional update: copy the 36-slot almanac vector and replace one entry.
-# SVID values outside 1:36 are silently ignored (the ICD reserves >36 for future use).
-function set_almanac(almanacs::Vector{GalileoAlmanac}, svid::Integer, almanac::GalileoAlmanac)
-    if !(1 <= svid <= length(almanacs))
-        return almanacs
-    end
-    new_almanacs = copy(almanacs)
-    new_almanacs[svid] = almanac
-    return new_almanacs
 end
 
 """
@@ -321,12 +312,11 @@ OS SIS ICD, Issue 2.2.
 - `IOD_a7::Int`, `IOD_a8::Int`, `IOD_a9::Int`, `IOD_a10::Int`: Almanac IOD per source word
 - `WN_a::Int`: Almanac reference Week Number (2 LSB of GST WN)
 - `t_0a::Int`: Almanac reference time (seconds)
-- `almanacs::Vector{GalileoAlmanac}`: 36-slot table of decoded almanacs indexed by
-  SVID (slot `i` holds the almanac for SVID `i`, 1-based). Entries are filled in
-  as Galileo broadcasts the almanac chain across word types 7→10. Slots not yet
-  decoded contain a default `GalileoAlmanac()` with all `nothing` fields.
-  In-flight chain partials live in the decoder cache and are flushed here only
-  once a full almanac for an SVID has been assembled with a consistent IODa.
+- `almanacs::Dictionary{Int,GalileoAlmanac}`: Decoded almanacs keyed by SVID.
+  Entries are inserted as Galileo broadcasts the almanac chain across word
+  types 7→10. SVIDs not yet seen are absent from the dictionary. In-flight
+  chain partials live in the decoder cache and are flushed here only once a
+  full almanac for an SVID has been assembled with a consistent IODa.
 
 # Reduced Clock and Ephemeris Data (Word Type 16)
 - `reduced_ced::GalileoReducedCED`: Reduced CED for fast initial fix
@@ -408,7 +398,7 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     IOD_a10::Union{Nothing,Int} = nothing
     WN_a::Union{Nothing,Int} = nothing
     t_0a::Union{Nothing,Int} = nothing
-    almanacs::Vector{GalileoAlmanac} = [GalileoAlmanac() for _ = 1:36]
+    almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}} = nothing
 
     reduced_ced::GalileoReducedCED = GalileoReducedCED()
 end
@@ -549,7 +539,7 @@ function GalileoE1BData(
 end
 
 # The default `==` for structs falls back to `===`, which is reference equality
-# and so fails for the `almanacs::Vector{GalileoAlmanac}` field even when the
+# and so fails for the mutable `almanacs::Dictionary{...}` field even when the
 # contents match. Compare field-by-field.
 function Base.:(==)(a::GalileoE1BData, b::GalileoE1BData)
     for f in fieldnames(GalileoE1BData)
@@ -1003,7 +993,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 almanacs = state.raw_data.almanacs
                 if state.cache.almanac_chain_iod_a == IOD_a8 &&
                    !isnothing(completed_pos1.SVID)
-                    almanacs = set_almanac(almanacs, completed_pos1.SVID, completed_pos1)
+                    almanacs =
+                        isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
+                        copy(almanacs)
+                    set!(almanacs, completed_pos1.SVID, completed_pos1)
                 end
                 almanac_pos2 = GalileoAlmanac(;
                     SVID,
@@ -1059,7 +1052,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 almanacs = state.raw_data.almanacs
                 if state.cache.almanac_chain_iod_a == IOD_a9 &&
                    !isnothing(completed_pos2.SVID)
-                    almanacs = set_almanac(almanacs, completed_pos2.SVID, completed_pos2)
+                    almanacs =
+                        isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
+                        copy(almanacs)
+                    set!(almanacs, completed_pos2.SVID, completed_pos2)
                 end
                 almanac_pos3 = GalileoAlmanac(;
                     SVID,
@@ -1117,7 +1113,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                 almanacs = state.raw_data.almanacs
                 if state.cache.almanac_chain_iod_a == IOD_a10 &&
                    !isnothing(completed_pos3.SVID)
-                    almanacs = set_almanac(almanacs, completed_pos3.SVID, completed_pos3)
+                    almanacs =
+                        isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
+                        copy(almanacs)
+                    set!(almanacs, completed_pos3.SVID, completed_pos3)
                 end
                 state = GNSSDecoderState(
                     state;

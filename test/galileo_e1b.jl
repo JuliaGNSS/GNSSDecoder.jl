@@ -72,24 +72,25 @@ end
         IOD_a10 = 0,
         WN_a = 2,
         t_0a = 556800,
-        almanacs = let
-            v = [GNSSDecoder.GalileoAlmanac() for _ = 1:36]
-            v[21] = GNSSDecoder.GalileoAlmanac(;
-                SVID = 21,
-                Δsqrt_A = 0.037109375,
-                e = 0.0002593994140625,
-                ω = 0.40075248083512466,
-                δi = -0.002876213977285584,
-                Ω_0 = 2.5016350436437578,
-                Ω_dot = -5.12021327743507e-9,
-                M_0 = 0.03585680091682694,
-                a_f0 = -0.000713348388671875,
-                a_f1 = -3.637978807091713e-12,
-                signal_health_e5b = GNSSDecoder.signal_ok,
-                signal_health_e1b = GNSSDecoder.signal_ok,
-            )
-            v
-        end,
+        almanacs = Dictionary{Int,GNSSDecoder.GalileoAlmanac}(
+            [21],
+            [
+                GNSSDecoder.GalileoAlmanac(;
+                    SVID = 21,
+                    Δsqrt_A = 0.037109375,
+                    e = 0.0002593994140625,
+                    ω = 0.40075248083512466,
+                    δi = -0.002876213977285584,
+                    Ω_0 = 2.5016350436437578,
+                    Ω_dot = -5.12021327743507e-9,
+                    M_0 = 0.03585680091682694,
+                    a_f0 = -0.000713348388671875,
+                    a_f1 = -3.637978807091713e-12,
+                    signal_health_e5b = GNSSDecoder.signal_ok,
+                    signal_health_e1b = GNSSDecoder.signal_ok,
+                ),
+            ],
+        ),
     )
 
     state = decode(decoder, GALILEO_E1B_DATA, 7000)
