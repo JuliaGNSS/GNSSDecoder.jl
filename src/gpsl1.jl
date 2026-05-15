@@ -38,6 +38,47 @@ Base.@kwdef struct GPSL1Constants <: AbstractGNSSConstants
 end
 
 """
+    GPSL1Almanac
+
+Almanac data for one GPS satellite, decoded from a single LNAV almanac page
+(subframe 4 pages 2-5 / 7-10 for SV 25-32, subframe 5 pages 1-24 for SV 1-24).
+
+The almanac provides reduced-precision orbital and clock parameters for satellite
+acquisition planning and bootstrapping position fixes. Inclination is broadcast as a
+delta from the nominal GPS constellation value (`i_nominal = 0.3 semi-circles ≈ 54°`),
+which the decoder stores in `δi`.
+
+# Fields
+- `e::Float64`: Eccentricity (dimensionless)
+- `t_oa::Int`: Almanac reference time of week (seconds)
+- `δi::Float64`: Inclination delta from nominal 0.3 semi-circles (rad)
+- `Ω_dot::Float64`: Rate of right ascension (rad/s)
+- `sv_health::String`: 8-bit SV health status (binary string; "00000000" = healthy)
+- `sqrt_A::Float64`: Square root of semi-major axis (√m)
+- `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
+- `ω::Float64`: Argument of perigee (rad)
+- `M_0::Float64`: Mean anomaly at reference time (rad)
+- `af0::Float64`: SV clock bias correction coefficient (seconds)
+- `af1::Float64`: SV clock drift correction coefficient (s/s)
+
+# Reference
+IS-GPS-200N, Section 20.3.3.5.1.2, Table 20-VI
+"""
+Base.@kwdef struct GPSL1Almanac
+    e::Union{Nothing,Float64} = nothing
+    t_oa::Union{Nothing,Int} = nothing
+    δi::Union{Nothing,Float64} = nothing
+    Ω_dot::Union{Nothing,Float64} = nothing
+    sv_health::Union{Nothing,String} = nothing
+    sqrt_A::Union{Nothing,Float64} = nothing
+    Ω_0::Union{Nothing,Float64} = nothing
+    ω::Union{Nothing,Float64} = nothing
+    M_0::Union{Nothing,Float64} = nothing
+    af0::Union{Nothing,Float64} = nothing
+    af1::Union{Nothing,Float64} = nothing
+end
+
+"""
     GPSL1Data
 
 Decoded GPS L1 C/A LNAV navigation message data.
@@ -160,7 +201,7 @@ Base.@kwdef struct GPSL1Data <: AbstractGNSSData
     sv_health_sf4_25::Union{Nothing,Vector{String}} = nothing
 
     # Subframe 5 pages 1-24: Almanac data (stored per SV ID)
-    almanac::Union{Nothing,Dictionary{Int64,NamedTuple}} = nothing
+    almanac::Union{Nothing,Dictionary{Int64,GPSL1Almanac}} = nothing
 
     # Subframe 5 page 25: SV health for SV 1-24 (6-bit health words)
     sv_health_sf5_25::Union{Nothing,Vector{String}} = nothing
@@ -1108,7 +1149,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1Data}, sv_id::Int)
 
     # Decode almanac parameters
     alm_e = get_bits(word3_comp, 30, 9, 16) / 1 << 21
-    alm_toa = get_bits(word4_comp, 30, 1, 8) << 12
+    alm_toa = Int(get_bits(word4_comp, 30, 1, 8) << 12)
     alm_δi = get_twos_complement_num(word4_comp, 30, 9, 16) * state.constants.PI / 1 << 19
     alm_Ω_dot = get_twos_complement_num(word5_comp, 30, 1, 16) * state.constants.PI / 1 << 38
     alm_sv_health = bitstring(get_bits(word5_comp, 30, 17, 8))[end-7:end]
@@ -1125,7 +1166,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1Data}, sv_id::Int)
     alm_af1 = get_twos_complement_num(word10_comp, 30, 9, 11) / 1 << 38
 
     # Store almanac data for this SV
-    almanac_entry = (
+    almanac_entry = GPSL1Almanac(;
         e = alm_e,
         t_oa = alm_toa,
         δi = alm_δi,
@@ -1139,7 +1180,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1Data}, sv_id::Int)
         af1 = alm_af1,
     )
 
-    almanac = something(state.raw_data.almanac, Dictionary{Int64,NamedTuple}())
+    almanac = something(state.raw_data.almanac, Dictionary{Int64,GPSL1Almanac}())
     set!(almanac, sv_id, almanac_entry)
     state = GNSSDecoderState(state; raw_data = GPSL1Data(state.raw_data; almanac))
 

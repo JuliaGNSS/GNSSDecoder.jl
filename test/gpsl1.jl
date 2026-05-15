@@ -119,7 +119,7 @@ end
     decoder = GPSL1DecoderState(25)
 
     e_values       = zeros(31); e_values[25] = 0.006249904632568359
-    t_oa_values    = fill(0x000000000007c000, 31)
+    t_oa_values    = fill(507904, 31)
     δi_values      = fill(0.017455023574651885, 31); δi_values[25] = 0.12939966841558787
     Ω_dot_values   = zeros(31); Ω_dot_values[25] = 3.141616575226232e-7
     sv_healths     = fill("00000000", 31)
@@ -154,10 +154,10 @@ end
     # Dictionary (subframe-4 pages 2-5, 7-10 interleaved with subframe-5
     # pages 1-24). Dictionaries.jl `==` is order-sensitive.
     prns = [16, 17, 18, 19, 20, 21, 22, 23, 24, 1, 25, 2, 26, 3, 27, 4, 28, 5, 6, 29, 7, 30, 8, 31, 9, 10, 11, 12, 13, 14, 15]
-    test_almanac_data = Dictionary{Int64,NamedTuple}(
+    test_almanac_data = Dictionary{Int64,GNSSDecoder.GPSL1Almanac}(
         prns,
         [
-            (
+            GNSSDecoder.GPSL1Almanac(;
                 e = e_values[prn],
                 t_oa = t_oa_values[prn],
                 δi = δi_values[prn],
