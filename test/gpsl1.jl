@@ -1,4 +1,3 @@
-BitIntegers.@define_integers 4000
 BitIntegers.@define_integers 320
 
 const GPSL1DATA = [
