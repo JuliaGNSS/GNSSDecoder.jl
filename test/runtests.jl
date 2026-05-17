@@ -2,6 +2,8 @@ using Test, GNSSDecoder, BitIntegers, ViterbiDecoder, GNSSSignals
 using Aqua
 using Dictionaries
 
+BitIntegers.@define_integers 4000
+
 @testset "GNSSDecoder.jl" begin
     @testset "Aqua" begin
         Aqua.test_all(GNSSDecoder)
