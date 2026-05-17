@@ -9,5 +9,6 @@ using Dictionaries
 
     include("bit_fiddling.jl")
     include("gpsl1.jl")
+    include("gpsl5.jl")
     include("galileo_e1b.jl")
 end
