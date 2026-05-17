@@ -101,6 +101,9 @@ satellite positions and selecting satellites for tracking. Differences (`Δsqrt_
 - `a_f1::Float64`: Truncated SV clock drift (s/s)
 - `signal_health_e5b::SignalHealth`: Predicted E5b signal health status
 - `signal_health_e1b::SignalHealth`: Predicted E1-B/C signal health status
+- `IOD_a::Int`: Almanac IOD
+- `WN_a::Int`: Almanac reference Week Number
+- `t_0a::Int`: Almanac reference time (seconds)
 
 # Reference
 Galileo OS SIS ICD, Issue 2.2, Table 86
@@ -118,6 +121,9 @@ Base.@kwdef struct GalileoAlmanac
     a_f1::Union{Nothing,Float64} = nothing
     signal_health_e5b::Union{Nothing,SignalHealth} = nothing
     signal_health_e1b::Union{Nothing,SignalHealth} = nothing
+    IOD_a::Union{Nothing,Int} = nothing
+    WN_a::Union{Nothing,Int} = nothing
+    t_0a::Union{Nothing,Int} = nothing
 end
 
 function GalileoAlmanac(
@@ -134,6 +140,9 @@ function GalileoAlmanac(
     a_f1 = a.a_f1,
     signal_health_e5b = a.signal_health_e5b,
     signal_health_e1b = a.signal_health_e1b,
+    IOD_a = a.IOD_a,
+    WN_a = a.WN_a,
+    t_0a = a.t_0a,
 )
     GalileoAlmanac(
         SVID,
@@ -148,6 +157,9 @@ function GalileoAlmanac(
         a_f1,
         signal_health_e5b,
         signal_health_e1b,
+        IOD_a,
+        WN_a,
+        t_0a,
     )
 end
 
@@ -196,29 +208,23 @@ end
 #   WT9  fills SV-position-2 second half (flush)
 #         and SV-position-3 first half
 #   WT10 fills SV-position-3 second half (flush)
-# The chain IODa is captured to detect cross-subframe mismatches.
-# Completed almanacs are flushed into the GalileoE1BData.almanacs Dictionary
-# keyed by SVID.
 struct GalileoE1BCache <: AbstractGNSSCache
     even_page_part_bits::UInt128
-    almanac_chain_iod_a::Union{Nothing,Int}
     almanac_chain_pos1::GalileoAlmanac
     almanac_chain_pos2::GalileoAlmanac
 end
 
 GalileoE1BCache() =
-    GalileoE1BCache(UInt128(0), nothing, GalileoAlmanac(), GalileoAlmanac())
+    GalileoE1BCache(UInt128(0), GalileoAlmanac(), GalileoAlmanac())
 
 function GalileoE1BCache(
     cache::GalileoE1BCache;
     even_page_part_bits = cache.even_page_part_bits,
-    almanac_chain_iod_a = cache.almanac_chain_iod_a,
     almanac_chain_pos1 = cache.almanac_chain_pos1,
     almanac_chain_pos2 = cache.almanac_chain_pos2,
 )
     GalileoE1BCache(
         even_page_part_bits,
-        almanac_chain_iod_a,
         almanac_chain_pos1,
         almanac_chain_pos2,
     )
@@ -309,9 +315,6 @@ OS SIS ICD, Issue 2.2.
 - `WN_0G::Int`: GGTO reference Week Number (6-bit)
 
 # Almanac (Word Types 7-10)
-- `IOD_a7::Int`, `IOD_a8::Int`, `IOD_a9::Int`, `IOD_a10::Int`: Almanac IOD per source word
-- `WN_a::Int`: Almanac reference Week Number (2 LSB of GST WN)
-- `t_0a::Int`: Almanac reference time (seconds)
 - `almanacs::Dictionary{Int,GalileoAlmanac}`: Decoded almanacs keyed by SVID.
   Entries are inserted as Galileo broadcasts the almanac chain across word
   types 7→10. SVIDs not yet seen are absent from the dictionary. In-flight
@@ -392,12 +395,6 @@ Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
     t_0G::Union{Nothing,Int} = nothing
     WN_0G::Union{Nothing,Int} = nothing
 
-    IOD_a7::Union{Nothing,Int} = nothing
-    IOD_a8::Union{Nothing,Int} = nothing
-    IOD_a9::Union{Nothing,Int} = nothing
-    IOD_a10::Union{Nothing,Int} = nothing
-    WN_a::Union{Nothing,Int} = nothing
-    t_0a::Union{Nothing,Int} = nothing
     almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}} = nothing
 
     reduced_ced::GalileoReducedCED = GalileoReducedCED()
@@ -461,12 +458,6 @@ function GalileoE1BData(
     A_1G = data.A_1G,
     t_0G = data.t_0G,
     WN_0G = data.WN_0G,
-    IOD_a7 = data.IOD_a7,
-    IOD_a8 = data.IOD_a8,
-    IOD_a9 = data.IOD_a9,
-    IOD_a10 = data.IOD_a10,
-    WN_a = data.WN_a,
-    t_0a = data.t_0a,
     almanacs = data.almanacs,
     reduced_ced = data.reduced_ced,
 )
@@ -527,12 +518,6 @@ function GalileoE1BData(
         A_1G,
         t_0G,
         WN_0G,
-        IOD_a7,
-        IOD_a8,
-        IOD_a9,
-        IOD_a10,
-        WN_a,
-        t_0a,
         almanacs,
         reduced_ced,
     )
@@ -915,7 +900,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                 )
             elseif data_type == 7
-                IOD_a7 = Int(get_bits(data, 128, 7, 4))
+                IOD_a = Int(get_bits(data, 128, 7, 4))
                 WN_a = Int(get_bits(data, 128, 11, 2))
                 t_0a = Int(get_bits(data, 128, 13, 10) * 600)
                 SVID = Int(get_bits(data, 128, 23, 6))
@@ -945,25 +930,21 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     Ω_0,
                     Ω_dot,
                     M_0,
+                    IOD_a,
+                    WN_a,
+                    t_0a,
                 )
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
-                    raw_data = GalileoE1BData(
-                        state.raw_data;
-                        IOD_a7,
-                        WN_a,
-                        t_0a,
-                    ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = valid_SVID ? IOD_a7 : nothing,
                         almanac_chain_pos1 = valid_SVID ? almanac_pos1 : GalileoAlmanac(),
                         almanac_chain_pos2 = GalileoAlmanac(),
                     ),
                 )
             elseif data_type == 8
-                IOD_a8 = Int(get_bits(data, 128, 7, 4))
+                IOD_a = Int(get_bits(data, 128, 7, 4))
                 a_f0_pos1 = get_twos_complement_num(data, 128, 11, 16) / 1 << 19
                 a_f1_pos1 = get_twos_complement_num(data, 128, 27, 13) / 1 << 38
                 signal_health_e5b_pos1 = SignalHealth(get_bits(data, 128, 40, 2))
@@ -992,7 +973,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     signal_health_e1b = signal_health_e1b_pos1,
                 )
                 almanacs = state.raw_data.almanacs
-                if state.cache.almanac_chain_iod_a == IOD_a8 &&
+                if completed_pos1.IOD_a == IOD_a &&
                    !isnothing(completed_pos1.SVID)
                     almanacs =
                         isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
@@ -1007,24 +988,23 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     δi,
                     Ω_0,
                     Ω_dot,
+                    IOD_a,
                 )
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
                         state.raw_data;
-                        IOD_a8,
                         almanacs,
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = valid_SVID ? IOD_a8 : nothing,
                         almanac_chain_pos1 = GalileoAlmanac(),
                         almanac_chain_pos2 = valid_SVID ? almanac_pos2 : GalileoAlmanac(),
                     ),
                 )
             elseif data_type == 9
-                IOD_a9 = Int(get_bits(data, 128, 7, 4))
+                IOD_a = Int(get_bits(data, 128, 7, 4))
                 WN_a = Int(get_bits(data, 128, 11, 2))
                 t_0a = Int(get_bits(data, 128, 13, 10) * 600)
                 M_0_pos2 =
@@ -1050,9 +1030,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     a_f1 = a_f1_pos2,
                     signal_health_e5b = signal_health_e5b_pos2,
                     signal_health_e1b = signal_health_e1b_pos2,
+                    WN_a,
+                    t_0a,
                 )
                 almanacs = state.raw_data.almanacs
-                if state.cache.almanac_chain_iod_a == IOD_a9 &&
+                if completed_pos2.IOD_a == IOD_a &&
                    !isnothing(completed_pos2.SVID)
                     almanacs =
                         isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
@@ -1065,26 +1047,25 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     e,
                     ω,
                     δi,
+                    IOD_a,
+                    WN_a,
+                    t_0a,
                 )
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
                         state.raw_data;
-                        IOD_a9,
-                        WN_a,
-                        t_0a,
                         almanacs,
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = valid_SVID ? IOD_a9 : nothing,
                         almanac_chain_pos1 = valid_SVID ? almanac_pos3 : GalileoAlmanac(),
                         almanac_chain_pos2 = GalileoAlmanac(),
                     ),
                 )
             elseif data_type == 10
-                IOD_a10 = Int(get_bits(data, 128, 7, 4))
+                IOD_a = Int(get_bits(data, 128, 7, 4))
                 Ω_0_pos3 =
                     get_twos_complement_num(data, 128, 11, 16) * state.constants.PI /
                     1 << 15
@@ -1114,7 +1095,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     signal_health_e1b = signal_health_e1b_pos3,
                 )
                 almanacs = state.raw_data.almanacs
-                if state.cache.almanac_chain_iod_a == IOD_a10 &&
+                if completed_pos3.IOD_a == IOD_a &&
                    !isnothing(completed_pos3.SVID)
                     almanacs =
                         isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() :
@@ -1125,7 +1106,6 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     state;
                     raw_data = GalileoE1BData(
                         state.raw_data;
-                        IOD_a10,
                         almanacs,
                         A_0G,
                         A_1G,
@@ -1134,7 +1114,6 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = nothing,
                         almanac_chain_pos1 = GalileoAlmanac(),
                         almanac_chain_pos2 = GalileoAlmanac(),
                     ),
