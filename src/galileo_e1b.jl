@@ -946,6 +946,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     Ω_dot,
                     M_0,
                 )
+                valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
@@ -956,8 +957,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = IOD_a7,
-                        almanac_chain_pos1 = almanac_pos1,
+                        almanac_chain_iod_a = valid_SVID ? IOD_a7 : nothing,
+                        almanac_chain_pos1 = valid_SVID ? almanac_pos1 : GalileoAlmanac(),
                         almanac_chain_pos2 = GalileoAlmanac(),
                     ),
                 )
@@ -1007,6 +1008,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     Ω_0,
                     Ω_dot,
                 )
+                valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
@@ -1016,9 +1018,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = IOD_a8,
+                        almanac_chain_iod_a = valid_SVID ? IOD_a8 : nothing,
                         almanac_chain_pos1 = GalileoAlmanac(),
-                        almanac_chain_pos2 = almanac_pos2,
+                        almanac_chain_pos2 = valid_SVID ? almanac_pos2 : GalileoAlmanac(),
                     ),
                 )
             elseif data_type == 9
@@ -1064,6 +1066,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ω,
                     δi,
                 )
+                valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoE1BData(
@@ -1075,8 +1078,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
                     ),
                     cache = GalileoE1BCache(
                         state.cache;
-                        almanac_chain_iod_a = IOD_a9,
-                        almanac_chain_pos1 = almanac_pos3,
+                        almanac_chain_iod_a = valid_SVID ? IOD_a9 : nothing,
+                        almanac_chain_pos1 = valid_SVID ? almanac_pos3 : GalileoAlmanac(),
                         almanac_chain_pos2 = GalileoAlmanac(),
                     ),
                 )
