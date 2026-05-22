@@ -4,6 +4,7 @@ authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael 
 version = "2.0.0"
 
 [deps]
+Aff3ct = "529ff742-b572-47ff-bc84-d3f557f53d2b"
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
 CRC = "44b605c4-b955-5f2b-9b6d-d2bd01d3d205"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
@@ -13,6 +14,7 @@ GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
 ViterbiDecoder = "5f0870c7-49c9-4542-b5f1-5d9ed4caea51"
 
 [compat]
+Aff3ct = "1"
 Aqua = "0.8"
 BitIntegers = "0.2.6, 0.3.5"
 CRC = "4"
@@ -20,13 +22,15 @@ DataStructures = "0.18"
 Dictionaries = "0.4"
 DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
 GNSSSignals = "2.2"
+Random = "1"
 Test = "1"
 ViterbiDecoder = "0.1.0"
 julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "Test"]
+test = ["Aqua", "Random", "Test"]
