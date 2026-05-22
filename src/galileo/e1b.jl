@@ -208,26 +208,72 @@ end
 #   WT9  fills SV-position-2 second half (flush)
 #         and SV-position-3 first half
 #   WT10 fills SV-position-3 second half (flush)
+"""
+$(TYPEDEF)
+
+Per-decoder cache for Galileo E1B.
+
+Holds the soft-symbol `CircularDeque{Float32}` (capacity = 250 + 10 = 260),
+two transient `UInt288` packed-bit buffers populated at sync time, the cached
+even-page bits used to stitch two consecutive pages into a word, and the
+two-position almanac-chain state needed to merge word types 7-10. Soft-symbol
+buffering is shared across all signals; the rest is Galileo-specific.
+
+The Galileo decoder still consumes *hard-decision bits* internally in this
+slice — the soft-symbol migration to AFF3CT.jl's Viterbi is tracked in #37.
+The deque-backed input boundary is the same as L1 C/A so the public API is
+uniform.
+
+# Fields
+$(TYPEDFIELDS)
+"""
 struct GalileoE1BCache <: AbstractGNSSCache
+    "Soft-symbol buffer (260 = 250 syncro + 10 preamble)"
+    soft_buffer::CircularDeque{Float32}
+    "Hard-sliced packed-bit buffer (= legacy `raw_buffer`), populated at sync time"
+    packed_buffer::Base.RefValue{UInt288}
+    "Polarity-resolved packed-bit buffer (= legacy `buffer`), populated at sync time"
+    complemented_buffer::Base.RefValue{UInt288}
     even_page_part_bits::UInt128
     almanac_chain_pos1::GalileoAlmanac
     almanac_chain_pos2::GalileoAlmanac
 end
 
-GalileoE1BCache() =
-    GalileoE1BCache(UInt128(0), GalileoAlmanac(), GalileoAlmanac())
+GalileoE1BCache() = GalileoE1BCache(
+    CircularDeque{Float32}(260),
+    Ref(UInt288(0)),
+    Ref(UInt288(0)),
+    UInt128(0),
+    GalileoAlmanac(),
+    GalileoAlmanac(),
+)
 
 function GalileoE1BCache(
     cache::GalileoE1BCache;
+    soft_buffer = cache.soft_buffer,
+    packed_buffer = cache.packed_buffer,
+    complemented_buffer = cache.complemented_buffer,
     even_page_part_bits = cache.even_page_part_bits,
     almanac_chain_pos1 = cache.almanac_chain_pos1,
     almanac_chain_pos2 = cache.almanac_chain_pos2,
 )
     GalileoE1BCache(
+        soft_buffer,
+        packed_buffer,
+        complemented_buffer,
         even_page_part_bits,
         almanac_chain_pos1,
         almanac_chain_pos2,
     )
+end
+
+function Base.:(==)(a::GalileoE1BCache, b::GalileoE1BCache)
+    deques_equal(a.soft_buffer, b.soft_buffer) &&
+        a.packed_buffer[] == b.packed_buffer[] &&
+        a.complemented_buffer[] == b.complemented_buffer[] &&
+        a.even_page_part_bits == b.even_page_part_bits &&
+        a.almanac_chain_pos1 == b.almanac_chain_pos1 &&
+        a.almanac_chain_pos2 == b.almanac_chain_pos2
 end
 
 """
@@ -610,31 +656,17 @@ end
 function GalileoE1BDecoderState(prn)
     GNSSDecoderState(
         prn,
-        UInt288(0),
-        UInt288(0),
         GalileoE1BData(),
         GalileoE1BData(),
         GalileoE1BConstants(),
         GalileoE1BCache(),
-        0,
         nothing,
         false,
     )
 end
 
 function GNSSDecoderState(system::GalileoE1B, prn)
-    GNSSDecoderState(
-        prn,
-        UInt288(0),
-        UInt288(0),
-        GalileoE1BData(),
-        GalileoE1BData(),
-        GalileoE1BConstants(),
-        GalileoE1BCache(),
-        0,
-        nothing,
-        false,
-    )
+    GalileoE1BDecoderState(prn)
 end
 
 """
@@ -679,24 +711,25 @@ function reset_decoder_state(state::GNSSDecoderState{<:GalileoE1BData})
     # the decoder is available again after an outage. This will
     # lead to erroneous decoder information for a few seconds after
     # reacquisition when a new week started during a signal outage.
+    empty!(state.cache.soft_buffer)
+    state.cache.packed_buffer[] = UInt288(0)
+    state.cache.complemented_buffer[] = UInt288(0)
     GNSSDecoderState(
         state;
-        raw_buffer = UInt288(0),
-        buffer = UInt288(0),
         raw_data = GalileoE1BData(
             state.raw_data;
             TOW = nothing,
             num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
         ),
         data = GalileoE1BData(),
-        num_bits_buffered = 0,
         num_bits_after_valid_syncro_sequence = nothing
     )
 end
 
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData})
-    encoded_bits = bitstring(state.buffer >> state.constants.preamble_length)[sizeof(
-        state.buffer,
+    buffer = state.cache.complemented_buffer[]
+    encoded_bits = bitstring(buffer >> state.constants.preamble_length)[sizeof(
+        buffer,
     )*8-state.constants.syncro_sequence_length+state.constants.preamble_length+1:end]
     deinterleaved_encoded_bits = deinterleave(encoded_bits, 30, 8)
     inv_deinterleaved_encoded_bits = invert_every_second_bit(deinterleaved_encoded_bits)

@@ -2,7 +2,7 @@ BitIntegers.@define_integers 320
 
 const GPSL1DATA = [
     uint4000"0x8baaa8beae7de8c0e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae7bd1c0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae79c94064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae77b6479aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beae75aec500000a1f02d85ffffffffd7bc9904a35103943ee7972a0f43ab7fffff208baaa8beae73ee80e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae71d800100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae6fc74064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae6db307753509edab6e87b1abdfd6f2c2cb84d554e01250d045abb6b001394eab08baaa8beae6ba40510000960fd2789ffffff5a84366d2cdc02e9dc02f43b8b4b1557fffff208baaa8beae69ebc0e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae67d600100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae65ce8064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae63b54780502a400";
-    uint4000"0x0363bfb000597bb47cf7fffbe84159f0eaa123802f84aaaae48baaa8beae61adc520000c9f02d876000000a57bc992ddc3f44b58d5fcbd59d51bfffffffac8baaa8beae5fec40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae5ddac0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae5bcdc064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae59b987aaaaafaaaaaa95555555aaaaaaa95555555aaaaaaa95555555aaaaaaa308baaa8beae57aa4530000fe0fd27a00000000284366fb2ff3f47bc03b04ba9830d5ffffffac8baaa8beae55e580e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae53dc80100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae51c40064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae4fb787baaaacd55555435555550d55555435555550d55555435555550d55555108baaa8beae4daf05400007e0fd27a00000000284366fbde6fe89f29c092f53d5e088000008c8baaa8beae4bef40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae49d9c0100c0660003861bf59b8e80864cfbccccc";
+    uint4000"0x0363bfb000597bb47cf7fffbe84159f0eaa123802f84aaaae48baaa8beae61adc520000c9f02d876000000a57bc992ddc3f44b58d5fcbd59d51bfffffffac8baaa8beae5fec40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae5ddac0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae5bcdc064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae59b987aaaaafaaaaaa95555555aaaaaaa95555555aaaaaaa95555555aaaaaaa308baaa8beae57aa4530000fe0fd27a00000000284366fb2ff3f47bc03b04ba9830d5ffffffac8baaa8beae55e580e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae53dc80100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae51c40064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae4fb787baaaacd55555435555550d55555435555550d55555435555550d55555108baaa8beae4daf05400007e0fd27a00000000284366fbde6fe89f29c092f53d5e088000008c8baaa8beae4bef40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae49d9c0100c0660003861bf59b8e80864cfbcccccc";
     uint4000"0xc5010ca84df264bc510429fa48baaa8beae47ca0064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae45be479aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beae43a9455000049f02d876000000a57bc992d07616852504bee725d55928000008c8baaa8beae41e680e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae3fddc0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae3dc54064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae3bbe87caaaa4d55555435555550d55555435555550d55555435555550d55555108baaa8beae39a60560000160fd2789ffffff5a84366d223fe926d292add278574958000008c8baaa8beae37e280e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae35d400100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae33c30064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae31b747daaaa7aaaaaa95555555aaaaaaa95555555aaaaaaa95555555aaaaaaa308baaa8beae2fa8057000021f02d85ffffffffd7bc99044d4f1329d5c2342408582a7fffff20";
     uint4000"0x8baaa8beae2de7c0e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae2bdec0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae29c64064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae27b947eaaaa25555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beae25a1c5800001e0fd27a00000000284366fb0625b42397c620ca2066007fffff208baaa8beae23e180e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae21d700100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae1fc1c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae1db587f4444e11111127bbbbbb611111127bbbbbb61110600800000000003faac8baaa8beae1ba28737c3aafffffffffffffffffffffffffffffffffffffffffffffd5f81b448baaa8beae19ed40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae17d080100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae15c80064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae13b3c79aaaaa555";
     uint4000"0x5556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beae11ab4410000e60fd2789ffffff5a84366d225edcce4c3e450be054ca6ffffffac8baaa8beae0fe340e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae0dd5c0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae0bc2c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beae09b68593333460eae9066b60003284366fbbb0e45fcc85ce66da87fc28e5568388baaa8beae07a54420000b9f02d876000000a57bc992d08b38141ba5466bb610b4f000000008baaa8beae05ea80e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beae03d380100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beae01cb0064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beadffb985a0000760fd2789ffffff5a84366d24f3c05009db4c31d15f1708000008c8baaa8beadfda104300008e0fd27a00000000284366fb376afe489109d15c4ac2bc000000008baaa8beadfbe140e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beadf9d7c0100c0660003861bf59b8e80864cfbccccc";
@@ -11,111 +11,80 @@ const GPSL1DATA = [
     uint4000"0xd27a00000000284366fb88525db4c29054efcd433a7fffff208baaa8beadc1af449000059f02d876000000a57bc992d89a21fcf1227270da0f7db000000008baaa8beadbfed40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beadbddbc0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beadbbccc064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beadb9b8840aaaab2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8baaa8beadb7ab44a0000060fd2789ffffff5a84366d2237670279fb570b92fe353000000008baaa8beadb5e480e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beadb3dd80100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beadb1c50064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beadafb6879aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beadadae04b000031f02d85ffffffffd7bc9904ef5e76106f7c610fa2ff558000008c8baaa8beadabee40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beada9d8c0100c0660003861bf59b8e80864cfbccccc";
     uint4000"0xc5010ca84df264bc510429fa48baaa8beada7cb0064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beada5bf47eaaaa25555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beada3a844c0000b1f02d85ffffffffd7bc9904a2a212ac8475d9607982d7000000008baaa8beada1e780e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead9fdf40100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead9dc7c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead9bbc074aaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8baaa8bead99a484d0000860fd2789ffffff5a84366d24f51fb18f5784639a56b80000000008baaa8bead97e000e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead95d680100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead93c18064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead91b5c75aaaac5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8bead8faa84e0000d9f02d876000000a57bc992db1722e05562a3efaa9dd528000008c";
     uint4000"0x8baaa8bead8de540e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead8bdc40100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead89c4c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead87bbc76aaaa9aaaaaa95555555aaaaaaa95555555aaaaaaa95555555aaaaaaa308baaa8bead85a344f0000ee0fd27a00000000284366fbb370e85c78ed4199607d507fffff208baaa8bead83e300e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead81d580100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead7fc98064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead7dbdc79aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8bead7baac500000a1f02d85ffffffffd7bc9904a35103943ee7972a0f43ab7fffff208baaa8bead79e500e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead77d8c0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead75c04064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead73bb87753509eda";
-]
+    ]
 
 
-@testset "GPS L1 constructor" begin
+@testset "GPS L1 C/A constructor" begin
     gpsl1 = GPSL1CA()
 
-    state_1 = GPSL1DecoderState(21)
+    state_1 = GPSL1CADecoderState(21)
     state_2 = GNSSDecoderState(gpsl1, 21)
     @test state_1.prn == state_2.prn &&
-        state_1.raw_buffer == state_2.raw_buffer &&
-        state_1.buffer == state_2.buffer &&
         state_1.raw_data == state_2.raw_data &&
         state_1.data == state_2.data &&
         state_1.constants == state_2.constants &&
-        state_1.num_bits_buffered == state_2.num_bits_buffered &&
         state_1.num_bits_after_valid_syncro_sequence == state_2.num_bits_after_valid_syncro_sequence &&
         state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
 end
 
-@testset "GPS L1 decoding" begin
-    decoder = GPSL1DecoderState(1)
-
+@testset "GPS L1 C/A sync primitives" begin
+    decoder = GPSL1CADecoderState(1)
     @test decoder.prn == 1
-    @test decoder.num_bits_buffered == 0
+    @test GNSSDecoder.num_bits_buffered(decoder) == 0
     @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
-    @test decoder.raw_buffer == UInt(0)
-    @test decoder.buffer == UInt(0)
     @test GNSSDecoder.calc_preamble_mask(decoder) == 0b11111111
 
-    state = GNSSDecoder.push_bit(decoder, UInt(1))
-    @test state.num_bits_buffered == 1
-    @test state.raw_buffer == UInt(1)
-    @test state.buffer == UInt(0)
+    # Push one soft symbol (positive ⇒ bit 0)
+    state = GNSSDecoder.push_soft_symbol!(decoder, 1.0f0)
+    @test GNSSDecoder.num_bits_buffered(state) == 1
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == false
-    @test GNSSDecoder.find_preamble(state) == false
 
-    constants = GNSSDecoder.GPSL1Constants()
+    constants = GNSSDecoder.GPSL1CAConstants()
     @test constants.preamble == 0b10001011
     @test constants.preamble_length == 8
     @test constants.word_length == 30
     @test constants.syncro_sequence_length == 300
 
-    raw_buffer = UInt320(constants.preamble) << UInt(300) + UInt320(constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(
-        1,
-        raw_buffer,
-        UInt320(0),
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Constants(),
-        GNSSDecoder.GPSL1Cache(),
-        308,
-        nothing,
-        false,
-    )
-    @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(
-        state;
-        buffer = raw_buffer,
-        is_shifted_by_180_degrees = false,
-    )
-    @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == true
+    # Build a 308-symbol soft buffer: preamble | 292 zeros | preamble.
+    # Use the package's UInt320 directly to avoid promotion mismatches against
+    # the Main.UInt320 created by `BitIntegers.@define_integers 320` above —
+    # those have distinct identities even though both are 320-bit primitives.
+    PUInt320 = GNSSDecoder.UInt320
+    decoder = GPSL1CADecoderState(1)
+    raw_buffer = PUInt320(constants.preamble) << UInt(300) + PUInt320(constants.preamble)
+    foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
+    @test GNSSDecoder.is_enough_buffered_bits_to_decode(decoder) == true
+    @test GNSSDecoder.try_sync(decoder) == true
+    @test decoder.cache.packed_buffer[] == raw_buffer
 
-    raw_buffer = UInt320(~constants.preamble) << UInt(300) + UInt320(~constants.preamble)
-    state = GNSSDecoder.GNSSDecoderState(
-        1,
-        raw_buffer,
-        UInt320(0),
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Constants(),
-        GNSSDecoder.GPSL1Cache(),
-        308,
-        nothing,
-        false,
-    )
-    @test GNSSDecoder.find_preamble(state) == true
-    @test GNSSDecoder.complement_buffer_if_necessary(state) == GNSSDecoder.GNSSDecoderState(
-        state;
-        buffer = ~raw_buffer,
-        is_shifted_by_180_degrees = true,
-    )
+    state = GNSSDecoder.complement_buffer_if_necessary(decoder)
+    @test state.is_shifted_by_180_degrees == false
+    @test state.cache.complemented_buffer[] == raw_buffer
 
+    # Inverted preamble: every bit flipped (180° polarity)
+    decoder = GPSL1CADecoderState(1)
+    raw_buffer = PUInt320(~constants.preamble) << UInt(300) + PUInt320(~constants.preamble)
+    foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
+    @test GNSSDecoder.try_sync(decoder) == true
+    state = GNSSDecoder.complement_buffer_if_necessary(decoder)
+    @test state.is_shifted_by_180_degrees == true
+    @test state.cache.complemented_buffer[] == ~raw_buffer
+
+    # get_word reads from cache.complemented_buffer (which is what
+    # decode_syncro_sequence sees after sync). Inject a known buffer and check
+    # the word extraction.
+    decoder = GPSL1CADecoderState(1)
     buffer =
-        UInt320(constants.preamble) << UInt(300) +
-        UInt320(constants.preamble) +
-        UInt320(1) << UInt(8)
-    state = GNSSDecoder.GNSSDecoderState(
-        1,
-        buffer,
-        buffer,
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Data(),
-        GNSSDecoder.GPSL1Constants(),
-        GNSSDecoder.GPSL1Cache(),
-        308,
-        nothing,
-        false,
-    )
-    @test GNSSDecoder.get_word(state, 10) == 1
+        PUInt320(constants.preamble) << UInt(300) +
+        PUInt320(constants.preamble) +
+        PUInt320(1) << UInt(8)
+    decoder.cache.complemented_buffer[] = buffer
+    @test GNSSDecoder.get_word(decoder, 10) == 1
 end
 
-@testset "GPS L1 test data decoding" begin
-    decoder = GPSL1DecoderState(25)
+@testset "GPS L1 C/A test data decoding" begin
+    decoder = GPSL1CADecoderState(25)
 
     e_values       = zeros(31); e_values[25] = 0.006249904632568359
     t_oa_values    = fill(507904, 31)
@@ -153,10 +122,10 @@ end
     # Dictionary (subframe-4 pages 2-5, 7-10 interleaved with subframe-5
     # pages 1-24). Dictionaries.jl `==` is order-sensitive.
     prns = [16, 17, 18, 19, 20, 21, 22, 23, 24, 1, 25, 2, 26, 3, 27, 4, 28, 5, 6, 29, 7, 30, 8, 31, 9, 10, 11, 12, 13, 14, 15]
-    test_almanac_data = Dictionary{Int64,GNSSDecoder.GPSL1Almanac}(
+    test_almanac_data = Dictionary{Int64,GNSSDecoder.GPSL1CAAlmanac}(
         prns,
         [
-            GNSSDecoder.GPSL1Almanac(;
+            GNSSDecoder.GPSL1CAAlmanac(;
                 e = e_values[prn],
                 t_oa = t_oa_values[prn],
                 δi = δi_values[prn],
@@ -171,7 +140,7 @@ end
             ) for prn in prns
         ],
     )
-    test_data = GNSSDecoder.GPSL1Data(;
+    test_data = GNSSDecoder.GPSL1CAData(;
         last_subframe_id = 3,
         integrity_status_flag = false,
         TOW = 43333 * 6,
@@ -232,12 +201,24 @@ end
         WN_a = 58,
     )
 
-    state = reduce((dec, data) -> decode(dec, data, sizeof(data)*8), GPSL1DATA, init=decoder)
-    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1Data))
+    # Convert the hard-bit chunks into ±1.0f0 soft symbols at the test
+    # boundary. Each chunk is 4000 bits = 500 bytes.
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        GPSL1DATA;
+        init = decoder,
+    )
+    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1CAData))
     @test is_sat_healthy(state) == true
 
-    state = reduce((dec, data) -> decode(dec, ~data, sizeof(data)*8), GPSL1DATA, init=decoder)
-    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1Data))
+    # 180° polarity flip: bit-invert the hard literal then convert to soft symbols.
+    decoder2 = GPSL1CADecoderState(25)
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+        GPSL1DATA;
+        init = decoder2,
+    )
+    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1CAData))
     @test is_sat_healthy(state) == true
 
     # test confirm_data
@@ -245,19 +226,19 @@ end
     state = GNSSDecoder.confirm_data(state, max_vote)
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1Data(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic+1 # erroneous data accepted as it has been provided more often than true data
@@ -265,18 +246,22 @@ end
 
 @testset "confirm_data branches" begin
     # Setup: create a base state with valid data
-    decoder = GPSL1DecoderState(1)
-    state = reduce((dec, data) -> decode(dec, data, sizeof(data)*8), GPSL1DATA, init=decoder)
+    decoder = GPSL1CADecoderState(1)
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        GPSL1DATA;
+        init = decoder,
+    )
     base_data = state.data
 
     # Branch 1: New IODC (not in cache) and empty data - should use data immediately
     @testset "new IODC and empty data - uses data immediately" begin
-        # Start with empty cache
+        # Start with empty cache (fresh GPSL1CACache resets soft_buffer too)
         state_empty_cache = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache(),
+            cache = GNSSDecoder.GPSL1CACache(),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_empty_cache)
         @test result.data == base_data  # data is used
@@ -287,17 +272,16 @@ end
 
     # Branch 2: Same IODC but different data - adds to cache, doesn't use data yet
     @testset "same IODC different data - adds to cache, doesn't use" begin
-        # Create cache with one entry
-        existing_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        existing_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
         state_with_cache = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(5, existing_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(5, existing_data)]),
             raw_data = base_data,  # different data, same IODC
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_with_cache)
-        @test result.data == GNSSDecoder.GPSL1Data()  # data NOT used (empty)
-        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
+        @test result.data == GNSSDecoder.GPSL1CAData()  # data NOT used (empty)
+        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
         @test length(result.cache.old_data) == 2  # new entry added
         @test result.cache.old_data[2].vote == 0  # new entry has vote 0
         @test result.cache.old_data[2].data == base_data
@@ -305,21 +289,20 @@ end
 
     # Branch 3: Matching entry exists but another entry has higher score - rejects data
     @testset "matching entry with lower score than best - rejects data" begin
-        # Create cache with two entries, one with higher score
-        high_score_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        high_score_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
         low_score_data = base_data
         state_with_competing = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([
-                GNSSDecoder.VotedGPSL1Data(10, high_score_data),  # higher score
-                GNSSDecoder.VotedGPSL1Data(2, low_score_data),    # lower score, matches raw_data
+            cache = GNSSDecoder.GPSL1CACache([
+                GNSSDecoder.VotedGPSL1CAData(10, high_score_data),  # higher score
+                GNSSDecoder.VotedGPSL1CAData(2, low_score_data),    # lower score, matches raw_data
             ]),
             raw_data = base_data,  # matches low_score_data
             data = high_score_data,  # currently using high score data
         )
         result = GNSSDecoder.confirm_data(state_with_competing)
         @test result.data == high_score_data  # data NOT changed (still high score data)
-        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
+        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
         @test result.cache.old_data[2].vote == 3  # vote incremented from 2 to 3
     end
 
@@ -327,9 +310,9 @@ end
     @testset "matching entry with best score - uses data" begin
         state_with_match = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(5, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(5, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_with_match)
         @test result.data == base_data  # data is used
@@ -338,15 +321,15 @@ end
 
     # Branch 5: Matching entry at max_vote - removes other entries
     @testset "max_vote reached - removes other entries" begin
-        other_data = GNSSDecoder.GPSL1Data(base_data; C_ic = base_data.C_ic + 1.0)
+        other_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
         state_at_max = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([
-                GNSSDecoder.VotedGPSL1Data(20, base_data),  # already at max_vote (20)
-                GNSSDecoder.VotedGPSL1Data(5, other_data),  # should be removed
+            cache = GNSSDecoder.GPSL1CACache([
+                GNSSDecoder.VotedGPSL1CAData(20, base_data),  # already at max_vote (20)
+                GNSSDecoder.VotedGPSL1CAData(5, other_data),  # should be removed
             ]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_at_max)
         @test result.data == base_data  # data is used
@@ -359,9 +342,9 @@ end
     @testset "max_vote reached with single entry - keeps entry" begin
         state_single_max = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(19, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(19, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_single_max)
         @test result.data == base_data
@@ -373,9 +356,9 @@ end
     @testset "vote capped at max_vote" begin
         state_at_max = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(20, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(20, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1Data(),
+            data = GNSSDecoder.GPSL1CAData(),
         )
         result = GNSSDecoder.confirm_data(state_at_max)
         @test result.cache.old_data[1].vote == 20  # stays at max, doesn't overflow
@@ -383,17 +366,17 @@ end
 
     # Edge case: Different IODC added to non-empty cache
     @testset "different IODC added to existing cache" begin
-        existing_data = GNSSDecoder.GPSL1Data(base_data; IODC = "1111111111")
+        existing_data = GNSSDecoder.GPSL1CAData(base_data; IODC = "1111111111")
         new_data = base_data  # has different IODC
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1Cache([GNSSDecoder.VotedGPSL1Data(20, existing_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(20, existing_data)]),
             raw_data = new_data,
             data = existing_data,
         )
         result = GNSSDecoder.confirm_data(state_diff_iodc)
         @test result.data == existing_data  # data NOT changed (still high score data)
-        @test result.raw_data == GNSSDecoder.GPSL1Data()  # raw_data reset
+        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
         @test length(result.cache.old_data) == 2  # both entries kept
         @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry added
@@ -410,16 +393,21 @@ end
     end
 end
 
-@testset "GPS L1 reset_decoder_state" begin
-    decoder = GPSL1DecoderState(1)
-    state = reduce((dec, data) -> decode(dec, data, sizeof(data)*8), GPSL1DATA, init=decoder)
+@testset "GPS L1 C/A reset_decoder_state" begin
+    decoder = GPSL1CADecoderState(1)
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        GPSL1DATA;
+        init = decoder,
+    )
 
     # test reset_decoder_state
     state = reset_decoder_state(state)
-    @test state.raw_buffer == 0
-    @test state.buffer == 0
+    @test state.cache.packed_buffer[] == 0
+    @test state.cache.complemented_buffer[] == 0
+    @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
-    @test state.num_bits_buffered == 0
+    @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
 end
