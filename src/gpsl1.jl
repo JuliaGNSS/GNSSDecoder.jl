@@ -473,7 +473,7 @@ function GPSL1DecoderState(prn)
     )
 end
 
-function GNSSDecoderState(system::GPSL1, prn)
+function GNSSDecoderState(system::GPSL1CA, prn)
     GNSSDecoderState(
         prn,
         UInt320(0),

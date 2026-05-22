@@ -15,7 +15,7 @@ const GPSL1DATA = [
 
 
 @testset "GPS L1 constructor" begin
-    gpsl1 = GPSL1()
+    gpsl1 = GPSL1CA()
 
     state_1 = GPSL1DecoderState(21)
     state_2 = GNSSDecoderState(gpsl1, 21)
