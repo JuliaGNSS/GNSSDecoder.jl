@@ -1,5 +1,44 @@
 # Changelog
 
+# [2.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.3.0...v2.0.0) (2026-05-22)
+
+### BREAKING CHANGES
+
+* **api:** decoder now consumes `AbstractVector{<:Real}` soft symbols
+  instead of a packed-bit `Unsigned`. `Float32` is canonical; sign carries
+  the bit decision (positive ⇒ bit 0, negative ⇒ bit 1) and magnitude
+  carries confidence (AFF3CT-LLR convention). Closes #35.
+* **types:** `GPSL1Data` → `GPSL1CAData`, `GPSL1Constants` →
+  `GPSL1CAConstants`, `GPSL1DecoderState` → `GPSL1CADecoderState`. The
+  corresponding `GPSL1Almanac` / `VotedGPSL1Data` / `GPSL1Cache` renamed
+  to the `*CA*` variants in step.
+
+### Features
+
+* **api:** new `decode(state, soft_symbols::AbstractVector{<:Real}, n)`
+  entry point on `GNSSDecoderState`. Internal buffer is a
+  `CircularDeque{Float32}` (DataStructures.jl) of length
+  `syncro_sequence_length + preamble_length` per signal (308 for GPS
+  L1 C/A; 260 for Galileo E1B).
+* **layout:** source tree reorganised — `src/gpsl1.jl` → `src/gps/l1ca.jl`,
+  `src/galileo_e1b.jl` → `src/galileo/e1b.jl`. Galileo's hard-bit
+  internals are unchanged in this slice; the soft-input migration of the
+  E1B Viterbi step is tracked in #37.
+
+### Internal
+
+* `GNSSDecoderState` drops `raw_buffer`, `buffer`, and `num_bits_buffered`
+  from its top-level fields. The packed-bit `UInt320` / `UInt288` buffers
+  live transiently inside the per-signal cache and are populated at sync
+  time by `pack_buffer_into_cache!`. The packed buffer's layout
+  (oldest bit at MSB, newest at LSB) matches the v1 `raw_buffer`, so the
+  existing word-extraction / parity-check / subframe-parsing helpers are
+  reused unchanged.
+* Galileo E1B's `decode_syncro_sequence` reads the hard-sliced packed
+  buffer from `state.cache.complemented_buffer[]` instead of
+  `state.buffer`; everything downstream of that read (deinterleave,
+  Viterbi, page parser) is byte-for-byte unchanged.
+
 # [1.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.2.0...v1.3.0) (2026-06-03)
 
 

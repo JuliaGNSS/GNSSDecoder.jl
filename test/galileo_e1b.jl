@@ -138,23 +138,37 @@ end
         )
     )
 
-    state = reduce((dec, data) -> decode(dec, data, sizeof(data)*8), GALILEO_E1B_DATA, init=decoder)
+    # Convert the hard-bit chunks to ±1.0f0 soft symbols at the test boundary.
+    # Galileo's decoder still consumes hard bits internally in this slice; the
+    # boundary conversion mirrors how Tracking.jl v2 callers will feed soft
+    # prompts.
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        GALILEO_E1B_DATA;
+        init = decoder,
+    )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == false
     @test state.num_bits_after_valid_syncro_sequence == 3500
     @test is_sat_healthy(state) == true
 
-    state = reduce((dec, data) -> decode(dec, ~data, sizeof(data)*8), GALILEO_E1B_DATA, init=decoder)
+    decoder2 = GalileoE1BDecoderState(21)
+    state = reduce(
+        (dec, data) -> decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+        GALILEO_E1B_DATA;
+        init = decoder2,
+    )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == true
     @test state.num_bits_after_valid_syncro_sequence == 3500
     @test is_sat_healthy(state) == true
 
     state = reset_decoder_state(state)
-    @test state.raw_buffer == 0
-    @test state.buffer == 0
+    @test state.cache.packed_buffer[] == 0
+    @test state.cache.complemented_buffer[] == 0
+    @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
-    @test state.num_bits_buffered == 0
+    @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
 end
