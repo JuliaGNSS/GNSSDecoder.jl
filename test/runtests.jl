@@ -25,10 +25,24 @@ end
 
 @testset "GNSSDecoder.jl" begin
     @testset "Aqua" begin
-        Aqua.test_all(GNSSDecoder)
+        # Aff3ct is staged for issue #38 (GPS L1C-D runtime): it ships a
+        # `[deps]` slot under issue #36 so the parallel slices land without
+        # Project.toml conflicts, but it is not yet referenced from `src/`.
+        # Aqua's stale-dep check is told to ignore it until issue #38 wires
+        # it in.
+        Aqua.test_all(
+            GNSSDecoder;
+            stale_deps = (ignore = [:Aff3ct],),
+        )
     end
 
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("galileo_e1b.jl")
+
+    # v2 shared-utility deep-module tests (issue #36)
+    include("crc.jl")
+    include("bch_toi.jl")
+    include("deinterleave.jl")
+    include("alist.jl")
 end
