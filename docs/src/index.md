@@ -16,32 +16,36 @@ Pkg.add("GNSSDecoder")
 
 ## Quick Start
 
-### GPS L1 Decoding
+### GPS L1 C/A Decoding
 
-Initialize a decoder and process bits from your tracking loop:
+Initialize a decoder and process soft symbols from your tracking loop. The
+decoder consumes `Float32` soft symbols where the sign carries the bit
+decision (positive ⇒ bit 0, negative ⇒ bit 1) and the magnitude carries
+confidence (AFF3CT LLR convention):
 
 ```jldoctest gps_example
 julia> using GNSSDecoder
 
-julia> state = GPSL1DecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GPSL1CADecoderState(1);  # Initialize decoder for PRN 1
 
 julia> state.prn  # Access PRN
 1
 
 julia> typeof(state)
-GNSSDecoderState{GNSSDecoder.GPSL1Data, GNSSDecoder.GPSL1Constants, GNSSDecoder.GPSL1Cache, GNSSDecoder.UInt320}
+GNSSDecoderState{GNSSDecoder.GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
 ```
 
-Process incoming bits and check the decoder state:
+Process incoming soft symbols and check the decoder state:
 
 ```jldoctest gps_example
-julia> state = decode(state, UInt8(0b10001011), 8);  # Decode 8 bits
+julia> state = decode(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
 
-julia> state.num_bits_buffered  # Bits are now buffered
+julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
 8
 ```
 
-In a real application, you would decode bits from a tracking loop:
+In a real application, you would decode soft symbols from a tracking loop. With
+`Tracking.jl` v2, the soft symbols are the real part of the filtered prompts:
 
 ```julia
 for i in 1:iterations
@@ -49,8 +53,12 @@ for i in 1:iterations
     track_res = track(signal, track_state, state.prn, sampling_freq)
     track_state = get_state(track_res)
 
+    # Project the filtered prompts onto the real axis to obtain soft symbols
+    prompts = get_filtered_prompts(track_res)
+    soft_symbols = Float32.(real.(prompts))
+
     # Decode navigation message
-    state = decode(state, get_bits(track_res), get_num_bits(track_res))
+    state = decode(state, soft_symbols, length(soft_symbols))
 end
 
 # After decoding completes, access the data
@@ -70,11 +78,11 @@ julia> state.prn
 1
 
 julia> typeof(state)
-GNSSDecoderState{GNSSDecoder.GalileoE1BData, GNSSDecoder.GalileoE1BConstants, GNSSDecoder.GalileoE1BCache, GNSSDecoder.UInt288}
+GNSSDecoderState{GNSSDecoder.GalileoE1BData, GNSSDecoder.GalileoE1BConstants, GNSSDecoder.GalileoE1BCache}
 
-julia> state = decode(state, UInt16(0b0101100000), 10);  # Decode 10 bits (preamble)
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> state.num_bits_buffered
+julia> GNSSDecoder.num_bits_buffered(state)
 10
 ```
 
@@ -88,16 +96,16 @@ buffers while preserving previously decoded ephemeris:
 ```jldoctest reset_example
 julia> using GNSSDecoder
 
-julia> state = GPSL1DecoderState(1);
+julia> state = GPSL1CADecoderState(1);
 
-julia> state = decode(state, UInt8(0xff), 8);  # Some decoding
+julia> state = decode(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
-julia> state.num_bits_buffered
+julia> GNSSDecoder.num_bits_buffered(state)
 8
 
 julia> state = reset_decoder_state(state);  # Reset after signal loss
 
-julia> state.num_bits_buffered  # Buffers are cleared
+julia> GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
 0
 
 julia> state.prn  # PRN is preserved
@@ -109,7 +117,7 @@ julia> state.prn  # PRN is preserved
 ```jldoctest health_example
 julia> using GNSSDecoder
 
-julia> state = GPSL1DecoderState(1);
+julia> state = GPSL1CADecoderState(1);
 
 julia> is_sat_healthy(state)  # Health not yet decoded
 false

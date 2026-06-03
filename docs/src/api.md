@@ -9,7 +9,7 @@ GNSSDecoderState
 ## Constructors
 
 ```@docs
-GPSL1DecoderState
+GPSL1CADecoderState
 GalileoE1BDecoderState
 ```
 
@@ -33,11 +33,11 @@ is_sat_healthy
 
 ## Data Types
 
-### GPS L1
+### GPS L1 C/A
 
 ```@docs
-GNSSDecoder.GPSL1Constants
-GNSSDecoder.GPSL1Data
+GNSSDecoder.GPSL1CAConstants
+GNSSDecoder.GPSL1CAData
 ```
 
 ### Galileo E1B
