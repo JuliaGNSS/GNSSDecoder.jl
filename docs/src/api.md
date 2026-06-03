@@ -31,6 +31,21 @@ reset_decoder_state
 is_sat_healthy
 ```
 
+## Shared Utilities
+
+Signal-independent building blocks used across the decoders (CRC-24Q, the
+BCH(51,8) TOI codec, and the block (de)interleaver).
+
+```@docs
+crc24q
+BCHToiSync
+sync_bch_toi
+soft_to_hard_codeword
+pack_hard_codeword
+deinterleave!
+interleave!
+```
+
 ## Data Types
 
 ### GPS L1 C/A
