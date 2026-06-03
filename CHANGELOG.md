@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.2.0...v1.3.0) (2026-06-03)
+
+
+### Features
+
+* **deps:** bump GNSSSignals to v2.2 ([78e8597](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/78e8597d0f258bd8f4af94ad21be812d8fbf6d61))
+
 # [1.2.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.1.0...v1.2.0) (2026-05-17)
 
 
