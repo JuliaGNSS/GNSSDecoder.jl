@@ -90,9 +90,17 @@
   polarities; PRN 2 cross-checks satellite-specific ephemeris against
   the midi-almanac entry decoded from PRN 1's stream and requires the
   constellation-wide subframe-3 broadcast to decode identically from
-  both satellites. The full-recording test (all 31 channels, GSS-CNAVDATA
-  container parsing, fixture provenance byte-compare) stays gated behind
-  `GPS_L1C_D_FIXTURE_DIR`.
+  both satellites. The previous env-var-gated full-recording test
+  (`GPS_L1C_D_FIXTURE_DIR`) is removed: it never ran in CI, the fixture
+  provenance byte-compare against the source recording was verified
+  once at extraction time, and all 31 channels share the decode path
+  the two committed PRNs already cover.
+* **cleanup:** remove the dead `String`-based `deinterleave` and
+  `invert_every_second_bit` helpers left over from the hard-bit era —
+  Galileo E1B now runs the shared `Float32` deinterleaver and negation;
+  the Galileo-ICD example test drives the same soft path the decoder
+  uses. Documentation (README, manual index) updated to list GPS L1C-D
+  and the soft-symbol input convention.
 
 ### Internal
 

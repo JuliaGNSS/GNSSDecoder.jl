@@ -5,6 +5,7 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 ## Supported Systems
 
 - **GPS L1 C/A**: Decodes the 50 bps LNAV data stream from GPS L1 civil signals
+- **GPS L1C-D**: Decodes the 100 sps CNAV-2 data stream from the modernized GPS L1C signal's data component
 - **Galileo E1B**: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals
 
 ## Installation
@@ -79,6 +80,30 @@ julia> state.prn
 
 julia> typeof(state)
 GNSSDecoderState{GNSSDecoder.GalileoE1BData, GNSSDecoder.GalileoE1BConstants, GNSSDecoder.GalileoE1BCache}
+
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia> GNSSDecoder.num_bits_buffered(state)
+10
+```
+
+### GPS L1C-D Decoding
+
+The GPS L1C-D (CNAV-2) decoder synchronises on the BCH-encoded TOI counter
+(no fixed preamble), LDPC-decodes subframes 2 and 3, and validates each with
+CRC-24Q. Construction loads the LDPC parity-check matrices shipped with the
+package:
+
+```jldoctest l1cd_example
+julia> using GNSSDecoder
+
+julia> state = GPSL1C_DDecoderState(1);  # Initialize decoder for PRN 1
+
+julia> state.prn
+1
+
+julia> typeof(state)
+GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
 
 julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
@@ -161,3 +186,19 @@ Similar ephemeris and clock parameters are available for Galileo, plus:
 | `data_validity_status_e1b` | Data validity status |
 | `broadcast_group_delay_e1_e5a` | E1-E5a group delay |
 | `broadcast_group_delay_e1_e5b` | E1-E5b group delay |
+
+### GPS L1C-D Data
+
+CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
+[`GPSL1C_DData`](@ref) for the full field list:
+
+| Field | Description |
+|-------|-------------|
+| `toi`, `ITOW`, `WN` | Time of interval, interval time of week, week number |
+| `t_0e`, `ΔA`, `e`, `M_0`, `ω`, `Ω_0`, `i_0`, … | Clock and ephemeris (CED) parameters |
+| `α0..α3`, `β0..β3` | Klobuchar ionospheric coefficients (subframe-3 page 1) |
+| `A0_UTC`, `Δt_LS`, … | UTC parameters (page 1) |
+| `A0_GGTO`, `t_GGTO`, … | GPS/GNSS time offset and EOP (page 2) |
+| `reduced_almanacs`, `midi_almanacs` | Per-SV almanac dictionaries (pages 3/4) |
+| `differential_corrections` | Per-SV differential corrections (page 5) |
+| `text_message` | Broadcast text (page 6) |
