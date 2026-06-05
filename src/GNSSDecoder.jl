@@ -5,6 +5,8 @@ using DocStringExtensions,
 
 export decode,
     GPSL1CADecoderState,
+    GPSL1C_DDecoderState,
+    GPSL1C_DData,
     GalileoE1BDecoderState,
     is_sat_healthy,
     GNSSDecoderState,
@@ -28,4 +30,10 @@ include("galileo/e1b.jl")
 include("crc.jl")
 include("bch_toi.jl")
 include("deinterleave.jl")
+
+# GPS L1C-D (CNAV-2) decoder (issue #38). Included after the shared utilities
+# above because it consumes `crc24q`, `sync_bch_toi`, the BCH TOI table, and
+# the (de)interleaver, and after `gps/l1ca.jl` because it shares the generic
+# `decode` framework hooks (`try_sync`, `decode_syncro_sequence`, …).
+include("gps/l1c_d.jl")
 end
