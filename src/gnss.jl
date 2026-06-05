@@ -20,7 +20,7 @@ wrong trade for a streaming decoder. Treat the value returned by `decode` as
 *the* live state and do not keep mutating an earlier snapshot in parallel. The
 transient packed-bit buffer used for preamble matching is **not** stored here;
 it is computed as a local value at sync time and threaded through the sync
-path (see [`pack_buffer`](@ref) / [`try_sync`](@ref)).
+path (see `pack_buffer` / `try_sync`).
 
 # Type Parameters
 - `D<:AbstractGNSSData`: The data type holding decoded navigation message fields
@@ -165,7 +165,7 @@ calc_preamble_mask(constants::AbstractGNSSConstants) =
 Hard-slice the leading `syncro_sequence_length + preamble_length` soft
 symbols of the per-signal soft buffer into a packed-bit value (the v1
 `raw_buffer`: oldest bit at MSB, newest bit at LSB). The concrete unsigned
-type is signal-specific and supplied by [`packed_buffer_type`](@ref). The
+type is signal-specific and supplied by `packed_buffer_type`. The
 result is a plain value — it is threaded through the sync path rather than
 stashed in mutable cache state.
 """
@@ -178,7 +178,7 @@ end
     try_sync(state) -> Union{Nothing,Unsigned}
 
 Default per-signal sync hook: hard-slice the deque into a packed-bit buffer
-(via [`pack_buffer`](@ref)) and run the [`find_preamble`](@ref) bit-pattern
+(via `pack_buffer`) and run the `find_preamble` bit-pattern
 check (preamble visible at both ends of the candidate syncro sequence, in
 either polarity). Returns the packed buffer on a match, or `nothing` if there
 is no sync. Returning the buffer lets the caller reuse it without recomputing
