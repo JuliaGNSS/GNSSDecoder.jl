@@ -139,9 +139,9 @@ end
     )
 
     # Convert the hard-bit chunks to ±1.0f0 soft symbols at the test boundary.
-    # Galileo's decoder still consumes hard bits internally in this slice; the
-    # boundary conversion mirrors how Tracking.jl v2 callers will feed soft
-    # prompts.
+    # The golden fixture was captured as hard bits; the boundary conversion
+    # mirrors how Tracking.jl v2 callers feed soft prompts into the soft-symbol
+    # decode path (AFF3CT Viterbi, issue #37).
     state = reduce(
         (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;

@@ -1,6 +1,7 @@
-using Test, GNSSDecoder, BitIntegers, ViterbiDecoder, GNSSSignals
+using Test, GNSSDecoder, BitIntegers, GNSSSignals
 using Aqua
 using Dictionaries
+import Aff3ct
 
 BitIntegers.@define_integers 4000
 
@@ -25,8 +26,9 @@ end
 
 @testset "GNSSDecoder.jl" begin
     @testset "Aqua" begin
-        # Aff3ct is now referenced from `src/gps/l1c_d.jl` (issue #38), so it
-        # is no longer a stale dependency.
+        # Aff3ct is referenced from `src/` (Galileo E1B's K=7 NSC Viterbi,
+        # issue #37, and the GPS L1C-D LDPC decoders, issue #38), so it
+        # needs no stale-dep exemption.
         Aqua.test_all(GNSSDecoder)
     end
 
