@@ -519,23 +519,151 @@ end
         @test isnothing(d.A0_GGTO)
     end
 
-    # --- Optional Spirent GSS fixture (gated; not available in CI) -----------
-    @testset "Spirent GSS-CNAVDATA fixture (gated)" begin
+    # --- Spirent-derived recording fixtures (committed; always run) ----------
+    #
+    # `test/data/gps_l1c_d_prn{1,2}_symbols.bin` hold the post-FEC channel
+    # symbols of two satellites (PRN 1 and PRN 2) from a Spirent GSS7000 L1C
+    # simulation: 69 consecutive 1800-symbol CNAV-2 frames each (TOI 1..69),
+    # packed 8 hard symbols per byte MSB-first (15,525 bytes per file). They
+    # were extracted from the simulator's GSS-CNAVDATA output
+    # (`nav_data_fec.L1_cnv`, Spirent FAQ14061: 16-byte header + 225-byte
+    # post-FEC symbol blocks, one block per satellite channel per 18-second
+    # epoch in round-robin order; the full recording carries 31 channels =
+    # PRN 1..31) by demultiplexing satellite channels 0 and 1. These are the
+    # *encoded* channel symbols, so the test exercises the complete receive
+    # chain: BCH TOI sync → 38×46 deinterleave → LDPC BP decode → CRC-24Q →
+    # field parsing. The golden field values below come from Spirent's own
+    # decode of the matching pre-FEC bits file (`nav_data_bits.L1_cnv.txt`,
+    # message 1, PRN 1).
+    "Unpack a packed-bit fixture file to ±1 Float32 soft symbols (MSB of each byte first)."
+    function load_packed_symbols(path::String)
+        Float32[(b >> (7 - j)) & 0x01 == 0 ? 1.0f0 : -1.0f0
+                for b in read(path) for j in 0:7]
+    end
+
+    "Assert the decoded `state` matches Spirent's pre-FEC field dump (PRN 1)."
+    function assert_spirent_golden(state)
+        d = state.data
+        # Subframe 2 (semicircle-valued fields are stored in radians, × π).
+        @test d.WN == 2106
+        @test d.ITOW == 36
+        @test d.t_op == 259200
+        @test d.l1c_health == false
+        @test d.t_0e == 264600
+        @test d.ΔA ≈ 922.048828125
+        @test d.A_dot ≈ 0.0
+        @test d.Δn_0 ≈ 0.0
+        @test d.M_0 ≈ 0.95177634549327195 * π
+        @test d.e ≈ 0.0
+        @test d.ω ≈ -0.38260139431804419 * π
+        @test d.Ω_0 ≈ 0.29631945816799998 * π
+        @test d.i_0 ≈ 0.30555555550381541 * π
+        @test d.ΔΩ_dot ≈ 2.6000179786933586e-9 * π
+        @test d.a_f0 ≈ 0.0
+        @test d.T_GD ≈ 0.0
+        @test is_sat_healthy(state)
+
+        # Subframe 3 pages observed in the recording.
+        @test d.Δt_LS == 18
+        @test d.A0_UTC ≈ 0.0
+        @test d.t_GGTO == 259200
+        @test d.text_message == "Test text message for page: 2"
+        @test d.num_sf3_pages_received == 68
+
+        # Reduced almanac (page 3): all 31 SVs broadcast; entries golden-
+        # checked against Spirent's dump for PRN 1 and PRN 2 (semicircle
+        # fields × π).
+        @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) == 31
+        ra1 = d.reduced_almanacs[1]
+        @test ra1.WN_a == 2106
+        @test ra1.t_oa == 507904
+        @test ra1.δA ≈ 1024.0
+        @test ra1.Ω_0 ≈ 0.296875 * π
+        @test ra1.Φ_0 ≈ -0.140625 * π
+        @test !ra1.l1_health && !ra1.l2_health && !ra1.l5_health
+        ra2 = d.reduced_almanacs[2]
+        @test ra2.δA ≈ 1024.0
+        @test ra2.Ω_0 ≈ -0.0625 * π
+        @test ra2.Φ_0 ≈ -0.5625 * π
+
+        # Midi almanac (page 4): PRNs 1-11 broadcast; PRN 1 entry golden-
+        # checked against Spirent's dump.
+        @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) == 11
+        ma1 = d.midi_almanacs[1]
+        @test ma1.WN_a == 2106
+        @test ma1.t_oa == 507904
+        @test ma1.e ≈ 0.0
+        @test ma1.δi ≈ 0.00555419921875 * π
+        @test ma1.Ω_dot ≈ 0.0
+        @test ma1.sqrt_A ≈ 5153.6875
+        @test ma1.Ω_0 ≈ 0.29632568359375 * π
+        @test ma1.ω ≈ -0.382598876953125 * π
+        @test ma1.M_0 ≈ 0.247406005859375 * π
+        @test ma1.a_f0 ≈ 0.0
+        @test ma1.a_f1 ≈ 0.0
+        @test !ma1.l1_health && !ma1.l2_health && !ma1.l5_health
+    end
+
+    @testset "Spirent recording fixture (PRN 1)" begin
+        soft = load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn1_symbols.bin"))
+        @test length(soft) == 69 * 1800
+
+        state = decode(GPSL1C_DDecoderState(1), soft, length(soft))
+        assert_spirent_golden(state)
+        @test !state.is_shifted_by_180_degrees
+        # The recording starts at TOI 1; the 69th frame cannot complete (its
+        # validation needs the next frame's 52 BCH symbols), so the last
+        # completed subframe carries TOI 68.
+        @test state.data.toi == 68
+
+        # Polarity-inverted stream must decode identically with the
+        # 180°-flip flag set.
+        state_inv = decode(GPSL1C_DDecoderState(1), -soft, length(soft))
+        @test state_inv.is_shifted_by_180_degrees
+        @test state_inv.data == state.data
+    end
+
+    @testset "Spirent recording fixture (PRN 2)" begin
+        soft1 = load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn1_symbols.bin"))
+        soft2 = load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn2_symbols.bin"))
+        d1 = decode(GPSL1C_DDecoderState(1), soft1, length(soft1)).data
+        state2 = decode(GPSL1C_DDecoderState(2), soft2, length(soft2))
+        d2 = state2.data
+
+        # Same constellation epoch, different satellite.
+        @test d2.WN == 2106
+        @test d2.ITOW == 36
+        @test d2.t_0e == 264600
+        @test d2.toi == 68
+        @test is_sat_healthy(state2)
+        @test d2.Ω_0 != d1.Ω_0  # PRN 2 broadcasts its own ephemeris ...
+        # ... consistent (at almanac quantisation) with PRN 2's midi-almanac
+        # entry independently decoded from PRN 1's stream.
+        ma2 = d1.midi_almanacs[2]
+        @test isapprox(d2.Ω_0, ma2.Ω_0; atol = 1e-3)
+        @test isapprox(d2.ω, ma2.ω; atol = 1e-3)
+
+        # The subframe-3 broadcast (almanacs, UTC, GGTO, text) is common to
+        # the whole constellation — both satellites must decode it equally.
+        @test d2.reduced_almanacs == d1.reduced_almanacs
+        @test d2.midi_almanacs == d1.midi_almanacs
+        @test d2.Δt_LS == d1.Δt_LS
+        @test d2.t_GGTO == d1.t_GGTO
+        @test d2.text_message == d1.text_message
+        @test d2.num_sf3_pages_received == 68
+    end
+
+    # --- Optional full Spirent GSS-CNAVDATA recording (gated) ----------------
+    # Validates the committed fixture's provenance: parses the original
+    # simulator output, demultiplexes the same channel, and requires it to be
+    # byte-identical to `test/data/gps_l1c_d_prn1_symbols.bin` before running
+    # the same golden assertions.
+    @testset "Spirent GSS-CNAVDATA recording (gated)" begin
         fixture_dir = get(ENV, "GPS_L1C_D_FIXTURE_DIR", nothing)
         if isnothing(fixture_dir)
-            @info "GPS_L1C_D_FIXTURE_DIR not set — skipping Spirent L1C-D fixture test"
+            @info "GPS_L1C_D_FIXTURE_DIR not set — skipping full Spirent recording test"
             @test true
         else
-            # Spirent GSS simulators write post-FEC L1C channel symbols in
-            # the GSS-CNAVDATA container (Spirent FAQ14061): a 16-byte header
-            # ("GSS CNAVDATA", major/minor version, file type 2 = post-FEC
-            # symbols, spare) followed by repeated 225-byte blocks of 1800
-            # symbols, MSB of each byte first. When the simulation runs
-            # multiple satellites, each 18-second epoch contributes one block
-            # per satellite channel in a fixed round-robin order; channels
-            # are demultiplexed by noting that all satellites broadcast the
-            # same TOI, so the 52-symbol subframe-1 prefix only changes at an
-            # epoch boundary.
             symfile = joinpath(fixture_dir, "nav_data_fec.L1_cnv")
             @test isfile(symfile)
             raw = read(symfile)
@@ -545,52 +673,25 @@ end
             @test length(body) % 225 == 0
             blocks = [body[(i-1)*225+1:i*225] for i in 1:length(body)÷225]
             # Channel count = number of consecutive blocks sharing the
-            # 52-symbol (7-byte) subframe-1 prefix of the first epoch.
+            # 52-symbol (7-byte) subframe-1 prefix of the first epoch (all
+            # satellites broadcast the same TOI, so the prefix only changes
+            # at an epoch boundary).
             nch = findfirst(i -> blocks[i][1:7] != blocks[1][1:7], 1:length(blocks))
             nch = isnothing(nch) ? 1 : nch - 1
             channel = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_CHANNEL", "0"))
             prn = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_PRN", "1"))
-            to_soft(block) = Float32[(b >> (7 - j)) & 0x01 == 0 ? 1.0f0 : -1.0f0
-                                     for b in block for j in 0:7]
-            soft = reduce(vcat, to_soft.(blocks[(1+channel):nch:end]))
-
+            packed = reduce(vcat, blocks[(1+channel):nch:end])
+            # The committed fixtures must be byte-identical to the channels
+            # they were extracted from.
+            for (fixture_channel, fname) in
+                ((0, "gps_l1c_d_prn1_symbols.bin"), (1, "gps_l1c_d_prn2_symbols.bin"))
+                @test reduce(vcat, blocks[(1+fixture_channel):nch:end]) ==
+                      read(joinpath(@__DIR__, "data", fname))
+            end
+            soft = Float32[(b >> (7 - j)) & 0x01 == 0 ? 1.0f0 : -1.0f0
+                           for b in packed for j in 0:7]
             state = decode(GPSL1C_DDecoderState(prn), soft, length(soft))
-            d = state.data
-
-            # Golden values from Spirent's own decode of the matching
-            # pre-FEC file (`nav_data_bits.L1_cnv.txt`, message 1, PRN 1).
-            # Semicircle-valued fields are stored in radians (× π).
-            @test d.WN == 2106
-            @test d.ITOW == 36
-            @test d.t_op == 259200
-            @test d.l1c_health == false
-            @test d.t_0e == 264600
-            @test d.ΔA ≈ 922.048828125
-            @test d.A_dot ≈ 0.0
-            @test d.Δn_0 ≈ 0.0
-            @test d.M_0 ≈ 0.95177634549327195 * π
-            @test d.e ≈ 0.0
-            @test d.ω ≈ -0.38260139431804419 * π
-            @test d.Ω_0 ≈ 0.29631945816799998 * π
-            @test d.i_0 ≈ 0.30555555550381541 * π
-            @test d.ΔΩ_dot ≈ 2.6000179786933586e-9 * π
-            @test d.a_f0 ≈ 0.0
-            @test d.T_GD ≈ 0.0
-            @test is_sat_healthy(state)
-
-            # SF3 pages observed in the recording.
-            @test d.Δt_LS == 18
-            @test d.A0_UTC ≈ 0.0
-            @test d.t_GGTO == 259200
-            @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) > 0
-            @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) > 0
-            @test d.num_sf3_pages_received > 0
-
-            # Polarity-inverted stream must decode identically with the
-            # 180°-flip flag set.
-            state_inv = decode(GPSL1C_DDecoderState(prn), -soft, length(soft))
-            @test state_inv.is_shifted_by_180_degrees
-            @test state_inv.data == d
+            assert_spirent_golden(state)
         end
     end
 end
