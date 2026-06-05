@@ -1,0 +1,15 @@
+# Codecov configuration.
+#
+# Coverage is reported for information only and never fails CI. The test suite
+# is the source of truth for correctness; patch/project coverage deltas on a
+# decoder library swing with which signal fixtures a change happens to touch
+# (e.g. adding a signal's decoder without its golden recording), so gating the
+# PR on them produces noise rather than signal.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
