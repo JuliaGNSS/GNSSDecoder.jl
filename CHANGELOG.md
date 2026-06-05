@@ -64,6 +64,21 @@
   `num_sf3_pages_received`. Semi-circle quantities are converted to radians on
   decode. Pre-IRN-J page-1 recordings (no ISC fields) are out of scope.
   Closes #39.
+* **gpsl1c:** validate the L1C-D pipeline end-to-end against a Spirent
+  GSS7000 recording, fixing two bit-exact bugs that synthetic round-trip
+  tests could not catch: (1) the BCH(51,8) TOI LFSR emitted the complement
+  of the register LSB — the corrected table matches the recording's
+  subframe-1 symbols bit-for-bit (PocketSDR's `LFSR` emits `CHIP[R & 1]`
+  with `CHIP = (-1, 1)`, i.e. the LSB itself); (2) the CNAV-2 LDPC
+  codewords are systematic `[info | parity]` per IS-GPS-800G §3.2.3.3, but
+  Aff3ct's alist loader auto-derives info-bit positions that select the
+  parity columns — `GPSL1C_DCache` now forces `info_bits_pos = 0:K-1`
+  before building the BP decoders. The gated Spirent fixture test now
+  parses the GSS-CNAVDATA container (16-byte header, 225-byte post-FEC
+  symbol blocks, per-epoch satellite-channel round-robin) and asserts the
+  decoded SF2/SF3 fields against Spirent's own pre-FEC field dump in both
+  polarities; the synthetic CI test encodes systematically over GF(2) from
+  the alist instead of via Aff3ct's LU-based encoder.
 
 ### Internal
 
