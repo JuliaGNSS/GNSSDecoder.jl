@@ -107,9 +107,9 @@ The reduced almanac gives a very coarse ephemeris for satellite selection. Each
 page-3 carries six 33-bit packets; this struct holds one decoded packet plus the
 page-level almanac reference week/time. A reduced almanac is *complete in a
 single page* — there is no IOD-driven multi-page chaining like Galileo's word
-types 7-10 — so [`GPSL1C_DData.reduced_almanacs`](@ref) entries are inserted
+types 7-10 — so `GPSL1C_DData.reduced_almanacs` entries are inserted
 whole, keyed by `PRN_a`. Reduced and Midi almanacs use *separate* structs (their
-field sets barely overlap); they share the [`Dictionary`](@ref) pattern.
+field sets barely overlap); they share the `Dictionary` pattern.
 
 Reference values to apply (Table 3.5-6 footnotes): `e = 0`,
 `δi = +0.0056 semi-circles` (so `i₀ = 0.30 sc = 55°`),
@@ -149,7 +149,7 @@ Table 3.5-7).
 
 The Midi almanac is a medium-precision single-SV almanac. Each page-4 carries
 exactly one SV's almanac, complete in that single page (no multi-page chaining),
-so [`GPSL1C_DData.midi_almanacs`](@ref) entries are inserted whole, keyed by
+so `GPSL1C_DData.midi_almanacs` entries are inserted whole, keyed by
 `PRN_a`. Inclination is `δi` relative to `i₀ = 0.30 semi-circles` (55°);
 semi-circle fields are converted to radians on decode.
 

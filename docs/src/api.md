@@ -70,4 +70,7 @@ GNSSDecoder.DataValidityStatus
 ```@docs
 GNSSDecoder.GPSL1C_DConstants
 GPSL1C_DData
+GPSL1C_DReducedAlmanac
+GPSL1C_DMidiAlmanac
+GPSL1C_DDifferentialCorrection
 ```
