@@ -79,6 +79,20 @@
   decoded SF2/SF3 fields against Spirent's own pre-FEC field dump in both
   polarities; the synthetic CI test encodes systematically over GF(2) from
   the alist instead of via Aff3ct's LU-based encoder.
+* **gpsl1c:** commit two Spirent-derived recording fixtures so the
+  end-to-end L1C-D test runs automatically in CI. The post-FEC channel
+  symbols of PRN 1 and PRN 2 (69 CNAV-2 frames each) are stored as
+  packed-bit files under `test/data/` (15,525 bytes per satellite — the
+  ±1 hard symbols carry one bit each, so packed bits beat `Float32`
+  literals 32:1) and unpacked to ±1 `Float32` soft symbols at the test
+  boundary. PRN 1 is golden-checked field-by-field against Spirent's
+  pre-FEC dump (including exact reduced-/midi-almanac entries) in both
+  polarities; PRN 2 cross-checks satellite-specific ephemeris against
+  the midi-almanac entry decoded from PRN 1's stream and requires the
+  constellation-wide subframe-3 broadcast to decode identically from
+  both satellites. The full-recording test (all 31 channels, GSS-CNAVDATA
+  container parsing, fixture provenance byte-compare) stays gated behind
+  `GPS_L1C_D_FIXTURE_DIR`.
 
 ### Internal
 
