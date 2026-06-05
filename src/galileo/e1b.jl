@@ -219,7 +219,7 @@ the two-position almanac-chain state needed to merge word types 7-10. Soft-symbo
 buffering is shared across all signals; the rest is Galileo-specific. The
 transient `UInt288` packed-bit buffer used for sync is not stored here — it is
 computed as a local value and threaded through the decode path (see
-[`pack_buffer`](@ref)).
+`pack_buffer`).
 
 The Galileo decoder still consumes *hard-decision bits* internally in this
 slice — the soft-symbol migration to AFF3CT.jl's Viterbi is tracked in #37.
