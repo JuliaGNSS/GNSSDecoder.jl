@@ -20,15 +20,13 @@ jobs:
         # Windows is intentionally excluded: the Aff3ct dependency has no
         # Windows binary (aff3ct/streampu does not build on MinGW, so
         # aff3ct_jll skips Windows), so the package cannot be installed there.
-        #
-        # macOS is temporarily excluded: aff3ct_jll v4.2.1 fails to install on
-        # macOS (case-insensitive APFS collapses a case-only-differing filename
-        # in aff3ct's bundled share/conf data, giving an artifact "Tree Hash
-        # Mismatch"). Fixed by aff3ct_jll v4.2.2 — JuliaPackaging/Yggdrasil#13903.
-        # Re-add `macOS-latest` once 4.2.2 is published.
-        # include:
-        #   - os: macOS-latest
-        #     version: '1'
+        include:
+          # macOS is tested on Julia 1 only (keeps the matrix small). Requires
+          # aff3ct_jll ≥ 4.2.2, which fixed a case-insensitive-APFS install
+          # failure ("Tree Hash Mismatch") present in v4.2.1 —
+          # JuliaPackaging/Yggdrasil#13903.
+          - os: macOS-latest
+            version: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v3
