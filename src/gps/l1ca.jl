@@ -344,14 +344,12 @@ $(TYPEDEF)
 
 Per-decoder cache for the GPS L1 C/A signal.
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 300 + 8 = 308),
-two transient `UInt320` packed-bit buffers populated at sync time, and the
-data-voting cache used by `confirm_data`. The struct itself is immutable: every
-field is a mutable container (the deque, the `old_data` vector) or a `Ref` cell,
-so all updates happen in place inside the otherwise-immutable
-[`GNSSDecoderState`](@ref). The two packed buffers need a `Ref` because `UInt320`
-is an immutable bits-type with no in-place mutation of its own — matching the
-`Ref{UInt288}` buffers in [`GalileoE1BCache`](@ref).
+Holds the soft-symbol `CircularDeque{Float32}` (capacity = 300 + 8 = 308) and
+the data-voting cache used by `confirm_data`. The struct itself is immutable:
+both fields are mutable containers updated in place inside the
+otherwise-immutable [`GNSSDecoderState`](@ref). The packed-bit buffer used for
+sync is *not* stored here — it is computed as a local value at sync time and
+threaded through the decode path (see [`pack_buffer`](@ref)).
 
 # Fields
 $(TYPEDFIELDS)
@@ -359,41 +357,26 @@ $(TYPEDFIELDS)
 struct GPSL1CACache <: AbstractGNSSCache
     "Soft-symbol buffer (308 = 300 syncro + 8 preamble)"
     soft_buffer::CircularDeque{Float32}
-    "Hard-sliced packed-bit buffer (= legacy `raw_buffer`), populated at sync time"
-    packed_buffer::Base.RefValue{UInt320}
-    "Polarity-resolved packed-bit buffer (= legacy `buffer`), populated at sync time"
-    complemented_buffer::Base.RefValue{UInt320}
     "Voting tally used by `confirm_data` for subframe-level data validation"
     old_data::Vector{VotedGPSL1CAData}
 end
 
 function GPSL1CACache()
-    GPSL1CACache(
-        CircularDeque{Float32}(308),
-        Ref(UInt320(0)),
-        Ref(UInt320(0)),
-        Vector{VotedGPSL1CAData}(),
-    )
+    GPSL1CACache(CircularDeque{Float32}(308), Vector{VotedGPSL1CAData}())
 end
 
 function GPSL1CACache(old_data::Vector{VotedGPSL1CAData})
     # Convenience constructor used by the tests to seed the voting cache with a
     # known tally. `confirm_data` itself mutates `old_data` in place rather than
     # building a fresh cache.
-    GPSL1CACache(
-        CircularDeque{Float32}(308),
-        Ref(UInt320(0)),
-        Ref(UInt320(0)),
-        old_data,
-    )
+    GPSL1CACache(CircularDeque{Float32}(308), old_data)
 end
 
 function Base.:(==)(a::GPSL1CACache, b::GPSL1CACache)
-    deques_equal(a.soft_buffer, b.soft_buffer) &&
-        a.packed_buffer[] == b.packed_buffer[] &&
-        a.complemented_buffer[] == b.complemented_buffer[] &&
-        a.old_data == b.old_data
+    deques_equal(a.soft_buffer, b.soft_buffer) && a.old_data == b.old_data
 end
+
+packed_buffer_type(::GNSSDecoderState{<:GPSL1CAData}) = UInt320
 
 function is_subframe1_decoded(data::GPSL1CAData)
     !isnothing(data.trans_week) &&
@@ -565,8 +548,6 @@ function reset_decoder_state(state::GNSSDecoderState{<:GPSL1CAData})
     # lead to erroneous decoder information for a few seconds after
     # reacquisition when a new GPS week started during a signal outage.
     empty!(state.cache.soft_buffer)
-    state.cache.packed_buffer[] = UInt320(0)
-    state.cache.complemented_buffer[] = UInt320(0)
     GNSSDecoderState(
         state;
         raw_data = GPSL1CAData(state.raw_data; TOW = nothing),
@@ -607,19 +588,19 @@ function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
     computed_parity_bits == get_bits(word, 30, 25, 6)
 end
 
-function get_word(state::GNSSDecoderState{<:GPSL1CAData}, word_number::Int)
+function get_word(buffer, state::GNSSDecoderState{<:GPSL1CAData}, word_number::Int)
     num_words = Int(state.constants.syncro_sequence_length / state.constants.word_length)
     word =
-        state.cache.complemented_buffer[] >> UInt(
+        buffer >> UInt(
             state.constants.word_length * (num_words - word_number) +
             state.constants.preamble_length,
         )
     UInt(word & (UInt(1) << UInt(state.constants.word_length) - UInt(1)))
 end
 
-function can_decode_word(decode_bits::Function, state::GNSSDecoderState, word_number::Int)
-    word = get_word(state, word_number)
-    prev_word = get_word(state, word_number - 1)
+function can_decode_word(decode_bits::Function, state::GNSSDecoderState, buffer, word_number::Int)
+    word = get_word(buffer, state, word_number)
+    prev_word = get_word(buffer, state, word_number - 1)
     prev_word_bit_30 = get_bit(prev_word, 30, 30)
     is_checked_word = word_number != 1 && word_number != 3
     if check_gpsl1_parity(
@@ -637,15 +618,16 @@ end
 function can_decode_two_words(
     decode_bits::Function,
     state::GNSSDecoderState,
+    buffer,
     word_number1::Int,
     word_number2::Int,
 )
-    word1 = get_word(state, word_number1)
-    prev_word1 = get_word(state, word_number1 - 1)
+    word1 = get_word(buffer, state, word_number1)
+    prev_word1 = get_word(buffer, state, word_number1 - 1)
     prev_word1_bit_30 = get_bit(prev_word1, 30, 30)
     is_checked_word1 = word_number1 != 1 && word_number1 != 3
-    word2 = get_word(state, word_number2)
-    prev_word2 = get_word(state, word_number2 - 1)
+    word2 = get_word(buffer, state, word_number2)
+    prev_word2 = get_word(buffer, state, word_number2 - 1)
     prev_word2_bit_30 = get_bit(prev_word2, 30, 30)
     is_checked_word2 = word_number2 != 1 && word_number2 != 3
     if check_gpsl1_parity(
@@ -665,13 +647,13 @@ function can_decode_two_words(
     return state
 end
 
-function read_tlm_and_how_words(state)
-    state = can_decode_word(state, 1) do tlm_word, state
+function read_tlm_and_how_words(state, buffer)
+    state = can_decode_word(state, buffer, 1) do tlm_word, state
         integrity_status_flag = get_bit(tlm_word, 30, 23)
         GPSL1CAData(state.raw_data; integrity_status_flag)
     end
     prev_TOW = state.raw_data.TOW
-    state = can_decode_word(state, 2) do how_word, state
+    state = can_decode_word(state, buffer, 2) do how_word, state
         TOW = get_bits(how_word, 30, 1, 17) * 6
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
@@ -685,12 +667,12 @@ function read_tlm_and_how_words(state)
     state
 end
 
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
-    state = read_tlm_and_how_words(state)
+function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
+    state = read_tlm_and_how_words(state, buffer)
     subframe_id = state.raw_data.last_subframe_id
 
     if subframe_id == 1
-        state = can_decode_word(state, 3) do word3, state
+        state = can_decode_word(state, buffer, 3) do word3, state
             trans_week = get_bits(word3, 30, 1, 10)
 
             # Codes on L2 Channel
@@ -715,7 +697,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; trans_week, codeonl2, ura, svhealth)
         end
 
-        state = can_decode_two_words(state, 3, 8) do word3, word8, state
+        state = can_decode_two_words(state, buffer, 3, 8) do word3, word8, state
             # Issue of Data Clock
             # 2 MSB in Word 2, LSB 8 in Word 8
             IODC =
@@ -724,25 +706,25 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; IODC)
         end
 
-        state = can_decode_word(state, 4) do word4, state
+        state = can_decode_word(state, buffer, 4) do word4, state
             # True: LNAV Datastream on PCode commanded OFF
             l2pcode = get_bit(word4, 30, 1)
             GPSL1CAData(state.raw_data; l2pcode)
         end
 
-        state = can_decode_word(state, 7) do word7, state
+        state = can_decode_word(state, buffer, 7) do word7, state
             # group time differential
             T_GD = get_twos_complement_num(word7, 30, 17, 8) / 1 << 31
             GPSL1CAData(state.raw_data; T_GD)
         end
 
-        state = can_decode_word(state, 8) do word8, state
+        state = can_decode_word(state, buffer, 8) do word8, state
             # Clock data reference
             t_0c = get_bits(word8, 30, 9, 16) << 4
             GPSL1CAData(state.raw_data; t_0c)
         end
 
-        state = can_decode_word(state, 9) do word9, state
+        state = can_decode_word(state, buffer, 9) do word9, state
             # clock correction parameter a_f2
             a_f2 = get_twos_complement_num(word9, 30, 1, 8) / 1 << 55
             # clock correction parameter a_f1
@@ -750,26 +732,26 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; a_f2, a_f1)
         end
 
-        state = can_decode_word(state, 10) do word10, state
+        state = can_decode_word(state, buffer, 10) do word10, state
             # Clock data reference
             a_f0 = get_twos_complement_num(word10, 30, 1, 22) / 1 << 31
             GPSL1CAData(state.raw_data; a_f0)
         end
     elseif subframe_id == 2
-        state = can_decode_word(state, 3) do word3, state
+        state = can_decode_word(state, buffer, 3) do word3, state
             # Issue of ephemeris data
             IODE_Sub_2 = bitstring(get_bits(word3, 30, 1, 8))[end-7:end]
             C_rs = get_twos_complement_num(word3, 30, 9, 16) / 1 << 5
             GPSL1CAData(state.raw_data; IODE_Sub_2, C_rs)
         end
 
-        state = can_decode_word(state, 4) do word4, state
+        state = can_decode_word(state, buffer, 4) do word4, state
             # Mean motion difference from computed value
             Δn = get_twos_complement_num(word4, 30, 1, 16) * state.constants.PI / 1 << 43
             GPSL1CAData(state.raw_data; Δn)
         end
 
-        state = can_decode_two_words(state, 4, 5) do word4, word5, state
+        state = can_decode_two_words(state, buffer, 4, 5) do word4, word5, state
             # Mean motion difference from computed value
             combined_word =
                 UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
@@ -779,32 +761,32 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; M_0)
         end
 
-        state = can_decode_word(state, 6) do word6, state
+        state = can_decode_word(state, buffer, 6) do word6, state
             # Amplitude of the Cosine Harmonic Correction Term to the Argument Latitude
             C_uc = get_twos_complement_num(word6, 30, 1, 16) / 1 << 29
             GPSL1CAData(state.raw_data; C_uc)
         end
 
-        state = can_decode_two_words(state, 6, 7) do word6, word7, state
+        state = can_decode_two_words(state, buffer, 6, 7) do word6, word7, state
             # Eccentricity
             e = (get_bits(word6, 30, 17, 8) << 24 + get_bits(word7, 30, 1, 24)) / 1 << 33
             GPSL1CAData(state.raw_data; e)
         end
 
-        state = can_decode_word(state, 8) do word8, state
+        state = can_decode_word(state, buffer, 8) do word8, state
             # Amplitude of the Sine Harmonic Correction Term to the Argument of Latitude
             C_us = get_twos_complement_num(word8, 30, 1, 16) / 1 << 29
             GPSL1CAData(state.raw_data; C_us)
         end
 
-        state = can_decode_two_words(state, 8, 9) do word8, word9, state
+        state = can_decode_two_words(state, buffer, 8, 9) do word8, word9, state
             # Square Root of Semi-Major Axis
             sqrt_A =
                 (get_bits(word8, 30, 17, 8) << 24 + get_bits(word9, 30, 1, 24)) / 1 << 19
             GPSL1CAData(state.raw_data; sqrt_A)
         end
 
-        state = can_decode_word(state, 10) do word10, state
+        state = can_decode_word(state, buffer, 10) do word10, state
             # Reference Time ephemeris
             t_0e = get_bits(word10, 30, 1, 16) << 4
             fit_interval = get_bit(word10, 30, 17)
@@ -812,13 +794,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; t_0e, fit_interval, AODO)
         end
     elseif subframe_id == 3
-        state = can_decode_word(state, 3) do word3, state
+        state = can_decode_word(state, buffer, 3) do word3, state
             # Amplitude of the Cosine Harmonic Correction to Angle of Inclination
             C_ic = get_twos_complement_num(word3, 30, 1, 16) / 1 << 29
             GPSL1CAData(state.raw_data; C_ic)
         end
 
-        state = can_decode_two_words(state, 3, 4) do word3, word4, state
+        state = can_decode_two_words(state, buffer, 3, 4) do word3, word4, state
             # Longitude of Ascending Node of Orbit Plane at Weekly Epoch
             combined_word =
                 UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
@@ -828,13 +810,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; Ω_0)
         end
 
-        state = can_decode_word(state, 5) do word5, state
+        state = can_decode_word(state, buffer, 5) do word5, state
             # Amplitude of the sine harmonic correction term to angle of Inclination
             C_is = get_twos_complement_num(word5, 30, 1, 16) / 1 << 29
             GPSL1CAData(state.raw_data; C_is)
         end
 
-        state = can_decode_two_words(state, 5, 6) do word5, word6, state
+        state = can_decode_two_words(state, buffer, 5, 6) do word5, word6, state
             # inclination Angle at reference time
             combined_word =
                 UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
@@ -844,13 +826,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; i_0)
         end
 
-        state = can_decode_word(state, 7) do word7, state
+        state = can_decode_word(state, buffer, 7) do word7, state
             # Amplitude of the cosine harmonic correction term to orbit Radius
             C_rc = get_twos_complement_num(word7, 30, 1, 16) / 1 << 5
             GPSL1CAData(state.raw_data; C_rc)
         end
 
-        state = can_decode_two_words(state, 7, 8) do word7, word8, state
+        state = can_decode_two_words(state, buffer, 7, 8) do word7, word8, state
             # Argument of Perigee
             combined_word =
                 UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
@@ -860,13 +842,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
             GPSL1CAData(state.raw_data; ω)
         end
 
-        state = can_decode_word(state, 9) do word9, state
+        state = can_decode_word(state, buffer, 9) do word9, state
             # Amplitude of the cosine harmonic correction term to orbit Radius
             Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI / 1 << 43
             GPSL1CAData(state.raw_data; Ω_dot)
         end
 
-        state = can_decode_word(state, 10) do word10, state
+        state = can_decode_word(state, buffer, 10) do word10, state
             # Issue of Ephemeris Data
             IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[end-7:end]
             # Rate of Inclination Angle
@@ -876,7 +858,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
         end
     elseif subframe_id == 4
         # Get page ID (SV ID) from word 3 bits 3-8
-        state = can_decode_word(state, 3) do word3, state
+        state = can_decode_word(state, buffer, 3) do word3, state
             sv_page_id = get_bits(word3, 30, 3, 6)
             GPSL1CAData(state.raw_data; last_subframe_id = 4 + sv_page_id * 100) # encode page in subframe_id temporarily
         end
@@ -884,15 +866,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
         state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; last_subframe_id = 4))
 
         if sv_page_id == 56 # Page 18: Ionospheric and UTC data
-            state = decode_subframe4_page18(state)
+            state = decode_subframe4_page18(state, buffer)
         elseif sv_page_id == 63 # Page 25: A-S flags and SV health
-            state = decode_subframe4_page25(state)
+            state = decode_subframe4_page25(state, buffer)
         elseif sv_page_id in 25:32 # Pages 2-5, 7-10: Almanac for SV 25-32
-            state = decode_almanac_page(state, sv_page_id)
+            state = decode_almanac_page(state, buffer, sv_page_id)
         end
     elseif subframe_id == 5
         # Get SV ID from word 3 bits 3-8
-        state = can_decode_word(state, 3) do word3, state
+        state = can_decode_word(state, buffer, 3) do word3, state
             sv_id = get_bits(word3, 30, 3, 6)
             GPSL1CAData(state.raw_data; last_subframe_id = 5 + sv_id * 100) # encode SV ID temporarily
         end
@@ -900,16 +882,16 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData})
         state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; last_subframe_id = 5))
 
         if sv_id == 51 # Page 25: SV health and almanac reference
-            state = decode_subframe5_page25(state)
+            state = decode_subframe5_page25(state, buffer)
         elseif sv_id in 1:24 # Pages 1-24: Almanac for SV 1-24
-            state = decode_almanac_page(state, sv_id)
+            state = decode_almanac_page(state, buffer, sv_id)
         end
     end
 
     return state
 end
 
-function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData})
+function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     # Page 18 contains ionospheric parameters and UTC parameters
     # Word 3: bits 9-16 = α0, bits 17-24 = α1
     # Word 4: bits 1-8 = α2, bits 9-16 = α3, bits 17-24 = β0
@@ -920,52 +902,52 @@ function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData})
     # Word 9: bits 1-8 = ΔtLS, bits 9-16 = WNLSF, bits 17-24 = DN
     # Word 10: bits 1-8 = ΔtLSF
 
-    state = can_decode_word(state, 3) do word3, state
+    state = can_decode_word(state, buffer, 3) do word3, state
         α_0 = get_twos_complement_num(word3, 30, 9, 8) / 1 << 30
         α_1 = get_twos_complement_num(word3, 30, 17, 8) / 1 << 27
         GPSL1CAData(state.raw_data; α_0, α_1)
     end
 
-    state = can_decode_word(state, 4) do word4, state
+    state = can_decode_word(state, buffer, 4) do word4, state
         α_2 = get_twos_complement_num(word4, 30, 1, 8) / 1 << 24
         α_3 = get_twos_complement_num(word4, 30, 9, 8) / 1 << 24
         β_0 = get_twos_complement_num(word4, 30, 17, 8) * (1 << 11)
         GPSL1CAData(state.raw_data; α_2, α_3, β_0)
     end
 
-    state = can_decode_word(state, 5) do word5, state
+    state = can_decode_word(state, buffer, 5) do word5, state
         β_1 = get_twos_complement_num(word5, 30, 1, 8) * (1 << 14)
         β_2 = get_twos_complement_num(word5, 30, 9, 8) * (1 << 16)
         β_3 = get_twos_complement_num(word5, 30, 17, 8) * (1 << 16)
         GPSL1CAData(state.raw_data; β_1, β_2, β_3)
     end
 
-    state = can_decode_word(state, 6) do word6, state
+    state = can_decode_word(state, buffer, 6) do word6, state
         A_1 = get_twos_complement_num(word6, 30, 1, 24) / 1 << 50
         GPSL1CAData(state.raw_data; A_1)
     end
 
-    state = can_decode_two_words(state, 7, 8) do word7, word8, state
+    state = can_decode_two_words(state, buffer, 7, 8) do word7, word8, state
         # A0 is 32 bits: 24 MSBs in word 7, 8 LSBs in word 8
         combined_word = UInt(get_bits(word7, 30, 1, 24) << 8 + get_bits(word8, 30, 1, 8))
         A_0 = get_twos_complement_num(combined_word, 32, 1, 32) / 1 << 30
         GPSL1CAData(state.raw_data; A_0)
     end
 
-    state = can_decode_word(state, 8) do word8, state
+    state = can_decode_word(state, buffer, 8) do word8, state
         t_ot = get_bits(word8, 30, 9, 8) << 12
         WN_t = get_bits(word8, 30, 17, 8)
         GPSL1CAData(state.raw_data; t_ot, WN_t)
     end
 
-    state = can_decode_word(state, 9) do word9, state
+    state = can_decode_word(state, buffer, 9) do word9, state
         Δt_LS = get_twos_complement_num(word9, 30, 1, 8)
         WN_LSF = get_bits(word9, 30, 9, 8)
         DN = get_bits(word9, 30, 17, 8)
         GPSL1CAData(state.raw_data; Δt_LS, WN_LSF, DN)
     end
 
-    state = can_decode_word(state, 10) do word10, state
+    state = can_decode_word(state, buffer, 10) do word10, state
         Δt_LSF = get_twos_complement_num(word10, 30, 1, 8)
         GPSL1CAData(state.raw_data; Δt_LSF)
     end
@@ -973,7 +955,7 @@ function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData})
     return state
 end
 
-function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
+function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     # Page 25 contains A-S flags and SV configurations for 32 SVs
     # and SV health for SV 25-32
     # Word 3: bits 9-24 = 4 SVs config (4 bits each)
@@ -985,14 +967,14 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
     # Decode SV configurations (32 x 4-bit values)
     sv_config = Vector{Int64}(undef, 32)
 
-    state = can_decode_word(state, 3) do word3, state
+    state = can_decode_word(state, buffer, 3) do word3, state
         for i in 1:4
             sv_config[i] = get_bits(word3, 30, 9 + (i - 1) * 4, 4)
         end
         GPSL1CAData(state.raw_data; sv_config)
     end
 
-    state = can_decode_word(state, 4) do word4, state
+    state = can_decode_word(state, buffer, 4) do word4, state
         cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i in 1:6
             cfg[4 + i] = get_bits(word4, 30, 1 + (i - 1) * 4, 4)
@@ -1000,7 +982,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_config = cfg)
     end
 
-    state = can_decode_word(state, 5) do word5, state
+    state = can_decode_word(state, buffer, 5) do word5, state
         cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i in 1:6
             cfg[10 + i] = get_bits(word5, 30, 1 + (i - 1) * 4, 4)
@@ -1008,7 +990,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_config = cfg)
     end
 
-    state = can_decode_word(state, 6) do word6, state
+    state = can_decode_word(state, buffer, 6) do word6, state
         cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i in 1:6
             cfg[16 + i] = get_bits(word6, 30, 1 + (i - 1) * 4, 4)
@@ -1016,7 +998,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_config = cfg)
     end
 
-    state = can_decode_word(state, 7) do word7, state
+    state = can_decode_word(state, buffer, 7) do word7, state
         cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i in 1:6
             cfg[22 + i] = get_bits(word7, 30, 1 + (i - 1) * 4, 4)
@@ -1024,7 +1006,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_config = cfg)
     end
 
-    state = can_decode_word(state, 8) do word8, state
+    state = can_decode_word(state, buffer, 8) do word8, state
         cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i in 1:4
             cfg[28 + i] = get_bits(word8, 30, 1 + (i - 1) * 4, 4)
@@ -1035,7 +1017,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_config = cfg, sv_health_sf4_25)
     end
 
-    state = can_decode_word(state, 9) do word9, state
+    state = can_decode_word(state, buffer, 9) do word9, state
         health = something(state.raw_data.sv_health_sf4_25, Vector{String}(undef, 8))
         for i in 1:4
             health[1 + i] = bitstring(get_bits(word9, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1043,7 +1025,7 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_health_sf4_25 = health)
     end
 
-    state = can_decode_word(state, 10) do word10, state
+    state = can_decode_word(state, buffer, 10) do word10, state
         health = something(state.raw_data.sv_health_sf4_25, Vector{String}(undef, 8))
         for i in 1:3
             health[5 + i] = bitstring(get_bits(word10, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1054,14 +1036,14 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData})
     return state
 end
 
-function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
+function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     # Page 25 contains SV health for SV 1-24 and almanac reference time/week
     # Word 3: bits 9-16 = toa, bits 17-24 = WNa
     # Word 4: bits 1-24 = SV1-4 health (6 bits each)
     # Word 5-8: bits 1-24 = SV health (6 bits each, 4 SVs per word)
     # Word 9: bits 1-24 = SV21-24 health (6 bits each)
 
-    state = can_decode_word(state, 3) do word3, state
+    state = can_decode_word(state, buffer, 3) do word3, state
         t_oa = get_bits(word3, 30, 9, 8) << 12
         WN_a = get_bits(word3, 30, 17, 8)
         GPSL1CAData(state.raw_data; t_oa, WN_a)
@@ -1069,14 +1051,14 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
 
     sv_health_sf5_25 = Vector{String}(undef, 24)
 
-    state = can_decode_word(state, 4) do word4, state
+    state = can_decode_word(state, buffer, 4) do word4, state
         for i in 1:4
             sv_health_sf5_25[i] = bitstring(get_bits(word4, 30, 1 + (i - 1) * 6, 6))[end-5:end]
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
-    state = can_decode_word(state, 5) do word5, state
+    state = can_decode_word(state, buffer, 5) do word5, state
         health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
         for i in 1:4
             health[4 + i] = bitstring(get_bits(word5, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1084,7 +1066,7 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
-    state = can_decode_word(state, 6) do word6, state
+    state = can_decode_word(state, buffer, 6) do word6, state
         health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
         for i in 1:4
             health[8 + i] = bitstring(get_bits(word6, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1092,7 +1074,7 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
-    state = can_decode_word(state, 7) do word7, state
+    state = can_decode_word(state, buffer, 7) do word7, state
         health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
         for i in 1:4
             health[12 + i] = bitstring(get_bits(word7, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1100,7 +1082,7 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
-    state = can_decode_word(state, 8) do word8, state
+    state = can_decode_word(state, buffer, 8) do word8, state
         health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
         for i in 1:4
             health[16 + i] = bitstring(get_bits(word8, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1108,7 +1090,7 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
-    state = can_decode_word(state, 9) do word9, state
+    state = can_decode_word(state, buffer, 9) do word9, state
         health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
         for i in 1:4
             health[20 + i] = bitstring(get_bits(word9, 30, 1 + (i - 1) * 6, 6))[end-5:end]
@@ -1119,7 +1101,7 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData})
     return state
 end
 
-function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, sv_id::Int)
+function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_id::Int)
     # Almanac pages (subframe 4 pages 2-5, 7-10 for SV 25-32;
     #                subframe 5 pages 1-24 for SV 1-24)
     # Word 3: bits 9-24 = e (16 bits)
@@ -1138,24 +1120,24 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, sv_id::Int)
 
     # Decode all almanac words and build the almanac entry
     # We need to decode all words and check parity for each
-    word3 = get_word(state, 3)
-    word4 = get_word(state, 4)
-    word5 = get_word(state, 5)
-    word6 = get_word(state, 6)
-    word7 = get_word(state, 7)
-    word8 = get_word(state, 8)
-    word9 = get_word(state, 9)
-    word10 = get_word(state, 10)
+    word3 = get_word(buffer, state, 3)
+    word4 = get_word(buffer, state, 4)
+    word5 = get_word(buffer, state, 5)
+    word6 = get_word(buffer, state, 6)
+    word7 = get_word(buffer, state, 7)
+    word8 = get_word(buffer, state, 8)
+    word9 = get_word(buffer, state, 9)
+    word10 = get_word(buffer, state, 10)
 
     # Check parity for all words
-    prev_word2 = get_word(state, 2)
-    prev_word3 = get_word(state, 3)
-    prev_word4 = get_word(state, 4)
-    prev_word5 = get_word(state, 5)
-    prev_word6 = get_word(state, 6)
-    prev_word7 = get_word(state, 7)
-    prev_word8 = get_word(state, 8)
-    prev_word9 = get_word(state, 9)
+    prev_word2 = get_word(buffer, state, 2)
+    prev_word3 = get_word(buffer, state, 3)
+    prev_word4 = get_word(buffer, state, 4)
+    prev_word5 = get_word(buffer, state, 5)
+    prev_word6 = get_word(buffer, state, 6)
+    prev_word7 = get_word(buffer, state, 7)
+    prev_word8 = get_word(buffer, state, 8)
+    prev_word9 = get_word(buffer, state, 9)
 
     parity_ok =
         check_gpsl1_parity(word3, get_bit(prev_word2, 30, 29), get_bit(prev_word2, 30, 30)) &&

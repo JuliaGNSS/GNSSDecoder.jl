@@ -32,7 +32,7 @@ end
     @test decoder.prn == 1
     @test GNSSDecoder.num_bits_buffered(decoder) == 0
     @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
-    @test GNSSDecoder.calc_preamble_mask(decoder) == 0b11111111
+    @test GNSSDecoder.calc_preamble_mask(decoder.constants) == 0b11111111
 
     # Push one soft symbol (positive ⇒ bit 0)
     state = GNSSDecoder.push_soft_symbol!(decoder, 1.0f0)
@@ -55,32 +55,33 @@ end
     raw_buffer = PUInt320(constants.preamble) << UInt(300) + PUInt320(constants.preamble)
     foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(decoder) == true
-    @test GNSSDecoder.try_sync(decoder) == true
-    @test decoder.cache.packed_buffer[] == raw_buffer
+    # try_sync returns the packed buffer on a match (or nothing), rather than
+    # stashing it in mutable cache state.
+    buffer = GNSSDecoder.try_sync(decoder)
+    @test buffer == raw_buffer
 
-    state = GNSSDecoder.complement_buffer_if_necessary(decoder)
+    state, resolved_buffer = GNSSDecoder.complement_buffer_if_necessary(decoder, buffer)
     @test state.is_shifted_by_180_degrees == false
-    @test state.cache.complemented_buffer[] == raw_buffer
+    @test resolved_buffer == raw_buffer
 
     # Inverted preamble: every bit flipped (180° polarity)
     decoder = GPSL1CADecoderState(1)
     raw_buffer = PUInt320(~constants.preamble) << UInt(300) + PUInt320(~constants.preamble)
     foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
-    @test GNSSDecoder.try_sync(decoder) == true
-    state = GNSSDecoder.complement_buffer_if_necessary(decoder)
+    buffer = GNSSDecoder.try_sync(decoder)
+    @test buffer == raw_buffer
+    state, resolved_buffer = GNSSDecoder.complement_buffer_if_necessary(decoder, buffer)
     @test state.is_shifted_by_180_degrees == true
-    @test state.cache.complemented_buffer[] == ~raw_buffer
+    @test resolved_buffer == ~raw_buffer
 
-    # get_word reads from cache.complemented_buffer (which is what
-    # decode_syncro_sequence sees after sync). Inject a known buffer and check
-    # the word extraction.
+    # get_word reads the polarity-resolved buffer that decode_syncro_sequence
+    # sees after sync. Pass a known buffer and check the word extraction.
     decoder = GPSL1CADecoderState(1)
     buffer =
         PUInt320(constants.preamble) << UInt(300) +
         PUInt320(constants.preamble) +
         PUInt320(1) << UInt(8)
-    decoder.cache.complemented_buffer[] = buffer
-    @test GNSSDecoder.get_word(decoder, 10) == 1
+    @test GNSSDecoder.get_word(buffer, decoder, 10) == 1
 end
 
 @testset "GPS L1 C/A test data decoding" begin
@@ -403,8 +404,6 @@ end
 
     # test reset_decoder_state
     state = reset_decoder_state(state)
-    @test state.cache.packed_buffer[] == 0
-    @test state.cache.complemented_buffer[] == 0
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
