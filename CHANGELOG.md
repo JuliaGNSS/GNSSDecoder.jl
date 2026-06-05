@@ -24,6 +24,17 @@
   `src/galileo_e1b.jl` → `src/galileo/e1b.jl`. Galileo's hard-bit
   internals are unchanged in this slice; the soft-input migration of the
   E1B Viterbi step is tracked in #37.
+* **gpsl1c:** new GPS L1C-D (CNAV-2) decoder — TOI frame sync plus full
+  subframe-2 parsing. `GPSL1C_DDecoderState(prn)` wires up a 1852-symbol
+  soft buffer, the BCH(51,8) TOI codeword table for frame sync
+  (`sync_bch_toi`), and two lazily-built AFF3CT LDPC belief-propagation
+  decoders (SF2 K=600/N=1200, SF3 K=274/N=548) from the committed
+  `data/cnv2_sf*.alist` matrices. Decodes subframe 2 (clock, ephemeris and
+  accuracy parameters per IS-GPS-800G Figure 3.5-1 / Table 3.5-1) into the
+  new `GPSL1C_DData`, with 38×46 block deinterleaving, CRC-24Q validation,
+  and 180° polarity resolution. Subframe 3 is LDPC-decoded and CRC-checked
+  but only counted as a received page (`num_sf3_pages_received`); per-page
+  field parsing is deferred to #39. Closes #38.
 
 ### Internal
 
