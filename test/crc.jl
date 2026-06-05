@@ -59,14 +59,18 @@ using GNSSDecoder: crc24q
         end
     end
 
-    @testset "Cross-check against legacy galCRC24" begin
-        # The new `crc24q` must produce bit-identical results to the
-        # legacy `CRC.jl`-based `galCRC24` for any byte stream. This
-        # pins the migration path for issue #37.
-        for raw in (UInt8.(collect("123456789")),
-                    UInt8[0x55, 0xaa, 0xff, 0x00, 0x12, 0x34],
-                    UInt8[i for i in 0x00:0x20])
-            @test crc24q(raw) == UInt32(GNSSDecoder.galCRC24(raw))
+    @testset "Frozen golden values (legacy galCRC24 parity)" begin
+        # `crc24q` replaced the legacy `CRC.jl`-based `galCRC24` when Galileo
+        # E1B migrated to the soft-symbol decode path (issue #37). These golden
+        # values were captured from `galCRC24` before its removal, so they pin
+        # bit-identical behaviour across the migration. The "123456789" entry
+        # is the canonical CRC-24Q check value (0xCDE703).
+        for (raw, expected) in (
+            (UInt8.(collect("123456789")),            UInt32(0x00cde703)),
+            (UInt8[0x55, 0xaa, 0xff, 0x00, 0x12, 0x34], UInt32(0x005126f1)),
+            (UInt8[i for i in 0x00:0x20],              UInt32(0x00bf660c)),
+        )
+            @test crc24q(raw) == expected
         end
     end
 end
