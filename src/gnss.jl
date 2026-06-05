@@ -8,11 +8,19 @@ $(TYPEDEF)
 Generic decoder state for GNSS signal decoding. This parametric struct holds all state
 required for decoding navigation messages from GNSS satellites.
 
-Soft symbols are buffered inside the mutable per-signal `cache` (a
-`CircularDeque{Float32}` with the per-signal capacity of
-`syncro_sequence_length + preamble_length`). The outer struct itself is
-immutable; per-field reconstruction continues to work via the keyword
-constructor.
+The struct itself is immutable; per-field reconstruction works via the keyword
+constructor, and the per-signal constants and decoded data carry value
+semantics. The one piece of intentionally-mutable state is the soft-symbol
+buffer inside the `cache`: a `CircularDeque{Float32}` of capacity
+`syncro_sequence_length + preamble_length` that accumulates incoming symbols
+across successive [`decode`](@ref) calls. It is a mutable container shared by
+reference between an input state and the state `decode` returns — fully
+immutable threading would copy the whole buffer on every symbol, which is the
+wrong trade for a streaming decoder. Treat the value returned by `decode` as
+*the* live state and do not keep mutating an earlier snapshot in parallel. The
+transient packed-bit buffer used for preamble matching is **not** stored here;
+it is computed as a local value at sync time and threaded through the sync
+path (see [`pack_buffer`](@ref) / [`try_sync`](@ref)).
 
 # Type Parameters
 - `D<:AbstractGNSSData`: The data type holding decoded navigation message fields
@@ -148,78 +156,75 @@ function pack_soft_buffer(::Type{T}, deque::CircularDeque{Float32}, total_bits::
     return word
 end
 
-calc_preamble_mask(state::GNSSDecoderState) =
-    UInt(1) << UInt(state.constants.preamble_length) - UInt(1)
+calc_preamble_mask(constants::AbstractGNSSConstants) =
+    UInt(1) << UInt(constants.preamble_length) - UInt(1)
 
 """
-    pack_buffer_into_cache!(state)
+    pack_buffer(state) -> Unsigned
 
 Hard-slice the leading `syncro_sequence_length + preamble_length` soft
-symbols of `state.cache.soft_buffer` into the per-signal packed-bit buffer
-held inside `state.cache.packed_buffer[]`. The packed buffer is the v1
-`raw_buffer`: oldest bit at MSB, newest bit at LSB.
+symbols of the per-signal soft buffer into a packed-bit value (the v1
+`raw_buffer`: oldest bit at MSB, newest bit at LSB). The concrete unsigned
+type is signal-specific and supplied by [`packed_buffer_type`](@ref). The
+result is a plain value — it is threaded through the sync path rather than
+stashed in mutable cache state.
 """
-function pack_buffer_into_cache!(state::GNSSDecoderState)
-    cache = state.cache
+function pack_buffer(state::GNSSDecoderState)
     n = state.constants.syncro_sequence_length + state.constants.preamble_length
-    T = eltype(cache.packed_buffer)
-    cache.packed_buffer[] = pack_soft_buffer(T, soft_buffer(state), n)
-    state
+    pack_soft_buffer(packed_buffer_type(state), soft_buffer(state), n)
 end
 
 """
-    try_sync(state)
+    try_sync(state) -> Union{Nothing,Unsigned}
 
-Default per-signal sync hook: hard-slice the deque tail into the per-signal
-packed-bit buffer (via `pack_buffer_into_cache!`) and run the existing
-`find_preamble` bit-pattern check (preamble visible at both ends of the
-candidate syncro sequence, in either polarity). Returns the (possibly
-modified) state and a `Bool` match flag.
+Default per-signal sync hook: hard-slice the deque into a packed-bit buffer
+(via [`pack_buffer`](@ref)) and run the [`find_preamble`](@ref) bit-pattern
+check (preamble visible at both ends of the candidate syncro sequence, in
+either polarity). Returns the packed buffer on a match, or `nothing` if there
+is no sync. Returning the buffer lets the caller reuse it without recomputing
+and keeps it out of mutable cache state.
 
 Per-signal overrides (e.g. GPS L1C-D's TOI BCH match in a later slice)
 override this method.
 """
 function try_sync(state::GNSSDecoderState)
-    pack_buffer_into_cache!(state)
-    find_preamble(state)
+    buffer = pack_buffer(state)
+    find_preamble(buffer, state.constants) ? buffer : nothing
 end
 
 """
-    find_preamble(state)
+    find_preamble(buffer, constants) -> Bool
 
-Bit-pattern preamble check on the per-signal packed-bit buffer. Mirrors the
-v1 implementation: the preamble must be visible at *both* the oldest 8 bits
+Bit-pattern preamble check on a packed-bit buffer. Mirrors the v1
+implementation: the preamble must be visible at *both* the oldest 8 bits
 (start of this subframe) and the newest 8 bits (start of next subframe),
 either both upright OR both inverted (180-degree polarity ambiguity).
 """
-function find_preamble(state::GNSSDecoderState)
-    raw = state.cache.packed_buffer[]
-    state.cache.packed_buffer[] & calc_preamble_mask(state) == state.constants.preamble &&
-        (raw >> state.constants.syncro_sequence_length) &
-        calc_preamble_mask(state) == state.constants.preamble ||
-        raw & calc_preamble_mask(state) ==
-        ~state.constants.preamble & calc_preamble_mask(state) &&
-            (raw >> state.constants.syncro_sequence_length) &
-            calc_preamble_mask(state) ==
-            ~state.constants.preamble & calc_preamble_mask(state)
+function find_preamble(buffer, constants::AbstractGNSSConstants)
+    mask = calc_preamble_mask(constants)
+    buffer & mask == constants.preamble &&
+        (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
+        buffer & mask == ~constants.preamble & mask &&
+            (buffer >> constants.syncro_sequence_length) & mask ==
+            ~constants.preamble & mask
 end
 
 """
-    complement_buffer_if_necessary(state)
+    complement_buffer_if_necessary(state, buffer) -> (state, resolved_buffer)
 
-If the newest preamble in the packed buffer is the *inverted* preamble,
-record `is_shifted_by_180_degrees = true` and store the complemented buffer.
-Otherwise store the packed buffer as-is. Mirrors v1 behaviour.
+If the newest preamble in `buffer` is the *inverted* preamble, return the
+state flagged `is_shifted_by_180_degrees = true` together with the
+complemented buffer; otherwise return the state flagged `false` with `buffer`
+unchanged. The polarity-resolved buffer is returned as a value (the v1
+`buffer`) for the per-signal `decode_syncro_sequence` to consume. Mirrors v1
+behaviour.
 """
-function complement_buffer_if_necessary(state::GNSSDecoderState)
-    raw = state.cache.packed_buffer[]
-    if raw & calc_preamble_mask(state) ==
-       ~state.constants.preamble & calc_preamble_mask(state)
-        state.cache.complemented_buffer[] = ~raw
-        return GNSSDecoderState(state; is_shifted_by_180_degrees = true)
+function complement_buffer_if_necessary(state::GNSSDecoderState, buffer)
+    mask = calc_preamble_mask(state.constants)
+    if buffer & mask == ~state.constants.preamble & mask
+        return GNSSDecoderState(state; is_shifted_by_180_degrees = true), ~buffer
     else
-        state.cache.complemented_buffer[] = raw
-        return GNSSDecoderState(state; is_shifted_by_180_degrees = false)
+        return GNSSDecoderState(state; is_shifted_by_180_degrees = false), buffer
     end
 end
 
@@ -304,12 +309,16 @@ function decode(
             )
         end
 
-        if is_enough_buffered_bits_to_decode(state) && try_sync(state)
-            state = decode_syncro_sequence(complement_buffer_if_necessary(state))
-            if !decode_once || !is_decoding_completed_for_positioning(state.data)
-                state = validate_data(state)
+        if is_enough_buffered_bits_to_decode(state)
+            buffer = try_sync(state)
+            if !isnothing(buffer)
+                state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
+                state = decode_syncro_sequence(state, resolved_buffer)
+                if !decode_once || !is_decoding_completed_for_positioning(state.data)
+                    state = validate_data(state)
+                end
+                state = drain_after_sync!(state)
             end
-            state = drain_after_sync!(state)
         end
     end
     return state

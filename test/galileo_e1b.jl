@@ -164,8 +164,6 @@ end
     @test is_sat_healthy(state) == true
 
     state = reset_decoder_state(state)
-    @test state.cache.packed_buffer[] == 0
-    @test state.cache.complemented_buffer[] == 0
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
