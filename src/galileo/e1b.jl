@@ -1,7 +1,19 @@
-# UInt288 buffer for Galileo E1B
-# which holds at least a complete Galileo E1B page
-# plus 10 extra syncronization bits
+# UInt288 buffer for Galileo E1B sync — holds the 260-symbol page window
+# (250 syncro + 10 preamble) hard-sliced for the bit-pattern preamble check.
 BitIntegers.@define_integers 288
+
+# Galileo E1B uses the rate-1/2, constraint-length-7 (K=7) non-systematic
+# convolutional (NSC) FEC with generator polynomials G1 = 0o171, G2 = 0o133
+# (Galileo OS SIS ICD, Issue 2.2, §4.1.4). After the 30×8 block deinterleave a
+# page carries 240 encoded symbols which the Viterbi decoder maps back to 120
+# trellis steps: 114 information bits + 6 tail bits. AFF3CT's `ConvViterbiDecoder`
+# is configured with K = 114, N = 240 and the same polynomials; it applies the
+# trellis termination internally and returns exactly the 114 information bits
+# (the 6 tail bits are consumed by termination and never surface), which is
+# precisely the per-page payload the I/NAV parser expects.
+const GALILEO_E1B_VITERBI_K = 114
+const GALILEO_E1B_VITERBI_N = 240
+const GALILEO_E1B_VITERBI_POLY = [0o171, 0o133]
 
 """
     GalileoE1BConstants
@@ -217,14 +229,15 @@ Holds the soft-symbol `CircularDeque{Float32}` (capacity = 250 + 10 = 260),
 the cached even-page bits used to stitch two consecutive pages into a word, and
 the two-position almanac-chain state needed to merge word types 7-10. Soft-symbol
 buffering is shared across all signals; the rest is Galileo-specific. The
-transient `UInt288` packed-bit buffer used for sync is not stored here — it is
-computed as a local value and threaded through the decode path (see
-`pack_buffer`).
+transient `UInt288` packed-bit buffer used for the page-sync preamble check is
+not stored here — it is computed as a local value and threaded through the
+decode path (see `pack_buffer`).
 
-The Galileo decoder still consumes *hard-decision bits* internally in this
-slice — the soft-symbol migration to AFF3CT.jl's Viterbi is tracked in #37.
-The deque-backed input boundary is the same as L1 C/A so the public API is
-uniform.
+The Galileo decoder consumes *soft symbols* end-to-end: the page-sync hook
+hard-slices the deque tail only for the 10-bit preamble bit-pattern match,
+while the K=7 NSC FEC is undone on the raw `Float32` LLRs via AFF3CT.jl's
+`ConvViterbiDecoder` (issue #37). The deque-backed input boundary is identical
+to L1 C/A so the public API is uniform.
 
 # Fields
 $(TYPEDFIELDS)
@@ -716,14 +729,61 @@ end
 
 packed_buffer_type(::GNSSDecoderState{<:GalileoE1BData}) = UInt288
 
+"""
+    galileo_e1b_viterbi(soft_page) -> UInt128
+
+Recover one I/NAV page's 114-bit payload from its `soft_page` — the 240
+polarity-corrected `Float32` LLR soft symbols of a Galileo E1B page (the
+`syncro_sequence_length - preamble_length` encoded symbols between the leading
+and trailing page-sync preambles).
+
+The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in
+order on the soft symbols:
+
+1. **30×8 block deinterleave** of the 240 LLRs (`deinterleave!` from `src/deinterleave.jl`).
+2. **Invert every second symbol** — the spec inverts the G2 output of the rate-1/2
+   encoder. On soft symbols an inversion is a sign flip (negation), so confidence
+   magnitudes are preserved.
+3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`. AFF3CT's LLR sign
+   convention matches ours (positive ⇒ bit 0), so the LLRs feed in directly. The
+   decoder returns the 114 information bits (the 6 tail bits are consumed by
+   trellis termination).
+
+The 114 decoded bits are packed MSB-first into the low bits of a `UInt128`,
+matching the legacy hard-bit `parse(UInt128, ...; base = 2)` layout the parser
+consumes.
+"""
+function galileo_e1b_viterbi(soft_page::AbstractVector{Float32})
+    deinterleaved = deinterleave(soft_page, 30, 8)
+    @inbounds for i in 2:2:length(deinterleaved)
+        deinterleaved[i] = -deinterleaved[i]
+    end
+    dec = Aff3ct.ConvViterbiDecoder(
+        GALILEO_E1B_VITERBI_K,
+        GALILEO_E1B_VITERBI_N,
+        GALILEO_E1B_VITERBI_POLY,
+    )
+    info_bits = Aff3ct.decode(dec, deinterleaved)
+    bits = UInt128(0)
+    @inbounds for b in info_bits
+        bits = (bits << 1) | UInt128(b)
+    end
+    return bits
+end
+
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData}, buffer)
-    encoded_bits = bitstring(buffer >> state.constants.preamble_length)[sizeof(
-        buffer,
-    )*8-state.constants.syncro_sequence_length+state.constants.preamble_length+1:end]
-    deinterleaved_encoded_bits = deinterleave(encoded_bits, 30, 8)
-    inv_deinterleaved_encoded_bits = invert_every_second_bit(deinterleaved_encoded_bits)
-    decoded_bits = viterbi_decode(7, [79, 109], inv_deinterleaved_encoded_bits)
-    bits = parse(UInt128, decoded_bits; base = 2)
+    # The 240 encoded symbols are the soft-buffer entries between the leading
+    # 10-bit page-sync preamble and the trailing preamble of the next page
+    # (deque indices preamble_length+1 .. syncro_sequence_length). Resolve the
+    # 180-degree polarity ambiguity by negating the LLRs when the sync hook
+    # flagged the page as inverted (an inverted soft symbol = a negated one).
+    deque = soft_buffer(state)
+    sign = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
+    soft_page = Vector{Float32}(undef, GALILEO_E1B_VITERBI_N)
+    @inbounds for i in 1:GALILEO_E1B_VITERBI_N
+        soft_page[i] = sign * deque[state.constants.preamble_length + i]
+    end
+    bits = galileo_e1b_viterbi(soft_page)
     is_even = !get_bit(bits, 114, 1)
     is_nominal_page = !get_bit(bits, 114, 2)
     state = GNSSDecoderState(
@@ -747,7 +807,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData}, buffe
             get_bits(bits, 114, 3, 16)
         bits_to_check_CRC =
             UInt288(state.cache.even_page_part_bits) << 106 + get_bits(bits, 114, 1, 106)
-        if galCRC24(reverse(digits(UInt8, bits_to_check_CRC; base = 256))) == 0
+        if crc24q(reverse(digits(UInt8, bits_to_check_CRC; base = 256))) == 0
             data_type = get_bits(data, 128, 1, 6)
             if data_type == 0
                 if get_bits(data, 128, 7, 2) == 2 # '10'
