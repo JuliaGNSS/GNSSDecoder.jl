@@ -10,7 +10,7 @@ export decode,
     GNSSDecoderState,
     reset_decoder_state
 
-galCRC24 = crc(spec(24, 0x864cfb, 0x000000, false, false, 0x000000, 0xcde703))
+const galCRC24 = crc(spec(24, 0x864cfb, 0x000000, false, false, 0x000000, 0xcde703))
 
 include("gnss.jl")
 include("bit_fiddling.jl")
