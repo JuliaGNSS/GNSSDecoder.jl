@@ -46,6 +46,24 @@
   and 180° polarity resolution. Subframe 3 is LDPC-decoded and CRC-checked
   but only counted as a received page (`num_sf3_pages_received`); per-page
   field parsing is deferred to #39. Closes #38.
+* **gpsl1c:** parse GPS L1C-D (CNAV-2) subframe-3 pages. After the SF3 CRC
+  passes, `decode_subframe3` dispatches on the 6-bit page number (bits 9-14;
+  bits 1-8 are the transmitting PRN) and merges the parsed fields into
+  `GPSL1C_DData` immutably, mirroring the subframe-2 style. Implements the
+  IRN-IS-800J layouts: page 1 — UTC parameters + Klobuchar ionospheric
+  coefficients + ISC (L1C/A, L2C, L5I5, L5Q5); page 2 — GGTO + Earth
+  orientation parameters; page 3 — reduced almanac (six 33-bit per-SV packets);
+  page 4 — Midi almanac; page 5 — clock + ephemeris differential correction;
+  page 6 — 29-character ASCII text. Almanacs and differential corrections are
+  stored as `Dictionaries.Dictionary` keyed by SV PRN (`reduced_almanacs`,
+  `midi_almanacs`, `differential_corrections`) via the new
+  `GPSL1C_DReducedAlmanac`, `GPSL1C_DMidiAlmanac`, and
+  `GPSL1C_DDifferentialCorrection` structs; both almanac types are
+  single-page-per-SV (no Galileo-style IOD chaining). Unknown/reserved pages
+  (7 SV-config, 8 ISM, …) are silently ignored while still counted in
+  `num_sf3_pages_received`. Semi-circle quantities are converted to radians on
+  decode. Pre-IRN-J page-1 recordings (no ISC fields) are out of scope.
+  Closes #39.
 
 ### Internal
 

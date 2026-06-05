@@ -209,6 +209,269 @@ end
         @test reset.is_shifted_by_180_degrees == false
     end
 
+    # --- Subframe 3 page-format parsing (IS-GPS-800J §3.5.4) -----------------
+    #
+    # Hand-pack a 274-bit SF3 info block (250 message bits + 24-bit CRC) with a
+    # known page number + golden fields, LDPC-encode it alongside a valid SF2,
+    # interleave, and round-trip through `decode`, then assert the decoded
+    # `GPSL1C_DData` fields equal the known values with the ICD scale factors.
+
+    "Finalise a 274-bit SF3 block: append CRC over bits 1-250 and return Int32 vector."
+    function _finish_sf3(bits::BitVector)
+        @assert length(bits) == 274
+        _append_crc!(bits, 250)
+        @assert crc24q(collect(bits[1:274])) == 0
+        return Int32.(collect(bits))
+    end
+
+    "Build a SF3 page with PRN=`prn` and 6-bit page number `page`, then run `fill!` on the bits."
+    function build_sf3_page(fill!::Function, prn::Int, page::Int)
+        bits = falses(274)
+        _setbits!(bits, 1, 8, prn)
+        _setbits!(bits, 9, 6, page)
+        fill!(bits)
+        return _finish_sf3(bits)
+    end
+
+    "Decode a stream carrying `sf3_page` (with the standard golden SF2) and return state.data."
+    function decode_with_sf3(sf3_page::Vector{Int32}; toi0::Int = 120)
+        payload = build_payload(sf2_info, sf3_page)
+        state = decode(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
+        return state
+    end
+
+    @testset "SF3 page 1 — UTC + iono + ISC" begin
+        st = decode_with_sf3(
+            build_sf3_page(7, 1) do b
+                _setbits!(b, 15, 16, 1000)    # A0
+                _setbits!(b, 31, 13, -500)    # A1
+                _setbits!(b, 44, 7, 3)        # A2
+                _setbits!(b, 51, 8, 18)       # ΔtLS
+                _setbits!(b, 59, 16, 100)     # tot (scale 2^4)
+                _setbits!(b, 75, 13, 2200)    # WNot
+                _setbits!(b, 88, 13, 2201)    # WNLSF
+                _setbits!(b, 101, 4, 6)       # DN
+                _setbits!(b, 105, 8, 19)      # ΔtLSF
+                _setbits!(b, 113, 8, 12)      # α0
+                _setbits!(b, 121, 8, -3)      # α1
+                _setbits!(b, 129, 8, 4)       # α2
+                _setbits!(b, 137, 8, -1)      # α3
+                _setbits!(b, 145, 8, 7)       # β0
+                _setbits!(b, 153, 8, -2)      # β1
+                _setbits!(b, 161, 8, 5)       # β2
+                _setbits!(b, 169, 8, -4)      # β3
+                _setbits!(b, 177, 13, 9)      # ISC_L1CA
+                _setbits!(b, 190, 13, -9)     # ISC_L2C
+                _setbits!(b, 203, 13, 11)     # ISC_L5I5
+                _setbits!(b, 216, 13, -11)    # ISC_L5Q5
+            end,
+        )
+        d = st.data
+        @test d.A0_UTC ≈ 1000 * 2.0^-35
+        @test d.A1_UTC ≈ -500 * 2.0^-51
+        @test d.A2_UTC ≈ 3 * 2.0^-68
+        @test d.Δt_LS == 18
+        @test d.t_ot == 100 * 16
+        @test d.WN_ot == 2200
+        @test d.WN_LSF == 2201
+        @test d.DN == 6
+        @test d.Δt_LSF == 19
+        @test d.α0 ≈ 12 * 2.0^-30
+        @test d.α1 ≈ -3 * 2.0^-27
+        @test d.α2 ≈ 4 * 2.0^-24
+        @test d.α3 ≈ -1 * 2.0^-24
+        @test d.β0 ≈ 7 * 2.0^11
+        @test d.β1 ≈ -2 * 2.0^14
+        @test d.β2 ≈ 5 * 2.0^16
+        @test d.β3 ≈ -4 * 2.0^16
+        @test d.ISC_L1CA ≈ 9 * 2.0^-35
+        @test d.ISC_L2C ≈ -9 * 2.0^-35
+        @test d.ISC_L5I5 ≈ 11 * 2.0^-35
+        @test d.ISC_L5Q5 ≈ -11 * 2.0^-35
+        @test d.num_sf3_pages_received >= 1
+    end
+
+    @testset "SF3 page 2 — GGTO + EOP" begin
+        st = decode_with_sf3(
+            build_sf3_page(7, 2) do b
+                _setbits!(b, 15, 3, 1)        # GNSS_ID = Galileo
+                _setbits!(b, 18, 16, 50)      # tGGTO (scale 2^4)
+                _setbits!(b, 34, 13, 2100)    # WNGGTO
+                _setbits!(b, 47, 16, 800)     # A0GGTO
+                _setbits!(b, 63, 13, -200)    # A1GGTO
+                _setbits!(b, 76, 7, 2)        # A2GGTO
+                _setbits!(b, 83, 16, 60)      # tEOP (scale 2^4)
+                _setbits!(b, 99, 21, 1234)    # PM_X
+                _setbits!(b, 120, 15, -55)    # PM_X_dot
+                _setbits!(b, 135, 21, -4321)  # PM_Y
+                _setbits!(b, 156, 15, 77)     # PM_Y_dot
+                _setbits!(b, 171, 31, 100000) # ΔUT1
+                _setbits!(b, 202, 19, -250)   # ΔUT1_dot
+            end,
+        )
+        d = st.data
+        @test d.GNSS_ID == 1
+        @test d.t_GGTO == 50 * 16
+        @test d.WN_GGTO == 2100
+        @test d.A0_GGTO ≈ 800 * 2.0^-35
+        @test d.A1_GGTO ≈ -200 * 2.0^-51
+        @test d.A2_GGTO ≈ 2 * 2.0^-68
+        @test d.t_EOP == 60 * 16
+        @test d.PM_X ≈ 1234 * 2.0^-20
+        @test d.PM_X_dot ≈ -55 * 2.0^-21
+        @test d.PM_Y ≈ -4321 * 2.0^-20
+        @test d.PM_Y_dot ≈ 77 * 2.0^-21
+        @test d.ΔUT1 ≈ 100000 * 2.0^-24
+        @test d.ΔUT1_dot ≈ -250 * 2.0^-25
+    end
+
+    @testset "SF3 page 3 — reduced almanac (multi-packet)" begin
+        PI = GPSL1C_DDecoderState(7).constants.PI
+        st = decode_with_sf3(
+            build_sf3_page(7, 3) do b
+                _setbits!(b, 15, 13, 2200)    # WNa
+                _setbits!(b, 28, 8, 30)       # toa (scale 2^12)
+                # Packet 1 (bit 36): PRN 11
+                _setbits!(b, 36, 8, 11)
+                _setbits!(b, 44, 8, 5)        # δA
+                _setbits!(b, 52, 7, -3)       # Ω0
+                _setbits!(b, 59, 7, 2)        # Φ0
+                b[66] = false; b[67] = true; b[68] = false  # L1/L2/L5 health
+                # Packet 2 (bit 69): PRN 22
+                _setbits!(b, 69, 8, 22)
+                _setbits!(b, 77, 8, -4)       # δA
+                # Packet 3 (bit 102): PRN 0 ⇒ terminates list
+                _setbits!(b, 102, 8, 0)
+            end,
+        )
+        d = st.data
+        @test !isnothing(d.reduced_almanacs)
+        @test haskey(d.reduced_almanacs, 11)
+        @test haskey(d.reduced_almanacs, 22)
+        @test !haskey(d.reduced_almanacs, 0)
+        a = d.reduced_almanacs[11]
+        @test a.WN_a == 2200
+        @test a.t_oa == 30 * 4096
+        @test a.δA ≈ 5 * 2.0^9
+        @test a.Ω_0 ≈ -3 * 2.0^-6 * PI
+        @test a.Φ_0 ≈ 2 * 2.0^-6 * PI
+        @test a.l1_health == false
+        @test a.l2_health == true
+        @test a.l5_health == false
+        @test d.reduced_almanacs[22].δA ≈ -4 * 2.0^9
+    end
+
+    @testset "SF3 page 4 — midi almanac" begin
+        PI = GPSL1C_DDecoderState(7).constants.PI
+        st = decode_with_sf3(
+            build_sf3_page(7, 4) do b
+                _setbits!(b, 15, 13, 2150)    # WNa
+                _setbits!(b, 28, 8, 40)       # toa (scale 2^12)
+                _setbits!(b, 36, 8, 19)       # PRNa
+                b[44] = false; b[45] = true; b[46] = false  # L1/L2/L5 health
+                _setbits!(b, 47, 11, 100)     # e
+                _setbits!(b, 58, 11, -50)     # δi
+                _setbits!(b, 69, 11, -7)      # Ω_dot
+                _setbits!(b, 80, 17, 81920)   # √A
+                _setbits!(b, 97, 16, 2000)    # Ω0
+                _setbits!(b, 113, 16, -1500)  # ω
+                _setbits!(b, 129, 16, 12345)  # M0
+                _setbits!(b, 145, 11, 33)     # af0
+                _setbits!(b, 156, 10, -11)    # af1
+            end,
+        )
+        d = st.data
+        @test !isnothing(d.midi_almanacs)
+        @test haskey(d.midi_almanacs, 19)
+        a = d.midi_almanacs[19]
+        @test a.WN_a == 2150
+        @test a.t_oa == 40 * 4096
+        @test a.l1_health == false
+        @test a.l2_health == true
+        @test a.l5_health == false
+        @test a.e ≈ 100 * 2.0^-16
+        @test a.δi ≈ -50 * 2.0^-14 * PI
+        @test a.Ω_dot ≈ -7 * 2.0^-33 * PI
+        @test a.sqrt_A ≈ 81920 * 2.0^-4
+        @test a.Ω_0 ≈ 2000 * 2.0^-15 * PI
+        @test a.ω ≈ -1500 * 2.0^-15 * PI
+        @test a.M_0 ≈ 12345 * 2.0^-15 * PI
+        @test a.a_f0 ≈ 33 * 2.0^-20
+        @test a.a_f1 ≈ -11 * 2.0^-37
+    end
+
+    @testset "SF3 page 5 — differential correction" begin
+        PI = GPSL1C_DDecoderState(7).constants.PI
+        st = decode_with_sf3(
+            build_sf3_page(7, 5) do b
+                _setbits!(b, 15, 11, 12)      # t_op-D (scale 300)
+                _setbits!(b, 26, 11, 24)      # t_OD (scale 300)
+                b[37] = false                 # DC data type = CNAV-2
+                # CDC segment at bit 38
+                _setbits!(b, 38, 8, 19)       # PRN ID
+                _setbits!(b, 46, 13, 100)     # δaf0
+                _setbits!(b, 59, 8, -10)      # δaf1
+                _setbits!(b, 67, 5, 3)        # UDRA
+                # EDC segment at bit 72
+                _setbits!(b, 72, 8, 19)       # PRN ID (same SV)
+                _setbits!(b, 80, 14, 50)      # Δα
+                _setbits!(b, 94, 14, -25)     # Δβ
+                _setbits!(b, 108, 15, 7)      # Δγ
+                _setbits!(b, 123, 12, -3)     # Δi
+                _setbits!(b, 135, 12, 6)      # ΔΩ
+                _setbits!(b, 147, 12, -8)     # ΔA
+                _setbits!(b, 159, 5, -2)      # UDRA-dot
+            end,
+        )
+        d = st.data
+        @test !isnothing(d.differential_corrections)
+        @test haskey(d.differential_corrections, 19)
+        c = d.differential_corrections[19]
+        @test c.t_op_D == 12 * 300
+        @test c.t_OD == 24 * 300
+        @test c.dc_data_type == false
+        @test c.δa_f0 ≈ 100 * 2.0^-35
+        @test c.δa_f1 ≈ -10 * 2.0^-51
+        @test c.UDRA_index == 3
+        @test c.Δα ≈ 50 * 2.0^-34
+        @test c.Δβ ≈ -25 * 2.0^-34
+        @test c.Δγ ≈ 7 * 2.0^-32 * PI
+        @test c.Δi ≈ -3 * 2.0^-32 * PI
+        @test c.ΔΩ ≈ 6 * 2.0^-32 * PI
+        @test c.ΔA ≈ -8 * 2.0^-9
+        @test c.UDRA_dot_index == -2
+    end
+
+    @testset "SF3 page 6 — text message" begin
+        msg = "HELLO L1C-D #39 CNAV2 TEST!!!"  # 29 ASCII characters
+        @assert length(msg) == 29
+        st = decode_with_sf3(
+            build_sf3_page(7, 6) do b
+                for (k, ch) in enumerate(collect(msg))
+                    _setbits!(b, 19 + 8 * (k - 1), 8, Int(ch))
+                end
+            end,
+        )
+        @test st.data.text_message == msg
+    end
+
+    @testset "SF3 unknown/reserved page is ignored but still counted" begin
+        # Page 7 is reserved (SV config); page 9+ is undefined. Both must be
+        # silently ignored — no exception — while the page counter increments.
+        st = decode_with_sf3(build_sf3_page(7, 7) do b
+            # arbitrary payload bits
+            _setbits!(b, 15, 16, 0xABCD)
+        end)
+        d = st.data
+        @test d.num_sf3_pages_received >= 1
+        @test isnothing(d.reduced_almanacs)
+        @test isnothing(d.midi_almanacs)
+        @test isnothing(d.differential_corrections)
+        @test isnothing(d.text_message)
+        @test isnothing(d.A0_UTC)
+        @test isnothing(d.A0_GGTO)
+    end
+
     # --- Optional Spirent GSS fixture (gated; not available in CI) -----------
     @testset "Spirent GSS-CNAVDATA fixture (gated)" begin
         fixture_dir = get(ENV, "GPS_L1C_D_FIXTURE_DIR", nothing)
