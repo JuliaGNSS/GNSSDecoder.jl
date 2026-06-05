@@ -349,7 +349,7 @@ the data-voting cache used by `confirm_data`. The struct itself is immutable:
 both fields are mutable containers updated in place inside the
 otherwise-immutable [`GNSSDecoderState`](@ref). The packed-bit buffer used for
 sync is *not* stored here — it is computed as a local value at sync time and
-threaded through the decode path (see [`pack_buffer`](@ref)).
+threaded through the decode path (see `pack_buffer`).
 
 # Fields
 $(TYPEDFIELDS)
