@@ -11,6 +11,7 @@ GNSSDecoderState
 ```@docs
 GPSL1CADecoderState
 GalileoE1BDecoderState
+GPSL1C_DDecoderState
 ```
 
 ## Decoding
@@ -62,4 +63,11 @@ GNSSDecoder.GalileoE1BConstants
 GNSSDecoder.GalileoE1BData
 GNSSDecoder.SignalHealth
 GNSSDecoder.DataValidityStatus
+```
+
+### GPS L1C-D
+
+```@docs
+GNSSDecoder.GPSL1C_DConstants
+GPSL1C_DData
 ```
