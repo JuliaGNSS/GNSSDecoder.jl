@@ -12,6 +12,11 @@
   `GPSL1CAConstants`, `GPSL1DecoderState` → `GPSL1CADecoderState`. The
   corresponding `GPSL1Almanac` / `VotedGPSL1Data` / `GPSL1Cache` renamed
   to the `*CA*` variants in step.
+* **galileo:** Galileo E1B is now decoded from `Float32` soft symbols
+  end-to-end. The K=7 NSC convolutional FEC is undone with AFF3CT.jl's
+  `ConvViterbiDecoder` (`poly = [0o171, 0o133]`, K=114, N=240) instead of
+  ViterbiDecoder.jl, and the `ViterbiDecoder` and `CRC` dependencies are
+  dropped. Closes #37.
 
 ### Features
 
@@ -21,9 +26,15 @@
   `syncro_sequence_length + preamble_length` per signal (308 for GPS
   L1 C/A; 260 for Galileo E1B).
 * **layout:** source tree reorganised — `src/gpsl1.jl` → `src/gps/l1ca.jl`,
-  `src/galileo_e1b.jl` → `src/galileo/e1b.jl`. Galileo's hard-bit
-  internals are unchanged in this slice; the soft-input migration of the
-  E1B Viterbi step is tracked in #37.
+  `src/galileo_e1b.jl` → `src/galileo/e1b.jl`.
+* **galileo:** Galileo E1B's `decode_syncro_sequence` reads the 240
+  polarity-corrected `Float32` LLR soft symbols directly from the deque
+  (sync hook hard-slices the tail only for the 10-bit page-sync preamble
+  bit-pattern check). The 30×8 block deinterleave and "invert every second
+  bit" steps now operate on soft symbols (inversion = negation), and the
+  page parser, even/odd caching, and WT7→WT10 almanac chaining are
+  unchanged. The inline `galCRC24` const is removed in favour of the shared
+  `crc24q` (issue #36).
 * **gpsl1c:** new GPS L1C-D (CNAV-2) decoder — TOI frame sync plus full
   subframe-2 parsing. `GPSL1C_DDecoderState(prn)` wires up a 1852-symbol
   soft buffer, the BCH(51,8) TOI codeword table for frame sync
