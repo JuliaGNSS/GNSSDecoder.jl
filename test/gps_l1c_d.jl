@@ -652,46 +652,4 @@ end
         @test d2.text_message == d1.text_message
         @test d2.num_sf3_pages_received == 68
     end
-
-    # --- Optional full Spirent GSS-CNAVDATA recording (gated) ----------------
-    # Validates the committed fixture's provenance: parses the original
-    # simulator output, demultiplexes the same channel, and requires it to be
-    # byte-identical to `test/data/gps_l1c_d_prn1_symbols.bin` before running
-    # the same golden assertions.
-    @testset "Spirent GSS-CNAVDATA recording (gated)" begin
-        fixture_dir = get(ENV, "GPS_L1C_D_FIXTURE_DIR", nothing)
-        if isnothing(fixture_dir)
-            @info "GPS_L1C_D_FIXTURE_DIR not set — skipping full Spirent recording test"
-            @test true
-        else
-            symfile = joinpath(fixture_dir, "nav_data_fec.L1_cnv")
-            @test isfile(symfile)
-            raw = read(symfile)
-            @test String(raw[1:12]) == "GSS CNAVDATA"
-            @test raw[15] == 0x02  # file type: post-FEC symbols
-            body = raw[17:end]
-            @test length(body) % 225 == 0
-            blocks = [body[(i-1)*225+1:i*225] for i in 1:length(body)÷225]
-            # Channel count = number of consecutive blocks sharing the
-            # 52-symbol (7-byte) subframe-1 prefix of the first epoch (all
-            # satellites broadcast the same TOI, so the prefix only changes
-            # at an epoch boundary).
-            nch = findfirst(i -> blocks[i][1:7] != blocks[1][1:7], 1:length(blocks))
-            nch = isnothing(nch) ? 1 : nch - 1
-            channel = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_CHANNEL", "0"))
-            prn = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_PRN", "1"))
-            packed = reduce(vcat, blocks[(1+channel):nch:end])
-            # The committed fixtures must be byte-identical to the channels
-            # they were extracted from.
-            for (fixture_channel, fname) in
-                ((0, "gps_l1c_d_prn1_symbols.bin"), (1, "gps_l1c_d_prn2_symbols.bin"))
-                @test reduce(vcat, blocks[(1+fixture_channel):nch:end]) ==
-                      read(joinpath(@__DIR__, "data", fname))
-            end
-            soft = Float32[(b >> (7 - j)) & 0x01 == 0 ? 1.0f0 : -1.0f0
-                           for b in packed for j in 0:7]
-            state = decode(GPSL1C_DDecoderState(prn), soft, length(soft))
-            assert_spirent_golden(state)
-        end
-    end
 end

@@ -6,11 +6,14 @@
 [![codecov](https://codecov.io/gh/JuliaGNSS/GNSSDecoder.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaGNSS/GNSSDecoder.jl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Decodes various GNSS satellite signals.
+Decodes various GNSS satellite signals from soft symbols (`Float32`,
+positive ⇒ bit 0, negative ⇒ bit 1, magnitude ⇒ confidence) as produced by
+a tracking loop such as `Tracking.jl`.
 
 Currently implemented:
- * GPS L1
- * Galileo E1B
+ * GPS L1 C/A (LNAV)
+ * GPS L1C-D (CNAV-2)
+ * Galileo E1B (I/NAV)
 
 ## Installation
 
