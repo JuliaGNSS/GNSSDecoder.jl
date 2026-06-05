@@ -603,6 +603,14 @@ _l1c_d_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 function GPSL1C_DCache()
     sf2_H = LDPCMatrix(_l1c_d_data_path("cnv2_sf2.alist"))
     sf3_H = LDPCMatrix(_l1c_d_data_path("cnv2_sf3.alist"))
+    # The CNAV-2 LDPC codes are systematic with the codeword laid out as
+    # [info | parity] (IS-GPS-800G §3.2.3.3: H = [[A B T] [C D E]] acts on
+    # [info; parity]). Aff3ct's alist loader auto-derives info-bit positions
+    # by Gaussian elimination and happens to pick the *parity* columns, so
+    # the ICD layout must be forced before the decoders capture it.
+    # Verified against a Spirent GSS post-FEC L1C recording.
+    sf2_H.info_bits_pos = collect(UInt32, 0:(sf2_H.K - 1))
+    sf3_H.info_bits_pos = collect(UInt32, 0:(sf3_H.K - 1))
     GPSL1C_DCache(
         CircularDeque{Float32}(L1C_D_WINDOW_LENGTH),
         LDPCBPDecoder(sf2_H; num_iterations = 50),

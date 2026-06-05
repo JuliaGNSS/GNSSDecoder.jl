@@ -1,7 +1,6 @@
 using Test
 using Random
 import Aff3ct
-using Aff3ct: LDPCMatrix, LDPCEncoder, encode
 using GNSSDecoder
 using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData
 
@@ -12,11 +11,61 @@ using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData
 # followed by the 1748-symbol block-interleaved concatenation of the
 # 1200-symbol LDPC-encoded subframe 2 and the 548-symbol LDPC-encoded
 # subframe 3. Symbols are emitted as ±1 Float32 (bit 0 ⇒ +1, bit 1 ⇒ -1).
+#
+# The CNAV-2 LDPC codes are systematic with codeword layout [info | parity]
+# (IS-GPS-800G §3.2.3.3) — verified bit-for-bit against a Spirent GSS L1C
+# recording. Aff3ct's `LDPCEncoder` derives a *different* (LU-based) info-bit
+# mapping from the parity-check matrix, so the transmit chain here encodes
+# systematically itself: parse H = [A | B] from the alist and compute
+# parity = B⁻¹A·info over GF(2).
 # ---------------------------------------------------------------------------
 
 const _REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 const _SF2_ALIST = joinpath(_REPO_ROOT, "data", "cnv2_sf2.alist")
 const _SF3_ALIST = joinpath(_REPO_ROOT, "data", "cnv2_sf3.alist")
+
+"Parse an alist file into a dense `Bool` parity-check matrix (M×N)."
+function _alist_H(path::String)
+    lines = readlines(path)
+    N, M = parse.(Int, split(lines[1]))
+    H = falses(M, N)
+    # Per-column row indices start at line 5 (after dims, max degrees, and
+    # the two degree lists); zero entries are padding.
+    for col in 1:N
+        for r in parse.(Int, split(lines[4 + col]))
+            r == 0 && continue
+            H[r, col] = true
+        end
+    end
+    return H
+end
+
+"""
+Precompute the systematic parity generator `P = B⁻¹A` (M×K over GF(2)) from
+`H = [A | B]`, so that `codeword = [info; P·info]` satisfies `H·codeword = 0`.
+"""
+function _systematic_parity_matrix(H::AbstractMatrix{Bool})
+    M, N = size(H)
+    K = N - M
+    aug = Matrix{Bool}(hcat(H[:, (K + 1):N], H[:, 1:K]))  # [B | A]
+    for col in 1:M
+        piv = findfirst(r -> aug[r, col], col:M)
+        piv === nothing && error("parity submatrix B is singular at column $col")
+        piv += col - 1
+        piv != col && (aug[[col, piv], :] = aug[[piv, col], :])
+        for r in 1:M
+            r != col && aug[r, col] && (aug[r, :] .⊻= aug[col, :])
+        end
+    end
+    return aug[:, (M + 1):end]  # B⁻¹A
+end
+
+"Systematically LDPC-encode `info` bits: returns `[info; parity]` as `Vector{Int}`."
+function _ldpc_encode_systematic(P::AbstractMatrix{Bool}, info::AbstractVector)
+    u = Bool.(info .!= 0)
+    parity = [reduce(⊻, u[P[r, :]]; init = false) for r in 1:size(P, 1)]
+    return Int.(vcat(u, parity))
+end
 
 "Write `len` bits of `val` MSB-first into 1-based position `start` of `bits`."
 function _setbits!(bits::BitVector, start::Int, len::Int, val::Integer)
@@ -47,10 +96,8 @@ function _frame_symbols(toi::Int, payload::Vector{Int})
 end
 
 @testset "GPS L1C-D (CNAV-2)" begin
-    sf2_H = LDPCMatrix(_SF2_ALIST)
-    sf3_H = LDPCMatrix(_SF3_ALIST)
-    sf2_enc = LDPCEncoder(sf2_H)
-    sf3_enc = LDPCEncoder(sf3_H)
+    sf2_P = _systematic_parity_matrix(_alist_H(_SF2_ALIST))
+    sf3_P = _systematic_parity_matrix(_alist_H(_SF3_ALIST))
     rng = MersenneTwister(0x1C0D)
 
     # --- Hand-packed golden subframe-2 field values (IS-GPS-800G Fig 3.5-1) ---
@@ -104,11 +151,11 @@ end
 
     "LDPC-encode SF2+SF3 info blocks and block-interleave (38×46) into 1748 symbols."
     function build_payload(sf2_info::Vector{Int32}, sf3_info::Vector{Int32})
-        x_sf2 = encode(sf2_enc, sf2_info)
-        x_sf3 = encode(sf3_enc, sf3_info)
+        x_sf2 = _ldpc_encode_systematic(sf2_P, sf2_info)
+        x_sf3 = _ldpc_encode_systematic(sf3_P, sf3_info)
         @assert length(x_sf2) == 1200
         @assert length(x_sf3) == 548
-        src = vcat(Int.(x_sf2), Int.(x_sf3))
+        src = vcat(x_sf2, x_sf3)
         dst = Vector{Int}(undef, 1748)
         interleave!(dst, src, 38, 46)
         return dst
@@ -479,18 +526,71 @@ end
             @info "GPS_L1C_D_FIXTURE_DIR not set — skipping Spirent L1C-D fixture test"
             @test true
         else
-            # Spirent GSS streamer writes post-FEC L1C symbols to a file named
-            # `nav_data_fec.L1_cnv` (one signed char per channel symbol). Load
-            # them as ±1 soft symbols and run the same end-to-end assertions.
+            # Spirent GSS simulators write post-FEC L1C channel symbols in
+            # the GSS-CNAVDATA container (Spirent FAQ14061): a 16-byte header
+            # ("GSS CNAVDATA", major/minor version, file type 2 = post-FEC
+            # symbols, spare) followed by repeated 225-byte blocks of 1800
+            # symbols, MSB of each byte first. When the simulation runs
+            # multiple satellites, each 18-second epoch contributes one block
+            # per satellite channel in a fixed round-robin order; channels
+            # are demultiplexed by noting that all satellites broadcast the
+            # same TOI, so the 52-symbol subframe-1 prefix only changes at an
+            # epoch boundary.
             symfile = joinpath(fixture_dir, "nav_data_fec.L1_cnv")
             @test isfile(symfile)
             raw = read(symfile)
-            soft = Float32[Float32(reinterpret(Int8, b)) for b in raw]
-            state = GPSL1C_DDecoderState(get(ENV, "GPS_L1C_D_FIXTURE_PRN", "1") |> x -> parse(Int, x))
-            state = decode(state, soft, length(soft))
-            @test !isnothing(state.data.toi)
-            @test !isnothing(state.data.WN)
-            @test !isnothing(state.data.t_0e)
+            @test String(raw[1:12]) == "GSS CNAVDATA"
+            @test raw[15] == 0x02  # file type: post-FEC symbols
+            body = raw[17:end]
+            @test length(body) % 225 == 0
+            blocks = [body[(i-1)*225+1:i*225] for i in 1:length(body)÷225]
+            # Channel count = number of consecutive blocks sharing the
+            # 52-symbol (7-byte) subframe-1 prefix of the first epoch.
+            nch = findfirst(i -> blocks[i][1:7] != blocks[1][1:7], 1:length(blocks))
+            nch = isnothing(nch) ? 1 : nch - 1
+            channel = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_CHANNEL", "0"))
+            prn = parse(Int, get(ENV, "GPS_L1C_D_FIXTURE_PRN", "1"))
+            to_soft(block) = Float32[(b >> (7 - j)) & 0x01 == 0 ? 1.0f0 : -1.0f0
+                                     for b in block for j in 0:7]
+            soft = reduce(vcat, to_soft.(blocks[(1+channel):nch:end]))
+
+            state = decode(GPSL1C_DDecoderState(prn), soft, length(soft))
+            d = state.data
+
+            # Golden values from Spirent's own decode of the matching
+            # pre-FEC file (`nav_data_bits.L1_cnv.txt`, message 1, PRN 1).
+            # Semicircle-valued fields are stored in radians (× π).
+            @test d.WN == 2106
+            @test d.ITOW == 36
+            @test d.t_op == 259200
+            @test d.l1c_health == false
+            @test d.t_0e == 264600
+            @test d.ΔA ≈ 922.048828125
+            @test d.A_dot ≈ 0.0
+            @test d.Δn_0 ≈ 0.0
+            @test d.M_0 ≈ 0.95177634549327195 * π
+            @test d.e ≈ 0.0
+            @test d.ω ≈ -0.38260139431804419 * π
+            @test d.Ω_0 ≈ 0.29631945816799998 * π
+            @test d.i_0 ≈ 0.30555555550381541 * π
+            @test d.ΔΩ_dot ≈ 2.6000179786933586e-9 * π
+            @test d.a_f0 ≈ 0.0
+            @test d.T_GD ≈ 0.0
+            @test is_sat_healthy(state)
+
+            # SF3 pages observed in the recording.
+            @test d.Δt_LS == 18
+            @test d.A0_UTC ≈ 0.0
+            @test d.t_GGTO == 259200
+            @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) > 0
+            @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) > 0
+            @test d.num_sf3_pages_received > 0
+
+            # Polarity-inverted stream must decode identically with the
+            # 180°-flip flag set.
+            state_inv = decode(GPSL1C_DDecoderState(prn), -soft, length(soft))
+            @test state_inv.is_shifted_by_180_degrees
+            @test state_inv.data == d
         end
     end
 end
