@@ -31,5 +31,11 @@
           ex_inv_deinterleaved_bits
 
     ex_true_bits = "111111111111000011001100101010100000000000001111001100110101010111100011111011001101111110001010000111000001001101000000"
-    @test viterbi_decode(7, [79, 109], ex_inv_deinterleaved_bits) == ex_true_bits[1:114]
+    # The K=7 NSC Viterbi step is now AFF3CT.jl's ConvViterbiDecoder fed with
+    # ±1 soft LLRs ('0' ⇒ +1, '1' ⇒ -1; positive ⇒ bit 0). It returns the 114
+    # information bits (the 6 tail bits are absorbed by trellis termination).
+    soft = Float32[c == '1' ? -1.0f0 : 1.0f0 for c in ex_inv_deinterleaved_bits]
+    dec = Aff3ct.ConvViterbiDecoder(114, 240, [0o171, 0o133])
+    decoded = join(string.(Int.(Aff3ct.decode(dec, soft))))
+    @test decoded == ex_true_bits[1:114]
 end
