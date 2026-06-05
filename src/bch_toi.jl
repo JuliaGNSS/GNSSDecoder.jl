@@ -39,15 +39,17 @@ end
 
 # Run the 8-stage LFSR for one TOI value; return the 51-bit BCH output
 # (bit 0 = first emitted symbol) packed into a UInt64. Matches PocketSDR's
-# `LFSR(51, rev_reg(t_low8, 8), 0b10011111, 8)` followed by `(code+1)//2`
-# (which maps the ±1 output to {1,0} = complement of the LSB).
+# `LFSR(51, rev_reg(t_low8, 8), 0b10011111, 8)` followed by `(code+1)//2`:
+# `LFSR` emits `CHIP[R & 1]` with `CHIP = (-1, 1)`, so `(code+1)//2` maps the
+# ±1 symbol back to exactly the register LSB. The emitted bit is the LSB
+# itself — verified against a Spirent GSS7000 L1C recording (the first 8
+# emitted bits for TOI `t` spell the low 8 TOI bits MSB-first, i.e. the
+# code is systematic in its data prefix).
 function _toi_lfsr51(t_low8::UInt)
     R = _toi_rev_reg(t_low8 & UInt(0xff), TOI_BCH_REGISTER_WIDTH) % UInt32
     out = UInt64(0)
     @inbounds for i in 0:(TOI_BCH_DATA_LEN - 1)
-        # PocketSDR emits +1 when LSB==0 and -1 when LSB==1, then maps
-        # back to {1,0}. Net effect: emitted bit is the complement of LSB.
-        out |= UInt64((R & UInt32(0x1)) ⊻ UInt32(0x1)) << i
+        out |= UInt64(R & UInt32(0x1)) << i
         # Galois-style update: new MSB = parity of R AND tap; shift right.
         feedback_bits = R & UInt32(TOI_BCH_TAP)
         feedback = UInt32(count_ones(feedback_bits) & 1)
