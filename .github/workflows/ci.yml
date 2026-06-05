@@ -18,8 +18,9 @@ jobs:
         os:
           - ubuntu-latest
         include:
-          - os: windows-latest
-            version: '1'
+          # Windows is intentionally excluded: the Aff3ct dependency has no
+          # Windows binary (aff3ct/streampu does not build on MinGW, so
+          # aff3ct_jll skips Windows), so the package cannot be installed there.
           - os: macOS-latest
             version: '1'
     steps:
