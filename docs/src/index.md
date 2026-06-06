@@ -6,6 +6,7 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 
 - **GPS L1 C/A**: Decodes the 50 bps LNAV data stream from GPS L1 civil signals
 - **GPS L1C-D**: Decodes the 100 sps CNAV-2 data stream from the modernized GPS L1C signal's data component
+- **GPS L5I**: Decodes the 100 sps CNAV data stream from the GPS L5 in-phase signal component
 - **Galileo E1B**: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals
 
 ## Installation
@@ -103,6 +104,31 @@ julia> state.prn
 
 julia> typeof(state)
 GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
+
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia> GNSSDecoder.num_bits_buffered(state)
+10
+```
+
+### GPS L5I Decoding
+
+The GPS L5I (CNAV) decoder consumes the 100 sps FEC-encoded channel symbols.
+The rate-1/2 K=7 convolutional FEC runs continuously across message
+boundaries, so each sync attempt Viterbi-decodes the buffered 616-symbol
+window, looks for the 8-bit preamble at both ends of the decoded window, and
+validates the 300-bit message with CRC-24Q:
+
+```jldoctest l5i_example
+julia> using GNSSDecoder
+
+julia> state = GPSL5IDecoderState(1);  # Initialize decoder for PRN 1
+
+julia> state.prn
+1
+
+julia> typeof(state)
+GNSSDecoderState{GPSL5IData, GNSSDecoder.GPSL5IConstants, GNSSDecoder.GPSL5ICache}
 
 julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 

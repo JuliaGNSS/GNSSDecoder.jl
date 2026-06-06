@@ -35,6 +35,7 @@ end
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")
+    include("gps_l5i.jl")
     include("galileo_e1b.jl")
 
     # v2 shared-utility deep-module tests (issue #36)
