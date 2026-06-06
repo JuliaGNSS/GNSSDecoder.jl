@@ -12,9 +12,9 @@ code; this file is for naming and meaning only.
   TOI in the first 52 symbols; rate-1/2 LDPC over an interleaved block of 1748
   symbols for subframes 2 + 3; 24-bit CRC inside each.
 - **GPS L5I** (`GPSL5I`) — 50 bps CNAV broadcast on L5 in-phase. K=7 rate-1/2
-  non-systematic convolutional code (G1 = 171₈, G2 = 133₈). Subframe = 300 bits
-  = 6 seconds (10 messages of 12 seconds each — see IS-GPS-705). *Not yet
-  decoded by this package.*
+  non-systematic convolutional code (G1 = 171₈, G2 = 133₈), convolved
+  *continuously* across message boundaries (no tail bits). Message = 300 bits
+  = 600 channel symbols at 100 sps = 6 seconds (IS-GPS-705).
 - **Galileo E1B** (`GalileoE1B`) — 250 sps I/NAV nominal pages over a K=7
   rate-1/2 convolutional code plus 30×8 block interleaver. Page = 250 channel
   symbols = 1 second. Two consecutive pages (even+odd) carry one word.
@@ -23,16 +23,18 @@ code; this file is for naming and meaning only.
 
 The same word means different things in different ICDs. Within this codebase:
 
-- **subframe** — for GPS L1 C/A: one of five 300-bit blocks (LNAV). For L1C-D
-  and L5I: a block inside a CNAV/CNAV-2 frame. For Galileo: not used.
+- **subframe** — for GPS L1 C/A: one of five 300-bit blocks (LNAV). For L1C-D:
+  a block inside a CNAV-2 frame. For L5I and Galileo: not used.
+- **message** — L5I: one 300-bit CNAV unit (6 seconds), self-delimiting via
+  preamble + CRC; there is no frame/subframe hierarchy.
 - **frame** — L1C-D: one 18-second cycle = 1800 channel symbols. Contains
   *subframe 1* (TOI, 52 sym), *subframe 2* (CED+iono, 1200 sym), *subframe 3*
   (variable, 548 sym).
 - **page** — Galileo I/NAV unit (1 sec, 250 channel symbols). Each page has
   even and odd halves; a *word* spans two consecutive pages.
 - **syncro sequence** — package-internal: the smallest navigable unit the
-  decoder synchronises on (subframe for GPS, page for Galileo, frame for
-  L1C-D).
+  decoder synchronises on (subframe for GPS L1 C/A, page for Galileo, frame
+  for L1C-D, message for L5I).
 
 ## TOI (Time of Interval)
 
@@ -92,4 +94,7 @@ lives in the `cache`.
   of *two consecutive subframes*: pick TOI such that subframe N's BCH matches
   TOI=t and subframe N+1's matches TOI=t+1 (mod 400). Handles polarity
   ambiguity by accepting full-inverted matches too.
-- **L5I**: planned — preamble inside the CNAV message (IS-GPS-705 §20.3.2).
+- **L5I**: the 8-bit preamble `10001011` only exists in the *decoded* bit
+  domain (the FEC runs continuously across messages), so each sync attempt
+  Viterbi-decodes the buffered 616-symbol window and requires the preamble at
+  both ends of the decoded 308-bit window plus a clean CRC-24Q.

@@ -12,6 +12,7 @@ GNSSDecoderState
 GPSL1CADecoderState
 GalileoE1BDecoderState
 GPSL1C_DDecoderState
+GPSL5IDecoderState
 ```
 
 ## Decoding
@@ -73,4 +74,16 @@ GPSL1C_DData
 GPSL1C_DReducedAlmanac
 GPSL1C_DMidiAlmanac
 GPSL1C_DDifferentialCorrection
+```
+
+### GPS L5I
+
+```@docs
+GNSSDecoder.GPSL5IConstants
+GPSL5IData
+GPSL5IReducedAlmanac
+GPSL5IMidiAlmanac
+GPSL5IClockDifferentialCorrection
+GPSL5IEphemerisDifferentialCorrection
+GPSL5IIntegritySupportMessage
 ```

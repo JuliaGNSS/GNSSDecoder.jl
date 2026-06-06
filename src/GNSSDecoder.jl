@@ -11,6 +11,13 @@ export decode,
     GPSL1C_DReducedAlmanac,
     GPSL1C_DMidiAlmanac,
     GPSL1C_DDifferentialCorrection,
+    GPSL5IDecoderState,
+    GPSL5IData,
+    GPSL5IReducedAlmanac,
+    GPSL5IMidiAlmanac,
+    GPSL5IClockDifferentialCorrection,
+    GPSL5IEphemerisDifferentialCorrection,
+    GPSL5IIntegritySupportMessage,
     GalileoE1BDecoderState,
     is_sat_healthy,
     GNSSDecoderState,
@@ -39,4 +46,10 @@ include("galileo/e1b.jl")
 # the (de)interleaver, and after `gps/l1ca.jl` because it shares the generic
 # `decode` framework hooks (`try_sync`, `decode_syncro_sequence`, …).
 include("gps/l1c_d.jl")
+
+# GPS L5I (CNAV) decoder. Included after `gps/l1ca.jl` (reuses its `UInt320`
+# packed-word type) and after `gps/l1c_d.jl` (reuses the `_deque_slice` and
+# `_merge_keyed` helpers), and consumes `crc24q` from the shared utilities
+# above.
+include("gps/l5.jl")
 end

@@ -16,6 +16,7 @@ magnitudes need not be normalized.
 Currently implemented:
  * GPS L1 C/A (LNAV)
  * GPS L1C-D (CNAV-2)
+ * GPS L5I (CNAV)
  * Galileo E1B (I/NAV)
 
 ## Installation
