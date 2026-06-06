@@ -159,16 +159,17 @@ This mirrors PocketSDR's `sync_CNV2_frame` algorithm — see
 `/home/schoenbrod/Code/PocketSDR/python/sdr_nav.py`.
 """
 function sync_bch_toi(first52, next52)
-    a = _as_hard_codeword(first52)
-    b = _as_hard_codeword(next52)
-    a_inv = a ⊻ TOI_BCH_MASK52
-    b_inv = b ⊻ TOI_BCH_MASK52
+    first_word = _as_hard_codeword(first52)
+    next_word = _as_hard_codeword(next52)
+    first_word_inverted = first_word ⊻ TOI_BCH_MASK52
+    next_word_inverted = next_word ⊻ TOI_BCH_MASK52
     @inbounds for toi in 0:(TOI_RANGE - 1)
-        cw_t  = BCH_TOI_CODEWORDS[toi + 1]
-        cw_tn = BCH_TOI_CODEWORDS[((toi + 1) % TOI_RANGE) + 1]
-        if a == cw_t && b == cw_tn
+        codeword_toi = BCH_TOI_CODEWORDS[toi + 1]
+        codeword_next_toi = BCH_TOI_CODEWORDS[((toi + 1) % TOI_RANGE) + 1]
+        if first_word == codeword_toi && next_word == codeword_next_toi
             return BCHToiSync(toi, false)
-        elseif a_inv == cw_t && b_inv == cw_tn
+        elseif first_word_inverted == codeword_toi &&
+               next_word_inverted == codeword_next_toi
             return BCHToiSync(toi, true)
         end
     end

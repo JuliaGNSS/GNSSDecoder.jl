@@ -743,11 +743,11 @@ end
 # for the (length-checked) `soft_to_hard_codeword`. Small (52 elements), runs
 # only once per buffered window.
 function _deque_slice(deque::CircularDeque{Float32}, start::Int, len::Int)
-    v = Vector{Float32}(undef, len)
+    slice = Vector{Float32}(undef, len)
     @inbounds for i in 1:len
-        v[i] = deque[start + i - 1]
+        slice[i] = deque[start + i - 1]
     end
-    return v
+    return slice
 end
 
 """
@@ -804,10 +804,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     # Extract the 1748-symbol interleaved SF2+SF3 payload (symbols 53..1800),
     # applying the polarity flip by negating soft symbols up front.
     deque = soft_buffer(state)
-    flip = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
+    polarity_correction = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
     interleaved = Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS)
     @inbounds for i in 1:L1C_D_PAYLOAD_SYMBOLS
-        interleaved[i] = flip * deque[L1C_D_SUBFRAME1_LENGTH + i]
+        interleaved[i] = polarity_correction * deque[L1C_D_SUBFRAME1_LENGTH + i]
     end
 
     deinterleaved = deinterleave(interleaved, L1C_D_INTERLEAVER_ROWS, L1C_D_INTERLEAVER_COLS)
@@ -858,42 +858,42 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
         UInt600,
     )
     isnothing(word) && return state  # silently drop on CRC failure
-    N = L1C_D_SF2_INFO_BITS
+    word_length = L1C_D_SF2_INFO_BITS
 
     PI = state.constants.PI
 
-    WN = Int(get_bits(word, N, 1, 13))
-    ITOW = Int(get_bits(word, N, 14, 8))
-    t_op = Int(get_bits(word, N, 22, 11)) * 300
-    l1c_health = get_bit(word, N, 33)
-    ura_ed_index = get_twos_complement_num(word, N, 34, 5)
-    t_0e = Int(get_bits(word, N, 39, 11)) * 300
-    ΔA = get_twos_complement_num(word, N, 50, 26) * 2.0^-9
-    A_dot = get_twos_complement_num(word, N, 76, 25) * 2.0^-21
-    Δn_0 = get_twos_complement_num(word, N, 101, 17) * 2.0^-44 * PI
-    Δn_0_dot = get_twos_complement_num(word, N, 118, 23) * 2.0^-57 * PI
-    M_0 = get_twos_complement_num(word, N, 141, 33) * 2.0^-32 * PI
-    e = Int(get_bits(word, N, 174, 33)) * 2.0^-34
-    ω = get_twos_complement_num(word, N, 207, 33) * 2.0^-32 * PI
-    Ω_0 = get_twos_complement_num(word, N, 240, 33) * 2.0^-32 * PI
-    i_0 = get_twos_complement_num(word, N, 273, 33) * 2.0^-32 * PI
-    ΔΩ_dot = get_twos_complement_num(word, N, 306, 17) * 2.0^-44 * PI
-    i_0_dot = get_twos_complement_num(word, N, 323, 15) * 2.0^-44 * PI
-    C_is = get_twos_complement_num(word, N, 338, 16) * 2.0^-30
-    C_ic = get_twos_complement_num(word, N, 354, 16) * 2.0^-30
-    C_rs = get_twos_complement_num(word, N, 370, 24) * 2.0^-8
-    C_rc = get_twos_complement_num(word, N, 394, 24) * 2.0^-8
-    C_us = get_twos_complement_num(word, N, 418, 21) * 2.0^-30
-    C_uc = get_twos_complement_num(word, N, 439, 21) * 2.0^-30
-    ura_ned0_index = get_twos_complement_num(word, N, 460, 5)
-    ura_ned1_index = Int(get_bits(word, N, 465, 3))
-    ura_ned2_index = Int(get_bits(word, N, 468, 3))
-    a_f0 = get_twos_complement_num(word, N, 471, 26) * 2.0^-35
-    a_f1 = get_twos_complement_num(word, N, 497, 20) * 2.0^-48
-    a_f2 = get_twos_complement_num(word, N, 517, 10) * 2.0^-60
-    T_GD = get_twos_complement_num(word, N, 527, 13) * 2.0^-35
-    ISC_L1CP = get_twos_complement_num(word, N, 540, 13) * 2.0^-35
-    ISC_L1CD = get_twos_complement_num(word, N, 553, 13) * 2.0^-35
+    WN = Int(get_bits(word, word_length, 1, 13))
+    ITOW = Int(get_bits(word, word_length, 14, 8))
+    t_op = Int(get_bits(word, word_length, 22, 11)) * 300
+    l1c_health = get_bit(word, word_length, 33)
+    ura_ed_index = get_twos_complement_num(word, word_length, 34, 5)
+    t_0e = Int(get_bits(word, word_length, 39, 11)) * 300
+    ΔA = get_twos_complement_num(word, word_length, 50, 26) * 2.0^-9
+    A_dot = get_twos_complement_num(word, word_length, 76, 25) * 2.0^-21
+    Δn_0 = get_twos_complement_num(word, word_length, 101, 17) * 2.0^-44 * PI
+    Δn_0_dot = get_twos_complement_num(word, word_length, 118, 23) * 2.0^-57 * PI
+    M_0 = get_twos_complement_num(word, word_length, 141, 33) * 2.0^-32 * PI
+    e = Int(get_bits(word, word_length, 174, 33)) * 2.0^-34
+    ω = get_twos_complement_num(word, word_length, 207, 33) * 2.0^-32 * PI
+    Ω_0 = get_twos_complement_num(word, word_length, 240, 33) * 2.0^-32 * PI
+    i_0 = get_twos_complement_num(word, word_length, 273, 33) * 2.0^-32 * PI
+    ΔΩ_dot = get_twos_complement_num(word, word_length, 306, 17) * 2.0^-44 * PI
+    i_0_dot = get_twos_complement_num(word, word_length, 323, 15) * 2.0^-44 * PI
+    C_is = get_twos_complement_num(word, word_length, 338, 16) * 2.0^-30
+    C_ic = get_twos_complement_num(word, word_length, 354, 16) * 2.0^-30
+    C_rs = get_twos_complement_num(word, word_length, 370, 24) * 2.0^-8
+    C_rc = get_twos_complement_num(word, word_length, 394, 24) * 2.0^-8
+    C_us = get_twos_complement_num(word, word_length, 418, 21) * 2.0^-30
+    C_uc = get_twos_complement_num(word, word_length, 439, 21) * 2.0^-30
+    ura_ned0_index = get_twos_complement_num(word, word_length, 460, 5)
+    ura_ned1_index = Int(get_bits(word, word_length, 465, 3))
+    ura_ned2_index = Int(get_bits(word, word_length, 468, 3))
+    a_f0 = get_twos_complement_num(word, word_length, 471, 26) * 2.0^-35
+    a_f1 = get_twos_complement_num(word, word_length, 497, 20) * 2.0^-48
+    a_f2 = get_twos_complement_num(word, word_length, 517, 10) * 2.0^-60
+    T_GD = get_twos_complement_num(word, word_length, 527, 13) * 2.0^-35
+    ISC_L1CP = get_twos_complement_num(word, word_length, 540, 13) * 2.0^-35
+    ISC_L1CD = get_twos_complement_num(word, word_length, 553, 13) * 2.0^-35
 
     raw = GPSL1C_DData(
         state.raw_data;
@@ -967,8 +967,8 @@ function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
         num_sf3_pages_received = state.raw_data.num_sf3_pages_received + 1,
     )
 
-    N = L1C_D_SF3_INFO_BITS
-    page = Int(get_bits(word, N, 9, 6))  # bits 1-8 PRN, bits 9-14 page (IS-GPS-800J §3.5.4)
+    word_length = L1C_D_SF3_INFO_BITS
+    page = Int(get_bits(word, word_length, 9, 6))  # bits 1-8 PRN, bits 9-14 page (IS-GPS-800J §3.5.4)
     raw = if page == L1C_D_SF3_PAGE_UTC_IONO
         parse_sf3_page1(raw, word, state.constants.PI)
     elseif page == L1C_D_SF3_PAGE_GGTO_EOP
@@ -990,57 +990,57 @@ end
 
 "Subframe 3, page 1 — UTC + Klobuchar iono + ISC (IS-GPS-800J Fig 3.5-2, Table 3.5-3)."
 function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288, PI::Float64)
-    N = L1C_D_SF3_INFO_BITS
+    word_length = L1C_D_SF3_INFO_BITS
     GPSL1C_DData(
         raw;
         # UTC polynomial (Table 3.5-3).
-        A0_UTC = get_twos_complement_num(word, N, 15, 16) * 2.0^-35,
-        A1_UTC = get_twos_complement_num(word, N, 31, 13) * 2.0^-51,
-        A2_UTC = get_twos_complement_num(word, N, 44, 7) * 2.0^-68,
-        Δt_LS = get_twos_complement_num(word, N, 51, 8),
-        t_ot = Int(get_bits(word, N, 59, 16)) * 2^4,
-        WN_ot = Int(get_bits(word, N, 75, 13)),
-        WN_LSF = Int(get_bits(word, N, 88, 13)),
-        DN = Int(get_bits(word, N, 101, 4)),
-        Δt_LSF = get_twos_complement_num(word, N, 105, 8),
+        A0_UTC = get_twos_complement_num(word, word_length, 15, 16) * 2.0^-35,
+        A1_UTC = get_twos_complement_num(word, word_length, 31, 13) * 2.0^-51,
+        A2_UTC = get_twos_complement_num(word, word_length, 44, 7) * 2.0^-68,
+        Δt_LS = get_twos_complement_num(word, word_length, 51, 8),
+        t_ot = Int(get_bits(word, word_length, 59, 16)) * 2^4,
+        WN_ot = Int(get_bits(word, word_length, 75, 13)),
+        WN_LSF = Int(get_bits(word, word_length, 88, 13)),
+        DN = Int(get_bits(word, word_length, 101, 4)),
+        Δt_LSF = get_twos_complement_num(word, word_length, 105, 8),
         # Klobuchar ionospheric coefficients (IS-GPS-200 Table 20-X; all 8-bit
         # two's-complement, scaled in seconds / seconds-per-semicircle^n).
-        α0 = get_twos_complement_num(word, N, 113, 8) * 2.0^-30,
-        α1 = get_twos_complement_num(word, N, 121, 8) * 2.0^-27,
-        α2 = get_twos_complement_num(word, N, 129, 8) * 2.0^-24,
-        α3 = get_twos_complement_num(word, N, 137, 8) * 2.0^-24,
-        β0 = get_twos_complement_num(word, N, 145, 8) * 2.0^11,
-        β1 = get_twos_complement_num(word, N, 153, 8) * 2.0^14,
-        β2 = get_twos_complement_num(word, N, 161, 8) * 2.0^16,
-        β3 = get_twos_complement_num(word, N, 169, 8) * 2.0^16,
+        α0 = get_twos_complement_num(word, word_length, 113, 8) * 2.0^-30,
+        α1 = get_twos_complement_num(word, word_length, 121, 8) * 2.0^-27,
+        α2 = get_twos_complement_num(word, word_length, 129, 8) * 2.0^-24,
+        α3 = get_twos_complement_num(word, word_length, 137, 8) * 2.0^-24,
+        β0 = get_twos_complement_num(word, word_length, 145, 8) * 2.0^11,
+        β1 = get_twos_complement_num(word, word_length, 153, 8) * 2.0^14,
+        β2 = get_twos_complement_num(word, word_length, 161, 8) * 2.0^16,
+        β3 = get_twos_complement_num(word, word_length, 169, 8) * 2.0^16,
         # Inter-signal corrections (Fig 3.5-2; 13-bit two's complement, 2^-35 s).
-        ISC_L1CA = get_twos_complement_num(word, N, 177, 13) * 2.0^-35,
-        ISC_L2C = get_twos_complement_num(word, N, 190, 13) * 2.0^-35,
-        ISC_L5I5 = get_twos_complement_num(word, N, 203, 13) * 2.0^-35,
-        ISC_L5Q5 = get_twos_complement_num(word, N, 216, 13) * 2.0^-35,
+        ISC_L1CA = get_twos_complement_num(word, word_length, 177, 13) * 2.0^-35,
+        ISC_L2C = get_twos_complement_num(word, word_length, 190, 13) * 2.0^-35,
+        ISC_L5I5 = get_twos_complement_num(word, word_length, 203, 13) * 2.0^-35,
+        ISC_L5Q5 = get_twos_complement_num(word, word_length, 216, 13) * 2.0^-35,
     )
 end
 
 "Subframe 3, page 2 — GGTO + EOP (IS-GPS-800J Fig 3.5-3, Tables 3.5-4/3.5-5)."
 function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
-    N = L1C_D_SF3_INFO_BITS
+    word_length = L1C_D_SF3_INFO_BITS
     GPSL1C_DData(
         raw;
         # GGTO (Table 3.5-4). Field order in Fig 3.5-3: tGGTO, WNGGTO, A0, A1, A2.
-        t_GGTO = Int(get_bits(word, N, 18, 16)) * 2^4,
-        WN_GGTO = Int(get_bits(word, N, 34, 13)),
-        A0_GGTO = get_twos_complement_num(word, N, 47, 16) * 2.0^-35,
-        A1_GGTO = get_twos_complement_num(word, N, 63, 13) * 2.0^-51,
-        A2_GGTO = get_twos_complement_num(word, N, 76, 7) * 2.0^-68,
-        GNSS_ID = Int(get_bits(word, N, 15, 3)),
+        t_GGTO = Int(get_bits(word, word_length, 18, 16)) * 2^4,
+        WN_GGTO = Int(get_bits(word, word_length, 34, 13)),
+        A0_GGTO = get_twos_complement_num(word, word_length, 47, 16) * 2.0^-35,
+        A1_GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
+        A2_GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
+        GNSS_ID = Int(get_bits(word, word_length, 15, 3)),
         # EOP (Table 3.5-5). PM_X is split: 2 MSBs at bit 99, 19 LSBs at bit 101.
-        t_EOP = Int(get_bits(word, N, 83, 16)) * 2^4,
-        PM_X = get_twos_complement_num(word, N, 99, 21) * 2.0^-20,
-        PM_X_dot = get_twos_complement_num(word, N, 120, 15) * 2.0^-21,
-        PM_Y = get_twos_complement_num(word, N, 135, 21) * 2.0^-20,
-        PM_Y_dot = get_twos_complement_num(word, N, 156, 15) * 2.0^-21,
-        ΔUT1 = get_twos_complement_num(word, N, 171, 31) * 2.0^-24,
-        ΔUT1_dot = get_twos_complement_num(word, N, 202, 19) * 2.0^-25,
+        t_EOP = Int(get_bits(word, word_length, 83, 16)) * 2^4,
+        PM_X = get_twos_complement_num(word, word_length, 99, 21) * 2.0^-20,
+        PM_X_dot = get_twos_complement_num(word, word_length, 120, 15) * 2.0^-21,
+        PM_Y = get_twos_complement_num(word, word_length, 135, 21) * 2.0^-20,
+        PM_Y_dot = get_twos_complement_num(word, word_length, 156, 15) * 2.0^-21,
+        ΔUT1 = get_twos_complement_num(word, word_length, 171, 31) * 2.0^-24,
+        ΔUT1_dot = get_twos_complement_num(word, word_length, 202, 19) * 2.0^-25,
     )
 end
 
@@ -1052,27 +1052,27 @@ function _reduced_almanac_packet(
     t_oa::Int,
     PI::Float64,
 )
-    N = L1C_D_SF3_INFO_BITS
-    PRN_a = Int(get_bits(word, N, start, 8))
+    word_length = L1C_D_SF3_INFO_BITS
+    PRN_a = Int(get_bits(word, word_length, start, 8))
     PRN_a == 0 && return nothing  # empty packet ⇒ no further packets follow
     GPSL1C_DReducedAlmanac(;
         PRN_a,
         WN_a,
         t_oa,
-        δA = get_twos_complement_num(word, N, start + 8, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, N, start + 16, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, N, start + 23, 7) * 2.0^-6 * PI,
-        l1_health = get_bit(word, N, start + 30),
-        l2_health = get_bit(word, N, start + 31),
-        l5_health = get_bit(word, N, start + 32),
+        δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
+        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
+        l1_health = get_bit(word, word_length, start + 30),
+        l2_health = get_bit(word, word_length, start + 31),
+        l5_health = get_bit(word, word_length, start + 32),
     )
 end
 
 "Subframe 3, page 3 — six reduced-almanac packets (IS-GPS-800J Fig 3.5-4)."
 function parse_sf3_page3(raw::GPSL1C_DData, word::UInt288, PI::Float64)
-    N = L1C_D_SF3_INFO_BITS
-    WN_a = Int(get_bits(word, N, 15, 13))
-    t_oa = Int(get_bits(word, N, 28, 8)) * 2^12
+    word_length = L1C_D_SF3_INFO_BITS
+    WN_a = Int(get_bits(word, word_length, 15, 13))
+    t_oa = Int(get_bits(word, word_length, 28, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     # Six 33-bit packets at bits 36, 69, 102, 135, 168, 201.
     for start in (36, 69, 102, 135, 168, 201)
@@ -1085,56 +1085,56 @@ end
 
 "Subframe 3, page 4 — one Midi almanac (IS-GPS-800J Fig 3.5-5, Table 3.5-7)."
 function parse_sf3_page4(raw::GPSL1C_DData, word::UInt288, PI::Float64)
-    N = L1C_D_SF3_INFO_BITS
-    PRN_a = Int(get_bits(word, N, 36, 8))
+    word_length = L1C_D_SF3_INFO_BITS
+    PRN_a = Int(get_bits(word, word_length, 36, 8))
     PRN_a == 0 && return raw  # empty almanac
     alm = GPSL1C_DMidiAlmanac(;
         PRN_a,
-        WN_a = Int(get_bits(word, N, 15, 13)),
-        t_oa = Int(get_bits(word, N, 28, 8)) * 2^12,
-        l1_health = get_bit(word, N, 44),
-        l2_health = get_bit(word, N, 45),
-        l5_health = get_bit(word, N, 46),
-        e = Int(get_bits(word, N, 47, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, N, 58, 11) * 2.0^-14 * PI,
-        Ω_dot = get_twos_complement_num(word, N, 69, 11) * 2.0^-33 * PI,
-        sqrt_A = Int(get_bits(word, N, 80, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, N, 97, 16) * 2.0^-15 * PI,
-        ω = get_twos_complement_num(word, N, 113, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, N, 129, 16) * 2.0^-15 * PI,
-        a_f0 = get_twos_complement_num(word, N, 145, 11) * 2.0^-20,
-        a_f1 = get_twos_complement_num(word, N, 156, 10) * 2.0^-37,
+        WN_a = Int(get_bits(word, word_length, 15, 13)),
+        t_oa = Int(get_bits(word, word_length, 28, 8)) * 2^12,
+        l1_health = get_bit(word, word_length, 44),
+        l2_health = get_bit(word, word_length, 45),
+        l5_health = get_bit(word, word_length, 46),
+        e = Int(get_bits(word, word_length, 47, 11)) * 2.0^-16,
+        δi = get_twos_complement_num(word, word_length, 58, 11) * 2.0^-14 * PI,
+        Ω_dot = get_twos_complement_num(word, word_length, 69, 11) * 2.0^-33 * PI,
+        sqrt_A = Int(get_bits(word, word_length, 80, 17)) * 2.0^-4,
+        Ω_0 = get_twos_complement_num(word, word_length, 97, 16) * 2.0^-15 * PI,
+        ω = get_twos_complement_num(word, word_length, 113, 16) * 2.0^-15 * PI,
+        M_0 = get_twos_complement_num(word, word_length, 129, 16) * 2.0^-15 * PI,
+        a_f0 = get_twos_complement_num(word, word_length, 145, 11) * 2.0^-20,
+        a_f1 = get_twos_complement_num(word, word_length, 156, 10) * 2.0^-37,
     )
     GPSL1C_DData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
 end
 
 "Subframe 3, page 5 — one differential-correction packet (IS-GPS-800J Fig 3.5-6/3.5-10, Table 3.5-8)."
 function parse_sf3_page5(raw::GPSL1C_DData, word::UInt288, PI::Float64)
-    N = L1C_D_SF3_INFO_BITS
+    word_length = L1C_D_SF3_INFO_BITS
     # Page-level fields precede the 126-bit CDC+EDC packet. Layout (Fig 3.5-6):
     # bit 15 t_op-D (11, scale 300), bit 26 t_OD (11, scale 300),
     # bit 37 DC data type (1), then the CDC segment (bit 38) and EDC segment.
-    t_op_D = Int(get_bits(word, N, 15, 11)) * 300
-    t_OD = Int(get_bits(word, N, 26, 11)) * 300
-    dc_data_type = get_bit(word, N, 37)
+    t_op_D = Int(get_bits(word, word_length, 15, 11)) * 300
+    t_OD = Int(get_bits(word, word_length, 26, 11)) * 300
+    dc_data_type = get_bit(word, word_length, 37)
     # CDC segment (Fig 3.5-10): PRN ID(8) δaf0(13) δaf1(8) UDRA(5) — starts bit 38.
-    cdc = 38
-    PRN_a = Int(get_bits(word, N, cdc, 8))
+    cdc_start_bit = 38
+    PRN_a = Int(get_bits(word, word_length, cdc_start_bit, 8))
     PRN_a == 0xff && return raw  # all-ones PRN ⇒ no DC data in this packet
-    δa_f0 = get_twos_complement_num(word, N, cdc + 8, 13) * 2.0^-35
-    δa_f1 = get_twos_complement_num(word, N, cdc + 21, 8) * 2.0^-51
-    UDRA_index = get_twos_complement_num(word, N, cdc + 29, 5)
+    δa_f0 = get_twos_complement_num(word, word_length, cdc_start_bit + 8, 13) * 2.0^-35
+    δa_f1 = get_twos_complement_num(word, word_length, cdc_start_bit + 21, 8) * 2.0^-51
+    UDRA_index = get_twos_complement_num(word, word_length, cdc_start_bit + 29, 5)
     # EDC segment (Fig 3.5-10): PRN ID(8) Δα(14) Δβ(14) Δγ(15) Δi(12) ΔΩ(12)
     # ΔA(12) UDRA-dot(5) — starts at bit 72 (38 + 34).
-    edc = 72
-    ΔαΔ = get_twos_complement_num(word, N, edc + 8, 14) * 2.0^-34
-    Δβ = get_twos_complement_num(word, N, edc + 22, 14) * 2.0^-34
-    Δγ = get_twos_complement_num(word, N, edc + 36, 15) * 2.0^-32 * PI
-    Δi = get_twos_complement_num(word, N, edc + 51, 12) * 2.0^-32 * PI
-    ΔΩ = get_twos_complement_num(word, N, edc + 63, 12) * 2.0^-32 * PI
-    ΔA = get_twos_complement_num(word, N, edc + 75, 12) * 2.0^-9
-    UDRA_dot_index = get_twos_complement_num(word, N, edc + 87, 5)
-    dc = GPSL1C_DDifferentialCorrection(;
+    edc_start_bit = 72
+    Δα = get_twos_complement_num(word, word_length, edc_start_bit + 8, 14) * 2.0^-34
+    Δβ = get_twos_complement_num(word, word_length, edc_start_bit + 22, 14) * 2.0^-34
+    Δγ = get_twos_complement_num(word, word_length, edc_start_bit + 36, 15) * 2.0^-32 * PI
+    Δi = get_twos_complement_num(word, word_length, edc_start_bit + 51, 12) * 2.0^-32 * PI
+    ΔΩ = get_twos_complement_num(word, word_length, edc_start_bit + 63, 12) * 2.0^-32 * PI
+    ΔA = get_twos_complement_num(word, word_length, edc_start_bit + 75, 12) * 2.0^-9
+    UDRA_dot_index = get_twos_complement_num(word, word_length, edc_start_bit + 87, 5)
+    differential_correction = GPSL1C_DDifferentialCorrection(;
         PRN_a,
         t_op_D,
         t_OD,
@@ -1143,7 +1143,7 @@ function parse_sf3_page5(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         δa_f1,
         UDRA_index,
         UDRA_dot_index,
-        Δα = ΔαΔ,
+        Δα,
         Δβ,
         Δγ,
         Δi,
@@ -1152,16 +1152,16 @@ function parse_sf3_page5(raw::GPSL1C_DData, word::UInt288, PI::Float64)
     )
     GPSL1C_DData(
         raw;
-        differential_corrections = _merge_keyed(raw.differential_corrections, PRN_a, dc),
+        differential_corrections = _merge_keyed(raw.differential_corrections, PRN_a, differential_correction),
     )
 end
 
 "Subframe 3, page 6 — 29 ASCII characters at bits 19-250 (IS-GPS-800J Fig 3.5-7)."
 function parse_sf3_page6(raw::GPSL1C_DData, word::UInt288)
-    N = L1C_D_SF3_INFO_BITS
+    word_length = L1C_D_SF3_INFO_BITS
     chars = Char[]
     for k in 0:28
-        code = Int(get_bits(word, N, 19 + 8k, 8))
+        code = Int(get_bits(word, word_length, 19 + 8k, 8))
         # Keep printable ASCII; skip NUL/control padding so the message is clean.
         (code >= 0x20 && code < 0x7f) && push!(chars, Char(code))
     end
