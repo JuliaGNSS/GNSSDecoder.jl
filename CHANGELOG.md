@@ -115,6 +115,13 @@
   buffer from `state.cache.complemented_buffer[]` instead of
   `state.buffer`; everything downstream of that read (deinterleave,
   Viterbi, page parser) is byte-for-byte unchanged.
+* GPS L1C-D now parses its subframe fields from packed BitIntegers words
+  (subframe 2: `UInt600`; subframe 3: the existing `UInt288`) via the
+  shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers,
+  unifying bit-field extraction with the GPS L1 C/A and Galileo E1B
+  decoders. The private `Vector{Bool}` `_u` / `_s` helpers are removed; the
+  LDPC info block is CRC-checked on the bit vector and then packed MSB-first
+  for parsing. Decoded data is byte-for-byte unchanged ([#48](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/48)).
 
 # [1.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.2.0...v1.3.0) (2026-06-03)
 
