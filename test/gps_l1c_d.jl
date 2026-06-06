@@ -61,9 +61,9 @@ function _systematic_parity_matrix(H::AbstractMatrix{Bool})
 end
 
 "Systematically LDPC-encode `info` bits: returns `[info; parity]` as `Vector{Int}`."
-function _ldpc_encode_systematic(P::AbstractMatrix{Bool}, info::AbstractVector)
+function _ldpc_encode_systematic(parity_matrix::AbstractMatrix{Bool}, info::AbstractVector)
     u = Bool.(info .!= 0)
-    parity = [reduce(⊻, u[P[r, :]]; init = false) for r in 1:size(P, 1)]
+    parity = [reduce(⊻, u[parity_matrix[r, :]]; init = false) for r in 1:size(parity_matrix, 1)]
     return Int.(vcat(u, parity))
 end
 
@@ -96,8 +96,8 @@ function _frame_symbols(toi::Int, payload::Vector{Int})
 end
 
 @testset "GPS L1C-D (CNAV-2)" begin
-    sf2_P = _systematic_parity_matrix(_alist_H(_SF2_ALIST))
-    sf3_P = _systematic_parity_matrix(_alist_H(_SF3_ALIST))
+    sf2_parity_matrix = _systematic_parity_matrix(_alist_H(_SF2_ALIST))
+    sf3_parity_matrix = _systematic_parity_matrix(_alist_H(_SF3_ALIST))
     rng = MersenneTwister(0x1C0D)
 
     # --- Hand-packed golden subframe-2 field values (IS-GPS-800G Fig 3.5-1) ---
@@ -151,8 +151,8 @@ end
 
     "LDPC-encode SF2+SF3 info blocks and block-interleave (38×46) into 1748 symbols."
     function build_payload(sf2_info::Vector{Int32}, sf3_info::Vector{Int32})
-        x_sf2 = _ldpc_encode_systematic(sf2_P, sf2_info)
-        x_sf3 = _ldpc_encode_systematic(sf3_P, sf3_info)
+        x_sf2 = _ldpc_encode_systematic(sf2_parity_matrix, sf2_info)
+        x_sf3 = _ldpc_encode_systematic(sf3_parity_matrix, sf3_info)
         @assert length(x_sf2) == 1200
         @assert length(x_sf3) == 548
         src = vcat(x_sf2, x_sf3)

@@ -57,14 +57,14 @@ using GNSSDecoder
         @test H.M == 600
         @test H.N == 1200
         @test H.K == 600
-        enc = LDPCEncoder(H)
-        dec = LDPCBPDecoder(H; num_iterations = 50)
+        encoder = LDPCEncoder(H)
+        decoder = LDPCBPDecoder(H; num_iterations = 50)
         rng = Random.MersenneTwister(0x5F2)
         U_K = Int32.(rand(rng, Bool, H.K))
-        X_N = encode(enc, U_K)
+        X_N = encode(encoder, U_K)
         # BPSK soft mapping matches AFF3CT.jl's own test_ldpc.jl.
         Y_N = Float32[100.0f0 * (1.0f0 - 2.0f0 * x) for x in X_N]
-        V_K = Aff3ct.decode(dec, Y_N)
+        V_K = Aff3ct.decode(decoder, Y_N)
         @test V_K == U_K
     end
 
@@ -73,13 +73,13 @@ using GNSSDecoder
         @test H.M == 274
         @test H.N == 548
         @test H.K == 274
-        enc = LDPCEncoder(H)
-        dec = LDPCBPDecoder(H; num_iterations = 50)
+        encoder = LDPCEncoder(H)
+        decoder = LDPCBPDecoder(H; num_iterations = 50)
         rng = Random.MersenneTwister(0x5F3)
         U_K = Int32.(rand(rng, Bool, H.K))
-        X_N = encode(enc, U_K)
+        X_N = encode(encoder, U_K)
         Y_N = Float32[100.0f0 * (1.0f0 - 2.0f0 * x) for x in X_N]
-        V_K = Aff3ct.decode(dec, Y_N)
+        V_K = Aff3ct.decode(decoder, Y_N)
         @test V_K == U_K
     end
 end
