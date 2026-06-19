@@ -235,10 +235,15 @@ Drop the consumed `syncro_sequence_length` oldest soft symbols from the
 deque, keeping the trailing `preamble_length` symbols as the leading
 preamble of the next subframe. Equivalent to v1's
 `GNSSDecoderState(state; num_bits_buffered = preamble_length)`.
+
+Drops at most `length(deque)` symbols: a `decode_syncro_sequence` hook may
+reset the decoder mid-frame (e.g. GPS L1C-D on a TOI discontinuity), which
+empties the buffer. Without the clamp the unconditional drain in `decode`
+would `popfirst!` an empty `CircularDeque` and throw.
 """
 function drain_after_sync!(state::GNSSDecoderState)
     deque = soft_buffer(state)
-    n_drop = state.constants.syncro_sequence_length
+    n_drop = min(state.constants.syncro_sequence_length, length(deque))
     for _ in 1:n_drop
         popfirst!(deque)
     end
