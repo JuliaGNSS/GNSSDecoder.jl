@@ -256,6 +256,37 @@ end
         @test reset.is_shifted_by_180_degrees == false
     end
 
+    @testset "TOI discontinuity mid-stream resets without crashing" begin
+        # A locked frame establishes a decoded TOI (137); a later frame whose
+        # TOI does not follow by +1 (200) makes `decode_syncro_sequence` reset
+        # the decoder mid-stream, which empties the soft-symbol deque. The
+        # generic `decode` loop then runs `drain_after_sync!` unconditionally —
+        # before the drain was clamped to `length(deque)` this `popfirst!`'d an
+        # empty `CircularDeque` and threw `BoundsError`. This is the exact path
+        # hit when re-acquiring a satellite after a signal outage.
+        discontinuous = vcat(build_stream(137, 2, payload), build_stream(200, 2, payload))
+        state = GPSL1C_DDecoderState(7)
+        crashed = false
+        try
+            state = decode(state, discontinuous, length(discontinuous))
+        catch
+            crashed = true
+        end
+        @test !crashed                                     # regression: no BoundsError
+        @test state.data == GPSL1C_DData()                 # validated data cleared by reset
+        @test state.raw_data.toi === nothing               # in-flight TOI cleared
+        @test state.raw_data.WN == golden.WN               # long-lived CED preserved
+
+        # And the decoder recovers: a subsequent run of consecutive frames
+        # re-acquires sync and decodes subframe 2 again. (The exact final TOI
+        # depends on residual buffer alignment after the reset, so only assert
+        # that sync was re-acquired and the golden fields decode.)
+        state = decode(state, build_stream(300, 4, payload), 4 * 1800)
+        @test state.data.toi !== nothing
+        @test state.data.WN == golden.WN
+        @test state.data.M_0 ≈ golden.M0_raw * 2.0^-32 * state.constants.PI
+    end
+
     # --- Subframe 3 page-format parsing (IS-GPS-800J §3.5.4) -----------------
     #
     # Hand-pack a 274-bit SF3 info block (250 message bits + 24-bit CRC) with a
