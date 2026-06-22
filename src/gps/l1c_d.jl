@@ -207,8 +207,10 @@ page 5 (IS-GPS-800J Figure 3.5-6 / Figure 3.5-10 / Table 3.5-8).
 
 A page-5 carries the predict/reference times plus exactly one DC packet (a
 34-bit CDC segment and a 92-bit EDC segment that form an indivisible pair) for
-*another* SV, keyed by `PRN_a`. A `PRN_a` of 0 (CDC) / 255 (EDC) marks an empty
-packet. `dc_data_type` selects the data the corrections apply to: `false` ⇒
+*another* SV, keyed by `PRN_a`. An all-ones PRN ID (`0xFF` = 255) in any PRN ID
+field marks an empty packet — the remainder of the data block is then filler
+(IS-GPS-800G §3.5.4.4.4.1). `dc_data_type` selects the data the corrections
+apply to: `false` ⇒
 CNAV-2 (`D_L1C`), `true` ⇒ legacy NAV (`D`). Semi-circle fields → radians.
 
 # Fields
