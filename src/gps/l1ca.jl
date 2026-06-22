@@ -345,9 +345,11 @@ $(TYPEDEF)
 Per-decoder cache for the GPS L1 C/A signal.
 
 Holds the soft-symbol `CircularDeque{Float32}` (capacity = 300 + 8 = 308) and
-the data-voting cache used by `confirm_data`. The struct itself is immutable:
-both fields are mutable containers updated in place inside the
-otherwise-immutable [`GNSSDecoderState`](@ref). The packed-bit buffer used for
+the data-voting cache used by `confirm_data`. The struct itself is immutable.
+Following the framework convention (see [`GNSSDecoderState`](@ref)), the only
+field mutated in place is the shared soft-symbol buffer; the `old_data` voting
+tally is rebuilt immutably and threaded through a new cache by `confirm_data`
+(mirroring the Galileo E1B / GPS L1C-D caches). The packed-bit buffer used for
 sync is *not* stored here — it is computed as a local value at sync time and
 threaded through the decode path (see `pack_buffer`).
 
@@ -367,9 +369,16 @@ end
 
 function GPSL1CACache(old_data::Vector{VotedGPSL1CAData})
     # Convenience constructor used by the tests to seed the voting cache with a
-    # known tally. `confirm_data` itself mutates `old_data` in place rather than
-    # building a fresh cache.
+    # known tally (fresh, empty soft buffer).
     GPSL1CACache(CircularDeque{Float32}(308), old_data)
+end
+
+# Keyword "rebuild" constructor, mirroring `GalileoE1BCache`. Reuses the shared
+# soft-symbol buffer by reference and swaps in a freshly-built `old_data`
+# tally, so `confirm_data` can thread a new cache through `GNSSDecoderState`
+# instead of mutating the voting vector in place.
+function GPSL1CACache(cache::GPSL1CACache; soft_buffer = cache.soft_buffer, old_data = cache.old_data)
+    GPSL1CACache(soft_buffer, old_data)
 end
 
 function Base.:(==)(a::GPSL1CACache, b::GPSL1CACache)
@@ -1239,9 +1248,15 @@ function increment_voting(old_vote, max_vote)
     min(max_vote, old_vote + 1)
 end
 
+# Thread an updated voting tally through a new cache, reusing the shared
+# soft-symbol buffer by reference. Keeps `confirm_data` free of in-place
+# mutation of `cache.old_data`, matching the Galileo E1B / GPS L1C-D caches and
+# the framework's immutable-threading convention (`gnss.jl`).
+with_old_data(state, new_old_data; kwargs...) =
+    GNSSDecoderState(state; cache = GPSL1CACache(state.cache; old_data = new_old_data), kwargs...)
+
 function confirm_data(state, max_vote = 20)
-    cache = state.cache
-    old_data = cache.old_data
+    old_data = state.cache.old_data
 
     # Check if any entry has same IODC
     has_same_iodc = any(e.data.IODC == state.raw_data.IODC for e in old_data)
@@ -1254,21 +1269,21 @@ function confirm_data(state, max_vote = 20)
     if isnothing(matching_idx)
         if has_same_iodc
             # Same IODC exists but data differs - add as new entry, don't use data yet
-            push!(cache.old_data, VotedGPSL1CAData(0, state.raw_data))
-            return GNSSDecoderState(state; raw_data = GPSL1CAData())
+            new_old_data = push!(copy(old_data), VotedGPSL1CAData(0, state.raw_data))
+            return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
         else
             # New IODC entirely
             if state.data == GPSL1CAData() # no data yet - add to cache and use data
-                empty!(cache.old_data)
-                push!(cache.old_data, VotedGPSL1CAData(0, state.raw_data))
-                return GNSSDecoderState(
-                    state;
+                new_old_data = [VotedGPSL1CAData(0, state.raw_data)]
+                return with_old_data(
+                    state,
+                    new_old_data;
                     data = state.raw_data,
                     num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
                 )
             else # add as new entry, don't use data yet
-                push!(cache.old_data, VotedGPSL1CAData(0, state.raw_data))
-                return GNSSDecoderState(state; raw_data = GPSL1CAData())
+                new_old_data = push!(copy(old_data), VotedGPSL1CAData(0, state.raw_data))
+                return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
             end
         end
     end
@@ -1282,21 +1297,24 @@ function confirm_data(state, max_vote = 20)
 
     if best_score > curr_score
         # Another entry has higher score - reject this data
-        old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
-        return GNSSDecoderState(state; raw_data = GPSL1CAData())
+        new_old_data = copy(old_data)
+        new_old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
+        return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
     end
 
     # This entry has the best (or tied best) score - use the data
-    if new_vote == max_vote && length(old_data) > 1
+    new_old_data = if new_vote == max_vote && length(old_data) > 1
         # Max votes reached - keep only this entry
-        empty!(cache.old_data)
-        push!(cache.old_data, VotedGPSL1CAData(new_vote, state.raw_data))
+        [VotedGPSL1CAData(new_vote, state.raw_data)]
     else
-        old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
+        updated = copy(old_data)
+        updated[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
+        updated
     end
 
-    GNSSDecoderState(
-        state;
+    with_old_data(
+        state,
+        new_old_data;
         data = state.raw_data,
         num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
     )
