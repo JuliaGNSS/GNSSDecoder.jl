@@ -1,15 +1,21 @@
 # Codecov configuration.
 #
-# Coverage is reported for information only and never fails CI. The test suite
-# is the source of truth for correctness; patch/project coverage deltas on a
-# decoder library swing with which signal fixtures a change happens to touch
-# (e.g. adding a signal's decoder without its golden recording), so gating the
-# PR on them produces noise rather than signal.
+# Coverage gates CI, but with deliberately lenient thresholds — full coverage is
+# not required. On a decoder library the patch/project deltas swing with which
+# signal fixtures a change happens to touch (e.g. adding a signal's decoder
+# without its golden recording), so the thresholds leave headroom for that while
+# still catching a real regression. The test suite remains the source of truth
+# for correctness.
 coverage:
   status:
+    # Overall coverage must not regress by more than 1% relative to the PR base.
     project:
       default:
-        informational: true
+        target: auto
+        threshold: 1%
+    # Changed lines should be reasonably exercised, but the floor is modest so a
+    # fixture-light change is not blocked outright.
     patch:
       default:
-        informational: true
+        target: 70%
+        threshold: 0%
