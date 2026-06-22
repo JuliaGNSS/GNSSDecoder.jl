@@ -312,7 +312,9 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
 ## Page 2 — GGTO + EOP
 - `A0_GGTO,A1_GGTO,A2_GGTO::Float64`: GPS/GNSS time-offset polynomial.
 - `t_GGTO::Int64`, `WN_GGTO::Int64`: GGTO reference time/week.
-- `GNSS_ID::Int64`: 0 none, 1 Galileo, 2 GLONASS, 3-7 reserved.
+- `GGTO_ID::Int64`: GNSS the time offset refers to — 0 none, 1 Galileo,
+  2 GLONASS, 3-7 reserved. (Named "GNSS ID" in IS-GPS-800 ≤ Rev J; renamed
+  "GGTO ID" by IRN-IS-800J-003.)
 - `t_EOP::Int64`: EOP reference time of week (s).
 - `PM_X,PM_X_dot,PM_Y,PM_Y_dot::Float64`: polar-motion values/rates.
 - `ΔUT1,ΔUT1_dot::Float64`: UT1-UTC difference and rate.
@@ -399,7 +401,7 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGNSSData
     A2_GGTO::Union{Nothing,Float64} = nothing
     t_GGTO::Union{Nothing,Int64} = nothing
     WN_GGTO::Union{Nothing,Int64} = nothing
-    GNSS_ID::Union{Nothing,Int64} = nothing
+    GGTO_ID::Union{Nothing,Int64} = nothing
     t_EOP::Union{Nothing,Int64} = nothing
     PM_X::Union{Nothing,Float64} = nothing
     PM_X_dot::Union{Nothing,Float64} = nothing
@@ -484,7 +486,7 @@ function GPSL1C_DData(
     A2_GGTO = data.A2_GGTO,
     t_GGTO = data.t_GGTO,
     WN_GGTO = data.WN_GGTO,
-    GNSS_ID = data.GNSS_ID,
+    GGTO_ID = data.GGTO_ID,
     t_EOP = data.t_EOP,
     PM_X = data.PM_X,
     PM_X_dot = data.PM_X_dot,
@@ -559,7 +561,7 @@ function GPSL1C_DData(
         A2_GGTO,
         t_GGTO,
         WN_GGTO,
-        GNSS_ID,
+        GGTO_ID,
         t_EOP,
         PM_X,
         PM_X_dot,
@@ -1034,7 +1036,7 @@ function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         A0_GGTO = get_twos_complement_num(word, word_length, 47, 16) * 2.0^-35,
         A1_GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
         A2_GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
-        GNSS_ID = Int(get_bits(word, word_length, 15, 3)),
+        GGTO_ID = Int(get_bits(word, word_length, 15, 3)),
         # EOP (Table 3.5-5). All fields are contiguous in the info block; Figure
         # 3.5-3 only *draws* PM_X across its 100-bit row boundary — the 2 MSBs end
         # row 1 (bits 99-100) and the 19 LSBs begin row 2 (bits 101-119) — so the
