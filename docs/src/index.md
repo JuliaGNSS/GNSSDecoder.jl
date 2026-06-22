@@ -46,17 +46,16 @@ julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
 ```
 
 In a real application, you would decode soft symbols from a tracking loop. With
-`Tracking.jl` v2, the soft symbols are the real part of the filtered prompts:
+`Tracking.jl` v2, take them from `get_soft_bits`, which returns the
+polarity-corrected, amplitude-weighted soft bits for the tracked satellite:
 
 ```julia
 for i in 1:iterations
     # Track signal (e.g., with Tracking.jl)
-    track_res = track(signal, track_state, state.prn, sampling_freq)
-    track_state = get_state(track_res)
+    track_state = track!(measurement, track_state)
 
-    # Project the filtered prompts onto the real axis to obtain soft symbols
-    prompts = get_filtered_prompts(track_res)
-    soft_symbols = Float32.(real.(prompts))
+    # Soft symbols for this satellite (Float32; sign = bit, magnitude = confidence)
+    soft_symbols = get_soft_bits(track_state, state.prn)
 
     # Decode navigation message
     state = decode(state, soft_symbols, length(soft_symbols))

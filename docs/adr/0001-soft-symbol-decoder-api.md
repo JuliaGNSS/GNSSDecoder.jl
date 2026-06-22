@@ -15,7 +15,7 @@ soft-decision inputs; hard-decision LDPC throws the whole reason for picking
 LDPC over a simpler code in the air. The same argument applies to Galileo E1B
 (soft Viterbi gain ≈ 2 dB over hard) and GPS L5I (same convolutional code as
 Galileo E1B's). Once *one* signal needs soft inputs and Tracking.jl v2 begins
-exposing soft prompts via `get_filtered_prompts`, leaving the other decoders
+exposing soft symbols via `get_soft_bits`, leaving the other decoders
 on a hard-bit API costs us the soft information at the boundary on every
 single signal — the worst place to throw it away.
 
@@ -77,9 +77,9 @@ Negative
 
 - Breaking API change. Every downstream caller (GNSSReceiver.jl, pvt.jl,
   bench scripts) updates once at the v2 bump.
-- Tracking.jl-to-decoder glue must now project complex prompts onto the data
-  axis: `Float32(real(prompt))` plus polarity from bit-sync. Documented in
-  [[CONTEXT.md soft symbol section]].
+- Tracking.jl-to-decoder glue is now `get_soft_bits`, which projects the
+  complex prompts onto the data axis and applies the bit-sync polarity.
+  Documented in [[CONTEXT.md soft symbol section]].
 - AFF3CT is a heavier dependency than ViterbiDecoder.jl (binary blob, C++
   bindings). Mitigated by the fact that L1C-D LDPC requires it anyway.
 

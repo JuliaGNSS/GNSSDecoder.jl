@@ -282,8 +282,8 @@ convention):
   but still need not be normalized to a fixed range.
 
 Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
-amplitude-weighted soft bits) — or `Float32.(real.(get_filtered_prompts(...)))`
-for the per-symbol L1C-D path. See `CONTEXT.md` for the full glossary.
+amplitude-weighted soft bits) for every signal. See `CONTEXT.md` for the full
+glossary.
 
 # Arguments
 - `state::GNSSDecoderState`: Current decoder state
