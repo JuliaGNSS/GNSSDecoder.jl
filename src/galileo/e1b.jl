@@ -248,6 +248,8 @@ struct GalileoE1BCache <: AbstractGNSSCache
     even_page_part_bits::UInt128
     almanac_chain_pos1::GalileoAlmanac
     almanac_chain_pos2::GalileoAlmanac
+    "AFF3CT K=7 NSC Viterbi decoder, built once and reused across pages (cf. the GPS L1C-D LDPC decoders)."
+    viterbi_decoder::Aff3ct.ConvViterbiDecoder
 end
 
 GalileoE1BCache() = GalileoE1BCache(
@@ -255,6 +257,11 @@ GalileoE1BCache() = GalileoE1BCache(
     UInt128(0),
     GalileoAlmanac(),
     GalileoAlmanac(),
+    Aff3ct.ConvViterbiDecoder(
+        GALILEO_E1B_VITERBI_K,
+        GALILEO_E1B_VITERBI_N,
+        GALILEO_E1B_VITERBI_POLY,
+    ),
 )
 
 function GalileoE1BCache(
@@ -263,12 +270,14 @@ function GalileoE1BCache(
     even_page_part_bits = cache.even_page_part_bits,
     almanac_chain_pos1 = cache.almanac_chain_pos1,
     almanac_chain_pos2 = cache.almanac_chain_pos2,
+    viterbi_decoder = cache.viterbi_decoder,
 )
     GalileoE1BCache(
         soft_buffer,
         even_page_part_bits,
         almanac_chain_pos1,
         almanac_chain_pos2,
+        viterbi_decoder,
     )
 end
 
@@ -730,12 +739,13 @@ end
 packed_buffer_type(::GNSSDecoderState{<:GalileoE1BData}) = UInt288
 
 """
-    galileo_e1b_viterbi(soft_page) -> UInt128
+    galileo_e1b_viterbi(decoder, soft_page) -> UInt128
 
 Recover one I/NAV page's 114-bit payload from its `soft_page` — the 240
 polarity-corrected `Float32` LLR soft symbols of a Galileo E1B page (the
 `syncro_sequence_length - preamble_length` encoded symbols between the leading
-and trailing page-sync preambles).
+and trailing page-sync preambles). `decoder` is the cache's long-lived
+`Aff3ct.ConvViterbiDecoder`, reused across pages rather than reallocated.
 
 The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in
 order on the soft symbols:
@@ -753,17 +763,15 @@ The 114 decoded bits are packed MSB-first into the low bits of a `UInt128`,
 matching the legacy hard-bit `parse(UInt128, ...; base = 2)` layout the parser
 consumes.
 """
-function galileo_e1b_viterbi(soft_page::AbstractVector{Float32})
+function galileo_e1b_viterbi(
+    decoder::Aff3ct.ConvViterbiDecoder,
+    soft_page::AbstractVector{Float32},
+)
     deinterleaved = deinterleave(soft_page, 30, 8)
     @inbounds for i in 2:2:length(deinterleaved)
         deinterleaved[i] = -deinterleaved[i]
     end
-    dec = Aff3ct.ConvViterbiDecoder(
-        GALILEO_E1B_VITERBI_K,
-        GALILEO_E1B_VITERBI_N,
-        GALILEO_E1B_VITERBI_POLY,
-    )
-    info_bits = Aff3ct.decode(dec, deinterleaved)
+    info_bits = Aff3ct.decode(decoder, deinterleaved)
     bits = UInt128(0)
     @inbounds for b in info_bits
         bits = (bits << 1) | UInt128(b)
@@ -783,7 +791,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData}, buffe
     @inbounds for i in 1:GALILEO_E1B_VITERBI_N
         soft_page[i] = sign * deque[state.constants.preamble_length + i]
     end
-    bits = galileo_e1b_viterbi(soft_page)
+    bits = galileo_e1b_viterbi(state.cache.viterbi_decoder, soft_page)
     is_even = !get_bit(bits, 114, 1)
     is_nominal_page = !get_bit(bits, 114, 2)
     state = GNSSDecoderState(
