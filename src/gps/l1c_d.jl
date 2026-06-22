@@ -1059,7 +1059,10 @@ function _reduced_almanac_packet(
 )
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, start, 8))
-    PRN_a == 0 && return nothing  # empty packet ⇒ no further packets follow
+    # PRNa == 0 marks an empty packet; per IS-GPS-800G §3.5.4.3.5.1.1 all
+    # subsequent bits through the last packet are then filler, so the caller
+    # stops here rather than parsing the remaining packets.
+    PRN_a == 0 && return nothing
     GPSL1C_DReducedAlmanac(;
         PRN_a,
         WN_a,
@@ -1082,7 +1085,7 @@ function parse_sf3_page3(raw::GPSL1C_DData, word::UInt288, PI::Float64)
     # Six 33-bit packets at bits 36, 69, 102, 135, 168, 201.
     for start in (36, 69, 102, 135, 168, 201)
         packet = _reduced_almanac_packet(word, start, WN_a, t_oa, PI)
-        isnothing(packet) && break  # PRN_a==0 ⇒ remaining packets are filler
+        isnothing(packet) && break  # PRNa==0 ⇒ rest of page is filler (§3.5.4.3.5.1.1)
         almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
     end
     GPSL1C_DData(raw; reduced_almanacs = almanacs)
