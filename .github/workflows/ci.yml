@@ -48,7 +48,7 @@ jobs:
     # Gated behind GNSSDECODER_RUN_INTEGRATION_TEST so it only runs here; it
     # downloads the 1.6 GB capture (cached between runs — note GitHub caches are
     # per-repository, so this is GNSSDecoder's own cache, not shared with
-    # Tracking.jl), then tracks + decodes GPS L1 C/A and Galileo E1B.
+    # Tracking.jl), then tracks + decodes GPS L1 C/A, Galileo E1B and GPS L5I.
     name: Integration (real-data decode)
     runs-on: ubuntu-latest
     steps:
