@@ -826,19 +826,21 @@ end
 const L5I_VITERBI_NUM_STATES = 64  # 2^(K-1) for K=7
 
 # Encoder output (G1, G2) for every (state, input_bit) pair. State numbering:
-# bits [s1 s2 s3 s4 s5 s6] where s1 (MSB) is the oldest register stage. Input
-# bit u shifts in as the new s6:
-#   y1 = u ⊕ s3 ⊕ s4 ⊕ s5 ⊕ s6   (G1 = 0o171 = 0b1111001)
-#   y2 = u ⊕ s1 ⊕ s3 ⊕ s4 ⊕ s6   (G2 = 0o133 = 0b1011011)
+# bits [s1 s2 s3 s4 s5 s6] where s1 (MSB) is the most recent past input (one
+# period ago) and s6 (LSB) is the oldest (six periods ago); the new input bit u
+# shifts in as the next s1. Reading the generator octals MSB-first as the tap on
+# the current input down to the six-periods-ago stage:
+#   y1 = u ⊕ s1 ⊕ s2 ⊕ s3 ⊕ s6   (G1 = 0o171 = 0b1111001)
+#   y2 = u ⊕ s2 ⊕ s3 ⊕ s5 ⊕ s6   (G2 = 0o133 = 0b1011011)
 # Reference: IS-GPS-705J Figure 3-7.
 function _l5i_encoder_output(state::UInt8, u::UInt8)
     s1 = (state >> 5) & 0x01
+    s2 = (state >> 4) & 0x01
     s3 = (state >> 3) & 0x01
-    s4 = (state >> 2) & 0x01
     s5 = (state >> 1) & 0x01
     s6 = state & 0x01
-    y1 = u ⊻ s3 ⊻ s4 ⊻ s5 ⊻ s6
-    y2 = u ⊻ s1 ⊻ s3 ⊻ s4 ⊻ s6
+    y1 = u ⊻ s1 ⊻ s2 ⊻ s3 ⊻ s6
+    y2 = u ⊻ s2 ⊻ s3 ⊻ s5 ⊻ s6
     return (y1, y2)
 end
 
