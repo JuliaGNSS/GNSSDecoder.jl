@@ -261,16 +261,29 @@ handles both normal and 180-degree phase-shifted signals automatically.
 
 # Soft-symbol convention
 
-`soft_symbols` is an `AbstractVector{<:Real}`; `Float32` is canonical. The
-sign carries the bit decision and the magnitude carries confidence (matches
-AFF3CT's LLR convention):
+`soft_symbols` is an `AbstractVector{<:Real}`; `Float32` is canonical. The sign
+carries the bit decision and the magnitude carries confidence (standard LLR
+convention):
 
-- **positive ⇒ transmitted bit 0**
-- **negative ⇒ transmitted bit 1**
-- magnitude ⇒ confidence (proportional to SNR × coherent integration)
+- **positive ⇒ bit 0**, **negative ⇒ bit 1** — but treat this as a *convention*,
+  not a hard input requirement. The absolute polarity of a Costas-tracked signal
+  is inherently 180°-ambiguous, so the decoder does not depend on it: it matches
+  the preamble in either polarity and flips internally (recording the result in
+  `is_shifted_by_180_degrees`). Feeding the opposite sign decodes the same data;
+  only the reported polarity flag differs. (Note: `Tracking.jl`'s
+  `get_soft_bits` happens to use the opposite sign — positive ⇒ bit 1 — which is
+  harmless for exactly this reason.)
+- magnitude ⇒ confidence. **No normalization is required; values need not lie in
+  `[-1, 1]`.** GPS L1 C/A (hard-slice + parity) and Galileo E1B (Viterbi, whose
+  ML path is invariant to a global scale) use the sign and are indifferent to
+  the magnitude scale. GPS L1C-D's LDPC decode is flooding sum-product, which
+  *is* scale-sensitive, so there the magnitudes should be confidence-weighted on
+  a roughly LLR-like scale (`≈ 2·r/σ²`) for best performance at marginal SNR —
+  but still need not be normalized to a fixed range.
 
-Glue from `Tracking.jl` typically supplies `Float32(real(prompt))` after
-bit-sync resolves polarity. See `CONTEXT.md` for the full glossary.
+Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
+amplitude-weighted soft bits) — or `Float32.(real.(get_filtered_prompts(...)))`
+for the per-symbol L1C-D path. See `CONTEXT.md` for the full glossary.
 
 # Arguments
 - `state::GNSSDecoderState`: Current decoder state
