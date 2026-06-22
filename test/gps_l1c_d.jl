@@ -372,7 +372,7 @@ end
     @testset "SF3 page 2 — GGTO + EOP" begin
         st = decode_with_sf3(
             build_sf3_page(7, 2) do b
-                _setbits!(b, 15, 3, 1)        # GNSS_ID = Galileo
+                _setbits!(b, 15, 3, 1)        # GGTO_ID = Galileo
                 _setbits!(b, 18, 16, 50)      # tGGTO (scale 2^4)
                 _setbits!(b, 34, 13, 2100)    # WNGGTO
                 _setbits!(b, 47, 16, 800)     # A0GGTO
@@ -388,7 +388,7 @@ end
             end,
         )
         d = st.data
-        @test d.GNSS_ID == 1
+        @test d.GGTO_ID == 1
         @test d.t_GGTO == 50 * 16
         @test d.WN_GGTO == 2100
         @test d.A0_GGTO ≈ 800 * 2.0^-35
