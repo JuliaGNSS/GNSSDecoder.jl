@@ -16,7 +16,7 @@ using GNSSDecoder: crc24q, gps_l5i_viterbi
 # ---------------------------------------------------------------------------
 
 """
-Continuous K=7 rate-1/2 FEC encoder state (6-bit register, [s1..s6], s1 oldest).
+Continuous K=7 rate-1/2 FEC encoder state (6-bit register, [s1..s6], s1 most recent).
 """
 mutable struct L5ITestEncoder
     register::UInt8
@@ -30,12 +30,12 @@ function encode_bit!(enc::L5ITestEncoder, bit::Bool)
     u = UInt8(bit)
     s = enc.register
     s1 = (s >> 5) & 0x01
+    s2 = (s >> 4) & 0x01
     s3 = (s >> 3) & 0x01
-    s4 = (s >> 2) & 0x01
     s5 = (s >> 1) & 0x01
     s6 = s & 0x01
-    y1 = u ⊻ s3 ⊻ s4 ⊻ s5 ⊻ s6  # G1 = 0o171
-    y2 = u ⊻ s1 ⊻ s3 ⊻ s4 ⊻ s6  # G2 = 0o133
+    y1 = u ⊻ s1 ⊻ s2 ⊻ s3 ⊻ s6  # G1 = 0o171
+    y2 = u ⊻ s2 ⊻ s3 ⊻ s5 ⊻ s6  # G2 = 0o133
     enc.register = ((u << 5) | (s >> 1)) & 0x3f
     return (y1 == 0x01, y2 == 0x01)
 end
