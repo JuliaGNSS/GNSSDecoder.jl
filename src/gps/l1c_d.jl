@@ -1035,7 +1035,10 @@ function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         A1_GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
         A2_GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
         GNSS_ID = Int(get_bits(word, word_length, 15, 3)),
-        # EOP (Table 3.5-5). PM_X is split: 2 MSBs at bit 99, 19 LSBs at bit 101.
+        # EOP (Table 3.5-5). All fields are contiguous in the info block; Figure
+        # 3.5-3 only *draws* PM_X across its 100-bit row boundary — the 2 MSBs end
+        # row 1 (bits 99-100) and the 19 LSBs begin row 2 (bits 101-119) — so the
+        # plain 21-bit read at bit 99 is correct (likewise ΔUT1 spans the next row).
         t_EOP = Int(get_bits(word, word_length, 83, 16)) * 2^4,
         PM_X = get_twos_complement_num(word, word_length, 99, 21) * 2.0^-20,
         PM_X_dot = get_twos_complement_num(word, word_length, 120, 15) * 2.0^-21,
