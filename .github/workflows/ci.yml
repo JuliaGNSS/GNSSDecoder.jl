@@ -42,3 +42,25 @@ jobs:
           disable_search: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  integration:
+    # Real-data decode of the Fraunhofer Flexiband L125 capture (test/flexiband_l125.jl).
+    # Gated behind GNSSDECODER_RUN_INTEGRATION_TEST so it only runs here; it
+    # HTTP range-fetches ~680 MB of the capture (cached between runs), then
+    # tracks + decodes and asserts validated GPS L1 C/A navigation data.
+    name: Integration (real-data decode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Cache Flexiband L125 prefix (~680 MB)
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/flexiband
+          key: flexiband-l125-210s-l1-prefix-v1
+      - uses: julia-actions/julia-runtest@v1
+        env:
+          GNSSDECODER_RUN_INTEGRATION_TEST: 'true'
+          GNSSDECODER_TESTDATA_DIR: ${{ runner.temp }}/flexiband

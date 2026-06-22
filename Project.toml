@@ -12,21 +12,31 @@ DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
 
 [compat]
+Acquisition = "2"
 Aff3ct = "1"
 Aqua = "0.8"
 BitIntegers = "0.2.6, 0.3.5"
+CodecZlib = "0.7"
 DataStructures = "0.18"
 Dictionaries = "0.4"
 DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
+Downloads = "1"
 GNSSSignals = "2.2"
 Random = "1"
 Test = "1"
+Tracking = "2"
+Unitful = "1"
 julia = "1.10"
 
 [extras]
+Acquisition = "d4bbf60b-102b-5ffb-8f97-a7ea5817e69f"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Tracking = "10b2438b-ffd4-5096-aa58-44041d5c8f3b"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [targets]
-test = ["Aqua", "Random", "Test"]
+test = ["Acquisition", "Aqua", "CodecZlib", "Downloads", "Random", "Test", "Tracking", "Unitful"]

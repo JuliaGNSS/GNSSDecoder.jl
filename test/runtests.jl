@@ -42,4 +42,8 @@ end
     include("bch_toi.jl")
     include("deinterleave.jl")
     include("alist.jl")
+
+    # Opt-in real-data integration test (Fraunhofer Flexiband capture). Self-gated
+    # on ENV["GNSSDECODER_RUN_INTEGRATION_TEST"]; no-ops on a plain `]test`.
+    include("flexiband_l125.jl")
 end
