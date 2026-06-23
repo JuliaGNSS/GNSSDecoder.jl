@@ -26,7 +26,16 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()'
       - name: Build and deploy
+        # Dependabot PRs run with a read-only token and no access to repo
+        # secrets, so a preview deploy would fail when pushing to gh-pages.
+        if: github.actor != 'dependabot[bot]'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: julia --project=docs docs/make.jl
+      - name: Build docs (no deploy)
+        # Still verify the docs build (incl. doctests) on Dependabot PRs.
+        # Without credentials, deploydocs detects deploy criteria are not met
+        # and skips the push instead of erroring.
+        if: github.actor == 'dependabot[bot]'
         run: julia --project=docs docs/make.jl
