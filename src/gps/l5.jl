@@ -667,9 +667,11 @@ $(TYPEDEF)
 Per-decoder cache for the GPS L5I signal.
 
 Holds the soft-symbol `CircularDeque{Float32}` (capacity = 616 = 600 message
-symbols + 16 next-message preamble symbols). The K=7 NSC FEC is undone on the
-raw `Float32` LLRs by the window-decoding Viterbi in `try_sync`; no other
-mutable state is needed.
+symbols + 16 next-message preamble symbols) plus reusable scratch for the
+window-decoding Viterbi that undoes the K=7 NSC FEC in `try_sync`. Because
+`try_sync` runs a full 616-symbol decode on *every* incoming symbol until it
+locks, the window copy and the Viterbi metric/decision/output buffers are
+preallocated here and reused rather than reallocated (~20 KB) per symbol.
 
 # Fields
 
@@ -680,9 +682,36 @@ struct GPSL5ICache <: AbstractGNSSCache
     Soft-symbol buffer (616 = 600 message + 16 next-message preamble)
     """
     soft_buffer::CircularDeque{Float32}
+    """
+    616-symbol window copied out of `soft_buffer` for each sync attempt
+    """
+    viterbi_window::Vector{Float32}
+    """
+    Viterbi forward-pass path metrics, one per trellis state
+    """
+    viterbi_metrics::Vector{Float32}
+    """
+    Scratch for the next step's path metrics during the forward pass
+    """
+    viterbi_next_metrics::Vector{Float32}
+    """
+    Survivor decisions, `[state, step]`, for the traceback
+    """
+    viterbi_decisions::Matrix{Bool}
+    """
+    Decoded 308-bit window the traceback writes into
+    """
+    viterbi_bits::Vector{Bool}
 end
 
-GPSL5ICache() = GPSL5ICache(CircularDeque{Float32}(L5I_WINDOW_SYMBOLS))
+GPSL5ICache() = GPSL5ICache(
+    CircularDeque{Float32}(L5I_WINDOW_SYMBOLS),
+    Vector{Float32}(undef, L5I_WINDOW_SYMBOLS),
+    Vector{Float32}(undef, L5I_VITERBI_NUM_STATES),
+    Vector{Float32}(undef, L5I_VITERBI_NUM_STATES),
+    Matrix{Bool}(undef, L5I_VITERBI_NUM_STATES, L5I_WINDOW_BITS),
+    Vector{Bool}(undef, L5I_WINDOW_BITS),
+)
 
 function Base.:(==)(a::GPSL5ICache, b::GPSL5ICache)
     deques_equal(a.soft_buffer, b.soft_buffer)
@@ -869,14 +898,28 @@ even) into `length(soft_window) ÷ 2` bits. Starts from an unknown encoder
 state (the CNAV FEC runs continuously across message boundaries, so the
 window's initial state is the tail of the previous message) and traces back
 from the best final state.
+
+The metric/decision/output buffers default to fresh allocations but may be
+supplied (sized for the window) so a hot caller like `try_sync` can reuse a
+single preallocated set across calls; the decoded bits are written into
+`bits`, which is also returned.
 """
-function gps_l5i_viterbi(soft_window::AbstractVector{Float32})
+function gps_l5i_viterbi(
+    soft_window::AbstractVector{Float32};
+    metrics::Vector{Float32} = Vector{Float32}(undef, L5I_VITERBI_NUM_STATES),
+    next_metrics::Vector{Float32} = Vector{Float32}(undef, L5I_VITERBI_NUM_STATES),
+    decisions::Matrix{Bool} = Matrix{Bool}(
+        undef,
+        L5I_VITERBI_NUM_STATES,
+        length(soft_window) ÷ 2,
+    ),
+    bits::Vector{Bool} = Vector{Bool}(undef, length(soft_window) ÷ 2),
+)
     num_steps = length(soft_window) ÷ 2
-    metrics = zeros(Float32, L5I_VITERBI_NUM_STATES)
-    next_metrics = Vector{Float32}(undef, L5I_VITERBI_NUM_STATES)
+    # Unknown initial encoder state ⇒ every path metric starts equal.
+    fill!(metrics, 0.0f0)
     # decisions[s+1, t]: whether the survivor into state s at step t came from
     # the odd predecessor (predecessor LSB = 1).
-    decisions = Matrix{Bool}(undef, L5I_VITERBI_NUM_STATES, num_steps)
     @inbounds for t = 1:num_steps
         llr1 = soft_window[2t-1]
         llr2 = soft_window[2t]
@@ -908,7 +951,6 @@ function gps_l5i_viterbi(soft_window::AbstractVector{Float32})
     # Chain back from the best final state; the decoded bit at step t is the
     # input bit that produced that step's state (its top bit).
     best_state = argmin(metrics) - 1
-    bits = Vector{Bool}(undef, num_steps)
     @inbounds for t = num_steps:-1:1
         bits[t] = (best_state >> 5) & 0x01 == 0x01
         best_state = ((best_state & 0x1f) << 1) | (decisions[best_state+1, t] ? 1 : 0)
@@ -963,9 +1005,19 @@ message. Returns the [`GPSL5ISync`](@ref) on a match (carrying the message
 bits and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSL5IData})
-    deque = soft_buffer(state)
-    window = _deque_slice(deque, 1, L5I_WINDOW_SYMBOLS)
-    bits = gps_l5i_viterbi(window)
+    cache = state.cache
+    deque = cache.soft_buffer
+    window = cache.viterbi_window
+    @inbounds for i = 1:L5I_WINDOW_SYMBOLS
+        window[i] = deque[i]
+    end
+    bits = gps_l5i_viterbi(
+        window;
+        metrics = cache.viterbi_metrics,
+        next_metrics = cache.viterbi_next_metrics,
+        decisions = cache.viterbi_decisions,
+        bits = cache.viterbi_bits,
+    )
     leading = _pack_preamble(bits, 1)
     trailing = _pack_preamble(bits, L5I_MESSAGE_BITS + 1)
     if leading == L5I_PREAMBLE && trailing == L5I_PREAMBLE
@@ -1373,6 +1425,8 @@ function parse_mt13(raw::GPSL5IData, word::UInt320)
     for start in (61, 96, 131, 166, 201, 236)
         dc_data_type = get_bit(word, word_length, start)
         packet = _l5i_cdc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
+        # All-ones PRN ends the data block (like PRN 0 in the reduced almanac);
+        # `continue` over it — any trailing packets are filler too.
         isnothing(packet) && continue
         corrections = _merge_keyed(corrections, packet.PRN_a, packet)
     end
@@ -1391,6 +1445,8 @@ function parse_mt14(raw::GPSL5IData, word::UInt320, PI::Float64)
     for start in (61, 154)
         dc_data_type = get_bit(word, word_length, start)
         packet = _l5i_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type, PI)
+        # All-ones PRN ends the data block (like PRN 0 in the reduced almanac);
+        # `continue` over it — any trailing packets are filler too.
         isnothing(packet) && continue
         corrections = _merge_keyed(corrections, packet.PRN_a, packet)
     end
@@ -1461,7 +1517,8 @@ Message type 40 — Integrity Support Message (IS-GPS-705J Fig 20-14a).
 """
 function parse_mt40(raw::GPSL5IData, word::UInt320)
     word_length = L5I_MESSAGE_BITS
-    # 63-bit SV mask split across the bit-89 boundary (12 + 51 bits).
+    # 63-bit SV mask (MSB = PRN 1) at bits 89-151, read as one contiguous
+    # field; IS-GPS-705J Figure 20-14a only *draws* it across a row boundary.
     mask = UInt64(get_bits(word, word_length, 89, 63))
     ism = GPSL5IIntegritySupportMessage(;
         GNSS_ID = Int(get_bits(word, word_length, 39, 4)),
