@@ -22,16 +22,16 @@
 # of the codeword masked to 52 bits.
 
 const TOI_BCH_REGISTER_WIDTH = 8
-const TOI_BCH_TAP            = 0b10011111  # IS-GPS-800G §3.2.3.2, octal 0o237
-const TOI_BCH_CODEWORD_LEN   = 52
-const TOI_BCH_DATA_LEN       = 51
-const TOI_BCH_MASK52         = (UInt64(1) << TOI_BCH_CODEWORD_LEN) - UInt64(1)
-const TOI_RANGE              = 400  # 9-bit modulo-400 counter
+const TOI_BCH_TAP = 0b10011111  # IS-GPS-800G §3.2.3.2, octal 0o237
+const TOI_BCH_CODEWORD_LEN = 52
+const TOI_BCH_DATA_LEN = 51
+const TOI_BCH_MASK52 = (UInt64(1) << TOI_BCH_CODEWORD_LEN) - UInt64(1)
+const TOI_RANGE = 400  # 9-bit modulo-400 counter
 
 # Reverse the low `n` bits of `x` (matches PocketSDR's `sdr_code.rev_reg`).
 function _toi_rev_reg(x::UInt, n::Int)
     r = UInt(0)
-    for i in 0:(n-1)
+    for i = 0:(n-1)
         r = (r << 1) | ((x >> i) & UInt(1))
     end
     return r
@@ -48,7 +48,7 @@ end
 function _toi_lfsr51(t_low8::UInt)
     R = _toi_rev_reg(t_low8 & UInt(0xff), TOI_BCH_REGISTER_WIDTH) % UInt32
     out = UInt64(0)
-    @inbounds for i in 0:(TOI_BCH_DATA_LEN - 1)
+    @inbounds for i = 0:(TOI_BCH_DATA_LEN-1)
         out |= UInt64(R & UInt32(0x1)) << i
         # Galois-style update: new MSB = parity of R AND tap; shift right.
         feedback_bits = R & UInt32(TOI_BCH_TAP)
@@ -163,9 +163,9 @@ function sync_bch_toi(first52, next52)
     next_word = _as_hard_codeword(next52)
     first_word_inverted = first_word ⊻ TOI_BCH_MASK52
     next_word_inverted = next_word ⊻ TOI_BCH_MASK52
-    @inbounds for toi in 0:(TOI_RANGE - 1)
-        codeword_toi = BCH_TOI_CODEWORDS[toi + 1]
-        codeword_next_toi = BCH_TOI_CODEWORDS[((toi + 1) % TOI_RANGE) + 1]
+    @inbounds for toi = 0:(TOI_RANGE-1)
+        codeword_toi = BCH_TOI_CODEWORDS[toi+1]
+        codeword_next_toi = BCH_TOI_CODEWORDS[((toi+1)%TOI_RANGE)+1]
         if first_word == codeword_toi && next_word == codeword_next_toi
             return BCHToiSync(toi, false)
         elseif first_word_inverted == codeword_toi &&

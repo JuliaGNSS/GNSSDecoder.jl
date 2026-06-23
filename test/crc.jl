@@ -21,7 +21,7 @@ using GNSSDecoder: crc24q
         @test crc24q(UInt8[0x00]) == 0
         # Compute manually: register = 0x010000, then 8 shift-and-condxor steps.
         crc = UInt32(0x010000)
-        for _ in 1:8
+        for _ = 1:8
             crc <<= 1
             if (crc & 0x01000000) != 0
                 crc ⊻= UInt32(0x01864cfb)
@@ -36,7 +36,7 @@ using GNSSDecoder: crc24q
         msg = UInt8.(collect("123456789"))
         bits = Bool[]
         for byte in msg
-            for bitpos in 7:-1:0
+            for bitpos = 7:-1:0
                 push!(bits, (byte >> bitpos) & 0x1 == 0x1)
             end
         end
@@ -46,15 +46,13 @@ using GNSSDecoder: crc24q
     @testset "Self-consistency: message + appended CRC checks to zero" begin
         # Appending the CRC to the message should make the whole thing CRC
         # to zero — that's the receiver's check.
-        for raw in (UInt8.(collect("123456789")),
-                    UInt8[0x55, 0xaa, 0xff, 0x00, 0x12, 0x34],
-                    UInt8[i for i in 0x00:0x10])
+        for raw in (
+            UInt8.(collect("123456789")),
+            UInt8[0x55, 0xaa, 0xff, 0x00, 0x12, 0x34],
+            UInt8[i for i = 0x00:0x10],
+        )
             c = crc24q(raw)
-            tail = UInt8[
-                (c >> 16) & 0xff,
-                (c >>  8) & 0xff,
-                 c        & 0xff,
-            ]
+            tail = UInt8[(c>>16)&0xff, (c>>8)&0xff, c&0xff]
             @test crc24q(vcat(raw, tail)) == 0
         end
     end
@@ -66,9 +64,9 @@ using GNSSDecoder: crc24q
         # bit-identical behaviour across the migration. The "123456789" entry
         # is the canonical CRC-24Q check value (0xCDE703).
         for (raw, expected) in (
-            (UInt8.(collect("123456789")),            UInt32(0x00cde703)),
+            (UInt8.(collect("123456789")), UInt32(0x00cde703)),
             (UInt8[0x55, 0xaa, 0xff, 0x00, 0x12, 0x34], UInt32(0x005126f1)),
-            (UInt8[i for i in 0x00:0x20],              UInt32(0x00bf660c)),
+            (UInt8[i for i = 0x00:0x20], UInt32(0x00bf660c)),
         )
             @test crc24q(raw) == expected
         end

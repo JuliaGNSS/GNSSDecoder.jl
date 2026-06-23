@@ -31,7 +31,7 @@ function crc24q(bytes::AbstractVector{UInt8})
     crc = UInt32(0)
     for b in bytes
         crc ⊻= UInt32(b) << 16
-        for _ in 1:8
+        for _ = 1:8
             crc <<= 1
             if (crc & 0x01000000) != 0
                 crc ⊻= CRC24Q_POLY

@@ -135,7 +135,7 @@ end
             2.5888697147579616,
             0.00010004639625549316,
             9.022187441587448e-10,
-        )
+        ),
     )
 
     # Convert the hard-bit chunks to ±1.0f0 soft symbols at the test boundary.
@@ -143,7 +143,8 @@ end
     # mirrors how Tracking.jl v2 callers feed soft prompts into the soft-symbol
     # decode path (AFF3CT Viterbi, issue #37).
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = decoder,
     )
@@ -154,7 +155,8 @@ end
 
     decoder2 = GalileoE1BDecoderState(21)
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = decoder2,
     )

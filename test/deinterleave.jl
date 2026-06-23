@@ -7,8 +7,8 @@ using GNSSDecoder: deinterleave!, interleave!
     @testset "Round-trip identity (38×46, Float32)" begin
         rng = Random.MersenneTwister(0xDEC0DE)
         src = randn(rng, Float32, 38 * 46)
-        tx  = similar(src)
-        rx  = similar(src)
+        tx = similar(src)
+        rx = similar(src)
         interleave!(tx, src, 38, 46)
         deinterleave!(rx, tx, 38, 46)
         @test rx == src
@@ -18,8 +18,8 @@ using GNSSDecoder: deinterleave!, interleave!
         rng = Random.MersenneTwister(0xCAFE)
         for (rows, cols) in ((4, 5), (16, 32), (38, 46), (1, 100), (100, 1))
             src = rand(rng, Int8, rows * cols)
-            tx  = similar(src)
-            rx  = similar(src)
+            tx = similar(src)
+            rx = similar(src)
             interleave!(tx, src, rows, cols)
             deinterleave!(rx, tx, rows, cols)
             @test rx == src
@@ -29,8 +29,8 @@ using GNSSDecoder: deinterleave!, interleave!
     @testset "Round-trip identity (Bool)" begin
         rng = Random.MersenneTwister(7)
         src = rand(rng, Bool, 38 * 46)
-        tx  = similar(src)
-        rx  = similar(src)
+        tx = similar(src)
+        rx = similar(src)
         interleave!(tx, src, 38, 46)
         deinterleave!(rx, tx, 38, 46)
         @test rx == src

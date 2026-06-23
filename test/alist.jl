@@ -22,10 +22,8 @@ using GNSSDecoder
         @test isfile(committed_sf2)
         @test isfile(committed_sf3)
         # First line of an alist is "N M".
-        for (path, n_expected, m_expected) in (
-            (committed_sf2, 1200, 600),
-            (committed_sf3, 548,  274),
-        )
+        for (path, n_expected, m_expected) in
+            ((committed_sf2, 1200, 600), (committed_sf3, 548, 274))
             first_line = open(io -> readline(io), path)
             n, m = parse.(Int, split(first_line))
             @test n == n_expected
@@ -41,10 +39,8 @@ using GNSSDecoder
         include(joinpath(repo_root, "scripts", "generate_alist.jl"))
         mktempdir() do tmp
             generate_alist(tmp)
-            for (fname, committed) in (
-                ("cnv2_sf2.alist", committed_sf2),
-                ("cnv2_sf3.alist", committed_sf3),
-            )
+            for (fname, committed) in
+                (("cnv2_sf2.alist", committed_sf2), ("cnv2_sf3.alist", committed_sf3))
                 regen = joinpath(tmp, fname)
                 @test isfile(regen)
                 @test read(regen) == read(committed)

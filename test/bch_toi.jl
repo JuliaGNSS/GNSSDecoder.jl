@@ -1,9 +1,15 @@
 using Test
 using Random
 using GNSSDecoder
-using GNSSDecoder: BCH_TOI_CODEWORDS, BCHToiSync, sync_bch_toi,
-                    pack_hard_codeword, soft_to_hard_codeword,
-                    TOI_RANGE, TOI_BCH_CODEWORD_LEN, TOI_BCH_MASK52
+using GNSSDecoder:
+    BCH_TOI_CODEWORDS,
+    BCHToiSync,
+    sync_bch_toi,
+    pack_hard_codeword,
+    soft_to_hard_codeword,
+    TOI_RANGE,
+    TOI_BCH_CODEWORD_LEN,
+    TOI_BCH_MASK52
 
 # Independently re-derive the 400-entry CNAV-2 subframe 1 codeword table,
 # matching the algorithm in PocketSDR's `sync_CNV2_frame`
@@ -12,14 +18,14 @@ using GNSSDecoder: BCH_TOI_CODEWORDS, BCHToiSync, sync_bch_toi,
 function pocketsdr_reference_codeword(t::Int)
     # Bit-reverse the low 8 bits of `t` into the LFSR register.
     R = 0
-    for i in 0:7
+    for i = 0:7
         R = (R << 1) | ((t >> i) & 1)
     end
     R = UInt32(R)
     tap = UInt32(0b10011111)
     bit9 = UInt64((t >> 8) & 1)
     cw = bit9                  # symbol 0
-    for i in 0:50
+    for i = 0:50
         # PocketSDR's `LFSR` emits `CHIP[R & 1]` with `CHIP = (-1, 1)`;
         # `(code+1)//2` maps that back to exactly the register LSB.
         bit = UInt64(R & UInt32(1))
@@ -35,8 +41,8 @@ end
 @testset "BCH(51,8) TOI codec" begin
     @testset "Codeword table" begin
         @test length(BCH_TOI_CODEWORDS) == TOI_RANGE
-        for t in 0:(TOI_RANGE - 1)
-            @test BCH_TOI_CODEWORDS[t + 1] == pocketsdr_reference_codeword(t)
+        for t = 0:(TOI_RANGE-1)
+            @test BCH_TOI_CODEWORDS[t+1] == pocketsdr_reference_codeword(t)
         end
     end
 
@@ -60,21 +66,21 @@ end
         # complement — a useful smoke signal: a sign-convention bug in the
         # LFSR output (as fixed after Spirent-fixture validation) flips both.
         golden = (
-            0   => UInt64(0x0000000000000000),
-            1   => UInt64(0x000C7D2DA095CF00),  # Spirent recording, subframe TOI=1
-            2   => UInt64(0x000A43BB70DF2880),  # Spirent recording, subframe TOI=2
-            3   => UInt64(0x00063E96D04AE780),  # Spirent recording, subframe TOI=3
-            42  => UInt64(0x000234D56B3A38A8),
+            0 => UInt64(0x0000000000000000),
+            1 => UInt64(0x000C7D2DA095CF00),  # Spirent recording, subframe TOI=1
+            2 => UInt64(0x000A43BB70DF2880),  # Spirent recording, subframe TOI=2
+            3 => UInt64(0x00063E96D04AE780),  # Spirent recording, subframe TOI=3
+            42 => UInt64(0x000234D56B3A38A8),
             255 => UInt64(0x0007A9C93F1975FE),
             256 => UInt64(0x000FFFFFFFFFFFFF),
             399 => UInt64(0x00068A010AC6D81D),
         )
         for (t, cw) in golden
-            @test BCH_TOI_CODEWORDS[t + 1] == cw
+            @test BCH_TOI_CODEWORDS[t+1] == cw
         end
         # The complement pair from the docstring's ambiguity note: codeword
         # for t=256 is the 52-bit bitwise complement of the codeword for t=0.
-        @test BCH_TOI_CODEWORDS[0 + 1] ⊻ TOI_BCH_MASK52 == BCH_TOI_CODEWORDS[256 + 1]
+        @test BCH_TOI_CODEWORDS[0+1] ⊻ TOI_BCH_MASK52 == BCH_TOI_CODEWORDS[256+1]
     end
 
     @testset "Codewords are 52 bits" begin
@@ -89,17 +95,17 @@ end
 
     @testset "MSB symbol equals (TOI >> 8) & 1" begin
         # First transmitted symbol holds the MSB of the 9-bit TOI counter.
-        for t in 0:(TOI_RANGE - 1)
-            @test (BCH_TOI_CODEWORDS[t + 1] & 0x1) == ((t >> 8) & 0x1)
+        for t = 0:(TOI_RANGE-1)
+            @test (BCH_TOI_CODEWORDS[t+1] & 0x1) == ((t >> 8) & 0x1)
         end
     end
 
     @testset "pack_hard_codeword + soft_to_hard_codeword" begin
         t = 17
-        cw = BCH_TOI_CODEWORDS[t + 1]
-        bits = [Bool((cw >> i) & 1) for i in 0:51]
+        cw = BCH_TOI_CODEWORDS[t+1]
+        bits = [Bool((cw >> i) & 1) for i = 0:51]
         @test pack_hard_codeword(bits) == cw
-        soft = Float32[ b ? -1.0f0 : +1.0f0 for b in bits ]
+        soft = Float32[b ? -1.0f0 : +1.0f0 for b in bits]
         @test soft_to_hard_codeword(soft) == cw
     end
 
@@ -108,8 +114,8 @@ end
         # (their would-be twin at toi+256 falls outside 0..399). They
         # yield a single unambiguous interpretation.
         for t in (144, 200, 250)
-            a = BCH_TOI_CODEWORDS[t + 1]
-            b = BCH_TOI_CODEWORDS[((t + 1) % TOI_RANGE) + 1]
+            a = BCH_TOI_CODEWORDS[t+1]
+            b = BCH_TOI_CODEWORDS[((t+1)%TOI_RANGE)+1]
             hit = sync_bch_toi(a, b)
             @test hit isa BCHToiSync
             @test hit.toi == t
@@ -121,7 +127,7 @@ end
         # toi = 399 is in 144..255-equivalent unambiguous territory:
         # its twin would be at 655 (out of range). next TOI is 0.
         t = TOI_RANGE - 1
-        a = BCH_TOI_CODEWORDS[t + 1]
+        a = BCH_TOI_CODEWORDS[t+1]
         b = BCH_TOI_CODEWORDS[1]       # toi = 0
         hit = sync_bch_toi(a, b)
         @test hit isa BCHToiSync
@@ -134,8 +140,8 @@ end
         # normal-polarity interpretation — the detector must report a
         # flip.
         for t in (144, 200, 250)
-            a = BCH_TOI_CODEWORDS[t + 1] ⊻ TOI_BCH_MASK52
-            b = BCH_TOI_CODEWORDS[((t + 1) % TOI_RANGE) + 1] ⊻ TOI_BCH_MASK52
+            a = BCH_TOI_CODEWORDS[t+1] ⊻ TOI_BCH_MASK52
+            b = BCH_TOI_CODEWORDS[((t+1)%TOI_RANGE)+1] ⊻ TOI_BCH_MASK52
             hit = sync_bch_toi(a, b)
             @test hit isa BCHToiSync
             @test hit.toi == t
@@ -155,10 +161,10 @@ end
         # in the table — t+257 = 400 is *not* in the table, so t = 143
         # is *unambiguous* even though CW[399] = ~CW[143].
         for t in (0, 17, 100, 142)
-            cw_t  = BCH_TOI_CODEWORDS[t + 1]
-            cw_t1 = BCH_TOI_CODEWORDS[t + 2]
-            @test BCH_TOI_CODEWORDS[t + 256 + 1] == (cw_t  ⊻ TOI_BCH_MASK52)
-            @test BCH_TOI_CODEWORDS[t + 256 + 2] == (cw_t1 ⊻ TOI_BCH_MASK52)
+            cw_t = BCH_TOI_CODEWORDS[t+1]
+            cw_t1 = BCH_TOI_CODEWORDS[t+2]
+            @test BCH_TOI_CODEWORDS[t+256+1] == (cw_t ⊻ TOI_BCH_MASK52)
+            @test BCH_TOI_CODEWORDS[t+256+2] == (cw_t1 ⊻ TOI_BCH_MASK52)
             # Detector picks the lower-TOI interpretation when both fit.
             hit = sync_bch_toi(cw_t, cw_t1)
             @test hit isa BCHToiSync
@@ -170,8 +176,8 @@ end
     @testset "sync accepts iterable inputs" begin
         # t=200: unambiguous interpretation.
         t = 200
-        a_bits = [Bool((BCH_TOI_CODEWORDS[t + 1] >> i) & 1) for i in 0:51]
-        b_bits = [Bool((BCH_TOI_CODEWORDS[t + 2] >> i) & 1) for i in 0:51]
+        a_bits = [Bool((BCH_TOI_CODEWORDS[t+1] >> i) & 1) for i = 0:51]
+        b_bits = [Bool((BCH_TOI_CODEWORDS[t+2] >> i) & 1) for i = 0:51]
         hit = sync_bch_toi(a_bits, b_bits)
         @test hit isa BCHToiSync
         @test hit.toi == t
@@ -181,8 +187,8 @@ end
         # A correct subframe N codeword followed by a NON-consecutive
         # subframe N+5 codeword must not sync.
         t = 200
-        a = BCH_TOI_CODEWORDS[t + 1]
-        b = BCH_TOI_CODEWORDS[t + 6]
+        a = BCH_TOI_CODEWORDS[t+1]
+        b = BCH_TOI_CODEWORDS[t+6]
         @test sync_bch_toi(a, b) === nothing
     end
 
@@ -190,7 +196,7 @@ end
         rng = Random.MersenneTwister(0xC0FFEE)
         trials = 1000
         false_positives = 0
-        for _ in 1:trials
+        for _ = 1:trials
             a = rand(rng, UInt64) & TOI_BCH_MASK52
             b = rand(rng, UInt64) & TOI_BCH_MASK52
             if sync_bch_toi(a, b) !== nothing
