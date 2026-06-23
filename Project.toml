@@ -1,7 +1,7 @@
 name = "GNSSDecoder"
 uuid = "bf6b1ec8-12ad-4501-972c-3dec0d675c2b"
-authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de>", "Erik Deinzer <erikdeinzer@gmail.com>"]
 version = "2.0.0"
+authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de>", "Erik Deinzer <erikdeinzer@gmail.com>"]
 
 [deps]
 Aff3ct = "529ff742-b572-47ff-bc84-d3f557f53d2b"
@@ -16,7 +16,7 @@ Acquisition = "2"
 Aff3ct = "1"
 Aqua = "0.8"
 BitIntegers = "0.2.6, 0.3.5"
-DataStructures = "0.18"
+DataStructures = "0.18, 0.19"
 Dictionaries = "0.4"
 DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
 Downloads = "1"
