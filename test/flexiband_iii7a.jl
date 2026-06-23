@@ -139,6 +139,15 @@ else
     # `track!` boundary check needs). L1 is 4-bit two's-complement I/Q (I = high
     # nibble); the L5 byte packs two 2-bit sign-magnitude I/Q samples, sample 0
     # in the MSBs.
+    #
+    # Reading is windowed (one call per `track!` chunk) and demuxes straight from
+    # the decompressing zip stream, so only one window of samples is ever live —
+    # the full ~1.93 GB `.usb` is never materialized. The stream also
+    # self-terminates at the first malformed frame: only the first ~13.68 s of
+    # this capture is well-formed; the trailing ~2 s has broken `0x55 0xAA`
+    # preambles and demuxes to noise (cf. Tracking.jl #157/#158). We stop at the
+    # first bad preamble and return only the valid prefix rather than feeding
+    # garbage tail frames to `track!`/`decode`.
     function iii7a_read_bands!(usb, nblocks)
         frame = Vector{UInt8}(undef, III7A_BLOCK)
         l1 = Vector{ComplexF32}(undef, III7A_CYCLES * nblocks * 4)
@@ -148,7 +157,8 @@ else
         lvl(x) = @inbounds III7A_L5_LEVELS[(x&0x03)+1]
         for _ = 1:nblocks
             eof(usb) && break
-            read!(usb, frame);
+            read!(usb, frame)
+            (frame[1] == 0x55 && frame[2] == 0xAA) || break
             got += 1
             @inbounds for c = 0:(III7A_CYCLES-1)
                 base = III7A_HEADER + c * III7A_CHUNK
