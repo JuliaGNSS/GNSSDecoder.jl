@@ -1,5 +1,22 @@
 # Changelog
 
+# [2.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v2.0.0...v2.1.0) (2026-06-23)
+
+
+### Bug Fixes
+
+* **gpsl5:** use standard GPS L5 FEC polynomials 0o171/0o133 ([6bdaaa2](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/6bdaaa2f3d9671c84a5d2eaf1a56b8cb68170e68))
+
+
+### Features
+
+* **gpsl5:** add GPS L5I (CNAV) decoder on the v2 soft-symbol API ([#29](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/29)) ([57f17ff](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/57f17ff6685032c13e0ea102d8a80b04558e6745))
+
+
+### Performance Improvements
+
+* **gpsl5:** reuse preallocated Viterbi scratch; clarify decode comments ([b717275](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/b717275b69f1ec2c247058af74bd6e4b92d54a5d))
+
 # [2.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.3.0...v2.0.0) (2026-06-23)
 
 
