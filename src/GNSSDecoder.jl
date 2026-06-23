@@ -1,7 +1,6 @@
 module GNSSDecoder
 
-using DocStringExtensions,
-    GNSSSignals, BitIntegers, Dictionaries, DataStructures
+using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
 import Aff3ct
 
 export decode,
@@ -24,8 +23,14 @@ export decode,
     reset_decoder_state
 # v2 shared utilities — see issue #36. Used directly by issue #37 (Galileo
 # soft-input migration) and #38 (GPS L1C-D).
-export crc24q, BCH_TOI_CODEWORDS, BCHToiSync, sync_bch_toi, pack_hard_codeword,
-       soft_to_hard_codeword, deinterleave!, interleave!
+export crc24q,
+    BCH_TOI_CODEWORDS,
+    BCHToiSync,
+    sync_bch_toi,
+    pack_hard_codeword,
+    soft_to_hard_codeword,
+    deinterleave!,
+    interleave!
 
 include("gnss.jl")
 include("bit_fiddling.jl")

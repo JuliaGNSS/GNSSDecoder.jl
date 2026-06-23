@@ -16,7 +16,7 @@ boundary uses this helper to feed them into the soft API.
 """
 function to_soft_symbols(bits::T, num_bits::Int) where {T<:Unsigned}
     out = Vector{Float32}(undef, num_bits)
-    for i in 1:num_bits
+    for i = 1:num_bits
         shift = num_bits - i
         bit = (bits >> shift) & T(1)
         out[i] = bit == T(0) ? 1.0f0 : -1.0f0

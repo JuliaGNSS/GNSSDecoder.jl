@@ -69,8 +69,11 @@ else
     const III7A_IF_L5 = 2.903125e6Hz       # GPS L5 within the 1173.546875 MHz band
 
     # `.usb` framing (Flexiband / ION SDR-metadata format).
-    const III7A_BLOCK = 1024; const III7A_HEADER = 6; const III7A_CHUNK = 6
-    const III7A_CYCLES = 169; const III7A_PAYLOAD = III7A_CYCLES * III7A_CHUNK
+    const III7A_BLOCK = 1024;
+    const III7A_HEADER = 6;
+    const III7A_CHUNK = 6
+    const III7A_CYCLES = 169;
+    const III7A_PAYLOAD = III7A_CYCLES * III7A_CHUNK
     const III7A_FREQBASE = 20.25e6
     const III7A_L5_LEVELS = (1.0f0, 3.0f0, -3.0f0, -1.0f0)   # 2-bit sign-magnitude
     iii7a_nframes(sec) = ceil(Int, sec * III7A_FREQBASE / III7A_CYCLES)
@@ -78,29 +81,45 @@ else
     # Download the capture in verified byte-range chunks (the Fraunhofer server
     # drops long-running connections), assembling only once every chunk is exact.
     function iii7a_fetch()
-        dir = get(ENV, "GNSSDECODER_TESTDATA_DIR", tempdir()); mkpath(dir)
+        dir = get(ENV, "GNSSDECODER_TESTDATA_DIR", tempdir());
+        mkpath(dir)
         path = joinpath(dir, "Flexiband_III-7a_short.zip")
         (isfile(path) && filesize(path) == III7A_SIZE) && return path
-        chunk = 200_000_000; parts = String[]; start = 0; idx = 0
+        chunk = 200_000_000;
+        parts = String[];
+        start = 0;
+        idx = 0
         tmpdir = mktempdir(dir)
         try
             while start < III7A_SIZE
-                stop = min(start + chunk - 1, III7A_SIZE - 1); want = stop - start + 1
-                part = joinpath(tmpdir, "p$(idx)"); tries = 0
+                stop = min(start + chunk - 1, III7A_SIZE - 1);
+                want = stop - start + 1
+                part = joinpath(tmpdir, "p$(idx)");
+                tries = 0
                 while !(isfile(part) && filesize(part) == want)
                     (tries += 1) > 30 && error("III-7a download: chunk $idx failed")
                     try
-                        Downloads.download(III7A_URL, part; headers = ["Range" => "bytes=$start-$stop"])
+                        Downloads.download(
+                            III7A_URL,
+                            part;
+                            headers = ["Range" => "bytes=$start-$stop"],
+                        )
                     catch err
                         @warn "III-7a chunk $idx retry $tries" err
                     end
                 end
-                push!(parts, part); start = stop + 1; idx += 1
+                push!(parts, part);
+                start = stop + 1;
+                idx += 1
             end
             open(path * ".part", "w") do out
-                for p in parts; write(out, read(p)); end
+                for p in parts
+                    ;
+                    write(out, read(p));
+                end
             end
-            filesize(path * ".part") == III7A_SIZE || error("III-7a assembled size mismatch")
+            filesize(path * ".part") == III7A_SIZE ||
+                error("III-7a assembled size mismatch")
             mv(path * ".part", path; force = true)
         finally
             rm(tmpdir; recursive = true, force = true)
@@ -108,8 +127,10 @@ else
         path
     end
 
-    iii7a_open(zippath) = (r = ZipFile.Reader(zippath);
-        (r, only(filter(f -> endswith(f.name, ".usb"), r.files))))
+    iii7a_open(zippath) = (
+        r = ZipFile.Reader(zippath);
+        (r, only(filter(f -> endswith(f.name, ".usb"), r.files)))
+    )
 
     # Demux the L1 (81 MHz; GPS L1 C/A + Galileo E1) and L5 (40.5 MHz; GPS L5)
     # bands from the next `nblocks` USB frames. Both are filled from the same
@@ -124,63 +145,105 @@ else
         l5 = Vector{ComplexF32}(undef, III7A_CYCLES * nblocks * 2)
         got = 0
         nib(x) = (v = Int(x & 0x0f); v ≥ 8 ? v - 16 : v)
-        lvl(x) = @inbounds III7A_L5_LEVELS[(x & 0x03) + 1]
-        for _ in 1:nblocks
+        lvl(x) = @inbounds III7A_L5_LEVELS[(x&0x03)+1]
+        for _ = 1:nblocks
             eof(usb) && break
-            read!(usb, frame); got += 1
-            @inbounds for c in 0:(III7A_CYCLES - 1)
+            read!(usb, frame);
+            got += 1
+            @inbounds for c = 0:(III7A_CYCLES-1)
                 base = III7A_HEADER + c * III7A_CHUNK
-                for k in 0:3
-                    b = frame[base + 2 + k]
-                    l1[(got - 1) * III7A_CYCLES * 4 + c * 4 + k + 1] =
-                        ComplexF32(nib(b >> 4), nib(b))
+                for k = 0:3
+                    b = frame[base+2+k]
+                    l1[(got-1)*III7A_CYCLES*4+c*4+k+1] = ComplexF32(nib(b >> 4), nib(b))
                 end
-                b5 = frame[base + 6]
-                l5[(got - 1) * III7A_CYCLES * 2 + c * 2 + 1] =
-                    ComplexF32(lvl(b5 >> 6), lvl(b5 >> 4))
-                l5[(got - 1) * III7A_CYCLES * 2 + c * 2 + 2] =
-                    ComplexF32(lvl(b5 >> 2), lvl(b5))
+                b5 = frame[base+6]
+                l5[(got-1)*III7A_CYCLES*2+c*2+1] = ComplexF32(lvl(b5 >> 6), lvl(b5 >> 4))
+                l5[(got-1)*III7A_CYCLES*2+c*2+2] = ComplexF32(lvl(b5 >> 2), lvl(b5))
             end
         end
         resize!(l1, got * III7A_CYCLES * 4), resize!(l5, got * III7A_CYCLES * 2)
     end
 
     @testset "Flexiband III-7a real-data decode (GPS L1 C/A + Galileo E1B + GPS L5I)" begin
-        fshz = ustrip(Hz, III7A_FS); fshz_l5 = ustrip(Hz, III7A_FS_L5); nblk(sec) = iii7a_nframes(sec)
+        fshz = ustrip(Hz, III7A_FS);
+        fshz_l5 = ustrip(Hz, III7A_FS_L5);
+        nblk(sec) = iii7a_nframes(sec)
         zippath = iii7a_fetch()
         @test filesize(zippath) == III7A_SIZE
 
         # Acquire on the first 40 ms of each band.
-        r, usb = iii7a_open(zippath); l1h, l5h = iii7a_read_bands!(usb, nblk(0.045)); close(r)
+        r, usb = iii7a_open(zippath);
+        l1h, l5h = iii7a_read_bands!(usb, nblk(0.045));
+        close(r)
         @test length(l1h) == 2 * length(l5h)
-        nacq = round(Int, fshz * 0.040); nacq_l5 = round(Int, fshz_l5 * 0.040)
+        nacq = round(Int, fshz * 0.040);
+        nacq_l5 = round(Int, fshz_l5 * 0.040)
         det(a) = filter(x -> is_detected(x; pfa = 1e-8), a)
         topN(a, n) = sort(a; by = x -> -x.CN0)[1:min(n, length(a))]
-        acq_gps = topN(det(acquire(GPSL1CA(), (@view l1h[1:nacq]), III7A_FS, 1:32;
-            interm_freq = III7A_IF, num_coherently_integrated_code_periods = 4,
-            num_noncoherent_accumulations = 2)), 4)
-        acq_gal = det(acquire(GalileoE1B(), (@view l1h[1:nacq]), III7A_FS, 1:36;
-            interm_freq = III7A_IF, num_coherently_integrated_code_periods = 1,
-            num_noncoherent_accumulations = 4))
+        acq_gps = topN(
+            det(
+                acquire(
+                    GPSL1CA(),
+                    (@view l1h[1:nacq]),
+                    III7A_FS,
+                    1:32;
+                    interm_freq = III7A_IF,
+                    num_coherently_integrated_code_periods = 4,
+                    num_noncoherent_accumulations = 2,
+                ),
+            ),
+            4,
+        )
+        acq_gal = det(
+            acquire(
+                GalileoE1B(),
+                (@view l1h[1:nacq]),
+                III7A_FS,
+                1:36;
+                interm_freq = III7A_IF,
+                num_coherently_integrated_code_periods = 1,
+                num_noncoherent_accumulations = 4,
+            ),
+        )
         # GPS L5 is only carried by Block IIF satellites (Oct 2017), a handful in
         # view: integrate one full 10 ms NH10 secondary-code period (the longest
         # coherent window before the data symbol can flip).
-        acq_l5 = det(acquire(GPSL5I(), (@view l5h[1:nacq_l5]), III7A_FS_L5, 1:32;
-            interm_freq = III7A_IF_L5, num_coherently_integrated_code_periods = 10,
-            num_noncoherent_accumulations = 1))
+        acq_l5 = det(
+            acquire(
+                GPSL5I(),
+                (@view l5h[1:nacq_l5]),
+                III7A_FS_L5,
+                1:32;
+                interm_freq = III7A_IF_L5,
+                num_coherently_integrated_code_periods = 10,
+                num_noncoherent_accumulations = 1,
+            ),
+        )
         @test !isempty(acq_gps)
         @test !isempty(acq_gal)
         @test !isempty(acq_l5)
-        gps_prns = sort!([a.prn for a in acq_gps]); gal_prns = sort!([a.prn for a in acq_gal])
+        gps_prns = sort!([a.prn for a in acq_gps]);
+        gal_prns = sort!([a.prn for a in acq_gal])
         l5_prns = sort!([a.prn for a in acq_l5])
 
         # Multi-band TrackState: GPS L1 C/A and Galileo E1B share the L1 band,
         # GPS L5I is its own band. The band each group tracks is derived from its
         # signal (`band_key`), so `track!` takes one `BandMeasurement` per band.
-        ts = TrackState(; signals = (gps = (GPSL1CA(),), gal = (GalileoE1B(),), gps_l5 = (GPSL5I(),)))
-        for a in acq_gps; ts = add_satellite!(ts, a; group = :gps); end
-        for a in acq_gal; ts = add_satellite!(ts, a; group = :gal); end
-        for a in acq_l5; ts = add_satellite!(ts, a; group = :gps_l5); end
+        ts = TrackState(;
+            signals = (gps = (GPSL1CA(),), gal = (GalileoE1B(),), gps_l5 = (GPSL5I(),)),
+        )
+        for a in acq_gps
+            ;
+            ts = add_satellite!(ts, a; group = :gps);
+        end
+        for a in acq_gal
+            ;
+            ts = add_satellite!(ts, a; group = :gal);
+        end
+        for a in acq_l5
+            ;
+            ts = add_satellite!(ts, a; group = :gps_l5);
+        end
         dec_gps = Dict(p => GPSL1CADecoderState(p) for p in gps_prns)
         dec_gal = Dict(p => GalileoE1BDecoderState(p) for p in gal_prns)
         dec_l5 = Dict(p => GPSL5IDecoderState(p) for p in l5_prns)
@@ -190,35 +253,49 @@ else
         # frames, so they stay time-aligned across every multi-band `track!`.
         r, usb = iii7a_open(zippath)
         while true
-            l1, l5 = iii7a_read_bands!(usb, nblk(0.2)); isempty(l1) && break
-            ts = track!((l1 = BandMeasurement(l1, III7A_FS, III7A_IF),
-                         l5 = BandMeasurement(l5, III7A_FS_L5, III7A_IF_L5)), ts)
+            l1, l5 = iii7a_read_bands!(usb, nblk(0.2));
+            isempty(l1) && break
+            ts = track!(
+                (
+                    l1 = BandMeasurement(l1, III7A_FS, III7A_IF),
+                    l5 = BandMeasurement(l5, III7A_FS_L5, III7A_IF_L5),
+                ),
+                ts,
+            )
             for p in gps_prns
-                s = get_soft_bits(ts, :gps, p); isempty(s) || (dec_gps[p] = decode(dec_gps[p], s, length(s)))
+                s = get_soft_bits(ts, :gps, p);
+                isempty(s) || (dec_gps[p] = decode(dec_gps[p], s, length(s)))
             end
             for p in gal_prns
-                s = get_soft_bits(ts, :gal, p); isempty(s) || (dec_gal[p] = decode(dec_gal[p], s, length(s)))
+                s = get_soft_bits(ts, :gal, p);
+                isempty(s) || (dec_gal[p] = decode(dec_gal[p], s, length(s)))
             end
             for p in l5_prns
-                s = get_soft_bits(ts, :gps_l5, p); isempty(s) || (dec_l5[p] = decode(dec_l5[p], s, length(s)))
+                s = get_soft_bits(ts, :gps_l5, p);
+                isempty(s) || (dec_l5[p] = decode(dec_l5[p], s, length(s)))
             end
         end
         close(r)
 
         # GPS L1 C/A: at least one satellite yields a parity-validated HOW time of week.
-        gps_tows = [dec_gps[p].raw_data.TOW for p in gps_prns if !isnothing(dec_gps[p].raw_data.TOW)]
+        gps_tows = [
+            dec_gps[p].raw_data.TOW for p in gps_prns if !isnothing(dec_gps[p].raw_data.TOW)
+        ]
         @test !isempty(gps_tows)
         @test all(t -> 0 <= t <= 604_800, gps_tows)
 
         # Galileo E1B: at least one satellite yields a CRC-24Q-validated word with TOW + WN.
-        gal_ok = [(dec_gal[p].raw_data.TOW, dec_gal[p].raw_data.WN) for p in gal_prns
-                  if !isnothing(dec_gal[p].raw_data.TOW) && !isnothing(dec_gal[p].raw_data.WN)]
+        gal_ok = [
+            (dec_gal[p].raw_data.TOW, dec_gal[p].raw_data.WN) for p in gal_prns if
+            !isnothing(dec_gal[p].raw_data.TOW) && !isnothing(dec_gal[p].raw_data.WN)
+        ]
         @test !isempty(gal_ok)
         @test all(((t, wn),) -> 0 <= t <= 604_800 && wn >= 0, gal_ok)
 
         # GPS L5I (CNAV): at least one satellite yields a CRC-24Q-validated
         # message time of week (every message type carries TOW in its header).
-        l5_tows = [dec_l5[p].raw_data.TOW for p in l5_prns if !isnothing(dec_l5[p].raw_data.TOW)]
+        l5_tows =
+            [dec_l5[p].raw_data.TOW for p in l5_prns if !isnothing(dec_l5[p].raw_data.TOW)]
         @test !isempty(l5_tows)
         @test all(t -> 0 <= t <= 604_800, l5_tows)
 

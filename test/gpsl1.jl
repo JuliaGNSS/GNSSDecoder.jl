@@ -11,8 +11,7 @@ const GPSL1DATA = [
     uint4000"0xd27a00000000284366fb88525db4c29054efcd433a7fffff208baaa8beadc1af449000059f02d876000000a57bc992d89a21fcf1227270da0f7db000000008baaa8beadbfed40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beadbddbc0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beadbbccc064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beadb9b8840aaaab2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8baaa8beadb7ab44a0000060fd2789ffffff5a84366d2237670279fb570b92fe353000000008baaa8beadb5e480e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beadb3dd80100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8beadb1c50064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beadafb6879aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beadadae04b000031f02d85ffffffffd7bc9904ef5e76106f7c610fa2ff558000008c8baaa8beadabee40e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8beada9d8c0100c0660003861bf59b8e80864cfbccccc";
     uint4000"0xc5010ca84df264bc510429fa48baaa8beada7cb0064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8beada5bf47eaaaa25555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8beada3a844c0000b1f02d85ffffffffd7bc9904a2a212ac8475d9607982d7000000008baaa8beada1e780e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead9fdf40100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead9dc7c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead9bbc074aaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabcaaaaaaf2aaaaabc8baaa8bead99a484d0000860fd2789ffffff5a84366d24f51fb18f5784639a56b80000000008baaa8bead97e000e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead95d680100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead93c18064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead91b5c75aaaac5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8bead8faa84e0000d9f02d876000000a57bc992db1722e05562a3efaa9dd528000008c";
     uint4000"0x8baaa8bead8de540e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead8bdc40100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead89c4c064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead87bbc76aaaa9aaaaaa95555555aaaaaaa95555555aaaaaaa95555555aaaaaaa308baaa8bead85a344f0000ee0fd27a00000000284366fbb370e85c78ed4199607d507fffff208baaa8bead83e300e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead81d580100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead7fc98064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead7dbdc79aaaaa5555556aaaaaaa55555556aaaaaaa55555556aaaaaaa55555559c8baaa8bead7baac500000a1f02d85ffffffffd7bc9904a35103943ee7972a0f43ab7fffff208baaa8bead79e500e9000f75555540aaaaaaf2aaaaabcaaaa0257fafbd4593dc273ffb9e8f48baaa8bead77d8c0100c0660003861bf59b8e80864cfbcccccc5010ca84df264bc510429fa48baaa8bead75c04064b410c9688d79f79cd40d52e77cdff5f32eba317a7ff29406c004370148baaa8bead73bb87753509eda";
-    ]
-
+]
 
 @testset "GPS L1 C/A constructor" begin
     gpsl1 = GPSL1CA()
@@ -20,11 +19,12 @@ const GPSL1DATA = [
     state_1 = GPSL1CADecoderState(21)
     state_2 = GNSSDecoderState(gpsl1, 21)
     @test state_1.prn == state_2.prn &&
-        state_1.raw_data == state_2.raw_data &&
-        state_1.data == state_2.data &&
-        state_1.constants == state_2.constants &&
-        state_1.num_bits_after_valid_syncro_sequence == state_2.num_bits_after_valid_syncro_sequence &&
-        state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
+          state_1.raw_data == state_2.raw_data &&
+          state_1.data == state_2.data &&
+          state_1.constants == state_2.constants &&
+          state_1.num_bits_after_valid_syncro_sequence ==
+          state_2.num_bits_after_valid_syncro_sequence &&
+          state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
 end
 
 @testset "GPS L1 C/A sync primitives" begin
@@ -53,7 +53,10 @@ end
     PUInt320 = GNSSDecoder.UInt320
     decoder = GPSL1CADecoderState(1)
     raw_buffer = PUInt320(constants.preamble) << UInt(300) + PUInt320(constants.preamble)
-    foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
+    foreach(
+        s -> GNSSDecoder.push_soft_symbol!(decoder, s),
+        to_soft_symbols(raw_buffer, 308),
+    )
     @test GNSSDecoder.is_enough_buffered_bits_to_decode(decoder) == true
     # try_sync returns the packed buffer on a match (or nothing), rather than
     # stashing it in mutable cache state.
@@ -67,7 +70,10 @@ end
     # Inverted preamble: every bit flipped (180° polarity)
     decoder = GPSL1CADecoderState(1)
     raw_buffer = PUInt320(~constants.preamble) << UInt(300) + PUInt320(~constants.preamble)
-    foreach(s -> GNSSDecoder.push_soft_symbol!(decoder, s), to_soft_symbols(raw_buffer, 308))
+    foreach(
+        s -> GNSSDecoder.push_soft_symbol!(decoder, s),
+        to_soft_symbols(raw_buffer, 308),
+    )
     buffer = GNSSDecoder.try_sync(decoder)
     @test buffer == raw_buffer
     state, resolved_buffer = GNSSDecoder.complement_buffer_if_necessary(decoder, buffer)
@@ -87,42 +93,154 @@ end
 @testset "GPS L1 C/A test data decoding" begin
     decoder = GPSL1CADecoderState(25)
 
-    e_values       = zeros(31); e_values[25] = 0.006249904632568359
-    t_oa_values    = fill(507904, 31)
-    δi_values      = fill(0.017455023574651885, 31); δi_values[25] = 0.12939966841558787
-    Ω_dot_values   = zeros(31); Ω_dot_values[25] = 3.141616575226232e-7
-    sv_healths     = fill("00000000", 31)
-    sqrt_A_values  = fill(5153.70068359375, 31)
-    Ω_0_values     = [ 0.9309151162826294,-0.21355963682751117,-1.3601612153513243, -0.19503614470114108,
-                      -2.3907618634107664,-1.2934929722028254,  2.939997392795146,   2.9980856799254663,
-                       2.90515588043202,   0.8703842943137864, -0.40818644534672865,-2.2915688083761583,
-                       1.9468114948902273, 1.92800450094344,    1.8790392050223226, -2.2747965111140833,
-                      -1.2333033261367568, 0.8775070434848794, -1.1769426399279497,  0.8237562967562418,
-                      -0.1811449300077196, 0.8834358642497763,  1.897445476448837,  -0.15087727198112835,
-                       1.6921463411443713, 1.9447060163771674,  2.881117397807016,  -2.266460359171323,
-                      -1.2251210965826247,-2.3375200717335782,  2.9373462575418645]
-    ω_values       = [-1.2019776857552396, 2.714100745441627,   0.8899440473874415,  0.4732911216521067,
-                       1.2949861317246272,-1.463009084475038,   2.923551291154714,   2.976520067208277,
-                       1.459411195454233,  0.5908353955800706,  0.6840685457664337, -0.8127667625180299,
-                       1.5061837527246984,-2.0994983848320645, -0.7419976674097294, -0.38597817856898975,
-                      -2.7500264556516596,-2.4382575937528643, -0.39128456865286465, 1.3146076784579506,
-                      -2.6488990718159213,-1.82339682329378,    2.8824027059281154, -0.6395231817932232,
-                      -1.2294114490987422, 0.9676722320954713, -1.6511730252070136, -2.057136771340827,
-                      -1.3434334844256162, 1.4131749322482823, -1.1938287873266253]
-    M_0_values     = [ 0.7772687393343071, 1.8146314862965967,  1.4561147845912032,  -1.6325469181548915,
-                      -2.025272215345597, -2.302044518971553,  -0.004539025182903811,-0.6746275980902107,
-                      -0.9311753986672926, 2.675434018291522,  -0.14266433285067617,  0.18639551854437897,
-                       2.4951422152942526, 2.095625233145465,   2.600880155155299,   -2.332779561769453,
-                       2.86441326082409,  -2.204820247384678,   2.1227365459376077,  -2.0576318696322295,
-                      -0.9285714512995756, 2.953611472287631,   1.5835962280078775,  -2.3064959095098363,
-                      -0.9196229803655571, 1.1444365533932548, -2.7133509823709856,  -2.994534978790226,
-                      -0.8758738183344963,-2.562498053346696,  -0.07783042512675355]
-    af0_values     = zeros(31); af0_values[25] = 0.00043487548828125
-    af1_values     = zeros(31); af1_values[25] = 2.4920154828578234e-9
+    e_values = zeros(31);
+    e_values[25] = 0.006249904632568359
+    t_oa_values = fill(507904, 31)
+    δi_values = fill(0.017455023574651885, 31);
+    δi_values[25] = 0.12939966841558787
+    Ω_dot_values = zeros(31);
+    Ω_dot_values[25] = 3.141616575226232e-7
+    sv_healths = fill("00000000", 31)
+    sqrt_A_values = fill(5153.70068359375, 31)
+    Ω_0_values = [
+        0.9309151162826294,
+        -0.21355963682751117,
+        -1.3601612153513243,
+        -0.19503614470114108,
+        -2.3907618634107664,
+        -1.2934929722028254,
+        2.939997392795146,
+        2.9980856799254663,
+        2.90515588043202,
+        0.8703842943137864,
+        -0.40818644534672865,
+        -2.2915688083761583,
+        1.9468114948902273,
+        1.92800450094344,
+        1.8790392050223226,
+        -2.2747965111140833,
+        -1.2333033261367568,
+        0.8775070434848794,
+        -1.1769426399279497,
+        0.8237562967562418,
+        -0.1811449300077196,
+        0.8834358642497763,
+        1.897445476448837,
+        -0.15087727198112835,
+        1.6921463411443713,
+        1.9447060163771674,
+        2.881117397807016,
+        -2.266460359171323,
+        -1.2251210965826247,
+        -2.3375200717335782,
+        2.9373462575418645,
+    ]
+    ω_values = [
+        -1.2019776857552396,
+        2.714100745441627,
+        0.8899440473874415,
+        0.4732911216521067,
+        1.2949861317246272,
+        -1.463009084475038,
+        2.923551291154714,
+        2.976520067208277,
+        1.459411195454233,
+        0.5908353955800706,
+        0.6840685457664337,
+        -0.8127667625180299,
+        1.5061837527246984,
+        -2.0994983848320645,
+        -0.7419976674097294,
+        -0.38597817856898975,
+        -2.7500264556516596,
+        -2.4382575937528643,
+        -0.39128456865286465,
+        1.3146076784579506,
+        -2.6488990718159213,
+        -1.82339682329378,
+        2.8824027059281154,
+        -0.6395231817932232,
+        -1.2294114490987422,
+        0.9676722320954713,
+        -1.6511730252070136,
+        -2.057136771340827,
+        -1.3434334844256162,
+        1.4131749322482823,
+        -1.1938287873266253,
+    ]
+    M_0_values = [
+        0.7772687393343071,
+        1.8146314862965967,
+        1.4561147845912032,
+        -1.6325469181548915,
+        -2.025272215345597,
+        -2.302044518971553,
+        -0.004539025182903811,
+        -0.6746275980902107,
+        -0.9311753986672926,
+        2.675434018291522,
+        -0.14266433285067617,
+        0.18639551854437897,
+        2.4951422152942526,
+        2.095625233145465,
+        2.600880155155299,
+        -2.332779561769453,
+        2.86441326082409,
+        -2.204820247384678,
+        2.1227365459376077,
+        -2.0576318696322295,
+        -0.9285714512995756,
+        2.953611472287631,
+        1.5835962280078775,
+        -2.3064959095098363,
+        -0.9196229803655571,
+        1.1444365533932548,
+        -2.7133509823709856,
+        -2.994534978790226,
+        -0.8758738183344963,
+        -2.562498053346696,
+        -0.07783042512675355,
+    ]
+    af0_values = zeros(31);
+    af0_values[25] = 0.00043487548828125
+    af1_values = zeros(31);
+    af1_values[25] = 2.4920154828578234e-9
     # Listed in the order the decoder inserts entries into the almanac
     # Dictionary (subframe-4 pages 2-5, 7-10 interleaved with subframe-5
     # pages 1-24). Dictionaries.jl `==` is order-sensitive.
-    prns = [16, 17, 18, 19, 20, 21, 22, 23, 24, 1, 25, 2, 26, 3, 27, 4, 28, 5, 6, 29, 7, 30, 8, 31, 9, 10, 11, 12, 13, 14, 15]
+    prns = [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        1,
+        25,
+        2,
+        26,
+        3,
+        27,
+        4,
+        28,
+        5,
+        6,
+        29,
+        7,
+        30,
+        8,
+        31,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+    ]
     test_almanac_data = Dictionary{Int64,GNSSDecoder.GPSL1CAAlmanac}(
         prns,
         [
@@ -205,21 +323,29 @@ end
     # Convert the hard-bit chunks into ±1.0f0 soft symbols at the test
     # boundary. Each chunk is 4000 bits = 500 bytes.
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )
-    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1CAData))
+    @test all(
+        field -> getfield(state.data, field) == getfield(test_data, field),
+        fieldnames(GNSSDecoder.GPSL1CAData),
+    )
     @test is_sat_healthy(state) == true
 
     # 180° polarity flip: bit-invert the hard literal then convert to soft symbols.
     decoder2 = GPSL1CADecoderState(25)
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder2,
     )
-    @test all(field -> getfield(state.data, field) == getfield(test_data, field), fieldnames(GNSSDecoder.GPSL1CAData))
+    @test all(
+        field -> getfield(state.data, field) == getfield(test_data, field),
+        fieldnames(GNSSDecoder.GPSL1CAData),
+    )
     @test is_sat_healthy(state) == true
 
     # test confirm_data
@@ -227,19 +353,19 @@ end
     state = GNSSDecoder.confirm_data(state, max_vote)
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1)
+        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic+1 # erroneous data accepted as it has been provided more often than true data
@@ -249,7 +375,8 @@ end
     # Setup: create a base state with valid data
     decoder = GPSL1CADecoderState(1)
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )
@@ -276,7 +403,9 @@ end
         existing_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
         state_with_cache = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(5, existing_data)]),
+            cache = GNSSDecoder.GPSL1CACache([
+                GNSSDecoder.VotedGPSL1CAData(5, existing_data),
+            ]),
             raw_data = base_data,  # different data, same IODC
             data = GNSSDecoder.GPSL1CAData(),
         )
@@ -371,7 +500,9 @@ end
         new_data = base_data  # has different IODC
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(20, existing_data)]),
+            cache = GNSSDecoder.GPSL1CACache([
+                GNSSDecoder.VotedGPSL1CAData(20, existing_data),
+            ]),
             raw_data = new_data,
             data = existing_data,
         )
@@ -381,10 +512,7 @@ end
         @test length(result.cache.old_data) == 2  # both entries kept
         @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry added
-        state_diff_iodc = GNSSDecoder.GNSSDecoderState(
-            result;
-            raw_data = new_data,
-        )
+        state_diff_iodc = GNSSDecoder.GNSSDecoderState(result; raw_data = new_data)
         result = GNSSDecoder.confirm_data(state_diff_iodc)
         @test result.data == new_data  # new IODC data is used now
         @test result.raw_data == new_data  # raw_data is not reset
@@ -397,7 +525,8 @@ end
 @testset "GPS L1 C/A reset_decoder_state" begin
     decoder = GPSL1CADecoderState(1)
     state = reduce(
-        (dec, data) -> decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+        (dec, data) ->
+            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )

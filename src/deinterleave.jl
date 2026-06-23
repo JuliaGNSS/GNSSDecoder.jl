@@ -17,8 +17,7 @@
 
 Reverse a `rows × cols` block interleaver. `src` is the received (column-
 major-written, row-major-read) stream; `dst` receives the original
-(row-major) stream. Both must satisfy `length(dst) == length(src) ==
-rows*cols`. `dst` and `src` may not alias.
+(row-major) stream. Both must satisfy `length(dst) == length(src) == rows*cols`. `dst` and `src` may not alias.
 
 Element type `T` is preserved — works for `Float32` soft symbols, `Bool`
 hard slices, `Int8`, anything.
@@ -30,12 +29,14 @@ function deinterleave!(
     cols::Int,
 ) where {T}
     n = rows * cols
-    length(src) == n || throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
-    length(dst) == n || throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
+    length(src) == n ||
+        throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
+    length(dst) == n ||
+        throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
     # Column-major write, row-major read: src[r + (c-1)*rows] -> dst[c + (r-1)*cols].
-    @inbounds for r in 1:rows
-        for c in 1:cols
-            dst[c + (r - 1) * cols] = src[r + (c - 1) * rows]
+    @inbounds for r = 1:rows
+        for c = 1:cols
+            dst[c+(r-1)*cols] = src[r+(c-1)*rows]
         end
     end
     return dst
@@ -65,11 +66,13 @@ function interleave!(
     cols::Int,
 ) where {T}
     n = rows * cols
-    length(src) == n || throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
-    length(dst) == n || throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
-    @inbounds for r in 1:rows
-        for c in 1:cols
-            dst[r + (c - 1) * rows] = src[c + (r - 1) * cols]
+    length(src) == n ||
+        throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
+    length(dst) == n ||
+        throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
+    @inbounds for r = 1:rows
+        for c = 1:cols
+            dst[r+(c-1)*rows] = src[c+(r-1)*cols]
         end
     end
     return dst
