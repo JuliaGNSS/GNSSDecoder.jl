@@ -1,5 +1,30 @@
 # Changelog
 
+# [2.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.3.0...v2.0.0) (2026-06-23)
+
+
+* feat(api)!: v2 soft-symbol decoder API + GPS L1 C/A migration ([#35](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/35)) ([1de348c](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/1de348cc1dcf6e554186b9d21c481569b2e79397)), closes [#37](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/37)
+
+
+### Bug Fixes
+
+* clamp drain_after_sync! to buffer length to survive mid-frame reset ([3c85f9c](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/3c85f9c153d25a36ba0ec05a186aee5cf782ede4))
+* **test:** restore corrupted GPSL1DATA chunk 2 (issue [#35](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/35)) ([58dbcc9](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/58dbcc96a36f3cf4c0d8be7509380c53d6500ff9))
+
+
+### Features
+
+* **gpsl1c:** add GPS L1C-D decoder — TOI sync + subframe 2 ([#38](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/38)) ([3a9be1a](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/3a9be1a17c6782049fa6c6e72a292f1a43d7bf02)), closes [#39](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/39)
+* **gpsl1c:** parse L1C-D subframe 3 pages ([#39](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/39)) ([d9c7233](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/d9c72337ad8ee9354ca7f58ece8438817fd9a288))
+* **v2:** add LDPC alist files + shared decoder utilities (issue [#36](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/36)) ([bf27fd0](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/bf27fd0e91f232e78912e158c02ecf2925f410ad))
+
+
+### BREAKING CHANGES
+
+* decode now accepts AbstractVector{<:Real} soft symbols
+instead of packed unsigned bits. Sign convention positive => bit 0,
+negative => bit 1, magnitude => confidence (matches AFF3CT LLR).
+
 # [1.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v1.2.0...v1.3.0) (2026-06-03)
 
 
