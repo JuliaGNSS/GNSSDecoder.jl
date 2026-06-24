@@ -1,5 +1,25 @@
 # Changelog
 
+# [3.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v2.1.0...v3.0.0) (2026-06-24)
+
+
+* fix(l1c_d)!: correct CNAV-2 EOP ΔUT_GPS per IS-GPS-800J Table 3.5-5 ([7fb25a7](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/7fb25a7e6ce2eb972a976f15d0a3e450b0d15190))
+* refactor!: unify nav-data field names across signals ([f0bd94f](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/f0bd94fc37236c02c476dd92039c99a8fcce8236)), closes [#60](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/60) [#60](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/60) [#60](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/60)
+
+
+### BREAKING CHANGES
+
+* the GPSL1C_DData fields ΔUT1/ΔUT1_dot are renamed to
+ΔUT_GPS/ΔUT_GPS_dot, and the decoded ΔUT_GPS value is now twice the
+previous (incorrect) value due to the 2⁻²⁴ → 2⁻²³ scale-factor fix.
+Downstream code reading data.ΔUT1 must be updated.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+* renamed public struct fields on GPSL1CAData, GPSL1CAAlmanac,
+GPSL5IData and GPSL1C_DData. Downstream code reading the old names must update.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
 # [2.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v2.0.0...v2.1.0) (2026-06-23)
 
 
