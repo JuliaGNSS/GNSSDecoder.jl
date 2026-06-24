@@ -328,7 +328,7 @@ all `Union{Nothing,…}` until first decoded.
   - `Ω_0::Float64`: Reference right ascension angle (rad).
   - `i_0::Float64`: Inclination angle at reference time (rad).
   - `ΔΩ_dot::Float64`: Rate of right ascension difference (rad/s).
-  - `i_0_dot::Float64`: Rate of inclination angle (rad/s).
+  - `i_dot::Float64`: Rate of inclination angle (rad/s).
   - `C_is::Float64`, `C_ic::Float64`: Sine/cosine inclination harmonic corrections (rad).
   - `C_rs::Float64`, `C_rc::Float64`: Sine/cosine orbit-radius harmonic corrections (m).
   - `C_us::Float64`, `C_uc::Float64`: Sine/cosine argument-of-latitude harmonic corrections (rad).
@@ -343,7 +343,7 @@ all `Union{Nothing,…}` until first decoded.
 
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
-  - `α0,α1,α2,α3,β0,β1,β2,β3::Float64`: Klobuchar ionospheric coefficients.
+  - `α_0,α_1,α_2,α_3,β_0,β_1,β_2,β_3::Float64`: Klobuchar ionospheric coefficients.
   - `WN_op::Int64`: Data predict week number (mod 256).
 
 # EOP (message type 32, Table 20-VII)
@@ -410,7 +410,7 @@ Base.@kwdef struct GPSL5IData <: AbstractGNSSData
     Ω_0::Union{Nothing,Float64} = nothing
     i_0::Union{Nothing,Float64} = nothing
     ΔΩ_dot::Union{Nothing,Float64} = nothing
-    i_0_dot::Union{Nothing,Float64} = nothing
+    i_dot::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
     C_ic::Union{Nothing,Float64} = nothing
     C_rs::Union{Nothing,Float64} = nothing
@@ -430,14 +430,14 @@ Base.@kwdef struct GPSL5IData <: AbstractGNSSData
     ISC_L2C::Union{Nothing,Float64} = nothing
     ISC_L5I5::Union{Nothing,Float64} = nothing
     ISC_L5Q5::Union{Nothing,Float64} = nothing
-    α0::Union{Nothing,Float64} = nothing
-    α1::Union{Nothing,Float64} = nothing
-    α2::Union{Nothing,Float64} = nothing
-    α3::Union{Nothing,Float64} = nothing
-    β0::Union{Nothing,Float64} = nothing
-    β1::Union{Nothing,Float64} = nothing
-    β2::Union{Nothing,Float64} = nothing
-    β3::Union{Nothing,Float64} = nothing
+    α_0::Union{Nothing,Float64} = nothing
+    α_1::Union{Nothing,Float64} = nothing
+    α_2::Union{Nothing,Float64} = nothing
+    α_3::Union{Nothing,Float64} = nothing
+    β_0::Union{Nothing,Float64} = nothing
+    β_1::Union{Nothing,Float64} = nothing
+    β_2::Union{Nothing,Float64} = nothing
+    β_3::Union{Nothing,Float64} = nothing
     WN_op::Union{Nothing,Int64} = nothing
 
     t_EOP::Union{Nothing,Int64} = nothing
@@ -507,7 +507,7 @@ function GPSL5IData(
     Ω_0 = data.Ω_0,
     i_0 = data.i_0,
     ΔΩ_dot = data.ΔΩ_dot,
-    i_0_dot = data.i_0_dot,
+    i_dot = data.i_dot,
     C_is = data.C_is,
     C_ic = data.C_ic,
     C_rs = data.C_rs,
@@ -525,14 +525,14 @@ function GPSL5IData(
     ISC_L2C = data.ISC_L2C,
     ISC_L5I5 = data.ISC_L5I5,
     ISC_L5Q5 = data.ISC_L5Q5,
-    α0 = data.α0,
-    α1 = data.α1,
-    α2 = data.α2,
-    α3 = data.α3,
-    β0 = data.β0,
-    β1 = data.β1,
-    β2 = data.β2,
-    β3 = data.β3,
+    α_0 = data.α_0,
+    α_1 = data.α_1,
+    α_2 = data.α_2,
+    α_3 = data.α_3,
+    β_0 = data.β_0,
+    β_1 = data.β_1,
+    β_2 = data.β_2,
+    β_3 = data.β_3,
     WN_op = data.WN_op,
     t_EOP = data.t_EOP,
     PM_X = data.PM_X,
@@ -590,7 +590,7 @@ function GPSL5IData(
         Ω_0,
         i_0,
         ΔΩ_dot,
-        i_0_dot,
+        i_dot,
         C_is,
         C_ic,
         C_rs,
@@ -608,14 +608,14 @@ function GPSL5IData(
         ISC_L2C,
         ISC_L5I5,
         ISC_L5Q5,
-        α0,
-        α1,
-        α2,
-        α3,
-        β0,
-        β1,
-        β2,
-        β3,
+        α_0,
+        α_1,
+        α_2,
+        α_3,
+        β_0,
+        β_1,
+        β_2,
+        β_3,
         WN_op,
         t_EOP,
         PM_X,
@@ -731,7 +731,7 @@ function is_ephemeris_decoded(data::GPSL5IData)
         !isnothing(data.Ω_0) &&
         !isnothing(data.i_0) &&
         !isnothing(data.ΔΩ_dot) &&
-        !isnothing(data.i_0_dot) &&
+        !isnothing(data.i_dot) &&
         !isnothing(data.C_is) &&
         !isnothing(data.C_ic) &&
         !isnothing(data.C_rs) &&
@@ -1158,7 +1158,7 @@ function parse_mt11(raw::GPSL5IData, word::UInt320, PI::Float64)
         Ω_0 = get_twos_complement_num(word, word_length, 50, 33) * 2.0^-32 * PI,
         i_0 = get_twos_complement_num(word, word_length, 83, 33) * 2.0^-32 * PI,
         ΔΩ_dot = get_twos_complement_num(word, word_length, 116, 17) * 2.0^-44 * PI,
-        i_0_dot = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * PI,
+        i_dot = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * PI,
         C_is = get_twos_complement_num(word, word_length, 148, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 164, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 180, 24) * 2.0^-8,
@@ -1199,14 +1199,14 @@ function parse_mt30(raw::GPSL5IData, word::UInt320)
         ISC_L2C = get_twos_complement_num(word, word_length, 154, 13) * 2.0^-35,
         ISC_L5I5 = get_twos_complement_num(word, word_length, 167, 13) * 2.0^-35,
         ISC_L5Q5 = get_twos_complement_num(word, word_length, 180, 13) * 2.0^-35,
-        α0 = get_twos_complement_num(word, word_length, 193, 8) * 2.0^-30,
-        α1 = get_twos_complement_num(word, word_length, 201, 8) * 2.0^-27,
-        α2 = get_twos_complement_num(word, word_length, 209, 8) * 2.0^-24,
-        α3 = get_twos_complement_num(word, word_length, 217, 8) * 2.0^-24,
-        β0 = get_twos_complement_num(word, word_length, 225, 8) * 2.0^11,
-        β1 = get_twos_complement_num(word, word_length, 233, 8) * 2.0^14,
-        β2 = get_twos_complement_num(word, word_length, 241, 8) * 2.0^16,
-        β3 = get_twos_complement_num(word, word_length, 249, 8) * 2.0^16,
+        α_0 = get_twos_complement_num(word, word_length, 193, 8) * 2.0^-30,
+        α_1 = get_twos_complement_num(word, word_length, 201, 8) * 2.0^-27,
+        α_2 = get_twos_complement_num(word, word_length, 209, 8) * 2.0^-24,
+        α_3 = get_twos_complement_num(word, word_length, 217, 8) * 2.0^-24,
+        β_0 = get_twos_complement_num(word, word_length, 225, 8) * 2.0^11,
+        β_1 = get_twos_complement_num(word, word_length, 233, 8) * 2.0^14,
+        β_2 = get_twos_complement_num(word, word_length, 241, 8) * 2.0^16,
+        β_3 = get_twos_complement_num(word, word_length, 249, 8) * 2.0^16,
         WN_op = Int64(get_bits(word, word_length, 257, 8)),
     )
 end

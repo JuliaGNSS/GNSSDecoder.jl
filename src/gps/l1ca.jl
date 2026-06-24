@@ -61,8 +61,8 @@ which the decoder stores in `δi`.
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
   - `ω::Float64`: Argument of perigee (rad)
   - `M_0::Float64`: Mean anomaly at reference time (rad)
-  - `af0::Float64`: SV clock bias correction coefficient (seconds)
-  - `af1::Float64`: SV clock drift correction coefficient (s/s)
+  - `a_f0::Float64`: SV clock bias correction coefficient (seconds)
+  - `a_f1::Float64`: SV clock drift correction coefficient (s/s)
 
 # Reference
 
@@ -78,8 +78,8 @@ Base.@kwdef struct GPSL1CAAlmanac
     Ω_0::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
-    af0::Union{Nothing,Float64} = nothing
-    af1::Union{Nothing,Float64} = nothing
+    a_f0::Union{Nothing,Float64} = nothing
+    a_f1::Union{Nothing,Float64} = nothing
 end
 
 """
@@ -103,7 +103,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `trans_week::Int64`: GPS week number (modulo 1024)
   - `codeonl2::Int64`: Code on L2 channel (0=invalid, 1=P-code, 2=C/A-code, 3=invalid)
   - `ura::Float64`: User Range Accuracy (meters), derived from URA index
-  - `svhealth::String`: 6-bit satellite health status ("000000" = healthy)
+  - `sv_health::String`: 6-bit satellite health status ("000000" = healthy)
   - `IODC::String`: Issue of Data, Clock (10-bit binary string)
   - `l2pcode::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
   - `T_GD::Float64`: L1-L2 group delay correction (seconds)
@@ -152,7 +152,7 @@ Base.@kwdef struct GPSL1CAData <: AbstractGNSSData
     trans_week::Union{Nothing,Int64} = nothing
     codeonl2::Union{Nothing,Int64} = nothing
     ura::Union{Nothing,Float64} = nothing
-    svhealth::Union{Nothing,String} = nothing
+    sv_health::Union{Nothing,String} = nothing
     IODC::Union{Nothing,String} = nothing
     l2pcode::Union{Nothing,Bool} = nothing
     T_GD::Union{Nothing,Float64} = nothing
@@ -230,7 +230,7 @@ function GPSL1CAData(
     trans_week = data.trans_week,
     codeonl2 = data.codeonl2,
     ura = data.ura,
-    svhealth = data.svhealth,
+    sv_health = data.sv_health,
     IODC = data.IODC,
     l2pcode = data.l2pcode,
     T_GD = data.T_GD,
@@ -290,7 +290,7 @@ function GPSL1CAData(
         trans_week,
         codeonl2,
         ura,
-        svhealth,
+        sv_health,
         IODC,
         l2pcode,
         T_GD,
@@ -409,7 +409,7 @@ function is_subframe1_decoded(data::GPSL1CAData)
     !isnothing(data.trans_week) &&
         !isnothing(data.codeonl2) &&
         !isnothing(data.ura) &&
-        !isnothing(data.svhealth) &&
+        !isnothing(data.sv_health) &&
         !isnothing(data.IODC) &&
         !isnothing(data.l2pcode) &&
         !isnothing(data.T_GD) &&
@@ -731,12 +731,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             end
 
             # Satellite Health
-            svhealth = bitstring(get_bits(word3, 30, 17, 6))[(end-5):end]
+            sv_health = bitstring(get_bits(word3, 30, 17, 6))[(end-5):end]
             if get_bit(word3, 30, 17)
-                @warn "Bad LNAV Data, SV-Health critical", svhealth
+                @warn "Bad LNAV Data, SV-Health critical", sv_health
             end
 
-            GPSL1CAData(state.raw_data; trans_week, codeonl2, ura, svhealth)
+            GPSL1CAData(state.raw_data; trans_week, codeonl2, ura, sv_health)
         end
 
         state = can_decode_two_words(state, buffer, 3, 8) do word3, word8, state
@@ -1270,8 +1270,8 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
         Ω_0 = alm_Ω_0,
         ω = alm_ω,
         M_0 = alm_M_0,
-        af0 = alm_af0,
-        af1 = alm_af1,
+        a_f0 = alm_af0,
+        a_f1 = alm_af1,
     )
 
     almanac = something(state.raw_data.almanac, Dictionary{Int64,GPSL1CAAlmanac}())
@@ -1405,13 +1405,13 @@ $(TYPEDSIGNATURES)
 
 Check if the GPS satellite is healthy and usable for positioning.
 
-Examines the 6-bit satellite health field (`svhealth`) from subframe 1. A satellite
+Examines the 6-bit satellite health field (`sv_health`) from subframe 1. A satellite
 is considered healthy only if all health bits are zero (`"000000"`).
 
 !!! warning
 
     This function requires that subframe 1 has been successfully decoded.
-    Check that `state.data.svhealth` is not `nothing` before relying on this result.
+    Check that `state.data.sv_health` is not `nothing` before relying on this result.
 
 # Arguments
 
@@ -1437,5 +1437,5 @@ end
   - [`decode`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GPSL1CAData})
-    state.data.svhealth == "000000"
+    state.data.sv_health == "000000"
 end

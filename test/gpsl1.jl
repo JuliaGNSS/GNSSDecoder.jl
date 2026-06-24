@@ -254,8 +254,8 @@ end
                 Ω_0 = Ω_0_values[prn],
                 ω = ω_values[prn],
                 M_0 = M_0_values[prn],
-                af0 = af0_values[prn],
-                af1 = af1_values[prn],
+                a_f0 = af0_values[prn],
+                a_f1 = af1_values[prn],
             ) for prn in prns
         ],
     )
@@ -268,7 +268,7 @@ end
         trans_week = 58,
         codeonl2 = 1,
         ura = 2.0,
-        svhealth = "000000",
+        sv_health = "000000",
         IODC = "0000000001",
         l2pcode = false,
         T_GD = 9.313225746154785e-10,
