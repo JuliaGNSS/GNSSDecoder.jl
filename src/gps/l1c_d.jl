@@ -348,7 +348,7 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
     "GGTO ID" by IRN-IS-800J-003.)
   - `t_EOP::Int64`: EOP reference time of week (s).
   - `PM_X,PM_X_dot,PM_Y,PM_Y_dot::Float64`: polar-motion values/rates.
-  - `ΔUT1,ΔUT1_dot::Float64`: UT1-UTC difference and rate.
+  - `ΔUT_GPS,ΔUT_GPS_dot::Float64`: UT1-GPS (UT1−GPST) difference and rate.
 
 ## Pages 3/4/5 — keyed dictionaries (`nothing` until first decoded)
 
@@ -442,8 +442,8 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGNSSData
     PM_X_dot::Union{Nothing,Float64} = nothing
     PM_Y::Union{Nothing,Float64} = nothing
     PM_Y_dot::Union{Nothing,Float64} = nothing
-    ΔUT1::Union{Nothing,Float64} = nothing
-    ΔUT1_dot::Union{Nothing,Float64} = nothing
+    ΔUT_GPS::Union{Nothing,Float64} = nothing
+    ΔUT_GPS_dot::Union{Nothing,Float64} = nothing
 
     # --- Subframe 3, pages 3/4/5: per-SV keyed dictionaries ---
     reduced_almanacs::Union{Nothing,Dictionary{Int,GPSL1C_DReducedAlmanac}} = nothing
@@ -527,8 +527,8 @@ function GPSL1C_DData(
     PM_X_dot = data.PM_X_dot,
     PM_Y = data.PM_Y,
     PM_Y_dot = data.PM_Y_dot,
-    ΔUT1 = data.ΔUT1,
-    ΔUT1_dot = data.ΔUT1_dot,
+    ΔUT_GPS = data.ΔUT_GPS,
+    ΔUT_GPS_dot = data.ΔUT_GPS_dot,
     reduced_almanacs = data.reduced_almanacs,
     midi_almanacs = data.midi_almanacs,
     differential_corrections = data.differential_corrections,
@@ -602,8 +602,8 @@ function GPSL1C_DData(
         PM_X_dot,
         PM_Y,
         PM_Y_dot,
-        ΔUT1,
-        ΔUT1_dot,
+        ΔUT_GPS,
+        ΔUT_GPS_dot,
         reduced_almanacs,
         midi_almanacs,
         differential_corrections,
@@ -1095,14 +1095,14 @@ function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         # EOP (Table 3.5-5). All fields are contiguous in the info block; Figure
         # 3.5-3 only *draws* PM_X across its 100-bit row boundary — the 2 MSBs end
         # row 1 (bits 99-100) and the 19 LSBs begin row 2 (bits 101-119) — so the
-        # plain 21-bit read at bit 99 is correct (likewise ΔUT1 spans the next row).
+        # plain 21-bit read at bit 99 is correct (likewise ΔUT_GPS spans the next row).
         t_EOP = Int(get_bits(word, word_length, 83, 16)) * 2^4,
         PM_X = get_twos_complement_num(word, word_length, 99, 21) * 2.0^-20,
         PM_X_dot = get_twos_complement_num(word, word_length, 120, 15) * 2.0^-21,
         PM_Y = get_twos_complement_num(word, word_length, 135, 21) * 2.0^-20,
         PM_Y_dot = get_twos_complement_num(word, word_length, 156, 15) * 2.0^-21,
-        ΔUT1 = get_twos_complement_num(word, word_length, 171, 31) * 2.0^-24,
-        ΔUT1_dot = get_twos_complement_num(word, word_length, 202, 19) * 2.0^-25,
+        ΔUT_GPS = get_twos_complement_num(word, word_length, 171, 31) * 2.0^-23,
+        ΔUT_GPS_dot = get_twos_complement_num(word, word_length, 202, 19) * 2.0^-25,
     )
 end
 

@@ -412,8 +412,8 @@ end
             _setbits!(b, 120, 15, -55)    # PM_X_dot
             _setbits!(b, 135, 21, -4321)  # PM_Y
             _setbits!(b, 156, 15, 77)     # PM_Y_dot
-            _setbits!(b, 171, 31, 100000) # ΔUT1
-            _setbits!(b, 202, 19, -250)   # ΔUT1_dot
+            _setbits!(b, 171, 31, 100000) # ΔUT_GPS
+            _setbits!(b, 202, 19, -250)   # ΔUT_GPS_dot
         end)
         d = st.data
         @test d.GGTO_ID == 1
@@ -427,8 +427,8 @@ end
         @test d.PM_X_dot ≈ -55 * 2.0^-21
         @test d.PM_Y ≈ -4321 * 2.0^-20
         @test d.PM_Y_dot ≈ 77 * 2.0^-21
-        @test d.ΔUT1 ≈ 100000 * 2.0^-24
-        @test d.ΔUT1_dot ≈ -250 * 2.0^-25
+        @test d.ΔUT_GPS ≈ 100000 * 2.0^-23
+        @test d.ΔUT_GPS_dot ≈ -250 * 2.0^-25
     end
 
     @testset "SF3 page 3 — reduced almanac (multi-packet)" begin
