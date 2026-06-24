@@ -400,20 +400,31 @@ end
     end
 
     @testset "SF3 page 2 — GGTO + EOP" begin
+        # The EOP fields are anchored to Spirent's GSS L1C reference capture.
+        # The raw integers fed in below are exactly what Spirent transmitted; the
+        # assertions are the physical values Spirent's *own* reference decoder
+        # reported.
+        #
+        # Spirent prints the 31-bit field as Delta_UT1 = UT1−UTC with the
+        # pre-Rev-G scale 2⁻²⁴ (-0.25315952301025391 s). IS-GPS-800J Table 3.5-5
+        # redefines it as ΔUT_GPS = UT1−GPS with scale 2⁻²³ — exactly twice that.
         st = decode_with_sf3(build_sf3_page(7, 2) do b
-            _setbits!(b, 15, 3, 1)        # GGTO_ID = Galileo
-            _setbits!(b, 18, 16, 50)      # tGGTO (scale 2^4)
-            _setbits!(b, 34, 13, 2100)    # WNGGTO
-            _setbits!(b, 47, 16, 800)     # A0GGTO
-            _setbits!(b, 63, 13, -200)    # A1GGTO
-            _setbits!(b, 76, 7, 2)        # A2GGTO
-            _setbits!(b, 83, 16, 60)      # tEOP (scale 2^4)
-            _setbits!(b, 99, 21, 1234)    # PM_X
-            _setbits!(b, 120, 15, -55)    # PM_X_dot
-            _setbits!(b, 135, 21, -4321)  # PM_Y
-            _setbits!(b, 156, 15, 77)     # PM_Y_dot
-            _setbits!(b, 171, 31, 100000) # ΔUT_GPS
-            _setbits!(b, 202, 19, -250)   # ΔUT_GPS_dot
+            # GGTO — synthetic non-zero values (the capture carries no GGTO data:
+            # GNSS ID = 0, all coefficients 0), kept to exercise the GGTO scaling.
+            _setbits!(b, 15, 3, 1)             # GGTO_ID = Galileo
+            _setbits!(b, 18, 16, 50)           # tGGTO (scale 2^4)
+            _setbits!(b, 34, 13, 2100)         # WNGGTO
+            _setbits!(b, 47, 16, 800)          # A0GGTO
+            _setbits!(b, 63, 13, -200)         # A1GGTO
+            _setbits!(b, 76, 7, 2)             # A2GGTO
+            # EOP — raw values as transmitted in the Spirent capture (message 2).
+            _setbits!(b, 83, 16, 16200)        # tEOP         -> 259200 s
+            _setbits!(b, 99, 21, 111281)       # PM_X         -> 0.10612583160400391
+            _setbits!(b, 120, 15, 2779)        # PM_X_dot     -> 0.0013251304626464844
+            _setbits!(b, 135, 21, 467600)      # PM_Y         -> 0.4459381103515625
+            _setbits!(b, 156, 15, 843)         # PM_Y_dot     -> 0.00040197372436523438
+            _setbits!(b, 171, 31, -4247312)    # ΔUT_GPS raw  -> Spirent UT1−UTC @2⁻²⁴
+            _setbits!(b, 202, 19, -15502)      # ΔUT_GPS_dot  -> -0.00046199560165405273
         end)
         d = st.data
         @test d.GGTO_ID == 1
@@ -422,13 +433,16 @@ end
         @test d.A0_GGTO ≈ 800 * 2.0^-35
         @test d.A1_GGTO ≈ -200 * 2.0^-51
         @test d.A2_GGTO ≈ 2 * 2.0^-68
-        @test d.t_EOP == 60 * 16
-        @test d.PM_X ≈ 1234 * 2.0^-20
-        @test d.PM_X_dot ≈ -55 * 2.0^-21
-        @test d.PM_Y ≈ -4321 * 2.0^-20
-        @test d.PM_Y_dot ≈ 77 * 2.0^-21
-        @test d.ΔUT_GPS ≈ 100000 * 2.0^-23
-        @test d.ΔUT_GPS_dot ≈ -250 * 2.0^-25
+        # EOP — Spirent reference-decoder values (independent of our scale LSBs).
+        @test d.t_EOP == 259200
+        @test d.PM_X ≈ 0.10612583160400391
+        @test d.PM_X_dot ≈ 0.0013251304626464844
+        @test d.PM_Y ≈ 0.4459381103515625
+        @test d.PM_Y_dot ≈ 0.00040197372436523438
+        # Rev-J ΔUT_GPS = 2 × Spirent's UT1−UTC (2⁻²³ vs Spirent's 2⁻²⁴); a
+        # regression to 2⁻²⁴ would reproduce Spirent's value and FAIL here.
+        @test d.ΔUT_GPS ≈ 2 * -0.25315952301025391
+        @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273
     end
 
     @testset "SF3 page 3 — reduced almanac (multi-packet)" begin
