@@ -309,7 +309,7 @@ first decoded.
   - `Ω_0::Float64`: Reference right ascension angle (rad).
   - `i_0::Float64`: Inclination angle at reference time (rad).
   - `ΔΩ_dot::Float64`: Rate of right ascension difference (rad/s).
-  - `i_0_dot::Float64`: Rate of inclination angle (rad/s).
+  - `i_dot::Float64`: Rate of inclination angle (rad/s).
   - `C_is::Float64`, `C_ic::Float64`: Sine/cosine inclination harmonic corrections (rad).
   - `C_rs::Float64`, `C_rc::Float64`: Sine/cosine orbit-radius harmonic corrections (m).
   - `C_us::Float64`, `C_uc::Float64`: Sine/cosine argument-of-latitude harmonic corrections (rad).
@@ -336,7 +336,7 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
   - `t_ot::Int64`: UTC reference time of week (s).
   - `WN_ot,WN_LSF::Int64`: UTC and leap-second reference week numbers.
   - `DN::Int64`: leap-second reference day number (1-7).
-  - `α0,α1,α2,α3,β0,β1,β2,β3::Float64`: Klobuchar ionospheric coefficients.
+  - `α_0,α_1,α_2,α_3,β_0,β_1,β_2,β_3::Float64`: Klobuchar ionospheric coefficients.
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
 
 ## Page 2 — GGTO + EOP
@@ -391,7 +391,7 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGNSSData
     Ω_0::Union{Nothing,Float64} = nothing
     i_0::Union{Nothing,Float64} = nothing
     ΔΩ_dot::Union{Nothing,Float64} = nothing
-    i_0_dot::Union{Nothing,Float64} = nothing
+    i_dot::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
     C_ic::Union{Nothing,Float64} = nothing
     C_rs::Union{Nothing,Float64} = nothing
@@ -417,14 +417,14 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGNSSData
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
-    α0::Union{Nothing,Float64} = nothing
-    α1::Union{Nothing,Float64} = nothing
-    α2::Union{Nothing,Float64} = nothing
-    α3::Union{Nothing,Float64} = nothing
-    β0::Union{Nothing,Float64} = nothing
-    β1::Union{Nothing,Float64} = nothing
-    β2::Union{Nothing,Float64} = nothing
-    β3::Union{Nothing,Float64} = nothing
+    α_0::Union{Nothing,Float64} = nothing
+    α_1::Union{Nothing,Float64} = nothing
+    α_2::Union{Nothing,Float64} = nothing
+    α_3::Union{Nothing,Float64} = nothing
+    β_0::Union{Nothing,Float64} = nothing
+    β_1::Union{Nothing,Float64} = nothing
+    β_2::Union{Nothing,Float64} = nothing
+    β_3::Union{Nothing,Float64} = nothing
     ISC_L1CA::Union{Nothing,Float64} = nothing
     ISC_L2C::Union{Nothing,Float64} = nothing
     ISC_L5I5::Union{Nothing,Float64} = nothing
@@ -481,7 +481,7 @@ function GPSL1C_DData(
     Ω_0 = data.Ω_0,
     i_0 = data.i_0,
     ΔΩ_dot = data.ΔΩ_dot,
-    i_0_dot = data.i_0_dot,
+    i_dot = data.i_dot,
     C_is = data.C_is,
     C_ic = data.C_ic,
     C_rs = data.C_rs,
@@ -504,14 +504,14 @@ function GPSL1C_DData(
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
-    α0 = data.α0,
-    α1 = data.α1,
-    α2 = data.α2,
-    α3 = data.α3,
-    β0 = data.β0,
-    β1 = data.β1,
-    β2 = data.β2,
-    β3 = data.β3,
+    α_0 = data.α_0,
+    α_1 = data.α_1,
+    α_2 = data.α_2,
+    α_3 = data.α_3,
+    β_0 = data.β_0,
+    β_1 = data.β_1,
+    β_2 = data.β_2,
+    β_3 = data.β_3,
     ISC_L1CA = data.ISC_L1CA,
     ISC_L2C = data.ISC_L2C,
     ISC_L5I5 = data.ISC_L5I5,
@@ -556,7 +556,7 @@ function GPSL1C_DData(
         Ω_0,
         i_0,
         ΔΩ_dot,
-        i_0_dot,
+        i_dot,
         C_is,
         C_ic,
         C_rs,
@@ -579,14 +579,14 @@ function GPSL1C_DData(
         WN_LSF,
         DN,
         Δt_LSF,
-        α0,
-        α1,
-        α2,
-        α3,
-        β0,
-        β1,
-        β2,
-        β3,
+        α_0,
+        α_1,
+        α_2,
+        α_3,
+        β_0,
+        β_1,
+        β_2,
+        β_3,
         ISC_L1CA,
         ISC_L2C,
         ISC_L5I5,
@@ -935,7 +935,7 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     Ω_0 = get_twos_complement_num(word, word_length, 240, 33) * 2.0^-32 * PI
     i_0 = get_twos_complement_num(word, word_length, 273, 33) * 2.0^-32 * PI
     ΔΩ_dot = get_twos_complement_num(word, word_length, 306, 17) * 2.0^-44 * PI
-    i_0_dot = get_twos_complement_num(word, word_length, 323, 15) * 2.0^-44 * PI
+    i_dot = get_twos_complement_num(word, word_length, 323, 15) * 2.0^-44 * PI
     C_is = get_twos_complement_num(word, word_length, 338, 16) * 2.0^-30
     C_ic = get_twos_complement_num(word, word_length, 354, 16) * 2.0^-30
     C_rs = get_twos_complement_num(word, word_length, 370, 24) * 2.0^-8
@@ -970,7 +970,7 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
         Ω_0,
         i_0,
         ΔΩ_dot,
-        i_0_dot,
+        i_dot,
         C_is,
         C_ic,
         C_rs,
@@ -1062,14 +1062,14 @@ function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         Δt_LSF = get_twos_complement_num(word, word_length, 105, 8),
         # Klobuchar ionospheric coefficients (IS-GPS-200 Table 20-X; all 8-bit
         # two's-complement, scaled in seconds / seconds-per-semicircle^n).
-        α0 = get_twos_complement_num(word, word_length, 113, 8) * 2.0^-30,
-        α1 = get_twos_complement_num(word, word_length, 121, 8) * 2.0^-27,
-        α2 = get_twos_complement_num(word, word_length, 129, 8) * 2.0^-24,
-        α3 = get_twos_complement_num(word, word_length, 137, 8) * 2.0^-24,
-        β0 = get_twos_complement_num(word, word_length, 145, 8) * 2.0^11,
-        β1 = get_twos_complement_num(word, word_length, 153, 8) * 2.0^14,
-        β2 = get_twos_complement_num(word, word_length, 161, 8) * 2.0^16,
-        β3 = get_twos_complement_num(word, word_length, 169, 8) * 2.0^16,
+        α_0 = get_twos_complement_num(word, word_length, 113, 8) * 2.0^-30,
+        α_1 = get_twos_complement_num(word, word_length, 121, 8) * 2.0^-27,
+        α_2 = get_twos_complement_num(word, word_length, 129, 8) * 2.0^-24,
+        α_3 = get_twos_complement_num(word, word_length, 137, 8) * 2.0^-24,
+        β_0 = get_twos_complement_num(word, word_length, 145, 8) * 2.0^11,
+        β_1 = get_twos_complement_num(word, word_length, 153, 8) * 2.0^14,
+        β_2 = get_twos_complement_num(word, word_length, 161, 8) * 2.0^16,
+        β_3 = get_twos_complement_num(word, word_length, 169, 8) * 2.0^16,
         # Inter-signal corrections (Fig 3.5-2; 13-bit two's complement, 2^-35 s).
         ISC_L1CA = get_twos_complement_num(word, word_length, 177, 13) * 2.0^-35,
         ISC_L2C = get_twos_complement_num(word, word_length, 190, 13) * 2.0^-35,
