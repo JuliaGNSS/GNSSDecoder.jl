@@ -2,18 +2,23 @@
 # (250 syncro + 10 preamble) hard-sliced for the bit-pattern preamble check.
 BitIntegers.@define_integers 288
 
-# Galileo E1B uses the rate-1/2, constraint-length-7 (K=7) non-systematic
-# convolutional (NSC) FEC with generator polynomials G1 = 0o171, G2 = 0o133
-# (Galileo OS SIS ICD, Issue 2.2, §4.1.4). After the 30×8 block deinterleave a
-# page carries 240 encoded symbols which the Viterbi decoder maps back to 120
-# trellis steps: 114 information bits + 6 tail bits. AFF3CT's `ConvViterbiDecoder`
-# is configured with K = 114, N = 240 and the same polynomials; it applies the
-# trellis termination internally and returns exactly the 114 information bits
-# (the 6 tail bits are consumed by termination and never surface), which is
-# precisely the per-page payload the I/NAV parser expects.
+# Galileo E1B uses the shared K=7 NSC FEC (`GALILEO_VITERBI_POLY`, see
+# `galileo.jl`). After the 30×8 block deinterleave a page carries 240 encoded
+# symbols which the Viterbi decoder maps back to 120 trellis steps: 114
+# information bits + 6 tail bits. AFF3CT's `ConvViterbiDecoder` is configured with
+# K = 114, N = 240 and those polynomials; it applies the trellis termination
+# internally and returns exactly the 114 information bits (the 6 tail bits are
+# consumed by termination and never surface), which is precisely the per-page
+# payload the I/NAV parser expects. The interleaver shape below is passed to the
+# shared `galileo_viterbi` helper at decode time.
 const GALILEO_E1B_VITERBI_K = 114
 const GALILEO_E1B_VITERBI_N = 240
-const GALILEO_E1B_VITERBI_POLY = [0o171, 0o133]
+
+# Block deinterleaver dimensions for E1B: the ICD interleaver is 8 rows × 30
+# columns; `deinterleave`'s first argument is the ICD column count and the second
+# the ICD row count, so E1B uses `(30, 8)` (cf. E5a's `(61, 8)`).
+const GALILEO_E1B_INTERLEAVER_ROWS = 30
+const GALILEO_E1B_INTERLEAVER_COLS = 8
 
 """
     GalileoE1BConstants
@@ -43,144 +48,11 @@ Base.@kwdef struct GalileoE1BConstants <: AbstractGNSSConstants
     syncro_sequence_length::Int = 250
     preamble::UInt16 = 0b0101100000
     preamble_length::Int = 10
-    PI::Float64 = 3.1415926535898
-    Ω_dot_e::Float64 = 7.2921151467e-5
-    c::Float64 = 2.99792458e8
-    μ::Float64 = 3.986004418e14
-    F::Float64 = -4.442807309e-10
-end
-
-"""
-    SignalHealth
-
-Galileo signal health status enumeration.
-
-Indicates the operational status of a Galileo signal component as broadcast in word type 5.
-
-# Values
-
-  - `signal_ok`: Signal is operating normally (value 0)
-  - `signal_out_of_service`: Signal is out of service (value 1)
-  - `signal_in_extended_operations_mode`: Signal is in Extended Operations Mode (value 2)
-  - `signal_component_currently_in_test`: Signal component is currently in test (value 3)
-
-# Reference
-
-Galileo OS SIS ICD, Issue 2.2, Table 84
-"""
-@enum SignalHealth begin
-    signal_ok
-    signal_out_of_service
-    signal_in_extended_operations_mode
-    signal_component_currently_in_test
-end
-
-"""
-    DataValidityStatus
-
-Galileo navigation data validity status enumeration.
-
-Indicates whether the broadcast navigation data should be trusted for positioning.
-
-# Values
-
-  - `navigation_data_valid`: Navigation data is valid (value 0)
-  - `working_without_guarantee`: Navigation data is working without guarantee (value 1)
-
-# Reference
-
-Galileo OS SIS ICD, Issue 2.2, Table 81
-"""
-@enum DataValidityStatus begin
-    navigation_data_valid
-    working_without_guarantee
-end
-
-"""
-    GalileoAlmanac
-
-Almanac data for one Galileo satellite, decoded from word types 7-10.
-
-The almanac provides reduced-precision orbital and clock parameters for predicting
-satellite positions and selecting satellites for tracking. Differences (`Δsqrt_A`,
-`δi`) are relative to nominal Galileo constellation values (`A_nominal = 29600.318 km`,
-`i_nominal = 56°`).
-
-# Fields
-
-  - `SVID::Int`: Satellite identifier (1-36 nominal range; 0 = unused entry)
-  - `Δsqrt_A::Float64`: Difference of √(semi-major axis) from nominal (√m)
-  - `e::Float64`: Eccentricity (dimensionless)
-  - `ω::Float64`: Argument of perigee (semi-circles)
-  - `δi::Float64`: Inclination delta from nominal (semi-circles)
-  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
-  - `Ω_dot::Float64`: Rate of change of right ascension (semi-circles/s)
-  - `M_0::Float64`: Mean anomaly at reference time (semi-circles)
-  - `a_f0::Float64`: Truncated SV clock bias (seconds)
-  - `a_f1::Float64`: Truncated SV clock drift (s/s)
-  - `signal_health_e5b::SignalHealth`: Predicted E5b signal health status
-  - `signal_health_e1b::SignalHealth`: Predicted E1-B/C signal health status
-  - `IOD_a::Int`: Almanac IOD
-  - `WN_a::Int`: Almanac reference Week Number
-  - `t_0a::Int`: Almanac reference time (seconds)
-
-# Reference
-
-Galileo OS SIS ICD, Issue 2.2, Table 86
-"""
-Base.@kwdef struct GalileoAlmanac
-    SVID::Union{Nothing,Int} = nothing
-    Δsqrt_A::Union{Nothing,Float64} = nothing
-    e::Union{Nothing,Float64} = nothing
-    ω::Union{Nothing,Float64} = nothing
-    δi::Union{Nothing,Float64} = nothing
-    Ω_0::Union{Nothing,Float64} = nothing
-    Ω_dot::Union{Nothing,Float64} = nothing
-    M_0::Union{Nothing,Float64} = nothing
-    a_f0::Union{Nothing,Float64} = nothing
-    a_f1::Union{Nothing,Float64} = nothing
-    signal_health_e5b::Union{Nothing,SignalHealth} = nothing
-    signal_health_e1b::Union{Nothing,SignalHealth} = nothing
-    IOD_a::Union{Nothing,Int} = nothing
-    WN_a::Union{Nothing,Int} = nothing
-    t_0a::Union{Nothing,Int} = nothing
-end
-
-function GalileoAlmanac(
-    a::GalileoAlmanac;
-    SVID = a.SVID,
-    Δsqrt_A = a.Δsqrt_A,
-    e = a.e,
-    ω = a.ω,
-    δi = a.δi,
-    Ω_0 = a.Ω_0,
-    Ω_dot = a.Ω_dot,
-    M_0 = a.M_0,
-    a_f0 = a.a_f0,
-    a_f1 = a.a_f1,
-    signal_health_e5b = a.signal_health_e5b,
-    signal_health_e1b = a.signal_health_e1b,
-    IOD_a = a.IOD_a,
-    WN_a = a.WN_a,
-    t_0a = a.t_0a,
-)
-    GalileoAlmanac(
-        SVID,
-        Δsqrt_A,
-        e,
-        ω,
-        δi,
-        Ω_0,
-        Ω_dot,
-        M_0,
-        a_f0,
-        a_f1,
-        signal_health_e5b,
-        signal_health_e1b,
-        IOD_a,
-        WN_a,
-        t_0a,
-    )
+    PI::Float64 = GNSS_PI
+    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
+    c::Float64 = SPEED_OF_LIGHT
+    μ::Float64 = GALILEO_μ
+    F::Float64 = GALILEO_F
 end
 
 """
@@ -275,7 +147,7 @@ GalileoE1BCache() = GalileoE1BCache(
     Aff3ct.ConvViterbiDecoder(
         GALILEO_E1B_VITERBI_K,
         GALILEO_E1B_VITERBI_N,
-        GALILEO_E1B_VITERBI_POLY,
+        GALILEO_VITERBI_POLY,
     ),
 )
 
@@ -802,22 +674,20 @@ order on the soft symbols:
 The 114 decoded bits are packed MSB-first into the low bits of a `UInt128`,
 matching the legacy hard-bit `parse(UInt128, ...; base = 2)` layout the parser
 consumes.
+
+Thin wrapper over the shared [`galileo_viterbi`](@ref) with E1B's 30×8 interleaver
+shape and `UInt128` payload type.
 """
-function galileo_e1b_viterbi(
+galileo_e1b_viterbi(
     decoder::Aff3ct.ConvViterbiDecoder,
     soft_page::AbstractVector{Float32},
+) = galileo_viterbi(
+    decoder,
+    soft_page,
+    GALILEO_E1B_INTERLEAVER_ROWS,
+    GALILEO_E1B_INTERLEAVER_COLS,
+    UInt128,
 )
-    deinterleaved = deinterleave(soft_page, 30, 8)
-    @inbounds for i = 2:2:length(deinterleaved)
-        deinterleaved[i] = -deinterleaved[i]
-    end
-    info_bits = Aff3ct.decode(decoder, deinterleaved)
-    bits = UInt128(0)
-    @inbounds for b in info_bits
-        bits = (bits << 1) | UInt128(b)
-    end
-    return bits
-end
 
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE1BData}, buffer)
     # The 240 encoded symbols are the soft-buffer entries between the leading

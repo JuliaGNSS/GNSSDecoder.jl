@@ -18,6 +18,7 @@ export decode,
     GPSL5IEphemerisDifferentialCorrection,
     GPSL5IIntegritySupportMessage,
     GalileoE1BDecoderState,
+    GalileoE5aDecoderState,
     is_sat_healthy,
     GNSSDecoderState,
     reset_decoder_state
@@ -44,7 +45,20 @@ include("bch_toi.jl")
 include("deinterleave.jl")
 
 include("gps/l1ca.jl")
+
+# Definitions shared across Galileo signals (the `SignalHealth` /
+# `DataValidityStatus` enums, the `GalileoAlmanac` record, the common K=7 NSC
+# `galileo_viterbi` FEC primitive). Included before the per-signal Galileo
+# decoders, which all consume it — analogous to how `gnss.jl` precedes every
+# signal. Itself depends only on the earlier shared utilities (`deinterleave`,
+# `bit_fiddling`) and `Aff3ct`.
+include("galileo/galileo.jl")
 include("galileo/e1b.jl")
+
+# Galileo E5a (F/NAV) decoder. Consumes the shared Galileo definitions above
+# (`galileo/galileo.jl`) plus `crc24q`, `deinterleave`, and the generic `decode`
+# framework hooks.
+include("galileo/e5a.jl")
 
 # GPS L1C-D (CNAV-2) decoder (issue #38). Included after the shared utilities
 # above because it consumes `crc24q`, `sync_bch_toi`, the BCH TOI table, and
