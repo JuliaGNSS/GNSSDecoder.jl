@@ -18,6 +18,17 @@ code; this file is for naming and meaning only.
 - **Galileo E1B** (`GalileoE1B`) — 250 sps I/NAV nominal pages over a K=7
   rate-1/2 convolutional code plus 30×8 block interleaver. Page = 250 channel
   symbols = 1 second. Two consecutive pages (even+odd) carry one word.
+- **Galileo E5a** (`GalileoE5aDecoderState`) — 50 sps F/NAV broadcast on the
+  E5a-I component. Page = 500 channel symbols = 10 seconds = a 12-symbol sync
+  pattern + 488 encoded symbols. Same K=7 rate-1/2 NSC convolutional code as
+  E1B (G1 = 0o171, G2 = 0o133, G2 inverted) but a 61×8 block interleaver; one
+  page decodes to 238 information bits (page type + data + CRC). Unlike I/NAV,
+  each page is a complete, independently CRC-protected word (no even/odd
+  stitching). Word types 1-4 carry clock/iono/health (WT1), ephemeris (WT2-3),
+  and GST-UTC/GGTO + Cic/Cis (WT4); word types 5-6 carry the almanac chain.
+  F/NAV rides on the E5a-I (data) component, so `GNSSDecoderState(::GalileoE5aI,
+  prn)` maps here (E5a-Q is the dataless pilot); `GalileoE5aDecoderState(prn)` is
+  the equivalent direct constructor.
 
 ## Frame structure terms
 
@@ -90,6 +101,9 @@ lives in the `cache`.
   TOW-continuity check across two subframes to confirm.
 - **Galileo E1B**: fixed 10-bit page-sync pattern `0101100000` at the start of
   every page (in the encoded symbol stream).
+- **Galileo E5a**: fixed 12-symbol F/NAV sync pattern `101101110000` at the
+  start of every page; matched at both ends of the 500-symbol page window, in
+  either polarity (180-degree ambiguity), exactly like E1B.
 - **L1C-D**: no fixed preamble. Sync via BCH match on the 52-symbol TOI fields
   of *two consecutive subframes*: pick TOI such that subframe N's BCH matches
   TOI=t and subframe N+1's matches TOI=t+1 (mod 400). Handles polarity

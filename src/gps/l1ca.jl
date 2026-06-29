@@ -32,9 +32,9 @@ Base.@kwdef struct GPSL1CAConstants <: AbstractGNSSConstants
     preamble::UInt8 = 0b10001011
     preamble_length::Int = 8
     word_length::Int = 30
-    PI::Float64 = 3.1415926535898
-    Ω_dot_e::Float64 = 7.2921151467e-5
-    c::Float64 = 2.99792458e8
+    PI::Float64 = GNSS_PI
+    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
+    c::Float64 = SPEED_OF_LIGHT
     μ::Float64 = 3.986005e14
     F::Float64 = -4.442807633e-10
 end

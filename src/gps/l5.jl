@@ -73,15 +73,15 @@ Base.@kwdef struct GPSL5IConstants <: AbstractGNSSConstants
     """
     Mathematical constant π (IS-GPS-705J Table 20-II)
     """
-    PI::Float64 = 3.1415926535898
+    PI::Float64 = GNSS_PI
     """
     WGS 84 Earth rotation rate (rad/s)
     """
-    Ω_dot_e::Float64 = 7.2921151467e-5
+    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
     """
     Speed of light (m/s)
     """
-    c::Float64 = 2.99792458e8
+    c::Float64 = SPEED_OF_LIGHT
     """
     WGS 84 Earth gravitational parameter (m³/s²)
     """

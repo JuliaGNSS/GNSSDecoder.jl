@@ -11,6 +11,7 @@ GNSSDecoderState
 ```@docs
 GPSL1CADecoderState
 GalileoE1BDecoderState
+GalileoE5aDecoderState
 GPSL1C_DDecoderState
 GPSL5IDecoderState
 ```
@@ -64,6 +65,13 @@ GNSSDecoder.GalileoE1BConstants
 GNSSDecoder.GalileoE1BData
 GNSSDecoder.SignalHealth
 GNSSDecoder.DataValidityStatus
+```
+
+### Galileo E5a
+
+```@docs
+GNSSDecoder.GalileoE5aConstants
+GNSSDecoder.GalileoE5aData
 ```
 
 ### GPS L1C-D

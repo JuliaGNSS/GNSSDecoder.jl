@@ -37,6 +37,7 @@ end
     include("gps_l1c_d.jl")
     include("gps_l5i.jl")
     include("galileo_e1b.jl")
+    include("galileo_e5a.jl")
 
     # v2 shared-utility deep-module tests (issue #36)
     include("crc.jl")
