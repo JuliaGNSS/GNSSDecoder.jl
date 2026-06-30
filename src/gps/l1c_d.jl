@@ -1002,15 +1002,6 @@ end
 # implemented: page 1 carries the four ISC fields that pre-IRN-J recordings
 # lack, so older recordings are out of scope.
 
-"""
-Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.
-"""
-function _merge_keyed(dict::Union{Nothing,Dictionary{Int,V}}, key::Int, value::V) where {V}
-    out = isnothing(dict) ? Dictionary{Int,V}() : copy(dict)
-    set!(out, key, value)
-    return out
-end
-
 function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
     word =
         ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, L1C_D_SF3_INFO_BITS, UInt288)

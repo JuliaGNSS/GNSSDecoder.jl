@@ -11,12 +11,13 @@ export decode,
     GPSL1C_DMidiAlmanac,
     GPSL1C_DDifferentialCorrection,
     GPSL5IDecoderState,
-    GPSL5IData,
-    GPSL5IReducedAlmanac,
-    GPSL5IMidiAlmanac,
-    GPSL5IClockDifferentialCorrection,
-    GPSL5IEphemerisDifferentialCorrection,
-    GPSL5IIntegritySupportMessage,
+    GPSCNAVData,
+    GPSCNAVReducedAlmanac,
+    GPSCNAVMidiAlmanac,
+    GPSCNAVClockDifferentialCorrection,
+    GPSCNAVEphemerisDifferentialCorrection,
+    GPSCNAVIntegritySupportMessage,
+    GPSL2CMDecoderState,
     GalileoE1BDecoderState,
     GalileoE5aDecoderState,
     is_sat_healthy,
@@ -66,9 +67,17 @@ include("galileo/e5a.jl")
 # `decode` framework hooks (`try_sync`, `decode_syncro_sequence`, …).
 include("gps/l1c_d.jl")
 
-# GPS L5I (CNAV) decoder. Included after `gps/l1ca.jl` (reuses its `UInt320`
-# packed-word type) and after `gps/l1c_d.jl` (reuses the `_deque_slice` and
-# `_merge_keyed` helpers), and consumes `crc24q` from the shared utilities
-# above.
+# Shared GPS CNAV core (the 300-bit message broadcast identically on GPS L5I,
+# IS-GPS-705J §20.3, and GPS L2C, IS-GPS-200N §30): FEC, window-Viterbi sync,
+# CRC-24Q, and all per-message-type parsing, plus the shared `GPSCNAVData`
+# container. Consumes only shared utilities included above — `crc24q` and the
+# `UInt320` / `_merge_keyed` primitives in `gnss.jl` — so it is independent of
+# the sibling signal files.
+include("gps/cnav.jl")
+
+# GPS L5I and GPS L2C signal layers — each a thin wrapper over `gps/cnav.jl`
+# (their own `*Constants` type, decoder-state constructor, and `is_sat_healthy`
+# health-bit selection). Included after the shared core they consume.
 include("gps/l5.jl")
+include("gps/l2c.jl")
 end

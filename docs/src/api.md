@@ -14,6 +14,7 @@ GalileoE1BDecoderState
 GalileoE5aDecoderState
 GPSL1C_DDecoderState
 GPSL5IDecoderState
+GPSL2CMDecoderState
 ```
 
 ## Decoding
@@ -84,14 +85,22 @@ GPSL1C_DMidiAlmanac
 GPSL1C_DDifferentialCorrection
 ```
 
-### GPS L5I
+### GPS CNAV (shared by L5I and L2C)
+
+GPS L5I and GPS L2C carry the identical CNAV message, so they share the decoded
+[`GPSCNAVData`](@ref) container (and its almanac/correction records) and one
+constants struct, [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants). The
+per-signal constants are type aliases that fix its signal tag; they differ only
+in which signal-health bit [`is_sat_healthy`](@ref) reports.
 
 ```@docs
+GNSSDecoder.GPSCNAVConstants
 GNSSDecoder.GPSL5IConstants
-GPSL5IData
-GPSL5IReducedAlmanac
-GPSL5IMidiAlmanac
-GPSL5IClockDifferentialCorrection
-GPSL5IEphemerisDifferentialCorrection
-GPSL5IIntegritySupportMessage
+GNSSDecoder.GPSL2CMConstants
+GPSCNAVData
+GPSCNAVReducedAlmanac
+GPSCNAVMidiAlmanac
+GPSCNAVClockDifferentialCorrection
+GPSCNAVEphemerisDifferentialCorrection
+GPSCNAVIntegritySupportMessage
 ```

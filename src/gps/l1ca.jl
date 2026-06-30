@@ -1,8 +1,3 @@
-# UInt320 buffer for GPS L1 (more efficient than UInt312)
-# which holds at least a complete GPS L1 subframe plus
-# 8 extra syncronization bíts
-BitIntegers.@define_integers 320
-
 """
     GPSL1CAConstants
 

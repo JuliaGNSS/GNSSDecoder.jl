@@ -6,6 +6,7 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 
 - **GPS L1 C/A**: Decodes the 50 bps LNAV data stream from GPS L1 civil signals
 - **GPS L1C-D**: Decodes the 100 sps CNAV-2 data stream from the modernized GPS L1C signal's data component
+- **GPS L2C**: Decodes the 50 sps CNAV data stream from the GPS L2 CM (civil-moderate) signal component
 - **GPS L5I**: Decodes the 100 sps CNAV data stream from the GPS L5 in-phase signal component
 - **Galileo E1B**: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals
 
@@ -128,7 +129,31 @@ julia> state.prn
 1
 
 julia> typeof(state)
-GNSSDecoderState{GPSL5IData, GNSSDecoder.GPSL5IConstants, GNSSDecoder.GPSL5ICache}
+GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
+
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia> GNSSDecoder.num_bits_buffered(state)
+10
+```
+
+### GPS L2C Decoding
+
+GPS L2C broadcasts the *same* CNAV message as GPS L5I (IS-GPS-200N §30), on the
+L2 CM component at 50 sps. Decoding therefore reuses the shared GPS CNAV core,
+and decoded fields land in the same [`GPSCNAVData`](@ref) container; only the
+health check differs (it reports the L2 signal-health bit):
+
+```jldoctest l2c_example
+julia> using GNSSDecoder
+
+julia> state = GPSL2CMDecoderState(1);  # Initialize decoder for PRN 1
+
+julia> state.prn
+1
+
+julia> typeof(state)
+GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
 
 julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 

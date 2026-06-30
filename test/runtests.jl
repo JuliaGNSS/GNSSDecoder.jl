@@ -35,7 +35,10 @@ end
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")
+    # Shared CNAV transmit-chain helpers, consumed by both the L5I and L2C tests.
+    include("cnav_test_utils.jl")
     include("gps_l5i.jl")
+    include("gps_l2cm.jl")
     include("galileo_e1b.jl")
     include("galileo_e5a.jl")
 
