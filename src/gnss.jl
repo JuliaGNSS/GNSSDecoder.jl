@@ -357,3 +357,25 @@ function decode(
     end
     return state
 end
+
+# ---- Shared GPS decoder primitives ------------------------------------------
+#
+# Signal-agnostic primitives used by more than one GPS signal decoder. They
+# live here (a shared file included before every signal) rather than in a
+# per-signal file so that no signal decoder has to be included after another
+# just to borrow them.
+
+# Packed-word integer type shared across the GPS decoders: a GPS L1 C/A
+# subframe, a GPS L1C-D subframe, and a GPS CNAV message (GPS L5I / L2C) each
+# pack into a single `UInt320` — 300 data bits plus up to 8 trailing sync bits.
+# `BitIntegers.@define_integers` also defines the signed companion `Int320`.
+BitIntegers.@define_integers 320
+
+"""
+Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.
+"""
+function _merge_keyed(dict::Union{Nothing,Dictionary{Int,V}}, key::Int, value::V) where {V}
+    out = isnothing(dict) ? Dictionary{Int,V}() : copy(dict)
+    set!(out, key, value)
+    return out
+end

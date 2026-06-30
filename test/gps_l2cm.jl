@@ -2,35 +2,39 @@ using Test
 using Random
 using GNSSDecoder
 using GNSSSignals
-using GNSSDecoder: crc24q, gps_cnav_viterbi
+using GNSSDecoder: crc24q
 
-# The CNAV transmit-chain helpers (CNAVTestEncoder, fec_encode_soft, setbits!,
-# build_mt10) live in `cnav_test_utils.jl`, included by runtests.jl before this
-# file (they are shared with the GPS L2C tests — same CNAV message).
+# GPS L2C broadcasts the same CNAV message as GPS L5I (IS-GPS-200N §30 ≡
+# IS-GPS-705J §20.3.3), so these tests reuse the shared CNAV transmit-chain
+# helpers (CNAVTestEncoder, fec_encode_soft, build_mt10) from
+# `cnav_test_utils.jl`. They focus on what is L2C-specific: the GPSL2CM
+# dispatch, that the shared decoder runs through a GPSL2CM decoder state, and
+# that `is_sat_healthy` reads the L2 health bit (53) rather than the L5 bit (54).
 
 # ---------------------------------------------------------------------------
 # Spirent fixture.
 #
-# `test/data/gps_l5i_prn25_nav_bits.bin` holds the first 26 consecutive
-# 300-bit CNAV messages of PRN 25 from a Spirent GSS7000 L5 simulation, in
-# the simulator's pre-FEC block layout (Spirent FAQ14061: 38 bytes per
-# message, 300 bits MSB-first, 4 padding LSBs in the last byte). They were
-# extracted from the GSS-CNAVDATA output (`l5_nav_data.cnv`, file type 64 =
-# L5C pre-FEC bits, one block per satellite channel per 6-second epoch in
-# round-robin order; the full recording carries 31 channels = PRN 1..31) by
-# demultiplexing satellite channel 24. The 26 messages cover one full
-# 24-message broadcast cycle, i.e. every CNAV message type the simulator
-# emits (10-15 and 30-37). The test FEC-encodes them continuously (the
-# fixture is pre-FEC, so the encoder above recreates the transmitted symbol
-# stream) and golden field values below come from Spirent's own reference
-# decode (`l5_nav_data.txt`).
+# `test/data/gps_l2c_prn25_nav_bits.bin` holds the first 26 consecutive
+# 300-bit CNAV messages of PRN 25 from a Spirent L2C simulation, in the
+# simulator's pre-FEC block layout (38 bytes per message, 300 bits MSB-first,
+# 4 padding LSBs in the last byte) — the same GSS-CNAVDATA format as the L5I
+# fixture. They were extracted from the GSS-CNAVDATA output (`l2c_nav_data.cnv`,
+# L2C pre-FEC bits: a 16-byte header followed by 1178-byte epochs of 31
+# satellite channels × 38 bytes in round-robin order, PRN 1..31) by
+# demultiplexing satellite channel 25. The 26 messages cover one full
+# 24-message broadcast cycle, i.e. every CNAV message type the simulator emits
+# (10-15 and 30-37). The test FEC-encodes them continuously (the fixture is
+# pre-FEC) and the golden field values below come from Spirent's own reference
+# decode (`l2c_nav_data.txt`). Note L2C messages are 12 s apart, so the message
+# TOW count increments by 2 between messages (vs 1 on L5I's 6 s messages),
+# while the ×6 scaling of the count is unchanged.
 # ---------------------------------------------------------------------------
 
 """
-Load the fixture's 26 messages as 300-bit `Vector{Bool}`s.
+Load the L2C fixture's 26 messages as 300-bit `Vector{Bool}`s.
 """
-function load_l5i_fixture_messages()
-    raw = read(joinpath(@__DIR__, "data", "gps_l5i_prn25_nav_bits.bin"))
+function load_l2c_fixture_messages()
+    raw = read(joinpath(@__DIR__, "data", "gps_l2c_prn25_nav_bits.bin"))
     @assert length(raw) == 26 * 38
     map(0:25) do i
         block = raw[(38i+1):(38i+38)]
@@ -39,83 +43,86 @@ function load_l5i_fixture_messages()
     end
 end
 
-@testset "GPS L5I (CNAV)" begin
+@testset "GPS L2C (CNAV)" begin
     PI = 3.1415926535898
 
     @testset "Constructor" begin
-        state_a = GPSL5IDecoderState(13)
-        state_b = GNSSDecoderState(GPSL5I(), 13)
-        @test state_a.prn == 13
+        state_a = GPSL2CMDecoderState(7)
+        state_b = GNSSDecoderState(GPSL2CM(), 7)
+        @test state_a.prn == 7
         @test state_a == state_b
-        @test state_a.data == GPSCNAVData()
+        @test state_a.data == GPSCNAVData()          # shared CNAV container
+        @test state_a.constants isa GNSSDecoder.GPSL2CMConstants
         @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
         @test !state_a.is_shifted_by_180_degrees
     end
 
-    @testset "Window Viterbi round-trips the continuous FEC" begin
-        Random.seed!(1234)
-        bits = rand(Bool, 308)
-        soft = fec_encode_soft(CNAVTestEncoder(), bits)
-        @test gps_cnav_viterbi(soft) == bits
-
-        # Soft decisions: moderate Gaussian noise must still decode exactly
-        # (rate-1/2 K=7 at this SNR has plenty of margin).
-        noisy = soft .+ 0.4f0 .* randn(MersenneTwister(42), Float32, length(soft))
-        @test gps_cnav_viterbi(noisy) == bits
-
-        # The encoder runs across message boundaries: a window cut from the
-        # *middle* of a longer stream (unknown initial register) must decode
-        # exactly as well.
-        enc = CNAVTestEncoder()
-        fec_encode_soft(enc, rand(Bool, 100))  # advance the register
-        soft_mid = fec_encode_soft(enc, bits)
-        @test gps_cnav_viterbi(soft_mid) == bits
-    end
-
-    @testset "Synthetic message type 10 round trip" begin
-        mt10 = build_mt10()
-        @test crc24q(mt10) == 0
-
-        # One message followed by the next message's preamble, with a prefix
-        # of an odd number of idle symbols: sync must cope with an arbitrary
-        # symbol-pair phase.
+    @testset "Shares the L5I CNAV decode path" begin
+        # One message followed by the next message's preamble, prefixed with an
+        # odd number of idle symbols (arbitrary symbol-pair phase) — identical
+        # exercise to the L5I synthetic test, here through a GPSL2CM state.
         enc = CNAVTestEncoder()
         prefix = fec_encode_soft(enc, falses(40))[1:79]  # odd-length prefix
-        stream = vcat(prefix, fec_encode_soft(enc, [mt10; build_mt10(; tow_count = 1235)]))
+        stream = vcat(
+            prefix,
+            fec_encode_soft(enc, [build_mt10(); build_mt10(; tow_count = 1235)]),
+        )
 
-        state = decode(GPSL5IDecoderState(9), stream, length(stream))
+        state = decode(GPSL2CMDecoderState(9), stream, length(stream))
         d = state.raw_data
         @test d.last_message_id == 10
-        # Only the first message completes (the second one's sync window
-        # would need a third message's preamble symbols).
-        @test d.TOW == 1234 * 6
-        @test d.alert_flag == false
+        @test d.TOW == 1234 * 6          # TOW count × 6 on L2C too (IS-GPS-200N §30.3.3)
         @test d.WN == 2345
-        @test d.l1_health == false
-        @test d.l2_health == false
-        @test d.l5_health == false
-        @test d.t_op == 30_000
-        @test d.ura_ed_index == 0
-        @test d.t_0e == 30_000
-        @test d.ΔA == 0.0
-        @test d.A_dot == 0.0
-        @test d.Δn_0 ≈ 100 * 2.0^-44 * PI
         @test d.M_0 ≈ 12345 * 2.0^-32 * PI
         @test d.e ≈ 1000 * 2.0^-34
         @test d.ω ≈ -54321 * 2.0^-32 * PI
-        @test d.integrity_status_flag == true
-        @test d.l2c_phasing == false
         @test !state.is_shifted_by_180_degrees
-        # Positioning needs message types 11 and 30 as well.
-        @test !GNSSDecoder.is_decoding_completed_for_positioning(d)
-        @test !is_sat_healthy(state)
+    end
+
+    @testset "is_sat_healthy reads the L2 health bit (not L5)" begin
+        # MT10 with L2 OK (bit 53 = 0) but L5 bad (bit 54 = 1). The exact same
+        # symbol stream must read healthy on L2C and unhealthy on L5I — this is
+        # the one decode-level difference between the two signals.
+        enc = CNAVTestEncoder()
+        msgs = [
+            build_mt10(; l2_health = false, l5_health = true)
+            build_mt10(; tow_count = 1235, l2_health = false, l5_health = true)
+        ]
+        stream = fec_encode_soft(enc, msgs)
+
+        state_l2c = decode(GPSL2CMDecoderState(9), stream, length(stream))
+        @test state_l2c.raw_data.l2_health == false
+        @test state_l2c.raw_data.l5_health == true
+        # Health is reported from validated `data`; the synthetic MT10 alone is
+        # not a complete positioning set, so promote raw_data to compare the
+        # bit selection directly.
+        @test is_sat_healthy(
+            GNSSDecoder.GNSSDecoderState(state_l2c; data = state_l2c.raw_data),
+        )
+
+        state_l5i = decode(GPSL5IDecoderState(9), stream, length(stream))
+        @test !is_sat_healthy(
+            GNSSDecoder.GNSSDecoderState(state_l5i; data = state_l5i.raw_data),
+        )
+
+        # And the converse: L2 bad, L5 OK ⇒ L2C unhealthy, L5I healthy.
+        enc2 = CNAVTestEncoder()
+        msgs2 = [
+            build_mt10(; l2_health = true, l5_health = false)
+            build_mt10(; tow_count = 1235, l2_health = true, l5_health = false)
+        ]
+        stream2 = fec_encode_soft(enc2, msgs2)
+        s2_l2c = decode(GPSL2CMDecoderState(9), stream2, length(stream2))
+        @test !is_sat_healthy(GNSSDecoder.GNSSDecoderState(s2_l2c; data = s2_l2c.raw_data))
+        s2_l5i = decode(GPSL5IDecoderState(9), stream2, length(stream2))
+        @test is_sat_healthy(GNSSDecoder.GNSSDecoderState(s2_l5i; data = s2_l5i.raw_data))
     end
 
     @testset "Phase-inverted stream decodes with is_shifted_by_180_degrees" begin
         enc = CNAVTestEncoder()
         stream =
             fec_encode_soft(enc, [falses(20); build_mt10(); build_mt10(; tow_count = 1235)])
-        state = decode(GPSL5IDecoderState(9), -stream, length(stream))
+        state = decode(GPSL2CMDecoderState(9), -stream, length(stream))
         @test state.is_shifted_by_180_degrees
         @test state.raw_data.last_message_id == 10
         @test state.raw_data.WN == 2345
@@ -124,30 +131,29 @@ end
     @testset "reset_decoder_state clears in-flight state, keeps decoded data" begin
         enc = CNAVTestEncoder()
         stream = fec_encode_soft(enc, [build_mt10(); build_mt10(; tow_count = 1235)])
-        state = decode(GPSL5IDecoderState(9), stream, length(stream))
+        state = decode(GPSL2CMDecoderState(9), stream, length(stream))
         @test state.raw_data.WN == 2345
 
         state = reset_decoder_state(state)
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
-        @test isnothing(state.data.TOW)
         @test isnothing(state.num_bits_after_valid_syncro_sequence)
         @test !state.is_shifted_by_180_degrees
-        # raw_data keeps WN, ephemeris fields, etc.
-        @test state.raw_data.WN == 2345
+        @test state.raw_data.WN == 2345  # ephemeris preserved
     end
 
     # --- Spirent-derived recording fixture (committed; always runs) ---------
 
     """
-    Assert the decoded `state` matches Spirent's reference decode (PRN 25).
+    Assert the decoded `state` matches Spirent's L2C reference decode (PRN 25).
     """
-    function assert_spirent_golden(state)
+    function assert_l2c_spirent_golden(state)
         d = state.data
         # Header of the last decoded message (#25 of the recording, message
-        # type 10, message TOW count 43225).
+        # type 10, message TOW count 43250). L2C messages are 12 s apart, so the
+        # count steps by 2 per message (43202, 43204, …); the ×6 scaling holds.
         @test d.last_message_id == 10
-        @test d.TOW == 43225 * 6
+        @test d.TOW == 43250 * 6
         @test d.alert_flag == false
 
         # Message type 10 — ephemeris 1 (semicircle fields stored in radians, × π).
@@ -163,7 +169,7 @@ end
         @test d.Δn_0 ≈ 3.7252334550430533e-9 * π
         @test d.Δn_0_dot ≈ 1.000000082740371e-11 * π
         @test d.M_0 ≈ -0.2567902144510299 * π
-        @test d.e ≈ 0.030000000027939677
+        @test d.e ≈ 0.099999999976716936
         @test d.ω ≈ -0.3913338293787092 * π
         @test d.integrity_status_flag == false
         @test d.l2c_phasing == false
@@ -205,17 +211,17 @@ end
         @test d.β_3 ≈ -393216.0
         @test d.WN_op == 58
 
-        # Message type 32 — EOP. Spirent's reference decoder predates
-        # IS-GPS-705J and prints the 31-bit field as ΔUT1 with the old 2⁻²⁴
-        # scale (-0.25315952301025391 s); 705J defines it as ΔUT_GPS with
-        # scale 2⁻²³ (Table 20-VII), i.e. exactly twice that.
+        # Message type 32 — EOP. Spirent's reference decoder predates the
+        # 2⁻²³ ΔUT_GPS definition (IS-GPS-200N Table 30-VII) and prints the
+        # 31-bit field as ΔUT1 with the old 2⁻²⁴ scale (-0.25315952301025391 s);
+        # our decoder follows the current ICD, i.e. exactly twice that.
         @test d.t_EOP == 259200
         @test d.PM_X ≈ 0.10612583160400391
         @test d.PM_X_dot ≈ 0.0013251304626464844
         @test d.PM_Y ≈ 0.4459381103515625
         @test d.PM_Y_dot ≈ 0.00040197372436523438
         @test d.ΔUT_GPS ≈ 2 * -0.25315952301025391
-        @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273  # rate scale unchanged in 705J
+        @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273  # rate scale unchanged
 
         # Message type 33 — UTC.
         @test d.A0_UTC ≈ 9.5364521257579327e-7
@@ -264,8 +270,7 @@ end
         @test ma.δi ≈ 0.00555419921875 * π
         @test ma.Ω_dot ≈ 0.0
         # Spirent's dump prints the truncated "5153"; the transmitted 17-bit
-        # field is 82459 = 5153.6875 (matches the same constellation's L1C-D
-        # midi almanacs).
+        # field is 82459 = 5153.6875.
         @test ma.sqrt_A ≈ 5153.6875
         @test ma.Ω_0 ≈ 0.6190185546875 * π
         @test ma.ω ≈ 0.308013916015625 * π
@@ -299,9 +304,8 @@ end
         @test edc3.ΔA ≈ 0.0
         @test edc3.UDRA_dot_index == 0
 
-        # Text messages (the simulator broadcasts "Spirent Communications
-        # L2C test text message." across pages; the first cycle carries
-        # page 1 of each).
+        # Text messages (the simulator broadcasts "Spirent Communications L2C
+        # test text message." across pages; the first cycle carries page 1).
         @test d.text_mt15 == "Spirent Communications L2C te"
         @test d.text_page_mt15 == 1
         @test d.text_mt36 == "Spirent Communicat"
@@ -315,22 +319,20 @@ end
     end
 
     @testset "Spirent recording fixture (PRN 25)" begin
-        messages = load_l5i_fixture_messages()
+        messages = load_l2c_fixture_messages()
         @test all(crc24q(m) == 0 for m in messages)
-        # The recording starts at the first message: TOW count 43201 in
-        # message 1 stamps the start of message 2.
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
         @test length(stream) == 26 * 600
 
         # Of the 26 encoded messages the last cannot complete (its sync
         # window needs the next message's first 16 symbols), so 25 decode.
-        state = decode(GPSL5IDecoderState(25), stream, length(stream))
+        state = decode(GPSL2CMDecoderState(25), stream, length(stream))
         @test !state.is_shifted_by_180_degrees
-        assert_spirent_golden(state)
+        assert_l2c_spirent_golden(state)
 
         # Polarity-inverted stream must decode identically with the
         # 180°-flip flag set.
-        state_inv = decode(GPSL5IDecoderState(25), -stream, length(stream))
+        state_inv = decode(GPSL2CMDecoderState(25), -stream, length(stream))
         @test state_inv.is_shifted_by_180_degrees
         @test state_inv.data == state.data
 
@@ -339,26 +341,24 @@ end
         # remaining messages, losing only the partially received first one.
         offset = 351
         state_mid =
-            decode(GPSL5IDecoderState(25), stream[(offset+1):end], length(stream) - offset)
-        assert_spirent_golden(state_mid)
+            decode(GPSL2CMDecoderState(25), stream[(offset+1):end], length(stream) - offset)
+        assert_l2c_spirent_golden(state_mid)
 
         # Noisy soft symbols: moderate Gaussian noise on the ±1 LLRs must
         # not cost any message at this SNR.
         noisy = stream .+ 0.4f0 .* randn(MersenneTwister(7), Float32, length(stream))
-        state_noisy = decode(GPSL5IDecoderState(25), noisy, length(noisy))
-        assert_spirent_golden(state_noisy)
+        state_noisy = decode(GPSL2CMDecoderState(25), noisy, length(noisy))
+        assert_l2c_spirent_golden(state_noisy)
     end
 
     @testset "decode_once stops at the first complete positioning set" begin
-        messages = load_l5i_fixture_messages()
+        messages = load_l2c_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode(GPSL5IDecoderState(25), stream, length(stream); decode_once = true)
+        state = decode(GPSL2CMDecoderState(25), stream, length(stream); decode_once = true)
         # Message types 10, 11, 30 are the first three of the recording; the
-        # positioning set is complete after message 3 and decoding stops
-        # there (message 4 is type 15 — its text must not have been parsed).
-        # `decode_once` freezes the validated `data` snapshot at the first
-        # complete set (after message 3, type 30) while `raw_data` keeps
-        # following the stream.
+        # positioning set is complete after message 3 (type 30) and decoding
+        # stops there (message 4 is type 15 — its text must not have been
+        # parsed into the validated `data`).
         @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
         @test state.data.last_message_id == 30
         @test isnothing(state.data.text_mt15)

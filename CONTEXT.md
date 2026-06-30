@@ -15,6 +15,18 @@ code; this file is for naming and meaning only.
   non-systematic convolutional code (G1 = 171₈, G2 = 133₈), convolved
   *continuously* across message boundaries (no tail bits). Message = 300 bits
   = 600 channel symbols at 100 sps = 6 seconds (IS-GPS-705).
+- **GPS L2C** (`GPSL2CM`) — 25 bps CNAV broadcast on the L2 CM (civil-moderate)
+  code; the time-multiplexed L2 CL code is a dataless pilot. The CNAV message
+  is *bit-for-bit identical* to GPS L5I's (IS-GPS-200N §30 ≡ IS-GPS-705J
+  §20.3.3): same preamble, FEC, CRC-24Q, message-type layouts, π and `TOW × 6`.
+  Only the signal layer differs — 25 bps → 50 sps, 300-bit message = 600
+  symbols = 12 seconds — which is purely time-domain, so the symbol-domain
+  decoder is the same 600-symbol message / 616-symbol sync window. Shares the
+  GPS CNAV core (`src/gps/cnav.jl`) and the `GPSCNAVData` container with L5I;
+  the only decode difference is that `is_sat_healthy` reports the L2 health bit
+  (MT10 bit 53) instead of the L5 bit (54). `GNSSDecoderState(::GPSL2CM, prn)`
+  maps here (`GPSL2CL` is the pilot); `GPSL2CMDecoderState(prn)` is the
+  equivalent direct constructor.
 - **Galileo E1B** (`GalileoE1B`) — 250 sps I/NAV nominal pages over a K=7
   rate-1/2 convolutional code plus 30×8 block interleaver. Page = 250 channel
   symbols = 1 second. Two consecutive pages (even+odd) carry one word.
@@ -112,3 +124,6 @@ lives in the `cache`.
   domain (the FEC runs continuously across messages), so each sync attempt
   Viterbi-decodes the buffered 616-symbol window and requires the preamble at
   both ends of the decoded 308-bit window plus a clean CRC-24Q.
+- **L2C**: identical to L5I — the same shared GPS CNAV `try_sync`
+  Viterbi-decodes the 616-symbol window and gates on preamble + CRC-24Q. (The
+  symbol rate, 50 vs 100 sps, does not enter the symbol-domain sync.)
