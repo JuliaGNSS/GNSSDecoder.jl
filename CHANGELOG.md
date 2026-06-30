@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.0.0...v3.1.0) (2026-06-30)
+
+
+### Features
+
+* **galileo_e5a:** add Galileo E5a F/NAV decoder ([86e6c2b](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/86e6c2b70ea720efe8b8dca658bbe2fd8f509236)), closes [#83](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/83)
+
 # [3.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v2.1.0...v3.0.0) (2026-06-24)
 
 
