@@ -160,9 +160,18 @@ the decoder multiplies by π), matching the convention used by [`GalileoE1BData`
     Galileo broadcasts three almanacs across the word-type-5/6 pair: SVID-1 (full
     in WT5), SVID-2 (split across WT5 and WT6), and SVID-3 (full in WT6). The
     in-flight SVID-2 partial lives in the decoder cache and is flushed here only
-    once WT6 completes it with a consistent `IOD_a`. F/NAV almanacs carry the E5a
-    health (`signal_health_e5a`); the E5b/E1-B almanac-health fields are left
-    `nothing`.
+    once WT6 completes it with a consistent `IOD_a`. SVID-3, though fully carried
+    in WT6, inherits its reference epoch (`WN_a`/`t_0a`) from the paired WT5; when
+    that partial is missing (mid-stream acquisition or an IOD cutover), the SVID-3
+    record is still stored with `WN_a`/`t_0a` left `nothing` — the decoder keeps
+    whatever it can decode rather than discarding it. Because the epoch is shared
+    by every almanac of a given `IOD_a`, a later WT5 back-fills it into any such
+    partial record, so a one-shot WT6 orbit becomes usable even if that WT6 never
+    reappears. **An almanac may therefore be incomplete**: any field can be
+    `nothing`, and in particular a record's reference epoch (`WN_a`/`t_0a`) may be
+    absent until a matching WT5 arrives — check the fields you need before using a
+    record. F/NAV almanacs carry the E5a health (`signal_health_e5a`); the E5b/E1-B
+    almanac-health fields are left `nothing`.
 
 # Reference
 
@@ -438,6 +447,15 @@ struct GalileoE5aCache <: AbstractGNSSCache
     AFF3CT K=7 NSC Viterbi decoder, built once and reused across pages.
     """
     viterbi_decoder::Aff3ct.ConvViterbiDecoder
+    """
+    488 encoded symbols copied out of `soft_buffer` (with the 180° polarity
+    applied) for each synced page, reused rather than reallocated per page.
+    """
+    soft_page::Vector{Float32}
+    """
+    238 decoded bits unpacked for the CRC-24Q check, reused across pages.
+    """
+    crc_bits::Vector{Bool}
 end
 
 GalileoE5aCache() = GalileoE5aCache(
@@ -449,6 +467,8 @@ GalileoE5aCache() = GalileoE5aCache(
         GALILEO_E5A_VITERBI_N,
         GALILEO_VITERBI_POLY,
     ),
+    Vector{Float32}(undef, GALILEO_E5A_VITERBI_N),
+    Vector{Bool}(undef, GALILEO_E5A_VITERBI_K),
 )
 
 function GalileoE5aCache(
@@ -457,12 +477,16 @@ function GalileoE5aCache(
     almanac_chain_partial = cache.almanac_chain_partial,
     almanac_chain_omega0_msb = cache.almanac_chain_omega0_msb,
     viterbi_decoder = cache.viterbi_decoder,
+    soft_page = cache.soft_page,
+    crc_bits = cache.crc_bits,
 )
     GalileoE5aCache(
         soft_buffer,
         almanac_chain_partial,
         almanac_chain_omega0_msb,
         viterbi_decoder,
+        soft_page,
+        crc_bits,
     )
 end
 
@@ -597,6 +621,32 @@ function combine_almanac_omega0(msb::Int, lsb::Int, PI::Float64)
     return get_twos_complement_num(raw, 16, 1, 16) * PI / (1 << 15)
 end
 
+# IOD-keyed epoch back-patch. WN_a/t_0a are shared by every almanac of a given
+# IOD_a, so a freshly decoded WT5 (which carries them) can complete any earlier
+# record left without its reference epoch — most notably an SVID-3 decoded from a
+# WT6 whose paired WT5 was missed (mid-stream acquisition / IOD cutover). This
+# lets a one-shot WT6 orbit become usable once a later WT5 arrives, even if that
+# WT6 never reappears; without it the WT6's orbital block would be stranded.
+# Returns `almanacs` unchanged when nothing matches, else a patched copy (the
+# input dictionary, shared with `raw_data`, is never mutated in place).
+function backpatch_almanac_epochs(
+    almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}},
+    IOD_a::Int,
+    WN_a::Int,
+    t_0a::Int,
+)
+    isnothing(almanacs) && return almanacs
+    patched = almanacs
+    for SVID in keys(almanacs)
+        alm = almanacs[SVID]
+        if alm.IOD_a == IOD_a && (isnothing(alm.WN_a) || isnothing(alm.t_0a))
+            patched === almanacs && (patched = copy(almanacs))
+            set!(patched, SVID, GalileoAlmanac(alm; WN_a, t_0a))
+        end
+    end
+    return patched
+end
+
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffer)
     # The 488 encoded symbols sit between the leading 12-symbol sync pattern and
     # the trailing sync pattern of the next page (deque indices
@@ -605,7 +655,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffe
     # as inverted.
     deque = soft_buffer(state)
     sign = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
-    soft_page = Vector{Float32}(undef, GALILEO_E5A_VITERBI_N)
+    soft_page = state.cache.soft_page
     @inbounds for i = 1:GALILEO_E5A_VITERBI_N
         soft_page[i] = sign * deque[state.constants.preamble_length+i]
     end
@@ -621,7 +671,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffe
 
     # F/NAV CRC-24Q is computed over the 214-bit (page type + data) prefix and
     # appended as bits 215-238; a clean page satisfies crc24q(all 238 bits) == 0.
-    crc_bits = Vector{Bool}(undef, GALILEO_E5A_VITERBI_K)
+    crc_bits = state.cache.crc_bits
     @inbounds for i = 1:GALILEO_E5A_VITERBI_K
         crc_bits[i] = get_bit(bits, GALILEO_E5A_VITERBI_K, i)
     end
@@ -816,7 +866,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffe
         )
         omega0_msb = Int(get_bits(bits, 238, 211, 4))
 
-        almanacs = state.raw_data.almanacs
+        # Complete any earlier record still missing its reference epoch (e.g. an
+        # SVID-3 from a WT6 whose paired WT5 was missed) — WN_a/t_0a are shared by
+        # all almanacs of this IOD_a.
+        almanacs = backpatch_almanac_epochs(state.raw_data.almanacs, IOD_a, WN_a, t_0a)
         if SVID1 >= 1
             almanacs =
                 isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() : copy(almanacs)
@@ -857,7 +910,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffe
         end
         # SVID-3: orbital/clock/health are fully contained in word type 6, but its
         # almanac reference epoch (WN_a, t_0a) is broadcast only in the paired word
-        # type 5. Inherit them from the cached WT5 partial when its IOD_a matches.
+        # type 5. Inherit them from the cached WT5 partial when its IOD_a matches;
+        # otherwise the SVID-3 record is still stored — with WN_a/t_0a left
+        # `nothing` — so nothing decodable is discarded. This happens on mid-stream
+        # acquisition or an IOD cutover that lands WT6 without its paired WT5; the
+        # epoch is filled in later by `backpatch_almanac_epochs` when the matching
+        # WT5 arrives (or wholesale by the next full WT5→WT6 cycle).
         SVID3 = Int(get_bits(bits, 238, 81, 6))
         if SVID3 >= 1
             shared_wn_a, shared_t_0a =
