@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.2.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.1.0...v3.2.0) (2026-07-01)
+
+
+### Features
+
+* **gpsl2c:** add GPS L2C (CNAV) decoder ([bc9a607](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/bc9a60726c83384de00f89efa3a4d731104a4626))
+
 # [3.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.0.0...v3.1.0) (2026-06-30)
 
 
