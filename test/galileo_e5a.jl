@@ -276,6 +276,57 @@ end
     )
 end
 
+@testset "Galileo E5a almanac WT6 without preceding WT5" begin
+    pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
+    # Broadcast schedule: WT5 at pages 5/15/25, WT6 at pages 10/20/30. Feed pages
+    # 1-24 to lock the decoder — page 24 is a WT4, so the SVID-2 chain partial is
+    # empty at that point — then append the WT6 at page 30 while omitting its
+    # paired WT5 at page 25. This is the mid-stream acquisition / IOD-cutover case:
+    # the WT6 carries SVID-3 in full, but its reference epoch (WN_a/t_0a) lived
+    # only in the missing WT5. Per the decode-everything policy the record is still
+    # stored — nothing decodable is discarded — with the epoch left `nothing`. (The
+    # completion of the SVID-2 chain is likewise skipped, so this WT6 stores exactly
+    # one almanac.)
+    partial_stream = e5a_symbol_stream(vcat(pages[1:24], pages[30]))
+    decoder = GalileoE5aDecoderState(21)
+    decoder = decode(decoder, partial_stream, length(partial_stream))
+    almanacs = decoder.raw_data.almanacs
+    @test !isnothing(almanacs)
+    partial = only(almanacs)
+    @test !isnothing(partial.Δsqrt_A)   # orbit decoded from the WT6
+    @test isnothing(partial.WN_a)       # but the reference epoch is absent
+    @test isnothing(partial.t_0a)
+
+    # The full run (WT5 then WT6, pages 1-31) instead yields the epoch too.
+    full_stream = e5a_symbol_stream(pages[1:31])
+    full_decoder = GalileoE5aDecoderState(21)
+    full_decoder = decode(full_decoder, full_stream, length(full_stream))
+    full = full_decoder.data.almanacs[21]
+    @test full.WN_a == 2
+    @test full.t_0a == 259200
+end
+
+@testset "Galileo E5a almanac epoch back-patch from a later WT5" begin
+    pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
+    # Same lock prefix + lone WT6 (page 30) as above, so SVID-21 lands with its
+    # orbit/clock/health decoded but WN_a/t_0a still `nothing`. Then append a WT5
+    # (page 25) with a matching IOD_a — but *never* re-send the WT6. Because the
+    # reference epoch is shared across every almanac of that IOD_a, the WT5
+    # back-fills it into the stranded SVID-21 record, completing an almanac whose
+    # only WT6 was seen once. A "store only when complete" policy would have
+    # discarded that WT6 and could never reassemble SVID-21 from the WT5 alone.
+    stream = e5a_symbol_stream(vcat(pages[1:24], pages[30], pages[25]))
+    decoder = GalileoE5aDecoderState(21)
+    decoder = decode(decoder, stream, length(stream))
+    almanacs = decoder.raw_data.almanacs
+    @test !isnothing(almanacs)
+    @test haskey(almanacs, 21)
+    completed = almanacs[21]
+    @test !isnothing(completed.Δsqrt_A)   # orbit still from the one-shot WT6
+    @test completed.WN_a == 2             # epoch back-filled by the later WT5
+    @test completed.t_0a == 259200
+end
+
 @testset "Galileo E5a reset" begin
     pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
     stream = e5a_symbol_stream(pages[1:5])
