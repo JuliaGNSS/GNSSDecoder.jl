@@ -359,6 +359,13 @@ parameter set): semi-circle quantities are converted to radians on decode
 
 # Group delay / ISC + ionosphere (message type 30, Tables 20-III / 20-IV)
 
+These fields are carried **only** by message type 30, which is broadcast far
+less often than the clock/ephemeris (max interval 288 s on L2C / 144 s on L5,
+vs 48 s / 24 s — IS-GPS-200 Table 30-XII, IS-GPS-705J Table 20-XII). They may
+therefore still be `nothing` even once positioning is otherwise ready:
+`is_decoding_completed_for_positioning` deliberately does not wait for them, so
+code that applies these corrections must handle `nothing` (treat as 0).
+
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
   - `α_0,α_1,α_2,α_3,β_0,β_1,β_2,β_3::Float64`: Klobuchar ionospheric coefficients.
@@ -759,12 +766,29 @@ function is_ephemeris_decoded(data::GPSCNAVData)
 end
 
 function is_clock_correction_decoded(data::GPSCNAVData)
-    # Message types 30-37 shared clock block + message type 30 group delay
+    # SV clock polynomial from the shared clock block of ANY of message
+    # types 30-37 (`parse_clock_block`). Do NOT require T_GD here: the
+    # inter-signal group delay is broadcast *only* in message type 30, so
+    # gating positioning-readiness on it couples validation to MT30
+    # specifically and stalls on CNAV streams that carry the clock via
+    # MT31-37 without MT30.
+    #
+    # The ICDs make T_GD structurally infrequent relative to the data needed
+    # for a fix. Maximum broadcast intervals (IS-GPS-200 Table 30-XII for
+    # L2C, IS-GPS-705J Table 20-XII for L5):
+    #                        ephemeris (MT10/11)   clock (MT30-37)   T_GD (MT30 only)
+    #   L2C (IS-GPS-200)          48 s                 48 s               288 s
+    #   L5  (IS-GPS-705J)         24 s                 24 s               144 s
+    # i.e. T_GD is guaranteed only ~6x less often than the clock on both
+    # signals. Requiring it would make a receiver wait up to 288 s (L2C) /
+    # 144 s (L5) after it already has a complete ephemeris + clock, on a
+    # fully spec-compliant SV. T_GD is a ~metre-level inter-signal
+    # correction: apply it downstream when present, but never block a fix on
+    # it.
     !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
-        !isnothing(data.a_f2) &&
-        !isnothing(data.T_GD)
+        !isnothing(data.a_f2)
 end
 
 function is_decoding_completed_for_positioning(data::GPSCNAVData)
