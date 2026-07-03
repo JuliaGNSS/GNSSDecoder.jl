@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.3.0...v3.3.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **gpscnav:** don't require T_GD for positioning readiness ([b4a2bd5](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/b4a2bd5330795ee9e23f792e9cae938679f4662f))
+
 # [3.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.2.0...v3.3.0) (2026-07-03)
 
 
