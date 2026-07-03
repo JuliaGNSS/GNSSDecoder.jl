@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.4.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.3.1...v3.4.0) (2026-07-03)
+
+
+### Features
+
+* **galileo_e1b:** support the E1B BOC(1,1) signal ([ec2c597](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/ec2c597d97eedd7fb3e2f2950d7ae8c85a2e74a6))
+
 ## [3.3.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.3.0...v3.3.1) (2026-07-03)
 
 
