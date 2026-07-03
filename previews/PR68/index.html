@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Home · GNSSDecoder.jl</title><meta name="title" content="Home · GNSSDecoder.jl"/><meta property="og:title" content="Home · GNSSDecoder.jl"/><meta property="twitter:title" content="Home · GNSSDecoder.jl"/><meta name="description" content="Documentation for GNSSDecoder.jl."/><meta property="og:description" content="Documentation for GNSSDecoder.jl."/><meta property="twitter:description" content="Documentation for GNSSDecoder.jl."/><meta property="og:url" content="https://JuliaGNSS.github.io/GNSSDecoder.jl/"/><meta property="twitter:url" content="https://JuliaGNSS.github.io/GNSSDecoder.jl/"/><link rel="canonical" href="https://JuliaGNSS.github.io/GNSSDecoder.jl/"/><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="search_index.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>GNSSDecoder.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Home</a><ul class="internal"><li><a class="tocitem" href="#Supported-Systems"><span>Supported Systems</span></a></li><li><a class="tocitem" href="#Installation"><span>Installation</span></a></li><li><a class="tocitem" href="#Quick-Start"><span>Quick Start</span></a></li><li><a class="tocitem" href="#State-Management"><span>State Management</span></a></li><li><a class="tocitem" href="#Data-Fields"><span>Data Fields</span></a></li></ul></li><li><a class="tocitem" href="api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Home</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Home</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaGNSS/GNSSDecoder.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaGNSS/GNSSDecoder.jl/blob/master/docs/src/index.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="GNSSDecoder.jl"><a class="docs-heading-anchor" href="#GNSSDecoder.jl">GNSSDecoder.jl</a><a id="GNSSDecoder.jl-1"></a><a class="docs-heading-anchor-permalink" href="#GNSSDecoder.jl" title="Permalink"></a></h1><p>A Julia package for decoding GNSS (Global Navigation Satellite System) navigation messages.</p><h2 id="Supported-Systems"><a class="docs-heading-anchor" href="#Supported-Systems">Supported Systems</a><a id="Supported-Systems-1"></a><a class="docs-heading-anchor-permalink" href="#Supported-Systems" title="Permalink"></a></h2><ul><li><strong>GPS L1 C/A</strong>: Decodes the 50 bps LNAV data stream from GPS L1 civil signals</li><li><strong>GPS L1C-D</strong>: Decodes the 100 sps CNAV-2 data stream from the modernized GPS L1C signal&#39;s data component</li><li><strong>GPS L2C</strong>: Decodes the 50 sps CNAV data stream from the GPS L2 CM (civil-moderate) signal component</li><li><strong>GPS L5I</strong>: Decodes the 100 sps CNAV data stream from the GPS L5 in-phase signal component</li><li><strong>Galileo E1B</strong>: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals</li></ul><h2 id="Installation"><a class="docs-heading-anchor" href="#Installation">Installation</a><a id="Installation-1"></a><a class="docs-heading-anchor-permalink" href="#Installation" title="Permalink"></a></h2><pre><code class="language-julia hljs">using Pkg
+Pkg.add(&quot;GNSSDecoder&quot;)</code></pre><h2 id="Quick-Start"><a class="docs-heading-anchor" href="#Quick-Start">Quick Start</a><a id="Quick-Start-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Start" title="Permalink"></a></h2><h3 id="GPS-L1-C/A-Decoding"><a class="docs-heading-anchor" href="#GPS-L1-C/A-Decoding">GPS L1 C/A Decoding</a><a id="GPS-L1-C/A-Decoding-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1-C/A-Decoding" title="Permalink"></a></h3><p>Initialize a decoder and process soft symbols from your tracking loop. The decoder consumes <code>Float32</code> soft symbols where the sign carries the bit decision (positive ⇒ bit 0, negative ⇒ bit 1) and the magnitude carries confidence (AFF3CT LLR convention):</p><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL1CADecoderState(1);  # Initialize decoder for PRN 1
+
+julia&gt; state.prn  # Access PRN
+1
+
+julia&gt; typeof(state)
+GNSSDecoderState{GNSSDecoder.GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}</code></pre><p>Process incoming soft symbols and check the decoder state:</p><pre><code class="language-julia-repl hljs">julia&gt; state = decode(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
+8</code></pre><p>In a real application, you would decode soft symbols from a tracking loop. With <code>Tracking.jl</code> v2, take them from <code>get_soft_bits</code>, which returns the polarity-corrected, amplitude-weighted soft bits for the tracked satellite:</p><pre><code class="language-julia hljs">for i in 1:iterations
+    # Track signal (e.g., with Tracking.jl)
+    track_state = track!(measurement, track_state)
+
+    # Soft symbols for this satellite (Float32; sign = bit, magnitude = confidence)
+    soft_symbols = get_soft_bits(track_state, state.prn)
+
+    # Decode navigation message
+    state = decode(state, soft_symbols, length(soft_symbols))
+end
+
+# After decoding completes, access the data
+if !isnothing(state.data.TOW)
+    println(&quot;Time of Week: $(state.data.TOW)&quot;)
+end</code></pre><h3 id="Galileo-E1B-Decoding"><a class="docs-heading-anchor" href="#Galileo-E1B-Decoding">Galileo E1B Decoding</a><a id="Galileo-E1B-Decoding-1"></a><a class="docs-heading-anchor-permalink" href="#Galileo-E1B-Decoding" title="Permalink"></a></h3><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GalileoE1BDecoderState(1);  # Initialize decoder for PRN 1
+
+julia&gt; state.prn
+1
+
+julia&gt; typeof(state)
+GNSSDecoderState{GNSSDecoder.GalileoE1BData, GNSSDecoder.GalileoE1BConstants, GNSSDecoder.GalileoE1BCache}
+
+julia&gt; state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)
+10</code></pre><h3 id="GPS-L1C-D-Decoding"><a class="docs-heading-anchor" href="#GPS-L1C-D-Decoding">GPS L1C-D Decoding</a><a id="GPS-L1C-D-Decoding-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1C-D-Decoding" title="Permalink"></a></h3><p>The GPS L1C-D (CNAV-2) decoder synchronises on the BCH-encoded TOI counter (no fixed preamble), LDPC-decodes subframes 2 and 3, and validates each with CRC-24Q. Construction loads the LDPC parity-check matrices shipped with the package:</p><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL1C_DDecoderState(1);  # Initialize decoder for PRN 1
+
+julia&gt; state.prn
+1
+
+julia&gt; typeof(state)
+GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
+
+julia&gt; state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)
+10</code></pre><h3 id="GPS-L5I-Decoding"><a class="docs-heading-anchor" href="#GPS-L5I-Decoding">GPS L5I Decoding</a><a id="GPS-L5I-Decoding-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L5I-Decoding" title="Permalink"></a></h3><p>The GPS L5I (CNAV) decoder consumes the 100 sps FEC-encoded channel symbols. The rate-1/2 K=7 convolutional FEC runs continuously across message boundaries, so each sync attempt Viterbi-decodes the buffered 616-symbol window, looks for the 8-bit preamble at both ends of the decoded window, and validates the 300-bit message with CRC-24Q:</p><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL5IDecoderState(1);  # Initialize decoder for PRN 1
+
+julia&gt; state.prn
+1
+
+julia&gt; typeof(state)
+GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
+
+julia&gt; state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)
+10</code></pre><h3 id="GPS-L2C-Decoding"><a class="docs-heading-anchor" href="#GPS-L2C-Decoding">GPS L2C Decoding</a><a id="GPS-L2C-Decoding-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L2C-Decoding" title="Permalink"></a></h3><p>GPS L2C broadcasts the <em>same</em> CNAV message as GPS L5I (IS-GPS-200N §30), on the L2 CM component at 50 sps. Decoding therefore reuses the shared GPS CNAV core, and decoded fields land in the same <a href="api/#GNSSDecoder.GPSCNAVData"><code>GPSCNAVData</code></a> container; only the health check differs (it reports the L2 signal-health bit):</p><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL2CMDecoderState(1);  # Initialize decoder for PRN 1
+
+julia&gt; state.prn
+1
+
+julia&gt; typeof(state)
+GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
+
+julia&gt; state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)
+10</code></pre><h2 id="State-Management"><a class="docs-heading-anchor" href="#State-Management">State Management</a><a id="State-Management-1"></a><a class="docs-heading-anchor-permalink" href="#State-Management" title="Permalink"></a></h2><h3 id="Resetting-After-Signal-Loss"><a class="docs-heading-anchor" href="#Resetting-After-Signal-Loss">Resetting After Signal Loss</a><a id="Resetting-After-Signal-Loss-1"></a><a class="docs-heading-anchor-permalink" href="#Resetting-After-Signal-Loss" title="Permalink"></a></h3><p>If signal tracking is lost and reacquired, use <a href="api/#GNSSDecoder.reset_decoder_state"><code>reset_decoder_state</code></a> to clear buffers while preserving previously decoded ephemeris:</p><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL1CADecoderState(1);
+
+julia&gt; state = decode(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)
+8
+
+julia&gt; state = reset_decoder_state(state);  # Reset after signal loss
+
+julia&gt; GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
+0
+
+julia&gt; state.prn  # PRN is preserved
+1</code></pre><h3 id="Checking-Satellite-Health"><a class="docs-heading-anchor" href="#Checking-Satellite-Health">Checking Satellite Health</a><a id="Checking-Satellite-Health-1"></a><a class="docs-heading-anchor-permalink" href="#Checking-Satellite-Health" title="Permalink"></a></h3><pre><code class="language-julia-repl hljs">julia&gt; using GNSSDecoder
+
+julia&gt; state = GPSL1CADecoderState(1);
+
+julia&gt; is_sat_healthy(state)  # Health not yet decoded
+false
+
+julia&gt; state = GalileoE1BDecoderState(1);
+
+julia&gt; is_sat_healthy(state)  # Health not yet decoded
+false</code></pre><h2 id="Data-Fields"><a class="docs-heading-anchor" href="#Data-Fields">Data Fields</a><a id="Data-Fields-1"></a><a class="docs-heading-anchor-permalink" href="#Data-Fields" title="Permalink"></a></h2><h3 id="GPS-L1-Data"><a class="docs-heading-anchor" href="#GPS-L1-Data">GPS L1 Data</a><a id="GPS-L1-Data-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1-Data" title="Permalink"></a></h3><p>After successful decoding, <code>state.data</code> contains:</p><table><tr><th style="text-align: right">Field</th><th style="text-align: right">Description</th></tr><tr><td style="text-align: right"><code>TOW</code></td><td style="text-align: right">Time of Week (seconds)</td></tr><tr><td style="text-align: right"><code>trans_week</code></td><td style="text-align: right">Transmission week number</td></tr><tr><td style="text-align: right"><code>svhealth</code></td><td style="text-align: right">Satellite health status</td></tr><tr><td style="text-align: right"><code>t_0e</code>, <code>t_0c</code></td><td style="text-align: right">Reference times for ephemeris and clock</td></tr><tr><td style="text-align: right"><code>e</code></td><td style="text-align: right">Eccentricity</td></tr><tr><td style="text-align: right"><code>sqrt_A</code></td><td style="text-align: right">Square root of semi-major axis</td></tr><tr><td style="text-align: right"><code>M_0</code></td><td style="text-align: right">Mean anomaly at reference time</td></tr><tr><td style="text-align: right"><code>Ω_0</code>, <code>ω</code></td><td style="text-align: right">Longitude of ascending node, argument of perigee</td></tr><tr><td style="text-align: right"><code>i_0</code>, <code>i_dot</code></td><td style="text-align: right">Inclination and rate</td></tr><tr><td style="text-align: right"><code>Δn</code>, <code>Ω_dot</code></td><td style="text-align: right">Mean motion difference, rate of right ascension</td></tr><tr><td style="text-align: right"><code>C_rs</code>, <code>C_rc</code>, <code>C_us</code>, <code>C_uc</code>, <code>C_is</code>, <code>C_ic</code></td><td style="text-align: right">Harmonic correction terms</td></tr><tr><td style="text-align: right"><code>a_f0</code>, <code>a_f1</code>, <code>a_f2</code></td><td style="text-align: right">Clock correction coefficients</td></tr><tr><td style="text-align: right"><code>T_GD</code></td><td style="text-align: right">Group delay differential</td></tr></table><h3 id="Galileo-E1B-Data"><a class="docs-heading-anchor" href="#Galileo-E1B-Data">Galileo E1B Data</a><a id="Galileo-E1B-Data-1"></a><a class="docs-heading-anchor-permalink" href="#Galileo-E1B-Data" title="Permalink"></a></h3><p>Similar ephemeris and clock parameters are available for Galileo, plus:</p><table><tr><th style="text-align: right">Field</th><th style="text-align: right">Description</th></tr><tr><td style="text-align: right"><code>WN</code></td><td style="text-align: right">Week number</td></tr><tr><td style="text-align: right"><code>signal_health_e1b</code></td><td style="text-align: right">E1B signal health status</td></tr><tr><td style="text-align: right"><code>data_validity_status_e1b</code></td><td style="text-align: right">Data validity status</td></tr><tr><td style="text-align: right"><code>broadcast_group_delay_e1_e5a</code></td><td style="text-align: right">E1-E5a group delay</td></tr><tr><td style="text-align: right"><code>broadcast_group_delay_e1_e5b</code></td><td style="text-align: right">E1-E5b group delay</td></tr></table><h3 id="GPS-L1C-D-Data"><a class="docs-heading-anchor" href="#GPS-L1C-D-Data">GPS L1C-D Data</a><a id="GPS-L1C-D-Data-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1C-D-Data" title="Permalink"></a></h3><p>CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see <a href="api/#GNSSDecoder.GPSL1C_DData"><code>GPSL1C_DData</code></a> for the full field list:</p><table><tr><th style="text-align: right">Field</th><th style="text-align: right">Description</th></tr><tr><td style="text-align: right"><code>toi</code>, <code>ITOW</code>, <code>WN</code></td><td style="text-align: right">Time of interval, interval time of week, week number</td></tr><tr><td style="text-align: right"><code>t_0e</code>, <code>ΔA</code>, <code>e</code>, <code>M_0</code>, <code>ω</code>, <code>Ω_0</code>, <code>i_0</code>, …</td><td style="text-align: right">Clock and ephemeris (CED) parameters</td></tr><tr><td style="text-align: right"><code>α0..α3</code>, <code>β0..β3</code></td><td style="text-align: right">Klobuchar ionospheric coefficients (subframe-3 page 1)</td></tr><tr><td style="text-align: right"><code>A0_UTC</code>, <code>Δt_LS</code>, …</td><td style="text-align: right">UTC parameters (page 1)</td></tr><tr><td style="text-align: right"><code>A0_GGTO</code>, <code>t_GGTO</code>, …</td><td style="text-align: right">GPS/GNSS time offset and EOP (page 2)</td></tr><tr><td style="text-align: right"><code>reduced_almanacs</code>, <code>midi_almanacs</code></td><td style="text-align: right">Per-SV almanac dictionaries (pages 3/4)</td></tr><tr><td style="text-align: right"><code>differential_corrections</code></td><td style="text-align: right">Per-SV differential corrections (page 5)</td></tr><tr><td style="text-align: right"><code>text_message</code></td><td style="text-align: right">Broadcast text (page 6)</td></tr></table></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 3 July 2026 09:19">Friday 3 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
