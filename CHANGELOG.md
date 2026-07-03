@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.3.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.2.0...v3.3.0) (2026-07-03)
+
+
+### Features
+
+* **galileo_e5a:** back-patch almanac reference epochs from a later WT5 ([1728ed4](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/1728ed45b2d75cc76d21b119ca46d4c94009b092))
+
 # [3.2.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.1.0...v3.2.0) (2026-07-01)
 
 
