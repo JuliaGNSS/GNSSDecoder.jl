@@ -18,7 +18,7 @@ Currently implemented:
  * GPS L1C-D (CNAV-2)
  * GPS L2C (CNAV)
  * GPS L5I (CNAV)
- * Galileo E1B (I/NAV)
+ * Galileo E1B (I/NAV), including the BOC(1,1) approximation
  * Galileo E5a (F/NAV)
 
 ## Installation

@@ -586,6 +586,17 @@ function GNSSDecoderState(system::GalileoE1B, prn)
     GalileoE1BDecoderState(prn)
 end
 
+# GalileoE1B_BOC11 is the BOC(1,1) approximation of Galileo E1B — a lower
+# sampling-rate replica many software receivers substitute for the full
+# CBOC(6,1,1/11) spec (see GNSSSignals.jl `GalileoE1B_BOC11`). It carries the
+# *identical* I/NAV navigation message: same 4092-chip primary code, same
+# 250 bps data rate, same page/word structure. The modulation difference is a
+# tracking/acquisition concern only, so decoding reuses the E1B decoder
+# unchanged.
+function GNSSDecoderState(system::GalileoE1B_BOC11, prn)
+    GalileoE1BDecoderState(prn)
+end
+
 """
 $(TYPEDSIGNATURES)
 
