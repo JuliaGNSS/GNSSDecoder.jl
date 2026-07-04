@@ -158,6 +158,38 @@ function GalileoAlmanac(
     )
 end
 
+# Ephemeris/clock completeness are per-constellation facts: I/NAV (E1B) and
+# F/NAV (E5a) broadcast the same orbital and clock parameters, so the "all
+# present?" checks are identical and dispatch on the constellation supertype
+# `AbstractGalileoData` (both `GalileoE1BData` and `GalileoE5aData` subtype it).
+# The health-status and positioning-readiness checks genuinely differ per signal
+# and stay in `e1b.jl` / `e5a.jl`.
+function is_ephemeris_decoded(data::AbstractGalileoData)
+    !isnothing(data.t_0e) &&
+        !isnothing(data.M_0) &&
+        !isnothing(data.e) &&
+        !isnothing(data.sqrt_A) &&
+        !isnothing(data.Ω_0) &&
+        !isnothing(data.i_0) &&
+        !isnothing(data.ω) &&
+        !isnothing(data.i_dot) &&
+        !isnothing(data.Ω_dot) &&
+        !isnothing(data.Δn) &&
+        !isnothing(data.C_uc) &&
+        !isnothing(data.C_us) &&
+        !isnothing(data.C_rc) &&
+        !isnothing(data.C_rs) &&
+        !isnothing(data.C_ic) &&
+        !isnothing(data.C_is)
+end
+
+function is_clock_correction_decoded(data::AbstractGalileoData)
+    !isnothing(data.t_0c) &&
+        !isnothing(data.a_f0) &&
+        !isnothing(data.a_f1) &&
+        !isnothing(data.a_f2)
+end
+
 """
     galileo_viterbi(decoder, soft_page, interleaver_rows, interleaver_cols, ::Type{T}) -> T
 

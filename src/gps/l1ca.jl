@@ -137,7 +137,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 
 IS-GPS-200N, Tables 20-I, 20-II, 20-III, Sections 20.3.3.3-20.3.3.4
 """
-Base.@kwdef struct GPSL1CAData <: AbstractGNSSData
+Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     last_subframe_id::Int = 0
     integrity_status_flag::Union{Nothing,Bool} = nothing
     TOW::Union{Nothing,Int64} = nothing

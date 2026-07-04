@@ -368,7 +368,7 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
 
 IS-GPS-800J, Figures 3.5-1 through 3.5-9 and Tables 3.5-1, 3.5-3 … 3.5-8.
 """
-Base.@kwdef struct GPSL1C_DData <: AbstractGNSSData
+Base.@kwdef struct GPSL1C_DData <: AbstractGPSData
     toi::Union{Nothing,Int} = nothing
     ITOW::Union{Nothing,Int64} = nothing
     WN::Union{Nothing,Int64} = nothing
