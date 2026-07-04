@@ -2,6 +2,38 @@ abstract type AbstractGNSSConstants end
 abstract type AbstractGNSSData end
 abstract type AbstractGNSSCache end
 
+"""
+    AbstractGPSData <: AbstractGNSSData
+
+Abstract supertype for the decoded navigation data of a signal transmitted by
+the GPS constellation, e.g. `GPSL1CAData`, `GPSCNAVData`.
+
+Its purpose is to carry the constellation-level facts every GPS signal's data
+shares, so they can be stated once (on the supertype, via subtype dispatch)
+instead of once per signal. Constellation membership is encoded at the struct
+definition site — the `<: AbstractGPSData` line written anyway — so a new GPS
+signal inherits the shared behaviour with nothing to remember. Genuinely
+per-signal facts (the subframe/message-type completeness checks, the health-bit
+selection in `is_sat_healthy`) stay defined on the concrete data types.
+"""
+abstract type AbstractGPSData <: AbstractGNSSData end
+
+"""
+    AbstractGalileoData <: AbstractGNSSData
+
+Abstract supertype for the decoded navigation data of a signal transmitted by
+the Galileo constellation, e.g. `GalileoE1BData`, `GalileoE5aData`.
+
+The Galileo counterpart to [`AbstractGPSData`](@ref). It carries the facts every
+Galileo signal's data shares: `is_ephemeris_decoded` and
+`is_clock_correction_decoded` check the same orbital and clock fields for I/NAV
+(E1B) and F/NAV (E5a), so they are defined once on this supertype (see
+`src/galileo/galileo.jl`) instead of once per signal. The health-status and
+positioning-readiness checks genuinely differ per signal and stay on the
+concrete data types.
+"""
+abstract type AbstractGalileoData <: AbstractGNSSData end
+
 # Physical constants common to every GNSS handled here. Each per-signal
 # `*Constants` struct exposes these as fields (so the orbit/clock math reads
 # `state.constants.PI` etc.); the defaults are sourced from here to keep a single

@@ -52,6 +52,16 @@ interleave!
 
 ## Data Types
 
+Every concrete per-signal data type subtypes the abstract supertype of its
+constellation, which in turn subtypes `AbstractGNSSData`. The supertypes carry
+the facts every signal of a constellation shares (e.g. the Galileo
+ephemeris/clock completeness checks), stated once via subtype dispatch.
+
+```@docs
+GNSSDecoder.AbstractGPSData
+GNSSDecoder.AbstractGalileoData
+```
+
 ### GPS L1 C/A
 
 ```@docs

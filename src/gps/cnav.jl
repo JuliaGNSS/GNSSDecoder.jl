@@ -409,7 +409,7 @@ code that applies these corrections must handle `nothing` (treat as 0).
 
 IS-GPS-705J, Figures 20-1 through 20-17 and Tables 20-I through 20-XIa.
 """
-Base.@kwdef struct GPSCNAVData <: AbstractGNSSData
+Base.@kwdef struct GPSCNAVData <: AbstractGPSData
     last_message_id::Int = 0
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing

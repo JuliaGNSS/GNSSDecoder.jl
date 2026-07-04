@@ -286,7 +286,7 @@ OS SIS ICD, Issue 2.2.
 
 Galileo OS SIS ICD, Issue 2.2, Tables 42-55, 67-87
 """
-Base.@kwdef struct GalileoE1BData <: AbstractGNSSData
+Base.@kwdef struct GalileoE1BData <: AbstractGalileoData
     WN::Union{Nothing,Int64} = nothing
     TOW::Union{Nothing,Int64} = nothing
 
@@ -492,32 +492,10 @@ function Base.:(==)(a::GalileoE1BData, b::GalileoE1BData)
     return true
 end
 
-function is_ephemeris_decoded(data::GalileoE1BData)
-    !isnothing(data.t_0e) &&
-        !isnothing(data.M_0) &&
-        !isnothing(data.e) &&
-        !isnothing(data.sqrt_A) &&
-        !isnothing(data.Ω_0) &&
-        !isnothing(data.i_0) &&
-        !isnothing(data.ω) &&
-        !isnothing(data.i_dot) &&
-        !isnothing(data.Ω_dot) &&
-        !isnothing(data.Δn) &&
-        !isnothing(data.C_uc) &&
-        !isnothing(data.C_us) &&
-        !isnothing(data.C_rc) &&
-        !isnothing(data.C_rs) &&
-        !isnothing(data.C_ic) &&
-        !isnothing(data.C_is)
-end
-
-function is_clock_correction_decoded(data::GalileoE1BData)
-    !isnothing(data.t_0c) &&
-        !isnothing(data.a_f0) &&
-        !isnothing(data.a_f1) &&
-        !isnothing(data.a_f2)
-end
-
+# `is_ephemeris_decoded` and `is_clock_correction_decoded` are per-constellation
+# facts (identical fields for I/NAV and F/NAV), defined once on
+# `AbstractGalileoData` in `galileo/galileo.jl`. Only the health-status check
+# below is genuinely per-signal (E1B carries E1-B/E5b health).
 function is_health_status_decoded(data::GalileoE1BData)
     !isnothing(data.signal_health_e1b) &&
         !isnothing(data.signal_health_e5b) &&
