@@ -33,6 +33,7 @@ end
     end
 
     include("gnss_supertype.jl")
+    include("data_frequency.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")

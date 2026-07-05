@@ -35,6 +35,22 @@ reset_decoder_state
 is_sat_healthy
 ```
 
+## Signal Metadata
+
+`GNSSSignals.get_data_frequency` is extended for [`GNSSDecoderState`](@ref): it
+returns the navigation-message symbol rate of the signal the decoder demodulates
+(e.g. `50 Hz` for GPS L1 C/A, `100 Hz` for GPS L5-I, `50 Hz` for GPS L2C-M). It
+forwards to the corresponding signal's rate in GNSSSignals, so the value stays
+single-sourced. Dispatch is on the constants type, which keeps decoders that
+share a data container distinct — GPS L5-I and L2C-M both decode into
+`GPSCNAVData` but report their own rates.
+
+```julia
+using GNSSDecoder, GNSSSignals
+get_data_frequency(GPSL5IDecoderState(1))   # 100 Hz
+get_data_frequency(GPSL2CMDecoderState(1))  #  50 Hz
+```
+
 ## Shared Utilities
 
 Signal-independent building blocks used across the decoders (CRC-24Q, the

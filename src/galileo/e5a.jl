@@ -528,6 +528,11 @@ function GNSSDecoderState(system::GalileoE5aI, prn)
     GalileoE5aDecoderState(prn)
 end
 
+# F/NAV symbol rate, forwarded from GNSSSignals (see `src/gps/l1ca.jl`). The
+# decoder runs on the E5a-I data component, so the rate is E5a-I's.
+GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GalileoE5aConstants}) =
+    get_data_frequency(GalileoE5aI)
+
 """
 $(TYPEDSIGNATURES)
 

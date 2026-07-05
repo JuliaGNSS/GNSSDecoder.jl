@@ -575,6 +575,13 @@ function GNSSDecoderState(system::GalileoE1B_BOC11, prn)
     GalileoE1BDecoderState(prn)
 end
 
+# Both the full CBOC E1B and its BOC(1,1) approximation decode into
+# `GalileoE1BConstants` and carry the identical 250 Hz I/NAV symbol stream, so a
+# single method keyed on the constants type serves both. Forwarded from
+# GNSSSignals (see `src/gps/l1ca.jl`).
+GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GalileoE1BConstants}) =
+    get_data_frequency(GalileoE1B)
+
 """
 $(TYPEDSIGNATURES)
 
