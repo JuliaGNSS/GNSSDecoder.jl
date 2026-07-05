@@ -750,6 +750,10 @@ function GNSSDecoderState(system::GPSL1C_D, prn)
     GPSL1C_DDecoderState(prn)
 end
 
+# Nav-message symbol rate, forwarded from GNSSSignals (see `src/gps/l1ca.jl`).
+GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GPSL1C_DConstants}) =
+    get_data_frequency(GPSL1C_D)
+
 """
 $(TYPEDSIGNATURES)
 

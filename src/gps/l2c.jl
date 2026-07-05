@@ -92,6 +92,11 @@ function GNSSDecoderState(system::GPSL2CM, prn)
     GPSL2CMDecoderState(prn)
 end
 
+# L2C-M's CNAV symbol rate; keyed on the constants type so it stays distinct from
+# L5-I despite sharing `GPSCNAVData` (see `src/gps/l5.jl`).
+GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GPSL2CMConstants}) =
+    get_data_frequency(GPSL2CM)
+
 """
 $(TYPEDSIGNATURES)
 

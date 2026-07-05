@@ -72,6 +72,13 @@ function GNSSDecoderState(system::GPSL5I, prn)
     GPSL5IDecoderState(prn)
 end
 
+# GPS CNAV rides on both L5-I (100 sps) and L2C-M (50 sps) but decodes into a
+# single `GPSCNAVData`, so the symbol rate is keyed on the constants type
+# (`GPSL5IConstants` vs `GPSL2CMConstants`) — the only thing that tells the two
+# decoders apart. Forwarded from GNSSSignals (see `src/gps/l1ca.jl`).
+GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GPSL5IConstants}) =
+    get_data_frequency(GPSL5I)
+
 """
 $(TYPEDSIGNATURES)
 
