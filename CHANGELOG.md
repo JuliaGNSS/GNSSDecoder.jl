@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.5.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.4.0...v3.5.0) (2026-07-05)
+
+
+### Features
+
+* introduce per-constellation data supertypes ([9e5cba6](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/9e5cba66a2ff2dfc9d5a846ab000cf4c7f1f58e9))
+
 # [3.4.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.3.1...v3.4.0) (2026-07-03)
 
 
