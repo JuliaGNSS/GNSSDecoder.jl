@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.6.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.5.0...v3.6.0) (2026-07-05)
+
+
+### Features
+
+* report nav-message data frequency for a decoder state ([3112804](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/3112804454d4d91f1e8fa363f566a8a1a2dc65fb))
+
 # [3.5.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.4.0...v3.5.0) (2026-07-05)
 
 
