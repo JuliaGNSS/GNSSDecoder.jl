@@ -153,6 +153,44 @@ function deques_equal(a::CircularDeque{T}, b::CircularDeque{T}) where {T}
     return true
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Report whether a decoder has recovered the minimum navigation data a
+positioning engine needs from this satellite: a time of week, a full ephemeris
+(orbit) set, and the SV clock-correction polynomial (plus, on the signals that
+carry it in the same required set, the broadcast week number and single-band
+group delay). Dispatches on the validated [`data`](@ref GNSSDecoderState) field,
+so it only becomes `true` once the required message set has passed CRC/parity
+**and** the cross-subframe issue-of-data consistency check that promotes
+`raw_data` to `data`.
+
+This is the readiness gate a receiver (e.g. `PositionVelocityTime.jl`) should
+pair with [`is_sat_healthy`](@ref): whenever this returns `true`, the health
+field `is_sat_healthy` inspects is guaranteed to have been decoded, so the two
+can be checked together without a separate `nothing` guard.
+
+!!! note "What this deliberately does *not* gate on"
+
+    A `true` here means the *data set* is complete and self-consistent — it is a
+    necessary condition for using the SV in a fix, not a blanket guarantee that
+    no further judgement is required:
+
+      - **Ephemeris freshness.** Only presence is checked, not age. The decoder
+        has no notion of "now", so the consumer must still reject ephemerides
+        outside their fit interval (`fit_interval` / `t_oe` age).
+      - **Second-order corrections.** Group delay / inter-signal corrections
+        (`T_GD`, `ISC_*`) beyond the single required band, Klobuchar
+        ionosphere, and UTC parameters are intentionally excluded because they
+        are broadcast far less often; apply them when present and treat
+        `nothing` as zero rather than waiting for them.
+      - **Alert flag.** `is_sat_healthy` reflects the broadcast health bits
+        only; a receiver that wants to honour the L1 C/A alert flag (or
+        equivalent) must check it separately.
+"""
+is_decoding_completed_for_positioning(state::GNSSDecoderState) =
+    is_decoding_completed_for_positioning(state.data)
+
 "Soft-symbol buffer accessor — the per-signal cache stores it as `soft_buffer`."
 soft_buffer(state::GNSSDecoderState) = state.cache.soft_buffer
 

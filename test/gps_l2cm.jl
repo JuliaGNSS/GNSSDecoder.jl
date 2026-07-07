@@ -55,6 +55,9 @@ end
         @test state_a.constants isa GNSSDecoder.GPSL2CMConstants
         @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
         @test !state_a.is_shifted_by_180_degrees
+        # A fresh decoder has no validated data, so the exported
+        # state-forwarding readiness predicate is `false`.
+        @test !is_decoding_completed_for_positioning(state_a)
     end
 
     @testset "Shares the L5I CNAV decode path" begin
@@ -315,6 +318,9 @@ end
         @test isnothing(d.ism)
 
         @test GNSSDecoder.is_decoding_completed_for_positioning(d)
+        # Exported state-forwarding method: dispatches on the validated `data`,
+        # so it agrees with the `data`-typed check above.
+        @test is_decoding_completed_for_positioning(state)
         @test is_sat_healthy(state)
     end
 

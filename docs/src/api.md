@@ -35,6 +35,18 @@ reset_decoder_state
 is_sat_healthy
 ```
 
+## Positioning Readiness
+
+Pair [`is_decoding_completed_for_positioning`](@ref) with [`is_sat_healthy`](@ref)
+to gate use of a satellite in a fix: the first confirms the required navigation
+data set has been decoded and validated, the second that the satellite is
+broadcasting healthy. See the docstring for what it deliberately does *not*
+gate on (ephemeris freshness, second-order corrections, the alert flag).
+
+```@docs
+is_decoding_completed_for_positioning
+```
+
 ## Signal Metadata
 
 `GNSSSignals.get_data_frequency` is extended for [`GNSSDecoderState`](@ref): it
