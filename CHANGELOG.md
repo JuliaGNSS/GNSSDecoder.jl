@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.7.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.6.0...v3.7.0) (2026-07-07)
+
+
+### Features
+
+* export is_decoding_completed_for_positioning ([e4c9d87](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/e4c9d876a6493eb673fd64f1e6a9121760b6f6af))
+
 # [3.6.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.5.0...v3.6.0) (2026-07-05)
 
 
