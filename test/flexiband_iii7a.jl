@@ -267,8 +267,8 @@ else
             isempty(l1) && break
             ts = track!(
                 (
-                    l1 = BandMeasurement(l1, III7A_FS, III7A_IF),
-                    l5 = BandMeasurement(l5, III7A_FS_L5, III7A_IF_L5),
+                    L1 = BandMeasurement(l1, III7A_FS, III7A_IF),
+                    L5 = BandMeasurement(l5, III7A_FS_L5, III7A_IF_L5),
                 ),
                 ts,
             )
