@@ -22,6 +22,7 @@ export decode,
     GalileoE5aDecoderState,
     is_sat_healthy,
     is_decoding_completed_for_positioning,
+    get_signal_type,
     GNSSDecoderState,
     reset_decoder_state
 # v2 shared utilities — see issue #36. Used directly by issue #37 (Galileo

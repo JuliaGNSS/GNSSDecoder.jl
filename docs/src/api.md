@@ -49,18 +49,47 @@ is_decoding_completed_for_positioning
 
 ## Signal Metadata
 
-`GNSSSignals.get_data_frequency` is extended for [`GNSSDecoderState`](@ref): it
-returns the navigation-message symbol rate of the signal the decoder demodulates
-(e.g. `50 Hz` for GPS L1 C/A, `100 Hz` for GPS L5-I, `50 Hz` for GPS L2C-M). It
-forwards to the corresponding signal's rate in GNSSSignals, so the value stays
-single-sourced. Dispatch is on the constants type, which keeps decoders that
-share a data container distinct — GPS L5-I and L2C-M both decode into
-`GPSCNAVData` but report their own rates.
+A decoder state knows which signal it demodulates, so GNSSSignals' signal
+accessors are extended for [`GNSSDecoderState`](@ref) and answer directly from
+the state — no need to carry the signal alongside the decoder just to ask what
+it is. Each forwards to the corresponding signal in GNSSSignals through
+[`get_signal_type`](@ref), so every value stays single-sourced, and each folds
+to a compile-time constant.
+
+| Accessor | Answers | Example (`GPSL2CMDecoderState(1)`) |
+|:---|:---|:---|
+| `get_signal_id` / `get_signal_name` | which signal | `:GPSL2CM` / `"GPS L2CM"` |
+| `get_constellation_id` / `get_constellation_name` | which constellation | `:GPS` / `"GPS"` |
+| `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
+| `get_data_frequency` | navigation-message symbol rate | `50 Hz` |
+| `get_time_system` / `get_time_system_id` / `get_time_system_name` | time scale the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
+| `get_system_start_time` / `get_tai_offset` | that scale's epoch and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `19 s` |
+
+Dispatch is on the constants type, which keeps decoders that share a data
+container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData` but
+report their own band, ids and symbol rates.
 
 ```julia
 using GNSSDecoder, GNSSSignals
-get_data_frequency(GPSL5IDecoderState(1))   # 100 Hz
-get_data_frequency(GPSL2CMDecoderState(1))  #  50 Hz
+get_data_frequency(GPSL5IDecoderState(1))     # 100 Hz
+get_data_frequency(GPSL2CMDecoderState(1))    #  50 Hz
+get_signal_name(GalileoE5aDecoderState(1))    # "Galileo E5a-I"
+get_band_id(GalileoE1BDecoderState(1))        # :L1 — bands are identified by RF
+                                              #       frequency, not ICD label
+get_system_start_time(GalileoE1BDecoderState(1))  # 1999-08-21T23:59:47
+```
+
+Accessors describing the spreading code (`get_code_length`,
+`get_code_frequency`, `get_carrier_phase_offset`, …) are not forwarded — they
+belong to acquisition and tracking rather than to a symbol-domain decoder — but
+remain one step away via [`get_signal_type`](@ref):
+
+```julia
+get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
+```
+
+```@docs
+get_signal_type
 ```
 
 ## Shared Utilities

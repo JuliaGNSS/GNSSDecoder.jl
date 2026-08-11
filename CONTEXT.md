@@ -99,6 +99,32 @@ The CRC polynomial used by Galileo I/NAV pages, GPS L1C-D subframes 2 and 3,
 and several other CNAV variants. Polynomial 0x864cfb, init 0, no reflection,
 xor-out 0. Shared across signals — implemented once in this package.
 
+## Signal metadata
+
+Facts about the *signal* a decoder demodulates — its name and ids, band,
+constellation, navigation-message symbol rate, time scale — as opposed to the
+navigation *data* it decodes. All of it lives in GNSSSignals and none of it is
+restated here: each signal file states the constants → signal mapping
+(`get_signal_type`) and `src/gnss.jl` forwards GNSSSignals' accessors for a
+`GNSSDecoderState` through it.
+
+The mapping names the data-bearing component of a signal pair, since that is
+what carries the navigation message (`GPSL2CM`, not the `GPSL2CL` pilot;
+`GalileoE5aI`, not `GalileoE5aQ`), and reports the signal an approximation
+approximates (the E1B BOC(1,1) decoder is a `GalileoE1B`). It is keyed on the
+constants type because that, not the data type, is what tells apart decoders
+sharing a data container: L5-I and L2C-M both decode into a `GPSCNAVData`.
+
+## Time system
+
+The atomic (leap-second-free) scale a constellation counts its broadcast time
+in: GPS Time (`GPST`) for GPS, Galileo System Time (`GST`) for Galileo. Every
+decoded week number and time of week is in this scale, so turning a decoded
+WN/TOW pair into an absolute instant needs the scale's epoch
+(`get_system_start_time`) and its offset from TAI (`get_tai_offset`) — both
+available from the decoder state, both sourced from GNSSSignals. The Galileo
+epoch is not a UTC midnight: it is 13 s before it (`1999-08-21T23:59:47`).
+
 ## Decoder state vs cache
 
 `GNSSDecoderState` is an immutable struct rebuilt on each `decode` step. It
