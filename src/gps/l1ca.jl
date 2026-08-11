@@ -529,12 +529,13 @@ function GNSSDecoderState(system::GPSL1CA, prn)
     GPSL1CADecoderState(prn)
 end
 
-# Navigation-message symbol rate of the signal this decoder demodulates,
-# forwarded from GNSSSignals so the rate stays single-sourced. Dispatched on the
-# constants type, which is 1:1 with the signal (and is what tells apart decoders
-# that share a data type — see the GPS CNAV note in `src/gps/l5.jl`).
-GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GPSL1CAConstants}) =
-    get_data_frequency(GPSL1CA)
+# The signal this decoder demodulates. Everything GNSSSignals knows about GPS
+# L1 C/A — its name and ids, its band, its 50 Hz nav-message rate, GPS Time — is
+# forwarded to the decoder state through this one mapping, so none of it is
+# restated here. Keyed on the constants type, which is 1:1 with the signal (and
+# is what tells apart decoders that share a data type — see the GPS CNAV note in
+# `src/gps/l5.jl`).
+get_signal_type(::GPSL1CAConstants) = GPSL1CA
 
 """
 $(TYPEDSIGNATURES)

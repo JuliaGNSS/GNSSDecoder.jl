@@ -750,9 +750,10 @@ function GNSSDecoderState(system::GPSL1C_D, prn)
     GPSL1C_DDecoderState(prn)
 end
 
-# Nav-message symbol rate, forwarded from GNSSSignals (see `src/gps/l1ca.jl`).
-GNSSSignals.get_data_frequency(::GNSSDecoderState{<:Any,GPSL1C_DConstants}) =
-    get_data_frequency(GPSL1C_D)
+# The signal this decoder demodulates; signal metadata is forwarded through it
+# (see `src/gps/l1ca.jl`). CNAV-2 rides on the L1C data component — `GPSL1C_D` —
+# while `GPSL1C_P` is the dataless pilot.
+get_signal_type(::GPSL1C_DConstants) = GPSL1C_D
 
 """
 $(TYPEDSIGNATURES)
