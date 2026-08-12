@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.10.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.9.0...v3.10.0) (2026-08-12)
+
+
+### Features
+
+* report signal metadata for a decoder state ([7456410](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/745641095528bdc20f0d25c0f5828a7103b749d9))
+
 # [3.9.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.8.0...v3.9.0) (2026-08-05)
 
 
