@@ -1,5 +1,17 @@
 # Changelog
 
+# [3.11.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.10.0...v3.11.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* **gpsl1:** screen HOW time of week for plausibility ([19dea2d](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/19dea2d49939cede6ea382dfdcf965640f1efa94)), closes [#82](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/82)
+
+
+### Features
+
+* **gpsl1:** predict the HOW time of week from elapsed symbols ([a7b31c7](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/a7b31c7fc638199a4ebf4e594f9eb48be8303f30)), closes [#82](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/82) [#82](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/82)
+
 # [3.10.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.9.0...v3.10.0) (2026-08-12)
 
 
