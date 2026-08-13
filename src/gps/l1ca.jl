@@ -92,6 +92,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
+  - `num_bits_after_valid_syncro_sequence_after_last_TOW::Int`: Symbol-counter value when `TOW` was decoded
 
 # Subframe 1 - Clock Correction Parameters
 
@@ -143,6 +144,9 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing
     anti_spoof_flag::Union{Nothing,Bool} = nothing
+    # `num_bits_after_valid_syncro_sequence` when `TOW` was decoded; lets
+    # `is_plausible_TOW` predict the next legal TOW exactly (issue #82).
+    num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
 
     trans_week::Union{Nothing,Int64} = nothing
     codeonl2::Union{Nothing,Int64} = nothing
@@ -222,6 +226,7 @@ function GPSL1CAData(
     TOW = data.TOW,
     alert_flag = data.alert_flag,
     anti_spoof_flag = data.anti_spoof_flag,
+    num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
     trans_week = data.trans_week,
     codeonl2 = data.codeonl2,
     ura = data.ura,
@@ -282,6 +287,7 @@ function GPSL1CAData(
         TOW,
         alert_flag,
         anti_spoof_flag,
+        num_bits_after_valid_syncro_sequence_after_last_TOW,
         trans_week,
         codeonl2,
         ura,
@@ -589,7 +595,11 @@ function reset_decoder_state(state::GNSSDecoderState{<:GPSL1CAData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        raw_data = GPSL1CAData(state.raw_data; TOW = nothing),
+        raw_data = GPSL1CAData(
+            state.raw_data;
+            TOW = nothing,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+        ),
         data = GPSL1CAData(),
         num_bits_after_valid_syncro_sequence = nothing,
     )
@@ -698,35 +708,62 @@ const SECONDS_PER_WEEK = 604_800
 # though the 17-bit field could hold counts up to 131071.
 const LNAV_MAX_TOW_COUNT = SECONDS_PER_WEEK ÷ 6 - 1
 
-# Largest forward step accepted between the TOWs of two successfully decoded
-# HOWs, in seconds. Generous against real gaps — subframes are missed when bit
-# decoding stalls through a signal blockage or words fail parity, and a full
-# signal loss resets the decoder (clearing the held TOW) anyway — while small
-# enough (~0.1% of the week) to reject nearly every false-lock TOW. A genuine
-# gap beyond this costs one discarded TOW; the next subframe is accepted fresh.
+# An LNAV subframe is 300 symbols long and lasts 6 s (50 bps).
+const LNAV_SYMBOLS_PER_SUBFRAME = 300
+
+# Fallback bound for the TOW continuity screen while the symbol counter is
+# not yet running (before the first data promotion, and after a decoder
+# reset): largest forward step accepted between the TOWs of two successfully
+# decoded HOWs, in seconds. Generous against real gaps — subframes are missed
+# when bit decoding stalls through a signal blockage or words fail parity —
+# while small enough (~0.1% of the week) to reject nearly every false-lock
+# TOW. Once the counter runs, the exact elapsed-symbols screen replaces this
+# bound. A genuine gap beyond it costs one discarded TOW; the next subframe
+# is accepted fresh.
 const LNAV_MAX_TOW_GAP = 600
 
 """
-    is_plausible_TOW(TOW_count, prev_TOW)
+    is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_after_valid_syncro_sequence)
 
 Screen a truncated time-of-week count freshly decoded from a HOW against what
 a genuine frame lock can produce, before it is stored (in seconds) in
 `raw_data.TOW`. `prev_TOW` is the TOW held from an earlier subframe's HOW in
-seconds, or `nothing` if none is held.
+seconds (`nothing` if none is held), `prev_TOW_anchor` the symbol-counter
+value recorded when it was decoded, and the last argument the counter's
+current value (`state.num_bits_after_valid_syncro_sequence`).
 
 Frame sync is only a 16-bit preamble match, so a false lock on noise
 occasionally reaches this point with an arbitrary 17-bit count behind valid
-parity (issue #82). Two screens reject most of them:
+parity (issue #82). The screens, strongest available first:
 
   - The count must lie inside the week (at most `LNAV_MAX_TOW_COUNT`).
-  - When a previous TOW is held, the new one must lie ahead of it — modulo
-    `SECONDS_PER_WEEK`, so the week rollover passes — by at most
-    `LNAV_MAX_TOW_GAP`. Consecutive subframes step by exactly 6 s, but
-    subframes may be missed, so any bounded forward step is accepted.
+  - When the symbol counter ran across both HOW decodes, the elapsed symbols
+    predict the TOW exactly: `elapsed` must be a positive multiple of
+    `LNAV_SYMBOLS_PER_SUBFRAME` — genuine locks always sit on the same
+    300-symbol frame grid — and the TOW must have advanced by 6 s per
+    subframe (modulo `SECONDS_PER_WEEK`, so the week rollover passes). This
+    holds across arbitrarily long decode gaps (a blockage, a satellite
+    concealed for hours from a vector-tracking receiver) as long as tracking
+    keeps symbols flowing, and needs no tuning constant. Should the counter
+    desync from the frame grid (a symbol slip), one genuine TOW is discarded
+    and the next is accepted fresh against an empty history.
+  - Before the counter runs there is no elapsed-time reference, so fall back
+    to a bounded forward step of at most `LNAV_MAX_TOW_GAP` seconds.
 """
-function is_plausible_TOW(TOW_count, prev_TOW)
+function is_plausible_TOW(
+    TOW_count,
+    prev_TOW,
+    prev_TOW_anchor,
+    num_bits_after_valid_syncro_sequence,
+)
     TOW_count <= LNAV_MAX_TOW_COUNT || return false
     isnothing(prev_TOW) && return true
+    if !isnothing(prev_TOW_anchor) && !isnothing(num_bits_after_valid_syncro_sequence)
+        elapsed = num_bits_after_valid_syncro_sequence - prev_TOW_anchor
+        (elapsed > 0 && elapsed % LNAV_SYMBOLS_PER_SUBFRAME == 0) || return false
+        return Int64(TOW_count) * 6 ==
+               mod(prev_TOW + 6 * (elapsed ÷ LNAV_SYMBOLS_PER_SUBFRAME), SECONDS_PER_WEEK)
+    end
     ΔTOW = mod(Int64(TOW_count) * 6 - prev_TOW, SECONDS_PER_WEEK)
     return 0 < ΔTOW <= LNAV_MAX_TOW_GAP
 end
@@ -739,17 +776,36 @@ function read_tlm_and_how_words(state, buffer)
     # `raw_data.TOW` must only ever hold a TOW decoded from *this* subframe's
     # HOW: `confirm_data` re-anchors `num_bits_after_valid_syncro_sequence` to
     # it when promoting `raw_data`, so a TOW left over from an earlier subframe
-    # would shift the reported transmit time by a multiple of 6 s. Clear it up
-    # front; a HOW that passes parity and the plausibility screen writes it back.
+    # would shift the reported transmit time by a multiple of 6 s. Clear it
+    # (and its anchor) up front; a HOW that passes parity and the plausibility
+    # screen writes them back.
     prev_TOW = state.raw_data.TOW
-    state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; TOW = nothing))
+    prev_TOW_anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW
+    num_bits = state.num_bits_after_valid_syncro_sequence
+    state = GNSSDecoderState(
+        state;
+        raw_data = GPSL1CAData(
+            state.raw_data;
+            TOW = nothing,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+        ),
+    )
     state = can_decode_word(state, buffer, 2) do how_word, state
         TOW_count = get_bits(how_word, 30, 1, 17)
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
         last_subframe_id = get_bits(how_word, 30, 20, 3)
-        TOW = is_plausible_TOW(TOW_count, prev_TOW) ? Int64(TOW_count) * 6 : nothing
-        GPSL1CAData(state.raw_data; last_subframe_id, TOW, alert_flag, anti_spoof_flag)
+        is_plausible = is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits)
+        TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
+        GPSL1CAData(
+            state.raw_data;
+            last_subframe_id,
+            TOW,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = is_plausible ?
+                                                                  num_bits : nothing,
+            alert_flag,
+            anti_spoof_flag,
+        )
     end
     state
 end
@@ -1372,6 +1428,25 @@ with_old_data(state, new_old_data; kwargs...) = GNSSDecoderState(
     kwargs...,
 )
 
+# Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
+# the current subframe (`preamble_length` symbols past its boundary). The TOW
+# anchor must be rebased into the same counting frame: promotion only happens
+# with a TOW decoded in this very subframe (`read_tlm_and_how_words` clears
+# stale ones), so the anchor being rebased equals the counter being replaced.
+function promote_data(state, new_old_data)
+    promoted = GPSL1CAData(
+        state.raw_data;
+        num_bits_after_valid_syncro_sequence_after_last_TOW = state.constants.preamble_length,
+    )
+    with_old_data(
+        state,
+        new_old_data;
+        raw_data = promoted,
+        data = promoted,
+        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+    )
+end
+
 function confirm_data(state, max_vote = 20)
     old_data = state.cache.old_data
 
@@ -1392,12 +1467,7 @@ function confirm_data(state, max_vote = 20)
             # New IODC entirely
             if state.data == GPSL1CAData() # no data yet - add to cache and use data
                 new_old_data = [VotedGPSL1CAData(0, state.raw_data)]
-                return with_old_data(
-                    state,
-                    new_old_data;
-                    data = state.raw_data,
-                    num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
-                )
+                return promote_data(state, new_old_data)
             else # add as new entry, don't use data yet
                 new_old_data = push!(copy(old_data), VotedGPSL1CAData(0, state.raw_data))
                 return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
@@ -1429,12 +1499,7 @@ function confirm_data(state, max_vote = 20)
         updated
     end
 
-    with_old_data(
-        state,
-        new_old_data;
-        data = state.raw_data,
-        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
-    )
+    promote_data(state, new_old_data)
 end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1CAData})

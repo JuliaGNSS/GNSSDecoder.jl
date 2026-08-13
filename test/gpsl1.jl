@@ -265,6 +265,8 @@ end
         TOW = 43333 * 6,
         alert_flag = false,
         anti_spoof_flag = false,
+        # Rebased to preamble_length at every data promotion (see promote_data)
+        num_bits_after_valid_syncro_sequence_after_last_TOW = 8,
         trans_week = 58,
         codeonl2 = 1,
         ura = 2.0,
@@ -523,32 +525,61 @@ end
 end
 
 @testset "GPS L1 C/A TOW plausibility screen (issue #82)" begin
+    # Arguments: 17-bit TOW count, held TOW (s), symbol-counter value when the
+    # held TOW was decoded (anchor), current symbol-counter value.
     is_plausible = GNSSDecoder.is_plausible_TOW
 
     # Out-of-week counts are impossible regardless of history: the HOW count
     # rolls over after 100799 (IS-GPS-200N, Section 20.3.3.2). 116459 is the
     # false-lock count from issue #82.
-    @test !is_plausible(116459, nothing)
-    @test !is_plausible(100800, nothing)
-    @test is_plausible(100799, nothing)
-    @test is_plausible(0, nothing)
+    @test !is_plausible(116459, nothing, nothing, nothing)
+    @test !is_plausible(100800, nothing, nothing, nothing)
+    @test is_plausible(100799, nothing, nothing, nothing)
+    @test is_plausible(0, nothing, nothing, nothing)
 
     # Without a held TOW any in-week count is accepted.
-    @test is_plausible(43333, nothing)
+    @test is_plausible(43333, nothing, nothing, nothing)
 
-    # With a held TOW: consecutive subframes step by one count (6 s), and
-    # missed subframes give larger steps that must still be accepted...
-    @test is_plausible(43334, 43333 * 6)
-    @test is_plausible(43333 + 50, 43333 * 6)
-    @test is_plausible(43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6, 43333 * 6)
+    # Exact screen while the symbol counter runs: the TOW must advance by
+    # 6 s per 300 elapsed symbols. One subframe...
+    @test is_plausible(43334, 43333 * 6, 8, 308)
+    # ...missed subframes (the counter keeps running through them)...
+    @test is_plausible(43336, 43333 * 6, 8, 908)
+    # ...a day-long decode gap (14400 subframes)...
+    @test is_plausible(43333 + 14400, 43333 * 6, 8, 8 + 86400 * 50)
+    # ...and the week rollover.
+    @test is_plausible(0, 100799 * 6, 8, 308)
+    # A lock off the 300-symbol frame grid cannot be the same signal...
+    @test !is_plausible(43334, 43333 * 6, 8, 309)
+    # ...an aligned one must carry exactly the predicted count...
+    @test !is_plausible(43335, 43333 * 6, 8, 308)
+    @test !is_plausible(43333, 43333 * 6, 8, 308)
+    # ...and time must actually have passed.
+    @test !is_plausible(43334, 43333 * 6, 8, 8)
+
+    # Fallback before the counter runs (no anchor yet): bounded forward step.
+    @test is_plausible(43334, 43333 * 6, nothing, nothing)
+    @test is_plausible(43333 + 50, 43333 * 6, nothing, nothing)
+    @test is_plausible(
+        43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6,
+        43333 * 6,
+        nothing,
+        nothing,
+    )
     # ...but repeated, backward, and far-future TOWs are rejected.
-    @test !is_plausible(43333, 43333 * 6)
-    @test !is_plausible(43332, 43333 * 6)
-    @test !is_plausible(43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6 + 1, 43333 * 6)
+    @test !is_plausible(43333, 43333 * 6, nothing, nothing)
+    @test !is_plausible(43332, 43333 * 6, nothing, nothing)
+    @test !is_plausible(
+        43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6 + 1,
+        43333 * 6,
+        nothing,
+        nothing,
+    )
 
-    # Week rollover: the last subframes of the week hand over to count 0, 1, …
-    @test is_plausible(0, 100799 * 6)
-    @test is_plausible(1, 100799 * 6)
+    # Week rollover through the fallback: the last subframes of the week hand
+    # over to count 0, 1, …
+    @test is_plausible(0, 100799 * 6, nothing, nothing)
+    @test is_plausible(1, 100799 * 6, nothing, nothing)
 end
 
 @testset "GPS L1 C/A HOW screening in read_tlm_and_how_words" begin
@@ -577,10 +608,16 @@ end
         PUInt320(tlm) << (30 * 9 + 8) | PUInt320(how) << (30 * 8 + 8)
     end
 
-    with_TOW(state, TOW) = GNSSDecoder.GNSSDecoderState(
-        state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.raw_data; TOW),
-    )
+    with_TOW(state, TOW; anchor = nothing, num_bits = nothing) =
+        GNSSDecoder.GNSSDecoderState(
+            state;
+            raw_data = GNSSDecoder.GPSL1CAData(
+                state.raw_data;
+                TOW,
+                num_bits_after_valid_syncro_sequence_after_last_TOW = anchor,
+            ),
+            num_bits_after_valid_syncro_sequence = num_bits,
+        )
 
     fresh = GPSL1CADecoderState(1)
 
@@ -596,10 +633,12 @@ end
     state = GNSSDecoder.read_tlm_and_how_words(fresh, make_buffer(116459))
     @test isnothing(state.raw_data.TOW)
 
-    # Held TOW: the following subframe's TOW (+6 s) is accepted...
+    # Held TOW, symbol counter not yet running (fallback tier): the following
+    # subframe's TOW (+6 s) is accepted...
     held = with_TOW(fresh, 43333 * 6)
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334))
     @test state.raw_data.TOW == 43334 * 6
+    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
     # ...an implausible in-week jump is rejected...
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(93334))
     @test isnothing(state.raw_data.TOW)
@@ -608,6 +647,26 @@ end
     state =
         GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334; break_parity = true))
     @test isnothing(state.raw_data.TOW)
+
+    # Once the symbol counter runs (after the first data promotion), the exact
+    # elapsed-symbols screen replaces the bounded gap. The held TOW was
+    # anchored at counter value 8, so at counter 308 (one subframe later) only
+    # the +6 s TOW fits the frame grid, and the accepted TOW records the
+    # counter value as its own anchor...
+    anchored = with_TOW(fresh, 43333 * 6; anchor = 8, num_bits = 308)
+    state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43334))
+    @test state.raw_data.TOW == 43334 * 6
+    @test state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW == 308
+    # ...a small jump the fallback tier would have accepted is now rejected...
+    state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43335))
+    @test isnothing(state.raw_data.TOW)
+    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
+    # ...while a day-long decode gap with tracking maintained (e.g. a
+    # concealed satellite in a vector-tracking receiver) is accepted on the
+    # first reappearing subframe.
+    concealed = with_TOW(fresh, 43333 * 6; anchor = 8, num_bits = 8 + 86400 * 50)
+    state = GNSSDecoder.read_tlm_and_how_words(concealed, make_buffer(43333 + 14400))
+    @test state.raw_data.TOW == (43333 + 14400) * 6
 end
 
 @testset "GPS L1 C/A reset_decoder_state" begin
@@ -623,6 +682,7 @@ end
     state = reset_decoder_state(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
+    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
     @test isnothing(state.data.TOW)
     @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
