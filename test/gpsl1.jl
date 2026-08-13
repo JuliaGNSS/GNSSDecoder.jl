@@ -522,6 +522,94 @@ end
     end
 end
 
+@testset "GPS L1 C/A TOW plausibility screen (issue #82)" begin
+    is_plausible = GNSSDecoder.is_plausible_TOW
+
+    # Out-of-week counts are impossible regardless of history: the HOW count
+    # rolls over after 100799 (IS-GPS-200N, Section 20.3.3.2). 116459 is the
+    # false-lock count from issue #82.
+    @test !is_plausible(116459, nothing)
+    @test !is_plausible(100800, nothing)
+    @test is_plausible(100799, nothing)
+    @test is_plausible(0, nothing)
+
+    # Without a held TOW any in-week count is accepted.
+    @test is_plausible(43333, nothing)
+
+    # With a held TOW: consecutive subframes step by one count (6 s), and
+    # missed subframes give larger steps that must still be accepted...
+    @test is_plausible(43334, 43333 * 6)
+    @test is_plausible(43333 + 50, 43333 * 6)
+    @test is_plausible(43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6, 43333 * 6)
+    # ...but repeated, backward, and far-future TOWs are rejected.
+    @test !is_plausible(43333, 43333 * 6)
+    @test !is_plausible(43332, 43333 * 6)
+    @test !is_plausible(43333 + GNSSDecoder.LNAV_MAX_TOW_GAP ÷ 6 + 1, 43333 * 6)
+
+    # Week rollover: the last subframes of the week hand over to count 0, 1, …
+    @test is_plausible(0, 100799 * 6)
+    @test is_plausible(1, 100799 * 6)
+end
+
+@testset "GPS L1 C/A HOW screening in read_tlm_and_how_words" begin
+    # Build parity-valid TLM and HOW words. The six parity bits of a word are
+    # unique given its 24 source data bits and bits 29-30 of the previous
+    # word, so they can be found by search; a set bit 30 in the previous word
+    # additionally complements the transmitted data bits (IS-GPS-200 20.3.5).
+    function make_word(source_data24; prev29 = false, prev30 = false)
+        data24 = prev30 ? ~UInt(source_data24) & 0xFFFFFF : UInt(source_data24)
+        for parity = UInt(0):UInt(63)
+            word = data24 << 6 | parity
+            GNSSDecoder.check_gpsl1_parity(word, prev29, prev30) && return word
+        end
+        error("no parity solution for the given word")
+    end
+
+    PUInt320 = GNSSDecoder.UInt320
+    function make_buffer(TOW_count; subframe_id = 1, break_parity = false)
+        tlm = make_word(UInt(0b10001011) << 16)
+        how = make_word(
+            UInt(TOW_count) << 7 | UInt(subframe_id) << 2;
+            prev29 = GNSSDecoder.get_bit(tlm, 30, 29),
+            prev30 = GNSSDecoder.get_bit(tlm, 30, 30),
+        )
+        break_parity && (how ⊻= UInt(1))
+        PUInt320(tlm) << (30 * 9 + 8) | PUInt320(how) << (30 * 8 + 8)
+    end
+
+    with_TOW(state, TOW) = GNSSDecoder.GNSSDecoderState(
+        state;
+        raw_data = GNSSDecoder.GPSL1CAData(state.raw_data; TOW),
+    )
+
+    fresh = GPSL1CADecoderState(1)
+
+    # Fresh state: an in-week TOW is accepted together with the HOW flags.
+    state = GNSSDecoder.read_tlm_and_how_words(fresh, make_buffer(43334))
+    @test state.raw_data.TOW == 43334 * 6
+    @test state.raw_data.last_subframe_id == 1
+    @test state.raw_data.alert_flag == false
+    @test state.raw_data.anti_spoof_flag == false
+
+    # Fresh state: issue #82's out-of-week count (698754 s of week) is
+    # rejected even though the word passes parity.
+    state = GNSSDecoder.read_tlm_and_how_words(fresh, make_buffer(116459))
+    @test isnothing(state.raw_data.TOW)
+
+    # Held TOW: the following subframe's TOW (+6 s) is accepted...
+    held = with_TOW(fresh, 43333 * 6)
+    state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334))
+    @test state.raw_data.TOW == 43334 * 6
+    # ...an implausible in-week jump is rejected...
+    state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(93334))
+    @test isnothing(state.raw_data.TOW)
+    # ...and a HOW failing parity clears the held TOW instead of leaving the
+    # previous subframe's value behind (it would anchor transmit time 6 s off).
+    state =
+        GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334; break_parity = true))
+    @test isnothing(state.raw_data.TOW)
+end
+
 @testset "GPS L1 C/A reset_decoder_state" begin
     decoder = GPSL1CADecoderState(1)
     state = reduce(
