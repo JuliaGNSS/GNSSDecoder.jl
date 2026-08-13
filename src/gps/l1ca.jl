@@ -89,7 +89,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 
   - `last_subframe_id::Int`: ID of the last decoded subframe (1-5)
   - `integrity_status_flag::Bool`: LNAV data integrity status (0=OK, 1=bad)
-  - `TOW::Int64`: Time of Week at message transmission (seconds, 0-604784)
+  - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
 
@@ -691,23 +691,65 @@ function can_decode_two_words(
     return state
 end
 
+const SECONDS_PER_WEEK = 604_800
+
+# Largest legal truncated TOW count in a HOW: the count steps once per 6 s
+# subframe and rolls over after 100799 (IS-GPS-200N, Section 20.3.3.2), even
+# though the 17-bit field could hold counts up to 131071.
+const LNAV_MAX_TOW_COUNT = SECONDS_PER_WEEK ÷ 6 - 1
+
+# Largest forward step accepted between the TOWs of two successfully decoded
+# HOWs, in seconds. Generous against real gaps — subframes are missed when bit
+# decoding stalls through a signal blockage or words fail parity, and a full
+# signal loss resets the decoder (clearing the held TOW) anyway — while small
+# enough (~0.1% of the week) to reject nearly every false-lock TOW. A genuine
+# gap beyond this costs one discarded TOW; the next subframe is accepted fresh.
+const LNAV_MAX_TOW_GAP = 600
+
+"""
+    is_plausible_TOW(TOW_count, prev_TOW)
+
+Screen a truncated time-of-week count freshly decoded from a HOW against what
+a genuine frame lock can produce, before it is stored (in seconds) in
+`raw_data.TOW`. `prev_TOW` is the TOW held from an earlier subframe's HOW in
+seconds, or `nothing` if none is held.
+
+Frame sync is only a 16-bit preamble match, so a false lock on noise
+occasionally reaches this point with an arbitrary 17-bit count behind valid
+parity (issue #82). Two screens reject most of them:
+
+  - The count must lie inside the week (at most `LNAV_MAX_TOW_COUNT`).
+  - When a previous TOW is held, the new one must lie ahead of it — modulo
+    `SECONDS_PER_WEEK`, so the week rollover passes — by at most
+    `LNAV_MAX_TOW_GAP`. Consecutive subframes step by exactly 6 s, but
+    subframes may be missed, so any bounded forward step is accepted.
+"""
+function is_plausible_TOW(TOW_count, prev_TOW)
+    TOW_count <= LNAV_MAX_TOW_COUNT || return false
+    isnothing(prev_TOW) && return true
+    ΔTOW = mod(Int64(TOW_count) * 6 - prev_TOW, SECONDS_PER_WEEK)
+    return 0 < ΔTOW <= LNAV_MAX_TOW_GAP
+end
+
 function read_tlm_and_how_words(state, buffer)
     state = can_decode_word(state, buffer, 1) do tlm_word, state
         integrity_status_flag = get_bit(tlm_word, 30, 23)
         GPSL1CAData(state.raw_data; integrity_status_flag)
     end
+    # `raw_data.TOW` must only ever hold a TOW decoded from *this* subframe's
+    # HOW: `confirm_data` re-anchors `num_bits_after_valid_syncro_sequence` to
+    # it when promoting `raw_data`, so a TOW left over from an earlier subframe
+    # would shift the reported transmit time by a multiple of 6 s. Clear it up
+    # front; a HOW that passes parity and the plausibility screen writes it back.
     prev_TOW = state.raw_data.TOW
+    state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; TOW = nothing))
     state = can_decode_word(state, buffer, 2) do how_word, state
-        TOW = get_bits(how_word, 30, 1, 17) * 6
+        TOW_count = get_bits(how_word, 30, 1, 17)
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
         last_subframe_id = get_bits(how_word, 30, 20, 3)
+        TOW = is_plausible_TOW(TOW_count, prev_TOW) ? Int64(TOW_count) * 6 : nothing
         GPSL1CAData(state.raw_data; last_subframe_id, TOW, alert_flag, anti_spoof_flag)
-    end
-    if !isnothing(prev_TOW) && prev_TOW + 1 != state.raw_data.TOW
-        # Time of week must be decodable
-        state =
-            GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; TOW = nothing))
     end
     state
 end
