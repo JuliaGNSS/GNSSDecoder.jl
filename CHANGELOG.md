@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.12.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.11.0...v3.12.0) (2026-08-18)
+
+
+### Features
+
+* support Tracking 7 ([4147c59](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/4147c59a96e02ec161ca5b3a0472f54994e0d1fc)), closes [JuliaGNSS/Tracking.jl#223](https://github.com/JuliaGNSS/Tracking.jl/issues/223)
+
 # [3.11.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.10.0...v3.11.0) (2026-08-13)
 
 
