@@ -701,8 +701,6 @@ function can_decode_two_words(
     return state
 end
 
-const SECONDS_PER_WEEK = 604_800
-
 # Largest legal truncated TOW count in a HOW: the count steps once per 6 s
 # subframe and rolls over after 100799 (IS-GPS-200N, Section 20.3.3.2), even
 # though the 17-bit field could hold counts up to 131071.

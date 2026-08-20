@@ -34,6 +34,22 @@ concrete data types.
 """
 abstract type AbstractGalileoData <: AbstractGNSSData end
 
+"""
+    AbstractBeiDouData <: AbstractGNSSData
+
+Abstract supertype for the decoded navigation data of a signal transmitted by
+the BeiDou constellation, e.g. `BeiDouDNAVData` (B1I/B3I), `BeiDouB1CData`,
+`BeiDouB2aData`, `BeiDouB2bData`.
+
+The BeiDou counterpart to [`AbstractGPSData`](@ref) and
+[`AbstractGalileoData`](@ref): it carries the constellation-level facts every
+BeiDou signal's data shares, so they can be stated once via subtype dispatch.
+Genuinely per-signal facts (the message-set completeness checks, the
+health-flag selection in `is_sat_healthy`) stay defined on the concrete data
+types.
+"""
+abstract type AbstractBeiDouData <: AbstractGNSSData end
+
 # Physical constants common to every GNSS handled here. Each per-signal
 # `*Constants` struct exposes these as fields (so the orbit/clock math reads
 # `state.constants.PI` etc.); the defaults are sourced from here to keep a single
@@ -49,6 +65,11 @@ abstract type AbstractGalileoData <: AbstractGNSSData end
 const GNSS_PI = 3.1415926535898
 const SPEED_OF_LIGHT = 2.99792458e8        # m/s
 const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and GTRF agree)
+
+# Every constellation here counts time as a week number plus a time of week,
+# so the week length is shared rather than owned by whichever signal happened
+# to need it first.
+const SECONDS_PER_WEEK = 604_800
 
 """
 $(TYPEDEF)
@@ -336,6 +357,26 @@ calc_preamble_mask(constants::AbstractGNSSConstants) =
     UInt(1) << UInt(constants.preamble_length) - UInt(1)
 
 """
+    pack_soft_bits(deque, offset, len) -> UInt64
+
+Hard-slice `len` soft symbols of `deque` starting at 1-based `offset` into a
+`UInt64`, oldest symbol at the MSB — the same bit order [`pack_buffer`](@ref)
+produces, but for a slice rather than the whole window.
+
+Sync only ever inspects a handful of known positions (the preamble at either
+end, and any unencoded header field), so a decoder whose window is long and
+whose symbol rate is high can read exactly those bits instead of repacking
+the entire window on every symbol. `len` must be at most 64.
+"""
+function pack_soft_bits(deque::CircularDeque{Float32}, offset::Int, len::Int)
+    word = UInt64(0)
+    @inbounds for i = 0:(len-1)
+        word = (word << 1) | (hard_slice(deque[offset+i]) ? UInt64(1) : UInt64(0))
+    end
+    return word
+end
+
+"""
     pack_buffer(state) -> Unsigned
 
 Hard-slice the leading `syncro_sequence_length + preamble_length` soft
@@ -452,10 +493,11 @@ convention):
 - magnitude ⇒ confidence. **No normalization is required; values need not lie in
   `[-1, 1]`.** GPS L1 C/A (hard-slice + parity) and Galileo E1B (Viterbi, whose
   ML path is invariant to a global scale) use the sign and are indifferent to
-  the magnitude scale. GPS L1C-D's LDPC decode is flooding sum-product, which
-  *is* scale-sensitive, so there the magnitudes should be confidence-weighted on
-  a roughly LLR-like scale (`≈ 2·r/σ²`) for best performance at marginal SNR —
-  but still need not be normalized to a fixed range.
+  the magnitude scale. The LDPC decodes (GPS L1C-D and the BeiDou B-CNAV
+  family: B1C, B2a, B2b) are flooding sum-product, which *is* scale-sensitive,
+  so there the magnitudes should be confidence-weighted on a roughly LLR-like
+  scale (`≈ 2·r/σ²`) for best performance at marginal SNR — but still need not
+  be normalized to a fixed range.
 
 Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
 amplitude-weighted soft bits) for every signal. See `CONTEXT.md` for the full

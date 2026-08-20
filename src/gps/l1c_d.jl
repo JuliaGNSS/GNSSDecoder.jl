@@ -658,20 +658,14 @@ end
 _l1c_d_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
 function GPSL1C_DCache()
-    sf2_H = LDPCMatrix(_l1c_d_data_path("cnv2_sf2.alist"))
-    sf3_H = LDPCMatrix(_l1c_d_data_path("cnv2_sf3.alist"))
     # The CNAV-2 LDPC codes are systematic with the codeword laid out as
     # [info | parity] (IS-GPS-800G §3.2.3.3: H = [[A B T] [C D E]] acts on
-    # [info; parity]). Aff3ct's alist loader auto-derives info-bit positions
-    # by Gaussian elimination and happens to pick the *parity* columns, so
-    # the ICD layout must be forced before the decoders capture it.
+    # [info; parity]); `load_ldpc_decoder` forces that layout onto Aff3ct.
     # Verified against a Spirent GSS post-FEC L1C recording.
-    sf2_H.info_bits_pos = collect(UInt32, 0:(sf2_H.K-1))
-    sf3_H.info_bits_pos = collect(UInt32, 0:(sf3_H.K-1))
     GPSL1C_DCache(
         CircularDeque{Float32}(L1C_D_WINDOW_LENGTH),
-        LDPCBPDecoder(sf2_H; num_iterations = 50),
-        LDPCBPDecoder(sf3_H; num_iterations = 50),
+        load_ldpc_decoder(_l1c_d_data_path("cnv2_sf2.alist")),
+        load_ldpc_decoder(_l1c_d_data_path("cnv2_sf3.alist")),
     )
 end
 
@@ -876,38 +870,6 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     state = decode_subframe2(state, sf2_symbols)
     state = decode_subframe3(state, sf3_symbols)
     return state
-end
-
-# Run an Aff3ct LDPC BP decode, CRC-check the info block, and pack it MSB-first
-# into a wide word for the shared `get_bits` helpers. CRC failure ⇒ `nothing`
-# (the caller silently drops the subframe). `T` is the packed-word type holding
-# the `info_bits`-long block (`UInt600` for SF2, `UInt288` for SF3).
-"""
-Decode, CRC-check, and pack one LDPC info block into a `T`-typed word; `nothing` on CRC failure.
-"""
-function ldpc_decode_word(
-    decoder::LDPCBPDecoder,
-    symbols,
-    info_bits::Int,
-    ::Type{T},
-) where {T}
-    # AFF3CT LLR convention matches ours: positive ⇒ bit 0, negative ⇒ bit 1.
-    llr = collect(Float32, symbols)
-    info = Aff3ct.decode(decoder, llr)
-    bits = Vector{Bool}(undef, info_bits)
-    @inbounds for i = 1:info_bits
-        bits[i] = info[i] != 0
-    end
-    # CRC-24Q over the whole info block (message bits + trailing 24-bit CRC) is
-    # 0 iff the checksum matches; check on the bit vector before packing.
-    crc24q(bits) == 0 || return nothing
-    # Pack MSB-first so bit 1 is the most-significant bit and bit `info_bits`
-    # the least-significant (right-aligned), matching `word_length = info_bits`.
-    word = T(0)
-    @inbounds for b in bits
-        word = (word << 1) | T(b ? 1 : 0)
-    end
-    return word
 end
 
 # ---- Subframe 2 bit-field extraction (IS-GPS-800G Figure 3.5-1) ------------

@@ -41,23 +41,70 @@ code; this file is for naming and meaning only.
   F/NAV rides on the E5a-I (data) component, so `GNSSDecoderState(::GalileoE5aI,
   prn)` maps here (E5a-Q is the dataless pilot); `GalileoE5aDecoderState(prn)` is
   the equivalent direct constructor.
+- **BeiDou B1I / B3I** (`BeiDouB1I` / `BeiDouB3I`) — the legacy BDS message,
+  identical on both signals (BDS-SIS-ICD-B1I-3.0 / BDS-SIS-ICD-B3I-1.0 §5), so
+  they share one decoder core (`src/beidou/dnav.jl`) and the `BeiDouDNAVData`
+  container, the way L5I/L2C share the GPS CNAV core. Two formats selected by
+  PRN (`is_beidou_geo`): **D1** (MEO/IGSO, PRN 6-58) at 50 bps under the NH20
+  secondary code — subframes 1-3 carry the fundamental nav set, subframes 4-5
+  are 24-page almanac/health/time-offset cycles (incl. the AmEpID/AmID-gated
+  expanded almanac for SV 31-63); **D2** (GEO, PRN 1-5 and 59-63) at 500 bps —
+  the same fundamental set spread over pages 1-10 of subframe 1 (D2 subframes
+  2-5, the legacy wide-area differential/integrity service, are not decoded).
+  Subframe = 300 bits = 10 × 30-bit words; word 1 = 15 raw bits + one
+  BCH(15,11,1) block, words 2-10 = two bit-interleaved BCH(15,11,1) blocks.
+  No IODs: `validate_data` promotes by broadcast-repetition voting keyed on
+  (t_0c, t_0e) plus a SOW-vs-elapsed-symbols screen.
+- **BeiDou B1C** (`BeiDouB1C_D`) — 100 sps B-CNAV1 on the B1C data component
+  (BDS-SIS-ICD-B1C-1.0). Frame = 1800 symbols = 18 s: subframe 1 = 72 symbols
+  (PRN as BCH(21,6) ++ SOH as BCH(51,8), concatenated, no CRC); subframes 2+3
+  are 64-ary-LDPC-coded (1200 + 528 symbols) and block-interleaved together
+  (36 × 48, staggered write). SF2 (600 bits, LDPC(200,100), CRC-24Q) carries
+  WN/HOW + the complete ephemeris + clock + group delays behind IODC/IODE in
+  one CRC-protected block; SF3 (264 bits, LDPC(88,44), CRC-24Q) is a paged
+  channel (page types 1-4: iono/BDT-UTC, reduced almanacs, EOP/BGTO, midi
+  almanac). The pilot `BeiDouB1C_P` is dataless, so `GNSSDecoderState(::BeiDouB1C_D,
+  prn)` maps here.
+- **BeiDou B2a** (`BeiDouB2aI`) — 200 sps B-CNAV2 on the B2a data component
+  (BDS-SIS-ICD-B2a-1.0). Frame = 600 symbols = 3 s = 24-symbol preamble
+  0xE24DE8 + one 64-ary-LDPC(96,48)-coded 288-bit message (PRN, MesType,
+  SOW, 234 data bits, CRC-24Q). Message types 10/11 carry ephemeris I/II
+  (paired via adjacent SOWs, |ΔSOW| = 3 s, since MT11 has no IOD), 30-34 the
+  clock set (IODC) + iono/UTC/reduced-almanac/EOP/BGTO variants, 40 the midi
+  almanac. B2aQ is the dataless pilot.
+- **BeiDou B2b** (`BeiDouB2bI`) — 1000 sps B-CNAV3 on B2b_I
+  (BDS-SIS-ICD-B2b-1.0). Frame = 1000 symbols = 1 s = 16-symbol preamble
+  0xEB90 + 6 unencoded PRN symbols + 6 reserved + one
+  64-ary-LDPC(162,81)-coded 486-bit message (MesType, SOW, 436 data bits,
+  CRC-24Q). Message types 10 (complete ephemeris), 30 (complete clock set +
+  iono/UTC), 40 (BGTO + almanacs). B-CNAV3 broadcasts no IODs — every message
+  is atomic behind its CRC.
 
 ## Frame structure terms
 
 The same word means different things in different ICDs. Within this codebase:
 
 - **subframe** — for GPS L1 C/A: one of five 300-bit blocks (LNAV). For L1C-D:
-  a block inside a CNAV-2 frame. For L5I and Galileo: not used.
+  a block inside a CNAV-2 frame. For BeiDou B1I/B3I: one of five 300-bit
+  blocks (6 s in D1, 0.6 s in D2). For B1C: one of the three FEC blocks of a
+  B-CNAV1 frame (72 + 1200 + 528 symbols). For L5I and Galileo: not used.
 - **message** — L5I: one 300-bit CNAV unit (6 seconds), self-delimiting via
-  preamble + CRC; there is no frame/subframe hierarchy.
+  preamble + CRC; there is no frame/subframe hierarchy. BeiDou B2a/B2b: the
+  288-/486-bit unit inside one frame, likewise typed (MesType) and
+  CRC-delimited.
 - **frame** — L1C-D: one 18-second cycle = 1800 channel symbols. Contains
   *subframe 1* (TOI, 52 sym), *subframe 2* (CED+iono, 1200 sym), *subframe 3*
-  (variable, 548 sym).
+  (variable, 548 sym). BeiDou B1C: the analogous 18-second, 1800-symbol
+  B-CNAV1 cycle. BeiDou B2a/B2b: one 600-/1000-symbol preamble-delimited
+  broadcast unit (3 s / 1 s). BeiDou B1I/B3I: five subframes = 1500 bits (the
+  ICD term; the decoder unit is the subframe).
 - **page** — Galileo I/NAV unit (1 sec, 250 channel symbols). Each page has
-  even and odd halves; a *word* spans two consecutive pages.
+  even and odd halves; a *word* spans two consecutive pages. For BeiDou
+  B1I/B3I: the Pnum-stamped cycle position of a D1 subframe 4/5 (1-24) or a
+  D2 subframe (Pnum1 1-10). For B1C: a PageID-typed subframe 3 (1-4).
 - **syncro sequence** — package-internal: the smallest navigable unit the
-  decoder synchronises on (subframe for GPS L1 C/A, page for Galileo, frame
-  for L1C-D, message for L5I).
+  decoder synchronises on (subframe for GPS L1 C/A and BeiDou B1I/B3I, page
+  for Galileo, frame for L1C-D, B1C, B2a, and B2b, message for L5I).
 
 ## TOI (Time of Interval)
 
@@ -92,10 +139,17 @@ multiple subframes/pages carry a consistent ephemeris set before publishing.
 - **IODnav** — Galileo I/NAV: 10 bits, present in word types 1–4. All four
   must match for a publishable ephemeris.
 - **IOD_a** — Galileo I/NAV almanac IOD, per chained almanac word (WT7–WT10).
+- **BeiDou**: B-CNAV1 carries IODC/IODE inside the single CRC-protected
+  subframe 2, so no cross-block stitching is needed; B-CNAV2 gates the MT10/11
+  ephemeris pair by adjacent SOWs and the clock via IODC/IODE (`IODE == IODC &
+  0xff`, §7.4.3); B-CNAV3 broadcasts no IODs (atomic messages); the legacy
+  D1/D2 message has only AODC/AODE *ages*, so consistency comes from
+  broadcast-repetition voting keyed on (t_0c, t_0e).
 
 ## CRC-24Q
 
 The CRC polynomial used by Galileo I/NAV pages, GPS L1C-D subframes 2 and 3,
+the BeiDou B-CNAV blocks (B1C subframes 2 and 3, every B2a and B2b message),
 and several other CNAV variants. Polynomial 0x864cfb, init 0, no reflection,
 xor-out 0. Shared across signals — implemented once in this package.
 
@@ -153,3 +207,16 @@ lives in the `cache`.
 - **L2C**: identical to L5I — the same shared GPS CNAV `try_sync`
   Viterbi-decodes the 616-symbol window and gates on preamble + CRC-24Q. (The
   symbol rate, 50 vs 100 sps, does not enter the symbol-domain sync.)
+- **BeiDou B1I/B3I**: fixed 11-bit preamble `11100010010` at the start of
+  every 300-bit subframe (unencoded bits 1-11 of word 1), matched at both
+  ends of the window in either polarity, plus a SOW-vs-elapsed-symbols screen.
+- **BeiDou B1C**: no fixed preamble; like L1C-D, sync is a BCH match on the
+  72-symbol subframe 1 of *two consecutive frames* — the own-PRN BCH(21,6)
+  codeword plus a BCH(51,8) SOH codeword at frame N and SOH+1 (mod 200) at
+  frame N+1, in either polarity.
+- **BeiDou B2a**: fixed 24-symbol preamble `0xE24DE8` at both ends of the
+  600-symbol frame window, either polarity; the LDPC + CRC-24Q + own-PRN
+  gates then confirm inside `decode_syncro_sequence`.
+- **BeiDou B2b**: fixed 16-symbol preamble `0xEB90` at both ends of the
+  1000-symbol frame window, either polarity, strengthened by the 6 unencoded
+  own-PRN symbols and the LDPC + CRC-24Q gate before any state is updated.

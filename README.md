@@ -20,6 +20,11 @@ Currently implemented:
  * GPS L5I (CNAV)
  * Galileo E1B (I/NAV), including the BOC(1,1) approximation
  * Galileo E5a (F/NAV)
+ * BeiDou B1I (D1/D2 NAV)
+ * BeiDou B3I (D1/D2 NAV)
+ * BeiDou B1C (B-CNAV1)
+ * BeiDou B2a (B-CNAV2)
+ * BeiDou B2b (B-CNAV3)
 
 ## Installation
 
