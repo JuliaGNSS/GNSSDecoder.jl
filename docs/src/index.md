@@ -9,6 +9,11 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 - **GPS L2C**: Decodes the 50 sps CNAV data stream from the GPS L2 CM (civil-moderate) signal component
 - **GPS L5I**: Decodes the 100 sps CNAV data stream from the GPS L5 in-phase signal component
 - **Galileo E1B**: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals
+- **Galileo E5a**: Decodes the 50 sps F/NAV data stream from the Galileo E5a in-phase (data) component
+- **BeiDou B1I / B3I**: Decode the legacy D1 (50 bps, MEO/IGSO) and D2 (500 bps, GEO) NAV messages
+- **BeiDou B1C**: Decodes the 100 sps B-CNAV1 data stream from the B1C data component
+- **BeiDou B2a**: Decodes the 200 sps B-CNAV2 data stream from the B2a data component
+- **BeiDou B2b**: Decodes the 1000 sps B-CNAV3 data stream from the B2b_I signal
 
 ## Installation
 
@@ -154,6 +159,49 @@ julia> state.prn
 
 julia> typeof(state)
 GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
+
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia> GNSSDecoder.num_bits_buffered(state)
+10
+```
+
+### BeiDou Decoding
+
+All five BeiDou open-service signals are decoded through the same API. B1I and
+B3I carry the identical legacy message — D1 NAV (50 bps) on MEO/IGSO
+satellites and D2 NAV (500 bps) on GEO satellites, selected automatically by
+PRN — so they share the [`BeiDouDNAVData`](@ref) container the way GPS L5I and
+L2C share `GPSCNAVData`:
+
+```jldoctest b1i_example
+julia> using GNSSDecoder
+
+julia> state = BeiDouB1IDecoderState(20);  # PRN 20: MEO/IGSO, D1 NAV
+
+julia> typeof(state)
+GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GNSSDecoder.BeiDouDNAVCache}
+
+julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+
+julia> GNSSDecoder.num_bits_buffered(state)
+10
+```
+
+The modernized BDS-3 signals B1C (B-CNAV1), B2a (B-CNAV2), and B2b (B-CNAV3)
+decode their ICDs' 64-ary LDPC codes via the exact binary-image parity
+matrices in `data/` (see `scripts/generate_beidou_alist.jl`); their LDPC
+belief-propagation stage is scale-sensitive, so feed confidence-weighted soft
+symbols on a roughly LLR-like scale (`≈ 2·r/σ²`) for best sensitivity — see
+[`decode`](@ref):
+
+```jldoctest b2a_example
+julia> using GNSSDecoder
+
+julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
+
+julia> typeof(state)
+GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
 
 julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 

@@ -15,6 +15,11 @@ GalileoE5aDecoderState
 GPSL1C_DDecoderState
 GPSL5IDecoderState
 GPSL2CMDecoderState
+BeiDouB1IDecoderState
+BeiDouB3IDecoderState
+BeiDouB1CDecoderState
+BeiDouB2aDecoderState
+BeiDouB2bDecoderState
 ```
 
 ## Decoding
@@ -117,6 +122,7 @@ ephemeris/clock completeness checks), stated once via subtype dispatch.
 ```@docs
 GNSSDecoder.AbstractGPSData
 GNSSDecoder.AbstractGalileoData
+GNSSDecoder.AbstractBeiDouData
 ```
 
 ### GPS L1 C/A
@@ -131,6 +137,7 @@ GNSSDecoder.GPSL1CAData
 ```@docs
 GNSSDecoder.GalileoE1BConstants
 GNSSDecoder.GalileoE1BData
+GNSSDecoder.GalileoAlmanac
 GNSSDecoder.SignalHealth
 GNSSDecoder.DataValidityStatus
 ```
@@ -170,4 +177,54 @@ GPSCNAVMidiAlmanac
 GPSCNAVClockDifferentialCorrection
 GPSCNAVEphemerisDifferentialCorrection
 GPSCNAVIntegritySupportMessage
+```
+
+
+### BeiDou D1/D2 NAV (shared by B1I and B3I)
+
+BeiDou B1I and B3I carry the identical legacy navigation message — D1 NAV on
+MEO/IGSO satellites, D2 NAV on GEO satellites, selected by PRN — so they share
+the decoded [`BeiDouDNAVData`](@ref) container and one constants struct,
+[`BeiDouDNAVConstants`](@ref GNSSDecoder.BeiDouDNAVConstants). The per-signal
+constants are type aliases that fix its signal tag, mirroring GPS CNAV.
+
+```@docs
+GNSSDecoder.BeiDouDNAVConstants
+GNSSDecoder.BeiDouB1IConstants
+GNSSDecoder.BeiDouB3IConstants
+BeiDouDNAVData
+BeiDouDNAVAlmanac
+```
+
+### BeiDou B1C
+
+```@docs
+GNSSDecoder.BeiDouB1CConstants
+BeiDouB1CData
+BeiDouB1CBGTO
+```
+
+### BeiDou B2a
+
+```@docs
+GNSSDecoder.BeiDouB2aConstants
+BeiDouB2aData
+```
+
+### BeiDou B2b
+
+```@docs
+GNSSDecoder.BeiDouB2bConstants
+BeiDouB2bData
+```
+
+### BeiDou shared almanac records
+
+The BDS-3 midi and reduced almanac blocks are bit-identical across B-CNAV1
+(B1C), B-CNAV2 (B2a), and B-CNAV3 (B2b), so all three decoders produce the
+same record types.
+
+```@docs
+BeiDouMidiAlmanac
+BeiDouReducedAlmanac
 ```

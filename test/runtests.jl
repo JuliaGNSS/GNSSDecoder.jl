@@ -43,12 +43,20 @@ end
     include("gps_l2cm.jl")
     include("galileo_e1b.jl")
     include("galileo_e5a.jl")
+    # BeiDou B1I/B3I legacy NAV transmit-chain helpers, consumed by both tests.
+    include("dnav_test_utils.jl")
+    include("beidou_b1i.jl")
+    include("beidou_b3i.jl")
+    include("beidou_b1c.jl")
+    include("beidou_b2a.jl")
+    include("beidou_b2b.jl")
 
     # v2 shared-utility deep-module tests (issue #36)
     include("crc.jl")
     include("bch_toi.jl")
     include("deinterleave.jl")
     include("alist.jl")
+    include("beidou_ldpc.jl")
 
     # Opt-in real-data integration test (Fraunhofer Flexiband III-7a capture, the
     # same recording Tracking.jl uses). Self-gated on
