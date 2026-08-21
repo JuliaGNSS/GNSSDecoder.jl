@@ -1,5 +1,17 @@
 # Changelog
 
+# [3.14.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.13.0...v3.14.0) (2026-08-21)
+
+
+### Bug Fixes
+
+* 32-bit-safe wide-field extraction across the CNAV-family parsers ([9b89f75](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/9b89f759027f45d2594039a8815d95cb82750132))
+
+
+### Features
+
+* decode the five BeiDou open-service navigation messages ([f7b34ef](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/f7b34ef3c25ecd270171f3f568d516920fd91ae1))
+
 # [3.13.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.12.0...v3.13.0) (2026-08-20)
 
 
