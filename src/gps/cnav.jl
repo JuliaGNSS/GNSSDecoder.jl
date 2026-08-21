@@ -1133,7 +1133,9 @@ function parse_mt10(raw::GPSCNAVData, word::UInt320, PI::Float64)
         Δn_0 = get_twos_complement_num(word, word_length, 133, 17) * 2.0^-44 * PI,
         Δn_0_dot = get_twos_complement_num(word, word_length, 150, 23) * 2.0^-57 * PI,
         M_0 = get_twos_complement_num(word, word_length, 173, 33) * 2.0^-32 * PI,
-        e = Int(get_bits(word, word_length, 206, 33)) * 2.0^-34,
+        # 33-bit field: convert through Int64 explicitly (a platform Int
+        # would overflow on 32-bit), matching the BeiDou B-CNAV parsers.
+        e = Int64(get_bits(word, word_length, 206, 33)) * 2.0^-34,
         ω = get_twos_complement_num(word, word_length, 239, 33) * 2.0^-32 * PI,
         integrity_status_flag = get_bit(word, word_length, 272),
         l2c_phasing = get_bit(word, word_length, 273),

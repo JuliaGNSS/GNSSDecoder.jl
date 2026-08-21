@@ -55,11 +55,11 @@ Message length before encoding: MesType(6) + SOW(20) + data(436) + CRC(24).
 """
 const B2B_MESSAGE_BITS = 486
 """
-Sync window: one frame plus the next frame's preamble.  # 1016
+Sync window: one frame plus the next frame's preamble.
 """
 const B2B_WINDOW_SYMBOLS = B2B_FRAME_SYMBOLS + B2B_PREAMBLE_SYMBOLS  # 1016
 """
-Offset of the first encoded symbol inside the frame (after Pre + PRN + Rev).  # 28
+Offset of the first encoded symbol inside the frame (after Pre + PRN + Rev).
 """
 const B2B_ENCODED_OFFSET = B2B_PREAMBLE_SYMBOLS + B2B_PRN_SYMBOLS + B2B_REV_SYMBOLS  # 28
 

@@ -897,7 +897,9 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     Δn_0 = get_twos_complement_num(word, word_length, 101, 17) * 2.0^-44 * PI
     Δn_0_dot = get_twos_complement_num(word, word_length, 118, 23) * 2.0^-57 * PI
     M_0 = get_twos_complement_num(word, word_length, 141, 33) * 2.0^-32 * PI
-    e = Int(get_bits(word, word_length, 174, 33)) * 2.0^-34
+    # 33-bit field: convert through Int64 explicitly (a platform Int would
+    # overflow on 32-bit), matching the BeiDou B-CNAV parsers.
+    e = Int64(get_bits(word, word_length, 174, 33)) * 2.0^-34
     ω = get_twos_complement_num(word, word_length, 207, 33) * 2.0^-32 * PI
     Ω_0 = get_twos_complement_num(word, word_length, 240, 33) * 2.0^-32 * PI
     i_0 = get_twos_complement_num(word, word_length, 273, 33) * 2.0^-32 * PI
