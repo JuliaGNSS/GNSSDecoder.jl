@@ -87,7 +87,7 @@ end
         info = e5a_info_bits(pages[idx])
         info_vec = Bool[GNSSDecoder.get_bit(info, 238, k) for k = 1:238]
         on_air = GNSSDecoder.interleave(galileo_conv_encode(info_vec), 61, 8)
-        recovered = GNSSDecoder.galileo_e5a_viterbi(decoder.cache.viterbi_decoder, on_air)
+        recovered = GNSSDecoder.galileo_e5a_viterbi(decoder.cache.viterbi, on_air)
         @test recovered == GNSSDecoder.UInt256(info)
     end
 end

@@ -449,13 +449,13 @@ struct BeiDouB2bCache <: AbstractGNSSCache
     """
     Aff3ct LDPC BP decoder for the B-CNAV3 binary image (K=486, N=972)
     """
-    ldpc_decoder::LDPCBPDecoder
+    ldpc_decoder::LDPCScratch
 end
 
 BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
-    load_ldpc_decoder(_b2b_data_path("bcnv3.alist")),
+    LDPCScratch(_b2b_data_path("bcnv3.alist")),
 )
 
 # The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
@@ -537,7 +537,7 @@ function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
         B2B_ENCODED_SYMBOLS,
         polarity_flipped,
     )
-    word = ldpc_decode_word(state.cache.ldpc_decoder, window, B2B_MESSAGE_BITS, UInt512)
+    word = ldpc_decode_word(state.cache.ldpc_decoder, window, UInt512)
     isnothing(word) && return nothing
     return BeiDouB2bSync(word, polarity_flipped)
 end

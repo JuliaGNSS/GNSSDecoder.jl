@@ -641,11 +641,19 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     """
     Aff3ct LDPC BP decoder for subframe 2 (K=600, N=1200)
     """
-    sf2_decoder::LDPCBPDecoder
+    sf2_decoder::LDPCScratch
     """
     Aff3ct LDPC BP decoder for subframe 3 (K=274, N=548)
     """
-    sf3_decoder::LDPCBPDecoder
+    sf3_decoder::LDPCScratch
+    """
+    Polarity-resolved 1748-symbol interleaved payload, copied out per frame
+    """
+    payload::Vector{Float32}
+    """
+    The same payload deinterleaved: subframe 2 then subframe 3
+    """
+    deinterleaved::Vector{Float32}
 end
 
 # Path to the committed LDPC `.alist` parity matrices. `pkgdir`-free: walk up
@@ -659,8 +667,10 @@ function GPSL1C_DCache()
     # Verified against a Spirent GSS post-FEC L1C recording.
     GPSL1C_DCache(
         CircularDeque{Float32}(L1C_D_WINDOW_LENGTH),
-        load_ldpc_decoder(_l1c_d_data_path("cnv2_sf2.alist")),
-        load_ldpc_decoder(_l1c_d_data_path("cnv2_sf3.alist")),
+        LDPCScratch(_l1c_d_data_path("cnv2_sf2.alist")),
+        LDPCScratch(_l1c_d_data_path("cnv2_sf3.alist")),
+        Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
+        Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
     )
 end
 
@@ -786,17 +796,6 @@ end
 # codeword for some `toi`, and the last 52 the codeword for `(toi+1) mod 400`,
 # in either polarity. `sync_bch_toi` (src/bch_toi.jl) implements exactly this.
 
-# `CircularDeque` indexing is O(1); collect a contiguous slice into a `Vector`
-# for the (length-checked) `soft_to_hard_codeword`. Small (52 elements), runs
-# only once per buffered window.
-function _deque_slice(deque::CircularDeque{Float32}, start::Int, len::Int)
-    slice = Vector{Float32}(undef, len)
-    @inbounds for i = 1:len
-        slice[i] = deque[start+i-1]
-    end
-    return slice
-end
-
 """
     try_sync(state::GNSSDecoderState{<:GPSL1C_DData}) -> Union{Nothing,BCHToiSync}
 
@@ -807,10 +806,11 @@ the TOI and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSL1C_DData})
     deque = soft_buffer(state)
-    first52 = soft_to_hard_codeword(_deque_slice(deque, 1, L1C_D_SUBFRAME1_LENGTH))
-    next52 = soft_to_hard_codeword(
-        _deque_slice(deque, L1C_D_FRAME_LENGTH + 1, L1C_D_SUBFRAME1_LENGTH),
-    )
+    # `pack_soft_codeword` (src/gnss.jl) is `soft_to_hard_codeword` read straight
+    # off the deque: this runs once per symbol, so materialising two 52-element
+    # slices here would allocate on every one of them.
+    first52 = pack_soft_codeword(deque, 1, L1C_D_SUBFRAME1_LENGTH)
+    next52 = pack_soft_codeword(deque, L1C_D_FRAME_LENGTH + 1, L1C_D_SUBFRAME1_LENGTH)
     sync_bch_toi(first52, next52)
 end
 
@@ -850,15 +850,19 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
 
     # Extract the 1748-symbol interleaved SF2+SF3 payload (symbols 53..1800),
     # applying the polarity flip by negating soft symbols up front.
-    deque = soft_buffer(state)
-    polarity_correction = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
-    interleaved = Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS)
-    @inbounds for i = 1:L1C_D_PAYLOAD_SYMBOLS
-        interleaved[i] = polarity_correction * deque[L1C_D_SUBFRAME1_LENGTH+i]
-    end
-
-    deinterleaved =
-        deinterleave(interleaved, L1C_D_INTERLEAVER_ROWS, L1C_D_INTERLEAVER_COLS)
+    interleaved = copy_soft_window!(
+        state.cache.payload,
+        soft_buffer(state),
+        L1C_D_SUBFRAME1_LENGTH,
+        L1C_D_PAYLOAD_SYMBOLS,
+        state.is_shifted_by_180_degrees,
+    )
+    deinterleaved = deinterleave!(
+        state.cache.deinterleaved,
+        interleaved,
+        L1C_D_INTERLEAVER_ROWS,
+        L1C_D_INTERLEAVER_COLS,
+    )
     sf2_symbols = @view deinterleaved[1:L1C_D_SF2_SYMBOLS]
     sf3_symbols = @view deinterleaved[(L1C_D_SF2_SYMBOLS+1):L1C_D_PAYLOAD_SYMBOLS]
 
@@ -874,8 +878,7 @@ end
 # shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers.
 
 function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
-    word =
-        ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, L1C_D_SF2_INFO_BITS, UInt600)
+    word = ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = L1C_D_SF2_INFO_BITS
 
@@ -962,13 +965,13 @@ end
 # 24 bits a CRC-24Q. After the CRC passes the 274 bits are packed MSB-first into
 # a `UInt288` (`get_bits(word, 274, …)` addresses the right-aligned 274 logical
 # bits); we dispatch on the page number and merge the parsed fields into
-# `raw_data` immutably (same style as SF2). The IRN-IS-800J figures are
-# implemented: page 1 carries the four ISC fields that pre-IRN-J recordings
-# lack, so older recordings are out of scope.
+# `raw_data` immutably (same style as SF2). Layouts follow IS-GPS-800J as
+# amended by IRN-IS-800J-003 — which for page 1 only restores Greek letters the
+# base PDF rendered as question marks; the four ISC fields at bits 177/190/203/216
+# are in base Rev J already (Figure 3.5-2, Table 6.2-18).
 
 function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
-    word =
-        ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, L1C_D_SF3_INFO_BITS, UInt288)
+    word = ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
     # CRC-valid page received: count it, then dispatch on the page number.
