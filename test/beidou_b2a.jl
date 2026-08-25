@@ -455,6 +455,15 @@ end
         state = decode_b2a_frames(state, [build_b2a_mt30(; sow = t0 + 9)])
         @test is_decoding_completed_for_positioning(state)
         @test state.data.IODE == state.data.IODC & 0xff
+
+        # A reserved orbit type (0) leaves the semi-major axis unknowable: it
+        # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
+        # satellite must not be used (ICD Table 7-6).
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouB2aData(state.data; sat_type = 0))
+        @test all(
+            GNSSDecoder.is_ephemeris_decoded(BeiDouB2aData(state.data; sat_type = t)) for
+            t = 1:3
+        )
     end
 
     @testset "MT10/MT11 pairing requires adjacent frames" begin

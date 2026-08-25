@@ -401,6 +401,13 @@ end
 
         d = state.data
         @test is_decoding_completed_for_positioning(state)
+        # A reserved orbit type (0) leaves the semi-major axis unknowable: it
+        # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
+        # satellite must not be used (ICD Table 7-6).
+        @test !GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = 0))
+        @test all(
+            GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = t)) for t = 1:3
+        )
         @test !state.is_shifted_by_180_degrees
         # The SOH stamps the leading edge of *this* subframe 1 (ICD §7.3), so
         # the armed counter spans the whole frame plus the next frame's

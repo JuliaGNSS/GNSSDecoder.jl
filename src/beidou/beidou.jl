@@ -16,6 +16,24 @@
 const BEIDOU_μ = 3.986004418e14                # geocentric gravitational constant (m³/s²)
 const BEIDOU_EARTH_ROTATION_RATE = 7.2921150e-5 # Earth rotation rate of BDCS (rad/s)
 
+# Whether a broadcast B-CNAV satellite orbit type names an orbit class. The
+# 2-bit field encodes 1 = GEO, 2 = IGSO, 3 = MEO and reserves 0 (Table 7-6 of
+# the B1C, B2a, and B2b ICDs).
+#
+# This gates positioning, because `sat_type` is what selects the reference the
+# broadcast ephemeris is expressed against: `A = A_ref + ΔA` with
+# `A_ref = 27 906 100 m` for MEO and `42 162 200 m` for IGSO/GEO, and
+# `i = i_ref + δi` in the almanacs. A satellite broadcasting the reserved code
+# leaves its own semi-major axis unknowable — the two references differ by
+# 14 256 100 m — so it must not be used rather than be positioned against a
+# guessed orbit class. B1I and B3I are unaffected: D1/D2 NAV broadcasts `sqrt_A`
+# outright and carries no orbit-type field.
+#
+# The almanac records keep the raw field either way; a reserved orbit type in
+# somebody else's almanac is not a reason to discard the rest of the page.
+is_known_sat_type(sat_type::Integer) = sat_type in 1:3
+is_known_sat_type(::Nothing) = false
+
 """
     BeiDouMidiAlmanac
 

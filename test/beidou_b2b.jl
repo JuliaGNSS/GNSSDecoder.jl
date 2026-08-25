@@ -313,6 +313,13 @@ end
 
         # Promotion: SOW + WN + ephemeris (MT10) + clock (MT30) present.
         @test is_decoding_completed_for_positioning(state)
+        # A reserved orbit type (0) leaves the semi-major axis unknowable: it
+        # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
+        # satellite must not be used (ICD Table 7-6).
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = 0))
+        @test all(
+            GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = t)) for t = 1:3
+        )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
         @test state.num_bits_after_valid_syncro_sequence == 1016

@@ -111,6 +111,71 @@ code; this file is for naming and meaning only.
   iono/UTC), 40 (BGTO + almanacs). B-CNAV3 broadcasts no IODs — every message
   is atomic behind its CRC.
 
+Where the whole set is the ICD's own spelling and no note is needed: the
+Keplerian elements and harmonic corrections (`M_0`, `sqrt_A`, `e`, `Ω_0`, `i_0`,
+`ω`, `Ω_dot`, `i_dot`, `Δn`, `C_uc` … `C_is`), which every ICD spells alike; and
+the per-signal integrity and health words, which no two constellations share
+(`SISAI_oe`, `SISMAI`, `HS`, `AIF`, `DIF`, `SIF`, `URAI`, `SatH1` for BeiDou;
+`E1B_SHS`, `E1B_DVS`, `BGD_E1_E5a` for Galileo; `ura_ed_index`, `ISC_L1CA` for
+GPS). Two cautions inside that second group, both learned the hard way against
+the documents:
+
+  - Galileo signal health is `SHS`, not `HS`. The OS SIS ICD writes `E1BSHS` /
+    `E1-BSHS`, `E5bSHS`, `E5aSHS` (Tables 30, 46, 48-51, 82, 83, 86) — *Signal
+    Health Status*, S included. Only the underscore is this package's. The
+    `*_DVS` half needs no such warning; the ICD spells that one as we do.
+  - BeiDou writes its accuracy indices without underscores (`SISAIoe`,
+    `SISAIocb`, `SISMAI`) and this package inserts one for legibility, the same
+    departure as `E1B_DVS`. But `t_op` is *not* one of them: B2b §7.15 item (5)
+    calls it "`top`: the time of week for data prediction", so it keeps the
+    package-wide `t_op` and never a `SISAI_` prefix.
+
+## Group delays and positioning readiness
+
+`is_decoding_completed_for_positioning` requires a signal's own single-band
+group delay **when that field rides in the block the gate already waits for**,
+and excludes it otherwise. The question is never "is it important" — it always
+is, at metre scale — but "does requiring it cost time to first fix".
+
+- **Required.** BeiDou B1C's `T_GD_B1Cp` and `ISC_B1Cd` are in the same
+  CRC-protected subframe 2 as the ephemeris and clock, broadcast in every
+  18-second frame; BeiDou B2b's `T_GD_B2bI` is in the same MT30 as the clock;
+  BeiDou B1I/B3I's `T_GD1` is in the same D1 subframe 1 / D2 page 1 as the
+  clock. All cost nothing extra, and all are needed because the BDS clock term
+  `a_0` is referenced to **B3I**, not to the signal being tracked (B1I §5.2.4.10,
+  B1C §7.6.1, B2b §7.6) — a receiver that skips them eats a bias rather than
+  losing a refinement.
+- **Excluded.** BeiDou B2a's `T_GD_B2ap` / `ISC_B2ad` are in MT30 alone while
+  the clock and IODC are in all of MT30-34, and the B2a ICD declines to schedule
+  MT30: "the broadcast order of the B-CNAV2 message types may be dynamically
+  adjusted, however Message Types 10 and 11 shall be broadcast continuously
+  together" (§6.2). Gating on MT30 would gate on an unbounded interval. GPS
+  CNAV's `T_GD` / `ISC_*` are excluded for the same reason.
+- **Never required.** A correction for a band this decoder is not on — B1C's
+  `T_GD_B2ap`, B1I/B3I's `T_GD2` (there is no B2I signal in GNSSSignals and none
+  planned — JuliaGNSS/GNSSSignals.jl#156), `ISC_L5Q5` on an L1 fix. Such a field
+  is still decoded and published; only the gate ignores it.
+
+One wrinkle where the two rules meet: B1I and B3I share a `BeiDouDNAVData`, and
+this gate dispatches on the data, so one check serves both signals. A B3I user
+needs no group delay at all (its clock is already B3I-referenced), yet `T_GD1` is
+required there too — free, since it is in the block the gate waits for anyway,
+and the conservative side of the trade, because the alternative lets a B1I
+consumer see a "ready" decoder with no group delay.
+
+One further readiness condition, unrelated to group delays and on the B-CNAV
+signals only: the 2-bit `sat_type` encodes 1 = GEO, 2 = IGSO, 3 = MEO and
+reserves 0 (B1C/B2a/B2b Table 7-6), and it is what selects the reference the
+broadcast ephemeris is expressed against — `A = A_ref + ΔA` with
+`A_ref = 27 906 100 m` for MEO against `42 162 200 m` for IGSO/GEO. A satellite
+broadcasting the reserved code leaves its own semi-major axis unknowable, with
+14 256 100 m between the two candidates, so `is_known_sat_type`
+(`beidou/beidou.jl`) keeps it out of the gate rather than let a consumer position
+against a guessed orbit class. B1I and B3I are unaffected: D1/D2 NAV broadcasts
+`sqrt_A` outright and carries no orbit-type field. The almanac records keep the
+raw field either way — a reserved orbit type in somebody else's almanac is no
+reason to discard the rest of the page.
+
 ## Frame structure terms
 
 The same word means different things in different ICDs. Within this codebase:

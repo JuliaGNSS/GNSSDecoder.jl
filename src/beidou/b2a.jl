@@ -626,6 +626,7 @@ function is_ephemeris_decoded(data::BeiDouB2aData)
     # Message type 10 (ephemeris I + IODE) ...
     !isnothing(data.IODE) &&
         !isnothing(data.t_0e) &&
+        is_known_sat_type(data.sat_type) &&
         !isnothing(data.ΔA) &&
         !isnothing(data.A_dot) &&
         !isnothing(data.Δn_0) &&
@@ -660,9 +661,19 @@ end
 
 function is_clock_correction_decoded(data::BeiDouB2aData)
     # The clock block + IODC are carried identically in message types 30-34.
-    # T_GD/ISC (MT30 only) are deliberately not required: they are metre-level
-    # inter-signal corrections, and gating on them would couple validation to
-    # MT30 specifically (mirrors the GPS CNAV decoder's T_GD reasoning).
+    #
+    # T_GD/ISC are deliberately NOT required here, and B2a is the one BeiDou
+    # signal where that is the right call. On B1C and B2b the single-band group
+    # delay rides in the very block the clock does, so requiring it costs no
+    # extra wait and both decoders do require it. Here it does not:
+    # `T_GD_B2ap`, `ISC_B2ad` and `T_GD_B1Cp` are in MT30 *only*, while the
+    # clock and IODC are in all of MT30-34. Gating on them would make a fix wait
+    # for MT30 specifically — and BDS-SIS-ICD-B2a-1.0 §6.2 declines to schedule
+    # it: "The broadcast order of the B-CNAV2 message types may be dynamically
+    # adjusted, however Message Types 10 and 11 shall be broadcast continuously
+    # together." Only the MT10/11 pair has a guaranteed cadence, so a gate on
+    # MT30 is a gate on an interval the ICD does not bound. Same reasoning as
+    # the GPS CNAV decoder's T_GD.
     !isnothing(data.IODC) &&
         !isnothing(data.t_0c) &&
         !isnothing(data.a_0) &&

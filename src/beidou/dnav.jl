@@ -629,6 +629,25 @@ packed_buffer_type(::GNSSDecoderState{<:BeiDouDNAVData}) = UInt320
 
 # ---- Completeness checks ------------------------------------------------------
 
+# `T_GD1` is required and `T_GD2` is not, which is the package-wide group-delay
+# rule (`is_decoding_completed_for_positioning` in src/gnss.jl) read onto this
+# message. The broadcast clock polynomial is referenced to B3I on both signals
+# (§5.2.4.10), so a B1I user must apply `T_GD1` to reach its own signal — a
+# metre-scale bias, not a refinement — and it rides in the same subframe 1
+# (D1) / page 1 (D2) as the clock this gate already waits for, so requiring it
+# costs no time to first fix. `T_GD2` is the *B2I* differential: the field is
+# decoded and published like any other, but never gated on — the same treatment
+# B1C's `T_GD_B2ap` gets — because nothing in this stack can consume it. There is
+# no B2I signal in GNSSSignals and none is planned
+# (JuliaGNSS/GNSSSignals.jl#156, closed won't-implement): BDS-2 retired 13 of
+# its last 15 satellites in April 2026, leaving two IGSO transmitters and no
+# successor carrying the signal, so a decoded `T_GD2` has no range to correct.
+#
+# A B3I user needs neither (its clock is already B3I-referenced), but B1I and
+# B3I share one `BeiDouDNAVData` and this check dispatches on the data, so one
+# gate serves both. Requiring `T_GD1` on B3I too is free — same subframe — and
+# is the conservative side of the trade: the alternative would let a B1I
+# consumer see a "ready" decoder with no group delay at all.
 function is_dnav_clock_and_health_decoded(data::BeiDouDNAVData)
     !isnothing(data.sat_h1) &&
         !isnothing(data.AODC) &&
@@ -639,7 +658,6 @@ function is_dnav_clock_and_health_decoded(data::BeiDouDNAVData)
         !isnothing(data.a_1) &&
         !isnothing(data.a_2) &&
         !isnothing(data.T_GD1) &&
-        !isnothing(data.T_GD2) &&
         !isnothing(data.AODE)
 end
 
