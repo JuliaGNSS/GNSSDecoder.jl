@@ -24,6 +24,19 @@ export decode,
     GPSL2CMDecoderState,
     GalileoE1BDecoderState,
     GalileoE5aDecoderState,
+    GalileoE5bDecoderState,
+    GalileoE6BDecoderState,
+    GalileoINAVData,
+    GalileoE5aData,
+    GalileoE6BData,
+    GalileoHASMessage,
+    GalileoHASMask,
+    GalileoHASSatelliteMask,
+    GalileoHASCorrectionBlock,
+    GalileoHASOrbitCorrection,
+    GalileoHASClockCorrection,
+    GalileoHASCodeBias,
+    GalileoHASPhaseBias,
     BeiDouB1IDecoderState,
     BeiDouB3IDecoderState,
     BeiDouDNAVData,
@@ -44,6 +57,13 @@ export decode,
     reset_decoder_state
 # v2 shared utilities — see issue #36. Used directly by issue #37 (Galileo
 # soft-input migration) and #38 (GPS L1C-D).
+# The Reed-Solomon primitives this commit adds (`GaloisField256`,
+# `GALILEO_HAS_GF256`, `rs_generator_polynomial`,
+# `rs_systematic_generator_matrix`, `rs_erasure_decode`) are public and
+# documented, but deliberately not exported: `GNSSDecoder.rs_erasure_decode` is
+# the honest spelling for a codes primitive in a decoder package, and nothing
+# outside this repository calls them — the E6-B decoder inverts the generator
+# matrix on the user's behalf and hands back a parsed `GalileoHASMessage`.
 export crc24q,
     BCH_TOI_CODEWORDS,
     BCHToiSync,
@@ -69,6 +89,12 @@ include("deinterleave.jl")
 # after `crc.jl` (it consumes `crc24q`) and before every decoder that uses it.
 include("ldpc.jl")
 
+# Reed-Solomon over GF(2^8): the systematic generator matrix and the erasure
+# decoder behind Galileo HAS's "High Parity Vertical Reed-Solomon" outer layer on
+# E6-B C/NAV. Signal-independent and unit-tested on its own, like `crc.jl`;
+# included before the decoder that instantiates it.
+include("reed_solomon.jl")
+
 include("gps/l1ca.jl")
 
 # Definitions shared across Galileo signals (the `SignalHealth` /
@@ -78,12 +104,32 @@ include("gps/l1ca.jl")
 # signal. Itself depends only on the earlier shared utilities (`deinterleave`,
 # `bit_fiddling`) and `Aff3ct`.
 include("galileo/galileo.jl")
+
+# Shared Galileo I/NAV core (the message broadcast identically on E1-B and
+# E5b-I, Galileo OS SIS ICD Issue 2.2 §4.3.1): framing, K=7 NSC FEC, page sync,
+# CRC-24Q gate, even/odd word stitching, and all word-type parsing, plus the
+# shared `GalileoINAVData` container. Consumes only the shared utilities above
+# (`crc24q`, `deinterleave`, `galileo_viterbi`), so it is independent of the
+# sibling signal files.
+include("galileo/inav.jl")
+
+# Galileo E1-B and E5b-I signal layers — each a thin wrapper over
+# `galileo/inav.jl` (their own `*Constants` alias, decoder-state constructor,
+# `get_signal_type` mapping, and `is_sat_healthy` health-facet selection).
+# Included after the shared core they consume.
 include("galileo/e1b.jl")
+include("galileo/e5b.jl")
 
 # Galileo E5a (F/NAV) decoder. Consumes the shared Galileo definitions above
 # (`galileo/galileo.jl`) plus `crc24q`, `deinterleave`, and the generic `decode`
 # framework hooks.
 include("galileo/e5a.jl")
+
+# Galileo E6-B (C/NAV) decoder — the High Accuracy Service broadcast channel.
+# Consumes the shared Galileo definitions above plus `crc24q`, `deinterleave`,
+# the shared Reed-Solomon primitives (`src/reed_solomon.jl`) for the HPVRS outer
+# layer, and the `_merge_keyed` dictionary helper in `gnss.jl`.
+include("galileo/e6b.jl")
 
 # GPS L1C-D (CNAV-2) decoder (issue #38). Included after the shared utilities
 # above because it consumes `crc24q`, `sync_bch_toi`, the BCH TOI table, and

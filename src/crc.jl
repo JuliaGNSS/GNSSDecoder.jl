@@ -65,3 +65,37 @@ function crc24q(bits::AbstractVector{Bool})
     end
     return crc & CRC24Q_MASK
 end
+
+"""
+    crc24q(word::Unsigned, num_bytes::Integer) -> UInt32
+
+Packed-word variant: compute the CRC over the low `num_bytes` octets of `word`,
+most significant octet first. Equivalent to `crc24q(bytes)` for the same octets,
+without materialising them.
+
+This is the form the Galileo decoders need. A CRC-protected page arrives packed
+into one wide `BitIntegers` word (`UInt288` for an I/NAV page pair, `UInt512` for
+an E6-B C/NAV page), and its bit length is not a whole number of octets — 106 and
+486 respectively. Rounding `num_bytes` up is safe and is what both callers do:
+the register initialises to zero, so the few leading zero bits of the rounded-up
+representation feed in as no-ops and leave the checksum unchanged.
+
+Prefer this over `crc24q(reverse(digits(UInt8, word; base = 256)))`, which is
+correct but allocates two vectors and, more importantly, drives `num_bytes`
+software divisions on a wide integer — measured at 133 µs for a 61-octet
+`UInt512` against 0.33 µs here, because `BitIntegers` division falls back to a
+generic implementation while shifts and masks compile down.
+"""
+function crc24q(word::Unsigned, num_bytes::Integer)
+    crc = UInt32(0)
+    @inbounds for i = (num_bytes-1):-1:0
+        crc ⊻= UInt32(UInt8((word >> (8 * i)) & 0xff)) << 16
+        for _ = 1:8
+            crc <<= 1
+            if (crc & 0x01000000) != 0
+                crc ⊻= CRC24Q_POLY
+            end
+        end
+    end
+    return crc & CRC24Q_MASK
+end

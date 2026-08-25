@@ -3,11 +3,21 @@
 # Decodes the Fraunhofer IIS Flexiband "III-7a" reference capture — the same
 # real-sky recording (Hanoi, 2017-10-17, CC BY-NC) that Tracking.jl uses for its
 # own integration test — end to end: Acquisition.jl + Tracking.jl produce soft
-# symbols, which `GNSSDecoder.decode` turns into navigation data for GPS L1 C/A,
-# Galileo E1B (both on the L1 band) *and* GPS L5I (on the L5 band). This is the
-# real-signal counterpart to the synthetic / golden-fixture unit tests, and it
-# exercises all three decoders on genuine (operational-constellation) signals
-# across the multi-band `track!` path (two front-ends at different rates).
+# symbols, which `GNSSDecoder.decode` turns into navigation data. Five decoders
+# run against it: GPS L1 C/A, Galileo E1B and BeiDou B1I on the L1 front-end,
+# GPS L5I and Galileo E5a-I on the L5 one. This is the real-signal counterpart
+# to the synthetic / golden-fixture unit tests, and it exercises the multi-band
+# `track!` path (two front-ends at different rates, three band keys).
+#
+# WHICH SIGNALS THIS CAPTURE CAN AND CANNOT REACH. The three sampled bands are
+# L1 at 1580.0 ± 40.5 MHz, L5 at 1173.546875 ± 20.25 MHz and S at 2492.028 ±
+# 10.125 MHz, so by carrier frequency alone the capture excludes GPS L2C
+# (1227.60), Galileo E5b-I and BeiDou B2b (both 1207.14), Galileo E6-B (1278.75)
+# and BeiDou B3I (1268.52) — those decoders cannot be exercised here at any
+# epoch. The capture date rules out three more that *are* in band: GPS L1C-D
+# (no satellite broadcast L1C until GPS III SV01, December 2018) and BeiDou B1C
+# / B2a (BDS-3 MEO deployment began 2017-11-05, three weeks after this
+# recording). That leaves exactly the five decoded below.
 #
 # Capture format (multiplexed `.usb`, see Tracking.jl's flexiband test): three
 # bands interleaved in 6-byte base-clock (20.25 MHz) chunks, in lump order:
@@ -55,7 +65,7 @@ else
     using Downloads: Downloads
     using ZipFile: ZipFile
     using Unitful: Hz, ustrip
-    using GNSSSignals: GPSL1CA, GPSL5I, GalileoE1B
+    using GNSSSignals: GPSL1CA, GPSL5I, GalileoE1B, GalileoE5aI, BeiDouB1I
     using Acquisition: acquire, is_detected
     using Tracking: TrackState, BandMeasurement, add_satellite!, track!, get_soft_bits
 
@@ -66,7 +76,13 @@ else
     const III7A_FS = 81.0e6Hz              # L1 band sampling rate
     const III7A_FS_L5 = 40.5e6Hz           # L5 band sampling rate
     const III7A_IF = -4.58e6Hz             # GPS L1 / Galileo E1 within the 1580 MHz band
-    const III7A_IF_L5 = 2.903125e6Hz       # GPS L5 within the 1173.546875 MHz band
+    const III7A_IF_L5 = 2.903125e6Hz       # GPS L5 / Galileo E5a in the 1173.546875 MHz band
+    # BeiDou B1I sits 18.9 MHz below the L1 front-end's 1580 MHz centre: inside
+    # the 81 MHz sampled span, but far enough out that the analog filter, not the
+    # sample rate, decides whether anything survives there. Hence the soft
+    # handling below — this band edge is the one part of the capture we cannot
+    # predict from the format alone.
+    const III7A_IF_B1I = 1561.098e6Hz - 1580.0e6Hz
 
     # `.usb` framing (Flexiband / ION SDR-metadata format).
     const III7A_BLOCK = 1024;
@@ -174,7 +190,7 @@ else
         resize!(l1, got * III7A_CYCLES * 4), resize!(l5, got * III7A_CYCLES * 2)
     end
 
-    @testset "Flexiband III-7a real-data decode (GPS L1 C/A + Galileo E1B + GPS L5I)" begin
+    @testset "Flexiband III-7a real-data decode (L1: GPS C/A + Galileo E1B + BeiDou B1I; L5: GPS L5I + Galileo E5a-I)" begin
         fshz = ustrip(Hz, III7A_FS);
         fshz_l5 = ustrip(Hz, III7A_FS_L5);
         nblk(sec) = iii7a_nframes(sec)
@@ -229,18 +245,82 @@ else
                 num_noncoherent_accumulations = 1,
             ),
         )
+        # Galileo E5a-I shares the L5 front-end with GPS L5I — same carrier, same
+        # buffer, same IF. It is *not* integrated the way the L5I line above is,
+        # though. Acquisition.jl requires the coherent length to be a whole
+        # multiple of the secondary code (CS20 here, NH10 there) so it can search
+        # the code's rotation, and that search resolves for NH10 but never
+        # declares a detection for either 20-chip secondary code — checked on
+        # synthetic signals up to ~71 dB-Hz, where the CN0 estimate is correct and
+        # `is_detected` still returns false, for E5a-I and BeiDou B1I alike. So
+        # both take the fully non-coherent route instead: 20 single-period
+        # accumulations, which detects at ~53 dB-Hz synthetically and needs no
+        # secondary-phase hypothesis at all.
+        acq_e5a = topN(
+            det(
+                acquire(
+                    GalileoE5aI(),
+                    (@view l5h[1:nacq_l5]),
+                    III7A_FS_L5,
+                    1:36;
+                    interm_freq = III7A_IF_L5,
+                    num_coherently_integrated_code_periods = 1,
+                    num_noncoherent_accumulations = 20,
+                ),
+            ),
+            4,
+        )
+        # BeiDou B1I, from the same L1 samples at its own IF, non-coherently for
+        # the reason just given. PRNs 6+ only: 1-5 are the BDS-2 GEOs, which
+        # broadcast D2 NAV *without* the NH20 secondary code that GNSSSignals
+        # models for B1I uniformly, so the replica would not match them.
+        acq_b1i = topN(
+            det(
+                acquire(
+                    BeiDouB1I(),
+                    (@view l1h[1:nacq]),
+                    III7A_FS,
+                    6:37;
+                    interm_freq = III7A_IF_B1I,
+                    num_coherently_integrated_code_periods = 1,
+                    num_noncoherent_accumulations = 20,
+                ),
+            ),
+            4,
+        )
         @test !isempty(acq_gps)
         @test !isempty(acq_gal)
         @test !isempty(acq_l5)
+        # Galileo reached initial services in December 2016, so E5a-I is
+        # unconditionally on the air at this epoch and in the middle of a band
+        # this capture already tracks — assert it like the other three.
+        @test !isempty(acq_e5a)
+        # B1I is not asserted: see `III7A_IF_B1I`. BDS-2 was operational and Hanoi
+        # sits inside its regional service area, so the signal is certainly
+        # transmitted; whether the L1 front-end passes 1561 MHz is a property of
+        # hardware we have no specification for. An empty acquisition here is a
+        # fact about the recording, not a regression.
+        isempty(acq_b1i) &&
+            @info "Flexiband III-7a: no BeiDou B1I acquired 18.9 MHz off L1 centre"
         gps_prns = sort!([a.prn for a in acq_gps]);
         gal_prns = sort!([a.prn for a in acq_gal])
         l5_prns = sort!([a.prn for a in acq_l5])
+        e5a_prns = sort!([a.prn for a in acq_e5a]);
+        b1i_prns = sort!([a.prn for a in acq_b1i])
 
-        # Multi-band TrackState: GPS L1 C/A and Galileo E1B share the L1 band,
-        # GPS L5I is its own band. The band each group tracks is derived from its
-        # signal (`band_key`), so `track!` takes one `BandMeasurement` per band.
+        # Multi-band TrackState. The band each group tracks is derived from its
+        # signal (`GNSSSignals.get_band_id`), so `track!` takes one
+        # `BandMeasurement` per *band*, not per group: GPS L1 C/A and Galileo E1B
+        # share `:L1`, GPS L5I and Galileo E5a-I share `:L5`, and BeiDou B1I is
+        # alone on `:B1I` — three keys over two front-ends.
         ts = TrackState(;
-            signals = (gps = (GPSL1CA(),), gal = (GalileoE1B(),), gps_l5 = (GPSL5I(),)),
+            signals = (
+                gps = (GPSL1CA(),),
+                gal = (GalileoE1B(),),
+                bds = (BeiDouB1I(),),
+                gps_l5 = (GPSL5I(),),
+                gal_e5a = (GalileoE5aI(),),
+            ),
         )
         for a in acq_gps
             ;
@@ -254,9 +334,19 @@ else
             ;
             ts = add_satellite!(ts, a; group = :gps_l5);
         end
+        for a in acq_e5a
+            ;
+            ts = add_satellite!(ts, a; group = :gal_e5a);
+        end
+        for a in acq_b1i
+            ;
+            ts = add_satellite!(ts, a; group = :bds);
+        end
         dec_gps = Dict(p => GPSL1CADecoderState(p) for p in gps_prns)
         dec_gal = Dict(p => GalileoE1BDecoderState(p) for p in gal_prns)
         dec_l5 = Dict(p => GPSL5IDecoderState(p) for p in l5_prns)
+        dec_e5a = Dict(p => GalileoE5aDecoderState(p) for p in e5a_prns)
+        dec_b1i = Dict(p => BeiDouB1IDecoderState(p) for p in b1i_prns)
 
         # Track the whole ~15.7 s capture on both front-ends together, feeding
         # each band's soft symbols to its decoders. L1 and L5 come from the same
@@ -265,9 +355,14 @@ else
         while true
             l1, l5 = iii7a_read_bands!(usb, nblk(0.2));
             isempty(l1) && break
+            # Three band keys, two front-ends: `get_band_id(BeiDouB1I) === :B1I`
+            # is distinct from `:L1`, so B1I takes its own `BandMeasurement` over
+            # the *same* L1 sample vector at its own IF. Galileo E5a-I reports
+            # `:L5` and so rides the L5 measurement already there.
             ts = track!(
                 (
                     L1 = BandMeasurement(l1, III7A_FS, III7A_IF),
+                    B1I = BandMeasurement(l1, III7A_FS, III7A_IF_B1I),
                     L5 = BandMeasurement(l5, III7A_FS_L5, III7A_IF_L5),
                 ),
                 ts,
@@ -283,6 +378,14 @@ else
             for p in l5_prns
                 s = get_soft_bits(ts, :gps_l5, p);
                 isempty(s) || (dec_l5[p] = decode(dec_l5[p], s, length(s)))
+            end
+            for p in e5a_prns
+                s = get_soft_bits(ts, :gal_e5a, p);
+                isempty(s) || (dec_e5a[p] = decode(dec_e5a[p], s, length(s)))
+            end
+            for p in b1i_prns
+                s = get_soft_bits(ts, :bds, p);
+                isempty(s) || (dec_b1i[p] = decode(dec_b1i[p], s, length(s)))
             end
         end
         close(r)
@@ -309,7 +412,33 @@ else
         @test !isempty(l5_tows)
         @test all(t -> 0 <= t <= 604_800, l5_tows)
 
+        # Galileo E5a-I (F/NAV): reported, not asserted, and the reason is the
+        # page length rather than the signal. An F/NAV page is 500 symbols at
+        # 50 sps = 10 s, and page sync needs the *next* page's 12-symbol pattern
+        # on top, so a decode costs 10.24 s of continuously tracked symbols. The
+        # capture is ~15.7 s and tracking has to converge first, which leaves room
+        # for exactly one page window — and only if the 10 s page boundary happens
+        # to fall early. Galileo page epochs are common to the constellation, so
+        # the extra satellites do not make it independent tries: it is one roll of
+        # the dice for all of them. (E1B decodes reliably here because its page
+        # parts are 1 s. Word types 1-4 of the five in an F/NAV subframe carry
+        # TOW, so a page that *is* decoded very likely yields one.)
+        e5a_tows = [
+            dec_e5a[p].raw_data.TOW for p in e5a_prns if !isnothing(dec_e5a[p].raw_data.TOW)
+        ]
+        @test all(t -> 0 <= t <= 604_800, e5a_tows)
+
+        # BeiDou B1I (D1 NAV): reported, not asserted, because acquisition itself
+        # is not asserted. If it did acquire, the odds of a decode are good — a D1
+        # subframe is 300 bits at 50 bps = 6 s, so two fit inside the capture, and
+        # every subframe carries a BCH-checked SOW.
+        b1i_sows = [
+            dec_b1i[p].raw_data.SOW for p in b1i_prns if !isnothing(dec_b1i[p].raw_data.SOW)
+        ]
+        @test all(t -> 0 <= t <= 604_800, b1i_sows)
+
         @info "Decoded real Flexiband III-7a" gps_tow = first(gps_tows) gal = first(gal_ok) l5_tow =
-            first(l5_tows)
+            first(l5_tows) e5a_prns_tracked = e5a_prns e5a_tows = e5a_tows b1i_prns_acquired =
+            b1i_prns b1i_sows = b1i_sows
     end
 end

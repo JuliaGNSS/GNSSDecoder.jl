@@ -9,7 +9,9 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 - **GPS L2C**: Decodes the 50 sps CNAV data stream from the GPS L2 CM (civil-moderate) signal component
 - **GPS L5I**: Decodes the 100 sps CNAV data stream from the GPS L5 in-phase signal component
 - **Galileo E1B**: Decodes the 250 bps I/NAV data stream from Galileo E1B Open Service signals
+- **Galileo E5b**: Decodes the same 250 bps I/NAV data stream from the Galileo E5b in-phase (data) component
 - **Galileo E5a**: Decodes the 50 sps F/NAV data stream from the Galileo E5a in-phase (data) component
+- **Galileo E6B**: Decodes the 1000 sps C/NAV data stream from the Galileo E6-B component — the High Accuracy Service (HAS) orbit, clock and bias corrections
 - **BeiDou B1I / B3I**: Decode the legacy D1 (50 bps, MEO/IGSO) and D2 (500 bps, GEO) NAV messages
 - **BeiDou B1C**: Decodes the 100 sps B-CNAV1 data stream from the B1C data component
 - **BeiDou B2a**: Decodes the 200 sps B-CNAV2 data stream from the B2a data component
@@ -85,13 +87,74 @@ julia> state.prn
 1
 
 julia> typeof(state)
-GNSSDecoderState{GNSSDecoder.GalileoE1BData, GNSSDecoder.GalileoE1BConstants, GNSSDecoder.GalileoE1BCache}
+GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B}, GNSSDecoder.GalileoINAVCache}
 
 julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
 ```
+
+### Galileo E5b Decoding
+
+E5b-I carries the identical I/NAV message as E1-B (OS SIS ICD §4.3.1: "the same
+page layout … only page sequencing is different"), so the decoder is the same
+one, differing only in the signal it reports and in which health facet of word
+type 5 [`is_sat_healthy`](@ref) reads:
+
+```jldoctest galileo_e5b_example
+julia> using GNSSDecoder, GNSSSignals
+
+julia> state = GalileoE5bDecoderState(1);
+
+julia> get_signal_name(state)
+"Galileo E5b-I"
+
+julia> get_band_id(state)
+:E5b
+```
+
+### Galileo E6B (High Accuracy Service) Decoding
+
+E6-B's C/NAV message carries the Galileo High Accuracy Service: orbit, clock,
+code-bias and phase-bias corrections *to another signal's* broadcast ephemeris.
+Each satellite broadcasts one 1000-symbol page per second, and a HAS message is
+assembled from up to 32 such pages via a Reed-Solomon erasure decode — so a
+single satellite may take up to 32 seconds per message, while a receiver pooling
+pages from several E6-B satellites completes them much faster.
+
+```jldoctest galileo_e6b_example
+julia> using GNSSDecoder
+
+julia> state = GalileoE6BDecoderState(1);
+
+julia> state.constants.syncro_sequence_length   # 1000 symbols = 1 s per page
+1000
+
+julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
+false
+```
+
+Once a message completes, the corrections are in `state.data`:
+
+```julia
+# The most recently completed HAS message, exactly as the ICD defines it
+message = state.data.message
+
+# ...or the accumulated latest of each content block, which is usually what a
+# correction consumer wants (HAS splits masks/orbits from clocks across messages)
+for correction in state.data.orbit_corrections.corrections
+    correction.gnss_id == 2 || continue          # 0 = GPS, 2 = Galileo
+    isnothing(correction.δ_radial) && continue   # "data not available" sentinel
+    @show correction.svid, correction.IOD_ref, correction.δ_radial
+end
+```
+
+`δ_radial`, `δ_in_track` and `δ_cross_track` are in the satellite-centred NTW
+frame and must be rotated into ECEF before use (HAS SIS ICD §7.2); each block
+carries its own `validity_interval` in seconds from the message's `TOH`, and the
+`mask_id` / `IOD_set_id` that tie it to a satellite set and a broadcast
+ephemeris issue.
 
 ### GPS L1C-D Decoding
 
@@ -273,17 +336,33 @@ After successful decoding, `state.data` contains:
 | `a_f0`, `a_f1`, `a_f2` | Clock correction coefficients |
 | `T_GD` | Group delay differential |
 
-### Galileo E1B Data
+### Galileo I/NAV Data (E1B and E5b)
 
 Similar ephemeris and clock parameters are available for Galileo, plus:
 
 | Field | Description |
 |-------|-------------|
 | `WN` | Week number |
-| `signal_health_e1b` | E1B signal health status |
-| `data_validity_status_e1b` | Data validity status |
+| `signal_health_e1b` / `signal_health_e5b` | E1-B/C and E5b signal health status |
+| `data_validity_status_e1b` / `data_validity_status_e5b` | Data validity status per component |
 | `broadcast_group_delay_e1_e5a` | E1-E5a group delay |
 | `broadcast_group_delay_e1_e5b` | E1-E5b group delay |
+| `almanacs` | Per-SV almanac dictionary (word types 7-10) |
+| `reduced_ced` | Reduced clock and ephemeris data (word type 16, E1-B only) |
+
+### Galileo E6B Data (High Accuracy Service)
+
+C/NAV carries corrections rather than an ephemeris — see
+[`GalileoE6BData`](@ref) for the full field list:
+
+| Field | Description |
+|-------|-------------|
+| `HAS_status` | HAS service status (test / operational / do not use) |
+| `message` | The most recently completed [`GalileoHASMessage`](@ref), header included (`TOH`, `mask_id`, `IOD_set_id`) |
+| `masks` | Every received [`GalileoHASMask`](@ref), keyed by Mask ID |
+| `orbit_corrections` | Latest orbit corrections (radial / in-track / cross-track) |
+| `clock_corrections`, `clock_subset_corrections` | Latest clock corrections |
+| `code_biases`, `phase_biases` | Latest code and phase biases per satellite/signal cell |
 
 ### GPS L1C-D Data
 

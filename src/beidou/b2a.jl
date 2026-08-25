@@ -479,9 +479,7 @@ end
 
 # Field-by-field equality: the almanac `Dictionary` fields otherwise compare
 # by identity through the default struct `==`.
-function Base.:(==)(a::BeiDouB2aData, b::BeiDouB2aData)
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(BeiDouB2aData))
-end
+Base.:(==)(a::BeiDouB2aData, b::BeiDouB2aData) = fields_equal(a, b)
 
 # ---- Cache --------------------------------------------------------------------
 

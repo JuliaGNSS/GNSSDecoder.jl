@@ -679,12 +679,7 @@ end
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `Dictionary` fields even when their contents match. Compare
 # field-by-field (mirrors `GPSL1C_DData`).
-function Base.:(==)(a::GPSCNAVData, b::GPSCNAVData)
-    for f in fieldnames(GPSCNAVData)
-        getfield(a, f) == getfield(b, f) || return false
-    end
-    return true
-end
+Base.:(==)(a::GPSCNAVData, b::GPSCNAVData) = fields_equal(a, b)
 
 """
 $(TYPEDEF)
@@ -1550,21 +1545,3 @@ function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
     end
     return state
 end
-
-# ---- Deprecated aliases -----------------------------------------------------
-#
-# The shared CNAV data container and its records were originally named
-# `GPSL5I*` (GPS L5I was the first CNAV signal implemented, IS-GPS-705J). GPS
-# L2C (IS-GPS-200N §30) broadcasts the identical CNAV message and reuses these
-# types, so they were renamed to the signal-neutral `GPSCNAV*`. The old names
-# are kept as exported deprecated aliases for backward compatibility.
-#
-# DESIGN NOTE: remove these aliases at the next breaking change / major version
-# bump (they were public since v2.1.0). Track alongside any future field
-# renames so downstream users migrate `GPSL5I*` → `GPSCNAV*` once.
-Base.@deprecate_binding GPSL5IData GPSCNAVData true
-Base.@deprecate_binding GPSL5IReducedAlmanac GPSCNAVReducedAlmanac true
-Base.@deprecate_binding GPSL5IMidiAlmanac GPSCNAVMidiAlmanac true
-Base.@deprecate_binding GPSL5IClockDifferentialCorrection GPSCNAVClockDifferentialCorrection true
-Base.@deprecate_binding GPSL5IEphemerisDifferentialCorrection GPSCNAVEphemerisDifferentialCorrection true
-Base.@deprecate_binding GPSL5IIntegritySupportMessage GPSCNAVIntegritySupportMessage true

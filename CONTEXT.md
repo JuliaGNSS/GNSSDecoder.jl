@@ -27,9 +27,22 @@ code; this file is for naming and meaning only.
   (MT10 bit 53) instead of the L5 bit (54). `GNSSDecoderState(::GPSL2CM, prn)`
   maps here (`GPSL2CL` is the pilot); `GPSL2CMDecoderState(prn)` is the
   equivalent direct constructor.
-- **Galileo E1B** (`GalileoE1B`) — 250 sps I/NAV nominal pages over a K=7
-  rate-1/2 convolutional code plus 30×8 block interleaver. Page = 250 channel
-  symbols = 1 second. Two consecutive pages (even+odd) carry one word.
+- **Galileo E1B / E5b** (`GalileoE1B`, `GalileoE5bI`) — 250 sps I/NAV nominal
+  pages over a K=7 rate-1/2 convolutional code plus 30×8 block interleaver.
+  Page part = 250 channel symbols = 1 second; two consecutive parts (even+odd)
+  carry one 128-bit word, CRC-24Q over the 196 protected bits of the pair. The
+  OS SIS ICD (Issue 2.2 §4.3.1) states E1-B and E5b-I use "the same page layout
+  … only page sequencing is different", so they share one decoder core
+  (`src/galileo/inav.jl`) and the `GalileoINAVData` container, the way L5I/L2C
+  share the GPS CNAV core. The page parts differ only in fields this decoder
+  never reads: E1-B's odd part spends 64 bits on OSNMA(40) + SAR(22) + Spare(2)
+  where E5b-I has one "Reserved 1" field, and ends in the 8-bit SSP where E5b-I
+  has "Reserved 2" — both 64 + 8, both leaving the CRC-protected prefix at 82
+  bits and neither trailing field CRC-protected. Word types 16 (Reduced CED) and
+  17-20 (FEC2 RS CED) are E1-B only (Table 40), so an E5b decoder simply never
+  sees them. The only decode difference is that `is_sat_healthy` reports the E5b
+  facet of word type 5 instead of the E1-B/C facet; `GalileoE5bDecoderState(prn)`
+  is the E5b constructor (`GalileoE5bQ` is the dataless pilot).
 - **Galileo E5a** (`GalileoE5aDecoderState`) — 50 sps F/NAV broadcast on the
   E5a-I component. Page = 500 channel symbols = 10 seconds = a 12-symbol sync
   pattern + 488 encoded symbols. Same K=7 rate-1/2 NSC convolutional code as
@@ -41,6 +54,24 @@ code; this file is for naming and meaning only.
   F/NAV rides on the E5a-I (data) component, so `GNSSDecoderState(::GalileoE5aI,
   prn)` maps here (E5a-Q is the dataless pilot); `GalileoE5aDecoderState(prn)` is
   the equivalent direct constructor.
+- **Galileo E6B** (`GalileoE6B`) — 1000 sps C/NAV, the Signal-in-Space channel
+  of the Galileo High Accuracy Service (HAS SIS ICD Issue 1.0). Page = 1000
+  symbols = 1 second = a 16-symbol sync pattern `1011011101110000` + 984 encoded
+  symbols; same K=7 rate-1/2 NSC code as I/NAV and F/NAV (the ICD says so
+  explicitly) but a 123×8 block interleaver, giving 486 information bits =
+  Reserved(14) + HAS Page(448) + CRC-24Q(24), the CRC over the leading 462.
+  Uniquely among the signals here it carries *no ephemeris at all*: the HAS
+  message is a set of corrections to another signal's broadcast navigation data,
+  so `is_decoding_completed_for_positioning` is always `false` and
+  `is_sat_healthy` reports the HAS *service* status instead of a satellite
+  health bit. Also uniquely, one message spans *satellites*: it is cut into
+  k ≤ 32 pages of 424 bits, encoded with a systematic RS(255, 32) code over
+  GF(256) ("HPVRS"), and different encoded pages are handed to different
+  satellites — a receiver reassembles a message from any k pages with the same
+  Message ID by inverting the k×k generator submatrix their Page IDs select
+  (`src/reed_solomon.jl`). E6-C is the dataless pilot, so only
+  `GNSSDecoderState(::GalileoE6B, prn)` exists;
+  `GalileoE6BDecoderState(prn)` is the equivalent direct constructor.
 - **BeiDou B1I / B3I** (`BeiDouB1I` / `BeiDouB3I`) — the legacy BDS message,
   identical on both signals (BDS-SIS-ICD-B1I-3.0 / BDS-SIS-ICD-B3I-1.0 §5), so
   they share one decoder core (`src/beidou/dnav.jl`) and the `BeiDouDNAVData`
@@ -99,12 +130,16 @@ The same word means different things in different ICDs. Within this codebase:
   broadcast unit (3 s / 1 s). BeiDou B1I/B3I: five subframes = 1500 bits (the
   ICD term; the decoder unit is the subframe).
 - **page** — Galileo I/NAV unit (1 sec, 250 channel symbols). Each page has
-  even and odd halves; a *word* spans two consecutive pages. For BeiDou
+  even and odd halves; a *word* spans two consecutive pages. For Galileo E6-B
+  C/NAV: one 1000-symbol (1 s) broadcast unit — and, separately, one 424-bit
+  slice of a HAS *message*, either non-encoded (`M_i`) or RS-encoded (`C_i`);
+  the HAS Page ID names the latter. For BeiDou
   B1I/B3I: the Pnum-stamped cycle position of a D1 subframe 4/5 (1-24) or a
   D2 subframe (Pnum1 1-10). For B1C: a PageID-typed subframe 3 (1-4).
 - **syncro sequence** — package-internal: the smallest navigable unit the
   decoder synchronises on (subframe for GPS L1 C/A and BeiDou B1I/B3I, page
-  for Galileo, frame for L1C-D, B1C, B2a, and B2b, message for L5I).
+  for Galileo — including one C/NAV page on E6-B — frame for L1C-D, B1C, B2a,
+  and B2b, message for L5I).
 
 ## TOI (Time of Interval)
 
@@ -137,7 +172,16 @@ multiple subframes/pages carry a consistent ephemeris set before publishing.
 - **IODE_Sub_2 / IODE_Sub_3** — L1 C/A 8-bit ephemeris IODs; must equal each
   other and the lower 8 bits of IODC.
 - **IODnav** — Galileo I/NAV: 10 bits, present in word types 1–4. All four
-  must match for a publishable ephemeris.
+  must match for a publishable ephemeris. Galileo HAS corrections name it as
+  their `IOD_ref` (8 bits for the GPS IODE/IODC they correct instead).
+- **IOD Set ID** — Galileo HAS: a 5-bit counter over the *set* of reference IODs
+  of every satellite in a mask. It changes when any one satellite's reference IOD
+  does; it is not itself an issue of data, but the key that ties a correction
+  block to the ephemeris issue it corrects (HAS SIS ICD §7.6).
+- **Mask ID** — Galileo HAS: a 5-bit counter over the set of corrected
+  satellites, signals and reference navigation messages. Correction blocks
+  reference a mask by this ID, and cannot be parsed at all without it — every
+  block's *length* is derived from the mask.
 - **IOD_a** — Galileo I/NAV almanac IOD, per chained almanac word (WT7–WT10).
 - **BeiDou**: B-CNAV1 carries IODC/IODE inside the single CRC-protected
   subframe 2, so no cross-block stitching is needed; B-CNAV2 gates the MT10/11
@@ -148,7 +192,7 @@ multiple subframes/pages carry a consistent ephemeris set before publishing.
 
 ## CRC-24Q
 
-The CRC polynomial used by Galileo I/NAV pages, GPS L1C-D subframes 2 and 3,
+The CRC polynomial used by Galileo I/NAV page pairs and E6-B C/NAV pages, GPS L1C-D subframes 2 and 3,
 the BeiDou B-CNAV blocks (B1C subframes 2 and 3, every B2a and B2b message),
 and several other CNAV variants. Polynomial 0x864cfb, init 0, no reflection,
 xor-out 0. Shared across signals — implemented once in this package.
@@ -191,8 +235,13 @@ lives in the `cache`.
 
 - **L1 C/A**: fixed 8-bit preamble `10001011` at the start of every subframe;
   TOW-continuity check across two subframes to confirm.
-- **Galileo E1B**: fixed 10-bit page-sync pattern `0101100000` at the start of
-  every page (in the encoded symbol stream).
+- **Galileo E1B / E5b**: fixed 10-bit page-sync pattern `0101100000` at the
+  start of every page part (in the encoded symbol stream).
+- **Galileo E6B**: fixed 16-symbol C/NAV sync pattern `1011011101110000` at the
+  start of every page, matched at both ends of the 1016-symbol window in either
+  polarity, then hardened by Viterbi-decoding the page and requiring CRC-24Q —
+  the RS erasure decoder downstream trusts every collected page absolutely, so
+  a page must be error-free before it enters the store.
 - **Galileo E5a**: fixed 12-symbol F/NAV sync pattern `101101110000` at the
   start of every page; matched at both ends of the 500-symbol page window, in
   either polarity (180-degree ambiguity), exactly like E1B.

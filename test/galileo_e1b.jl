@@ -22,7 +22,7 @@ end
 @testset "Galileo E1B test data decoding" begin
     decoder = GalileoE1BDecoderState(21)
 
-    test_data = GNSSDecoder.GalileoE1BData(;
+    test_data = GNSSDecoder.GalileoINAVData(;
         WN = 1082,
         TOW = 259235,
         SVID = 21,

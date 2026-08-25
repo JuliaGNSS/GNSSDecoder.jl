@@ -599,3 +599,38 @@ using GNSSSignals: Hz
         @test state.data.WN == 810
     end
 end
+
+@testset "BeiDou D1/D2 data equality is structural" begin
+    # `BeiDouDNAVData` carries the `almanac` and `health` `Dictionary` fields, so
+    # the default struct `==` would be reference equality and two decoders fed
+    # the same subframes would never compare equal once either was populated.
+    mk(M_0) = BeiDouDNAVData(;
+        WN = 810,
+        almanac = Dictionary([7], [BeiDouDNAVAlmanac(; M_0)]),
+        health = Dictionary([7], [0x0000]),
+    )
+    @test mk(0.1) == mk(0.1)
+    @test mk(0.1) != mk(0.2)
+    @test BeiDouDNAVData() == BeiDouDNAVData()
+
+    # The voting wrapper needs its own method rather than inheriting that one:
+    # Julia's default struct `==` is `===`, which compares fields with `===`
+    # instead of dispatching to their `==`. Without it the cache's `old_data`
+    # vector — and so the whole state — stays reference-compared.
+    voted(M_0) = [GNSSDecoder.VotedBeiDouDNAVData(3, mk(M_0))]
+    @test voted(0.1) == voted(0.1)
+    @test voted(0.1) != voted(0.2)
+    @test GNSSDecoder.VotedBeiDouDNAVData(4, mk(0.1)) !=
+          GNSSDecoder.VotedBeiDouDNAVData(3, mk(0.1))
+
+    # ...so that it reaches the decoder state, which compares field by field.
+    twin(M_0) =
+        GNSSDecoderState(BeiDouB1IDecoderState(6); raw_data = mk(M_0), data = mk(M_0))
+    @test twin(0.1) == twin(0.1)
+    @test twin(0.1) != twin(0.2)
+
+    # Subframe voting is deliberately *not* this comparison: `dnav_compare_data`
+    # weighs the ephemeris fields the vote is about, and the almanac is not one
+    # of them, so these two still count as the same candidate.
+    @test GNSSDecoder.dnav_compare_data(mk(0.1), mk(0.2))
+end

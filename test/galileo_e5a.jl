@@ -38,41 +38,22 @@ end
 # The 238 information bits (page type + data + CRC) of a 244-bit page.
 e5a_info_bits(page244::UInt256) = page244 >> 6
 
-# Transmit-side rate-1/2 K=7 NSC convolutional encoder, G1 = 0o171, G2 = 0o133
-# with the G2 output inverted (Galileo OS SIS ICD §4.1.4). Takes the 238 info
-# bits, appends 6 zero tail bits, and returns 488 ±1 soft symbols (bit 1 → −1).
-function e5a_conv_encode(info::Vector{Bool})
-    polys = (0o171, 0o133)
-    reg = zeros(Bool, 6)
-    out = Float32[]
-    for b in vcat(info, zeros(Bool, 6))
-        taps = vcat([b], reg)               # [current, last-6]; tap j matches poly MSB
-        for (k, p) in enumerate(polys)
-            acc = false
-            for j = 1:7
-                ((p >> (7 - j)) & 1 == 1) && (acc ⊻= taps[j])
-            end
-            sym = (k == 2) ? !acc : acc     # invert G2
-            push!(out, sym ? -1.0f0 : 1.0f0)
-        end
-        reg = vcat([b], reg[1:(end-1)])
-    end
-    out
-end
+# The transmit-side FEC chain (rate-1/2 K=7 NSC convolutional encoder with the
+# G2 output inverted, then the block interleaver and sync prefix) is shared with
+# every other Galileo signal and lives in `galileo_test_utils.jl`.
 
 # One F/NAV page → 500 on-air soft symbols: 12-symbol sync + 488 interleaved
 # encoded symbols (8 rows × 61 columns block interleaver).
 function e5a_page_to_symbols(page244::UInt256)
     info = e5a_info_bits(page244)
     info_vec = Bool[GNSSDecoder.get_bit(info, 238, k) for k = 1:238]
-    sync = Float32[b == 1 ? -1.0f0 : 1.0f0 for b in GALILEO_E5A_SYNC]
-    vcat(sync, GNSSDecoder.interleave(e5a_conv_encode(info_vec), 61, 8))
+    galileo_page_symbols(info_vec, GALILEO_E5A_SYNC, 61)
 end
 
 # Concatenate the given pages into a soft-symbol stream, plus a trailing sync so
 # the final page's window is closed by the next page-sync pattern.
 function e5a_symbol_stream(pages)
-    sync = Float32[b == 1 ? -1.0f0 : 1.0f0 for b in GALILEO_E5A_SYNC]
+    sync = galileo_sync_symbols(GALILEO_E5A_SYNC)
     stream = Float32[]
     for page in pages
         append!(stream, e5a_page_to_symbols(page))
@@ -105,7 +86,7 @@ end
     for idx in (1, 5, 10, 76, 152)
         info = e5a_info_bits(pages[idx])
         info_vec = Bool[GNSSDecoder.get_bit(info, 238, k) for k = 1:238]
-        on_air = GNSSDecoder.interleave(e5a_conv_encode(info_vec), 61, 8)
+        on_air = GNSSDecoder.interleave(galileo_conv_encode(info_vec), 61, 8)
         recovered = GNSSDecoder.galileo_e5a_viterbi(decoder.cache.viterbi_decoder, on_air)
         @test recovered == GNSSDecoder.UInt256(info)
     end

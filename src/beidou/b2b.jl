@@ -266,9 +266,7 @@ end
 
 # Field-by-field equality: the almanac `Dictionary` fields otherwise compare
 # by identity through the default struct `==`.
-function Base.:(==)(a::BeiDouB2bData, b::BeiDouB2bData)
-    all(getfield(a, f) == getfield(b, f) for f in fieldnames(BeiDouB2bData))
-end
+Base.:(==)(a::BeiDouB2bData, b::BeiDouB2bData) = fields_equal(a, b)
 
 function BeiDouB2bData(
     data::BeiDouB2bData;
@@ -513,30 +511,32 @@ never re-arm the SOW symbol counter with stale time).
 """
 function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
     deque = soft_buffer(state)
-    # Gate 1, read straight from the deque. The shared `pack_buffer` would
-    # shift a 1016-bit integer once per symbol — ~16 M word-operations per
-    # second per satellite at B2b's 1000 sps — to expose 38 bits that sit at
-    # three known offsets. Slice those instead; the packed window is never
-    # needed, since the payload is consumed as soft symbols below.
-    pre = UInt64(state.constants.preamble)
-    mask = (UInt64(1) << B2B_PREAMBLE_SYMBOLS) - UInt64(1)
-    head = pack_soft_bits(deque, 1, B2B_PREAMBLE_SYMBOLS)
-    tail = pack_soft_bits(deque, B2B_FRAME_SYMBOLS + 1, B2B_PREAMBLE_SYMBOLS)
-    inverted = pre ⊻ mask
-    # Both ends must carry the preamble, and in a common polarity.
-    polarity_flipped = head == inverted && tail == inverted
-    (head == pre && tail == pre) || polarity_flipped || return nothing
+    # Gate 1, read straight from the deque via the shared `find_preamble_in_deque`.
+    # The default `pack_buffer` path would shift a 1016-bit integer once per
+    # symbol — ~16 M word-operations per second per satellite at B2b's 1000 sps —
+    # to expose 38 bits that sit at three known offsets. Slice those instead; the
+    # packed window is never needed, since the payload is consumed as soft
+    # symbols below.
+    polarity_flipped = find_preamble_in_deque(
+        deque,
+        state.constants.preamble,
+        B2B_PREAMBLE_SYMBOLS,
+        B2B_FRAME_SYMBOLS,
+    )
+    isnothing(polarity_flipped) && return nothing
     # Gate 2: the unencoded PRN field (window bits 17-22, ICD Figure 6-1).
     prn_bits = pack_soft_bits(deque, B2B_PREAMBLE_SYMBOLS + 1, B2B_PRN_SYMBOLS)
     prn_mask = (UInt64(1) << B2B_PRN_SYMBOLS) - UInt64(1)
     prn = Int(polarity_flipped ? prn_bits ⊻ prn_mask : prn_bits)
     prn == state.prn || return nothing
     # Gate 3: LDPC + CRC on the soft symbols (deque indices 29 .. 1000).
-    sign = polarity_flipped ? -1.0f0 : 1.0f0
-    window = state.cache.ldpc_window
-    @inbounds for i = 1:B2B_ENCODED_SYMBOLS
-        window[i] = sign * deque[B2B_ENCODED_OFFSET+i]
-    end
+    window = copy_soft_window!(
+        state.cache.ldpc_window,
+        deque,
+        B2B_ENCODED_OFFSET,
+        B2B_ENCODED_SYMBOLS,
+        polarity_flipped,
+    )
     word = ldpc_decode_word(state.cache.ldpc_decoder, window, B2B_MESSAGE_BITS, UInt512)
     isnothing(word) && return nothing
     return BeiDouB2bSync(word, polarity_flipped)

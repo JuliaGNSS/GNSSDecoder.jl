@@ -1,6 +1,9 @@
-# UInt512 buffer for Galileo E5a F/NAV sync — holds the 512-symbol page window
-# (500 syncro + 12 sync pattern) hard-sliced for the bit-pattern sync check.
-BitIntegers.@define_integers 512
+# Page geometry, as module-level constants rather than only `GalileoE5aConstants`
+# fields: `try_sync` below hands them to `find_preamble_in_deque` once per
+# symbol, where being compile-time constants is what lets the bit packing unroll
+# (see that function's note).
+const GALILEO_E5A_PAGE_SYMBOLS = 500
+const GALILEO_E5A_SYNC_SYMBOLS = 12
 
 # Galileo E5a uses the shared K=7 NSC FEC (`GALILEO_VITERBI_POLY`, see
 # `galileo.jl`) — the same code as E1B. After the 61×8 block deinterleave a F/NAV
@@ -15,11 +18,9 @@ BitIntegers.@define_integers 512
 const GALILEO_E5A_VITERBI_K = 238
 const GALILEO_E5A_VITERBI_N = 488
 
-# Block deinterleaver dimensions for F/NAV: the ICD interleaver is 8 rows × 61
-# columns. As with E1B (passed as `(30, 8)`), `deinterleave`'s first argument is
-# the ICD column count and the second the ICD row count, so F/NAV uses `(61, 8)`.
-const GALILEO_E5A_INTERLEAVER_ROWS = 61
-const GALILEO_E5A_INTERLEAVER_COLS = 8
+# Columns of the F/NAV block interleaver; the 8 rows every Galileo channel shares
+# are `GALILEO_INTERLEAVER_ROWS` in `galileo.jl` (ICD 8×61).
+const GALILEO_E5A_INTERLEAVER_COLUMNS = 61
 
 """
     GalileoE5aConstants
@@ -46,9 +47,9 @@ corrections from broadcast ephemeris data.
 Galileo OS SIS ICD, Issue 2.2, §4.2 and Table 68
 """
 Base.@kwdef struct GalileoE5aConstants <: AbstractGNSSConstants
-    syncro_sequence_length::Int = 500
+    syncro_sequence_length::Int = GALILEO_E5A_PAGE_SYMBOLS
     preamble::UInt16 = 0b101101110000
-    preamble_length::Int = 12
+    preamble_length::Int = GALILEO_E5A_SYNC_SYMBOLS
     PI::Float64 = GNSS_PI
     Ω_dot_e::Float64 = EARTH_ROTATION_RATE
     c::Float64 = SPEED_OF_LIGHT
@@ -70,7 +71,8 @@ Unlike I/NAV (E1B/E5b), F/NAV carries only the E5a signal-health (`E5a_HS`) and
 data-validity (`E5a_DVS`) flags and a single broadcast group delay
 (`BGD(E1, E5a)`); there is no Reduced CED and no E5b/E1-B field. Angular
 quantities are stored in **radians** (the ICD broadcasts them in semi-circles;
-the decoder multiplies by π), matching the convention used by [`GalileoE1BData`](@ref).
+the decoder multiplies by π), matching the convention used by
+[`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData).
 
 # Galileo System Time (GST) Fields
 
@@ -177,7 +179,7 @@ the decoder multiplies by π), matching the convention used by [`GalileoE1BData`
 
 Galileo OS SIS ICD, Issue 2.2, §5.1, Tables 75-80
 """
-Base.@kwdef struct GalileoE5aData <: AbstractGalileoData
+Base.@kwdef struct GalileoE5aData <: AbstractGalileoEphemerisData
     WN::Union{Nothing,Int64} = nothing
     TOW::Union{Nothing,Int64} = nothing
 
@@ -360,14 +362,9 @@ function GalileoE5aData(
     )
 end
 
-# As with GalileoE1BData, the mutable `almanacs::Dictionary` field makes the
+# As with GalileoINAVData, the mutable `almanacs::Dictionary` field makes the
 # default struct `==` (which falls back to `===`) too strict. Compare field-by-field.
-function Base.:(==)(a::GalileoE5aData, b::GalileoE5aData)
-    for f in fieldnames(GalileoE5aData)
-        getfield(a, f) == getfield(b, f) || return false
-    end
-    return true
-end
+Base.:(==)(a::GalileoE5aData, b::GalileoE5aData) = fields_equal(a, b)
 
 # `is_ephemeris_decoded` and `is_clock_correction_decoded` are per-constellation
 # facts (identical fields for I/NAV and F/NAV), defined once on
@@ -557,7 +554,32 @@ function reset_decoder_state(state::GNSSDecoderState{<:GalileoE5aData})
     )
 end
 
-packed_buffer_type(::GNSSDecoderState{<:GalileoE5aData}) = UInt512
+# No `packed_buffer_type` method: F/NAV overrides `try_sync` and reads the two
+# 12-symbol sync patterns straight from the soft buffer, so the 512-bit packed
+# window the default would build once per symbol is never needed — the payload
+# is consumed as soft symbols by the Viterbi decoder below.
+"""
+    try_sync(state::GNSSDecoderState{<:GalileoE5aData}) -> Union{Nothing,Bool}
+
+F/NAV page sync: the 12-symbol pattern `101101110000` must appear at both ends of
+the 512-symbol window (start of this page and start of the next), both upright or
+both inverted. Returns the resolved polarity, or `nothing` when there is no sync.
+"""
+try_sync(state::GNSSDecoderState{<:GalileoE5aData}) = find_preamble_in_deque(
+    soft_buffer(state),
+    state.constants.preamble,
+    GALILEO_E5A_SYNC_SYMBOLS,
+    GALILEO_E5A_PAGE_SYMBOLS,
+)
+
+# Record the polarity `try_sync` resolved; `decode_syncro_sequence` reads it back
+# off the state when it copies the soft page out of the deque.
+function complement_buffer_if_necessary(
+    state::GNSSDecoderState{<:GalileoE5aData},
+    polarity_flipped::Bool,
+)
+    GNSSDecoderState(state; is_shifted_by_180_degrees = polarity_flipped), polarity_flipped
+end
 
 """
     galileo_e5a_viterbi(decoder, soft_page) -> UInt256
@@ -589,13 +611,7 @@ shape and `UInt256` payload type.
 galileo_e5a_viterbi(
     decoder::Aff3ct.ConvViterbiDecoder,
     soft_page::AbstractVector{Float32},
-) = galileo_viterbi(
-    decoder,
-    soft_page,
-    GALILEO_E5A_INTERLEAVER_ROWS,
-    GALILEO_E5A_INTERLEAVER_COLS,
-    UInt256,
-)
+) = galileo_viterbi(decoder, soft_page, GALILEO_E5A_INTERLEAVER_COLUMNS, UInt256)
 
 # Combine SVID-2's split right-ascension: WT5 carries the 4 MSBs, WT6 the 12 LSBs,
 # of a 16-bit two's-complement value scaled by π·2⁻¹⁵ (semicircles → radians).
@@ -630,18 +646,19 @@ function backpatch_almanac_epochs(
     return patched
 end
 
-function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, buffer)
+function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Bool)
     # The 488 encoded symbols sit between the leading 12-symbol sync pattern and
     # the trailing sync pattern of the next page (deque indices
     # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
     # polarity ambiguity by negating the LLRs when the sync hook flagged the page
     # as inverted.
-    deque = soft_buffer(state)
-    sign = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
-    soft_page = state.cache.soft_page
-    @inbounds for i = 1:GALILEO_E5A_VITERBI_N
-        soft_page[i] = sign * deque[state.constants.preamble_length+i]
-    end
+    soft_page = copy_soft_window!(
+        state.cache.soft_page,
+        soft_buffer(state),
+        state.constants.preamble_length,
+        GALILEO_E5A_VITERBI_N,
+        state.is_shifted_by_180_degrees,
+    )
     bits = galileo_e5a_viterbi(state.cache.viterbi_decoder, soft_page)
 
     state = GNSSDecoderState(

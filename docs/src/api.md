@@ -11,7 +11,9 @@ GNSSDecoderState
 ```@docs
 GPSL1CADecoderState
 GalileoE1BDecoderState
+GalileoE5bDecoderState
 GalileoE5aDecoderState
+GalileoE6BDecoderState
 GPSL1C_DDecoderState
 GPSL5IDecoderState
 GPSL2CMDecoderState
@@ -71,14 +73,17 @@ to a compile-time constant.
 | `get_system_start_time` / `get_tai_offset` | that scale's epoch and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `19 s` |
 
 Dispatch is on the constants type, which keeps decoders that share a data
-container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData` but
-report their own band, ids and symbol rates.
+container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and
+Galileo E1-B and E5b-I both into a `GalileoINAVData`, but each reports its own
+band, ids and symbol rates.
 
 ```julia
 using GNSSDecoder, GNSSSignals
 get_data_frequency(GPSL5IDecoderState(1))     # 100 Hz
 get_data_frequency(GPSL2CMDecoderState(1))    #  50 Hz
 get_signal_name(GalileoE5aDecoderState(1))    # "Galileo E5a-I"
+get_signal_name(GalileoE5bDecoderState(1))    # "Galileo E5b-I"
+get_band_id(GalileoE6BDecoderState(1))        # :E6
 get_band_id(GalileoE1BDecoderState(1))        # :L1 — bands are identified by RF
                                               #       frequency, not ICD label
 get_system_start_time(GalileoE1BDecoderState(1))  # 1999-08-21T23:59:47
@@ -100,7 +105,8 @@ get_signal_type
 ## Shared Utilities
 
 Signal-independent building blocks used across the decoders (CRC-24Q, the
-BCH(51,8) TOI codec, and the block (de)interleaver).
+BCH(51,8) TOI codec, the block (de)interleaver, and the GF(2^8) Reed-Solomon
+codec behind Galileo HAS).
 
 ```@docs
 crc24q
@@ -110,18 +116,27 @@ soft_to_hard_codeword
 pack_hard_codeword
 deinterleave!
 interleave!
+GNSSDecoder.GaloisField256
+GNSSDecoder.GALILEO_HAS_GF256
+GNSSDecoder.rs_generator_polynomial
+GNSSDecoder.rs_systematic_generator_matrix
+GNSSDecoder.rs_erasure_decode
 ```
 
 ## Data Types
 
 Every concrete per-signal data type subtypes the abstract supertype of its
 constellation, which in turn subtypes `AbstractGNSSData`. The supertypes carry
-the facts every signal of a constellation shares (e.g. the Galileo
-ephemeris/clock completeness checks), stated once via subtype dispatch.
+the facts every signal of a constellation shares, stated once via subtype
+dispatch. Galileo has one further level, because not every Galileo signal
+broadcasts an ephemeris: the ephemeris/clock completeness checks are dispatched
+on `AbstractGalileoEphemerisData`, which E6-B's corrections-only data type does
+not subtype.
 
 ```@docs
 GNSSDecoder.AbstractGPSData
 GNSSDecoder.AbstractGalileoData
+GNSSDecoder.AbstractGalileoEphemerisData
 GNSSDecoder.AbstractBeiDouData
 ```
 
@@ -132,11 +147,23 @@ GNSSDecoder.GPSL1CAConstants
 GNSSDecoder.GPSL1CAData
 ```
 
-### Galileo E1B
+### Galileo I/NAV (shared by E1-B and E5b)
+
+Galileo E1-B and E5b-I carry the identical I/NAV message — the OS SIS ICD states
+they use "the same page layout", differing only in page sequencing — so they
+share the decoded [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData) container
+and one constants struct,
+[`GalileoINAVConstants`](@ref GNSSDecoder.GalileoINAVConstants). The per-signal
+constants are type aliases that fix its signal tag; they differ only in which
+signal-health facet of word type 5 [`is_sat_healthy`](@ref) reports (E1-B/C or
+E5b), mirroring GPS CNAV.
 
 ```@docs
+GNSSDecoder.GalileoINAVConstants
 GNSSDecoder.GalileoE1BConstants
-GNSSDecoder.GalileoE1BData
+GNSSDecoder.GalileoE5bConstants
+GNSSDecoder.GalileoINAVData
+GNSSDecoder.GalileoReducedCED
 GNSSDecoder.GalileoAlmanac
 GNSSDecoder.SignalHealth
 GNSSDecoder.DataValidityStatus
@@ -147,6 +174,32 @@ GNSSDecoder.DataValidityStatus
 ```@docs
 GNSSDecoder.GalileoE5aConstants
 GNSSDecoder.GalileoE5aData
+```
+
+### Galileo E6-B (C/NAV — High Accuracy Service)
+
+Galileo E6-B carries the C/NAV message, which is the Signal-in-Space channel of
+the Galileo High Accuracy Service: PPP-grade orbit, clock, code-bias and
+phase-bias corrections *to another signal's* broadcast ephemeris, rather than an
+ephemeris of its own. A HAS message is spread across up to 32 encoded pages
+distributed among satellites and reassembled with a Reed-Solomon erasure decode
+(see [Shared Utilities](#Shared-Utilities)), so
+[`GalileoE6BData`](@ref) exposes both the latest complete
+[`GalileoHASMessage`](@ref) and an accumulated view of the latest of each
+correction block.
+
+```@docs
+GNSSDecoder.GalileoE6BConstants
+GalileoE6BData
+GalileoHASMessage
+GalileoHASMask
+GalileoHASSatelliteMask
+GalileoHASCorrectionBlock
+GalileoHASOrbitCorrection
+GalileoHASClockCorrection
+GalileoHASCodeBias
+GalileoHASPhaseBias
+GNSSDecoder.HASStatus
 ```
 
 ### GPS L1C-D
