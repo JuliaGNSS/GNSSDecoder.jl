@@ -293,6 +293,13 @@ first decoded.
 
   - `l1c_health::Bool`: L1C signal health bit (false = OK, true = bad/unavailable).
   - `ura_ed_index::Int64`: Ephemeris URA index (signed).
+  - `integrity_status_flag::Bool`: Level of integrity assurance the URA carries
+    (bit 566; 3.5.3.10.1). `false` is the legacy level, `true` the enhanced one
+    — "URA is integrity assured to the enhanced level only when the integrity
+    status flag is '1'" (3.5.3.10).
+  - `WN_op::Int64`: CEI data sequence propagation week number (bits 567-574,
+    modulo 256). Pairs with `t_op` in the integrity-assured URA_NED expression
+    of 3.5.3.10, which needs both.
   - `ura_ned0_index::Int64`, `ura_ned1_index::Int64`, `ura_ned2_index::Int64`:
     Clock URA indices.
 
@@ -376,6 +383,8 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSData
 
     l1c_health::Union{Nothing,Bool} = nothing
     ura_ed_index::Union{Nothing,Int64} = nothing
+    integrity_status_flag::Union{Nothing,Bool} = nothing
+    WN_op::Union{Nothing,Int64} = nothing
     ura_ned0_index::Union{Nothing,Int64} = nothing
     ura_ned1_index::Union{Nothing,Int64} = nothing
     ura_ned2_index::Union{Nothing,Int64} = nothing
@@ -467,6 +476,8 @@ function GPSL1C_DData(
     t_op = data.t_op,
     l1c_health = data.l1c_health,
     ura_ed_index = data.ura_ed_index,
+    integrity_status_flag = data.integrity_status_flag,
+    WN_op = data.WN_op,
     ura_ned0_index = data.ura_ned0_index,
     ura_ned1_index = data.ura_ned1_index,
     ura_ned2_index = data.ura_ned2_index,
@@ -542,6 +553,8 @@ function GPSL1C_DData(
         t_op,
         l1c_health,
         ura_ed_index,
+        integrity_status_flag,
+        WN_op,
         ura_ned0_index,
         ura_ned1_index,
         ura_ned2_index,
@@ -918,6 +931,12 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     T_GD = get_twos_complement_num(word, word_length, 527, 13) * 2.0^-35
     ISC_L1CP = get_twos_complement_num(word, word_length, 540, 13) * 2.0^-35
     ISC_L1CD = get_twos_complement_num(word, word_length, 553, 13) * 2.0^-35
+    # Bits 566 and 567-574 close subframe 2 before its 2 reserved bits and the
+    # CRC (Figure 3.5-1). Figure 3.5-1 drops `ISF - 1 BIT` and `RESERVED - 2
+    # BITS` onto a second label row below the main one, which is how they came
+    # to be skipped when this parser was first transcribed from the figure.
+    integrity_status_flag = get_bit(word, word_length, 566)
+    WN_op = Int(get_bits(word, word_length, 567, 8))
 
     raw = GPSL1C_DData(
         state.raw_data;
@@ -926,6 +945,8 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
         t_op,
         l1c_health,
         ura_ed_index,
+        integrity_status_flag,
+        WN_op,
         t_0e,
         ΔA,
         A_dot,
