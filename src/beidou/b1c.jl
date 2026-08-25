@@ -259,14 +259,20 @@ converted to radians on decode (multiplied by π); all fields are
 
 # Clock and group delay (Figure 6-14, Tables 7-5, 7-6)
 
-  - `t_oc::Int64`: Clock reference time of week (seconds).
-  - `a_0::Float64`, `a_1::Float64`, `a_2::Float64`: Clock bias / drift /
-    drift-rate (s, s/s, s/s²). The broadcast clock is referenced to the B3I
-    signal (ICD §7.6.1).
   - `T_GD_B2ap::Float64`: Group delay differential of the B2a pilot (s).
+
   - `ISC_B1Cd::Float64`: Group delay differential between the B1C data and
     pilot components (s).
-  - `T_GD_B1Cp::Float64`: Group delay differential of the B1C pilot (s).
+
+  - `T_GD_B1Cp::Float64`: Group delay differential of the B1C pilot, relative to
+    B3I (s).
+
+    A B1C receiver needs both: `a_f0` is referenced to B3I (§7.6.1), so reaching
+    the B1C data component means adding `T_GD_B1Cp` (B1C pilot vs B3I) and then
+    `ISC_B1Cd` (B1C data vs B1C pilot). They ride in the same CRC-protected
+    subframe 2 as the clock, so `is_decoding_completed_for_positioning` requires
+    both and a consumer never has to treat either as optional. `T_GD_B2ap` is
+    the B2a pilot's delta and is not required here.
 
 # Subframe 3 page header (Figures 6-8 .. 6-11, §7.14-7.17)
 
@@ -632,6 +638,7 @@ function is_subframe2_decoded(data::BeiDouB1CData)
         !isnothing(data.HOW) &&
         !isnothing(data.IODE) &&
         !isnothing(data.t_oe) &&
+        is_known_sat_type(data.sat_type) &&
         !isnothing(data.ΔA) &&
         !isnothing(data.M_0) &&
         !isnothing(data.e) &&
@@ -655,10 +662,33 @@ end
 # IODE and the 8 LSBs of IODC are the same." So the ephemeris and the clock
 # set can disagree inside one valid block, and the same gate `b2a.jl` applies
 # is applied here.
+#
+# THE GROUP DELAYS ARE REQUIRED HERE, unlike on every other signal in this
+# package. `is_decoding_completed_for_positioning` (src/gnss.jl) excludes group
+# delays *that would mean waiting for a message the ICD does not schedule*; the
+# single-band correction is included wherever it rides in the required set
+# already. On B1C it does: `T_GD_B1Cp` and `ISC_B1Cd` sit at bits 558-569 and
+# 546-557 of the same 600-bit, CRC-24Q-protected subframe 2 as the ephemeris and
+# the clock, decoded by the same constructor call, and subframe 2 is in every
+# 18-second B-CNAV1 frame. Requiring them therefore costs a B1C receiver exactly
+# zero extra time to first fix.
+#
+# And they are genuinely required, not a refinement. ICD §7.6: the clock
+# parameter a0 carries "the equipment group delay of the B3I signal … the
+# reference equipment group delay for the B1C signal". A B1C receiver is not
+# using B3I, so it must add `T_GD_B1Cp` (B1C pilot vs B3I) and then `ISC_B1Cd`
+# (B1C data vs B1C pilot) to reach its own component. Leaving them out is a
+# metre-scale bias, not a refinement, and a consumer that treats `nothing` as
+# zero — which is what the general policy tells it to do — would silently eat it.
+#
+# `T_GD_B2ap` is deliberately *not* required: it is the B2a pilot's delta and
+# means nothing to a B1C-only user. Same rule, other side of it.
 function is_decoding_completed_for_positioning(data::BeiDouB1CData)
     !isnothing(data.soh) &&
         !isnothing(data.hs) &&
         is_subframe2_decoded(data) &&
+        !isnothing(data.T_GD_B1Cp) &&
+        !isnothing(data.ISC_B1Cd) &&
         !isnothing(data.IODC) &&
         data.IODE == data.IODC & 0xff
 end

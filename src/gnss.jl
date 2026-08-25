@@ -251,12 +251,33 @@ can be checked together without a separate `nothing` guard.
 
       - **Ephemeris freshness.** Only presence is checked, not age. The decoder
         has no notion of "now", so the consumer must still reject ephemerides
-        outside their fit interval (`fit_interval` / `t_oe` age).
-      - **Second-order corrections.** Group delay / inter-signal corrections
-        (`T_GD`, `ISC_*`) beyond the single required band, Klobuchar
-        ionosphere, and UTC parameters are intentionally excluded because they
-        are broadcast far less often; apply them when present and treat
-        `nothing` as zero rather than waiting for them.
+
+      - **Second-order corrections.** Klobuchar / BDGIM ionosphere and UTC
+        parameters are intentionally excluded: they are broadcast far less
+        often, so apply them when present and treat `nothing` as zero rather
+        than waiting for them. Group delay and inter-signal corrections
+        (`T_GD`, `ISC_*`) split on one question — *does this signal's own
+        correction ride in the block the gate already waits for?*
+
+        Where it does, it is required, because it is a metre-scale bias rather
+        than a refinement and costs nothing to wait for. BeiDou B1C's
+        `T_GD_B1Cp` and `ISC_B1Cd` are in the same CRC-protected subframe 2 as
+        the ephemeris and clock, B2b's `T_GD_B2bI` is in the same MT30 as the
+        clock, and B1I/B3I's `T_GD1` is in the same D1 subframe 1 / D2 page 1
+        as the clock, so all are gated on here.
+
+        Where it does not, it is excluded, because requiring it would mean
+        waiting for a message the ICD declines to schedule: BeiDou B2a's
+        `T_GD_B2ap` / `ISC_B2ad` are in MT30 alone while the clock is in
+        MT30-34, and the GPS CNAV `T_GD` and `ISC_*` likewise arrive on their
+        own cadence.
+
+        Corrections for a band this decoder is not on — B1C's `T_GD_B2ap`,
+        B1I/B3I's `T_GD2` (there is no B2I signal here to range on, and none
+        planned), the GPS `ISC_L5Q5` on an L1 fix — are never required either
+        way. Such a field is still decoded and published; it is only this
+        readiness gate that ignores it.
+
       - **Alert flag.** `is_sat_healthy` reflects the broadcast health bits
         only; a receiver that wants to honour the L1 C/A alert flag (or
         equivalent) must check it separately.
