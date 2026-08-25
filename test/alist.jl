@@ -36,7 +36,12 @@ using GNSSDecoder
     # fresh clones) with no external dependency. This pins the committed
     # `.alist` artefacts to the spec coordinates byte-for-byte.
     @testset "Generator is reproducible (byte-compare)" begin
-        include(joinpath(repo_root, "scripts", "generate_alist.jl"))
+        # Guarded: `scripts/generate_beidou_alist.jl` also pulls this in, and
+        # `test/beidou_b1c.jl` runs first, so an unguarded include here would
+        # redefine all five methods and print method-overwrite warnings on every
+        # test run. Same guard the BeiDou script uses.
+        isdefined(@__MODULE__, :write_alist) ||
+            include(joinpath(repo_root, "scripts", "generate_alist.jl"))
         mktempdir() do tmp
             generate_alist(tmp)
             for (fname, committed) in
