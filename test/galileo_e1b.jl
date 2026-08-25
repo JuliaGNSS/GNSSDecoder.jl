@@ -75,10 +75,15 @@ end
         WN_LSF = 56,
         DN = 2,
         Δt_LSF = 18,
-        A_0G = -2.9103830456733704e-11,
-        A_1G = -4.440892098500626e-16,
-        t_0G = 918000,
-        WN_0G = 63,
+        # This fixture's GGTO fields are all ones on the wire — 0xffff, 0xfff,
+        # 0xff, 0x3f — which is the ICD's "GGTO not valid" encoding (5.1.8), so
+        # all four come out `nothing`. Scaling them regardless would give
+        # A_0G = -2.9e-11, A_1G = -4.4e-16, t_0G = 918000, WN_0G = 63: exactly
+        # the values this fixture used to assert.
+        A_0G = nothing,
+        A_1G = nothing,
+        t_0G = nothing,
+        WN_0G = nothing,
         almanacs = Dictionary{Int,GNSSDecoder.GalileoAlmanac}(
             [19, 20, 21],
             [

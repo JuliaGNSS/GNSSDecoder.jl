@@ -751,9 +751,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 IOD_nav1 = get_bits(data, 128, 7, 10)
                 t_0e = get_bits(data, 128, 17, 14) * 60
                 M_0 =
-                    get_twos_complement_num(data, 128, 31, 32) * state.constants.PI /
-                    1 << 31
-                e = get_bits(data, 128, 63, 32) / 1 << 33
+                    get_twos_complement_num(data, 128, 31, 32) *
+                    state.constants.PI *
+                    2.0^-31
+                e = get_bits(data, 128, 63, 32) * 2.0^-33
                 sqrt_A = get_bits(data, 128, 95, 32) / 1 << 19
                 state = GNSSDecoderState(
                     state;
@@ -769,17 +770,21 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
             elseif data_type == 2
                 IOD_nav2 = get_bits(data, 128, 7, 10)
                 Ω_0 =
-                    get_twos_complement_num(data, 128, 17, 32) * state.constants.PI /
-                    1 << 31
+                    get_twos_complement_num(data, 128, 17, 32) *
+                    state.constants.PI *
+                    2.0^-31
                 i_0 =
-                    get_twos_complement_num(data, 128, 49, 32) * state.constants.PI /
-                    1 << 31
+                    get_twos_complement_num(data, 128, 49, 32) *
+                    state.constants.PI *
+                    2.0^-31
                 ω =
-                    get_twos_complement_num(data, 128, 81, 32) * state.constants.PI /
-                    1 << 31
+                    get_twos_complement_num(data, 128, 81, 32) *
+                    state.constants.PI *
+                    2.0^-31
                 i_dot =
-                    get_twos_complement_num(data, 128, 113, 14) * state.constants.PI /
-                    1 << 43
+                    get_twos_complement_num(data, 128, 113, 14) *
+                    state.constants.PI *
+                    2.0^-43
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
@@ -794,11 +799,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
             elseif data_type == 3
                 IOD_nav3 = get_bits(data, 128, 7, 10)
                 Ω_dot =
-                    get_twos_complement_num(data, 128, 17, 24) * state.constants.PI /
-                    1 << 43
+                    get_twos_complement_num(data, 128, 17, 24) *
+                    state.constants.PI *
+                    2.0^-43
                 Δn =
-                    get_twos_complement_num(data, 128, 41, 16) * state.constants.PI /
-                    1 << 43
+                    get_twos_complement_num(data, 128, 41, 16) *
+                    state.constants.PI *
+                    2.0^-43
                 C_uc = get_twos_complement_num(data, 128, 57, 16) / 1 << 29
                 C_us = get_twos_complement_num(data, 128, 73, 16) / 1 << 29
                 C_rc = get_twos_complement_num(data, 128, 89, 16) / 1 << 5
@@ -824,9 +831,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 C_ic = get_twos_complement_num(data, 128, 23, 16) / 1 << 29
                 C_is = get_twos_complement_num(data, 128, 39, 16) / 1 << 29
                 t_0c = get_bits(data, 128, 55, 14) * 60
-                a_f0 = get_twos_complement_num(data, 128, 69, 31) / 1 << 34
-                a_f1 = get_twos_complement_num(data, 128, 100, 21) / 1 << 46
-                a_f2 = get_twos_complement_num(data, 128, 121, 6) / 1 << 59
+                a_f0 = get_twos_complement_num(data, 128, 69, 31) * 2.0^-34
+                a_f1 = get_twos_complement_num(data, 128, 100, 21) * 2.0^-46
+                a_f2 = get_twos_complement_num(data, 128, 121, 6) * 2.0^-59
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
@@ -851,9 +858,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 iono_storm_flag_region4 = get_bit(data, 128, 46)
                 iono_storm_flag_region5 = get_bit(data, 128, 47)
                 broadcast_group_delay_e1_e5a =
-                    get_twos_complement_num(data, 128, 48, 10) / 1 << 32
+                    get_twos_complement_num(data, 128, 48, 10) * 2.0^-32
                 broadcast_group_delay_e1_e5b =
-                    get_twos_complement_num(data, 128, 58, 10) / 1 << 32
+                    get_twos_complement_num(data, 128, 58, 10) * 2.0^-32
                 signal_health_e5b = SignalHealth(get_bits(data, 128, 68, 2))
                 signal_health_e1b = SignalHealth(get_bits(data, 128, 70, 2))
                 data_validity_status_e5b = DataValidityStatus(get_bit(data, 128, 72))
@@ -886,7 +893,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 )
             elseif data_type == 6
                 A_0_utc = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
-                A_1_utc = get_twos_complement_num(data, 128, 39, 24) / 1 << 50
+                A_1_utc = get_twos_complement_num(data, 128, 39, 24) * 2.0^-50
                 Δt_LS = Int(get_twos_complement_num(data, 128, 63, 8))
                 t_0t = Int(get_bits(data, 128, 71, 8) * 3600)
                 WN_0t = Int(get_bits(data, 128, 79, 8))
@@ -928,8 +935,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     get_twos_complement_num(data, 128, 80, 16) * state.constants.PI /
                     1 << 15
                 Ω_dot =
-                    get_twos_complement_num(data, 128, 96, 11) * state.constants.PI /
-                    1 << 33
+                    get_twos_complement_num(data, 128, 96, 11) *
+                    state.constants.PI *
+                    2.0^-33
                 M_0 =
                     get_twos_complement_num(data, 128, 107, 16) * state.constants.PI /
                     1 << 15
@@ -958,7 +966,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
             elseif data_type == 8
                 IOD_a = Int(get_bits(data, 128, 7, 4))
                 a_f0_pos1 = get_twos_complement_num(data, 128, 11, 16) / 1 << 19
-                a_f1_pos1 = get_twos_complement_num(data, 128, 27, 13) / 1 << 38
+                a_f1_pos1 = get_twos_complement_num(data, 128, 27, 13) * 2.0^-38
                 signal_health_e5b_pos1 = SignalHealth(get_bits(data, 128, 40, 2))
                 signal_health_e1b_pos1 = SignalHealth(get_bits(data, 128, 42, 2))
                 SVID = Int(get_bits(data, 128, 44, 6))
@@ -974,8 +982,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     get_twos_complement_num(data, 128, 101, 16) * state.constants.PI /
                     1 << 15
                 Ω_dot =
-                    get_twos_complement_num(data, 128, 117, 11) * state.constants.PI /
-                    1 << 33
+                    get_twos_complement_num(data, 128, 117, 11) *
+                    state.constants.PI *
+                    2.0^-33
                 # Flush position-1 almanac if its WT7 partial is intact and IODa matches
                 completed_pos1 = GalileoAlmanac(
                     state.cache.almanac_chain_pos1;
@@ -1007,7 +1016,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     get_twos_complement_num(data, 128, 23, 16) * state.constants.PI /
                     1 << 15
                 a_f0_pos2 = get_twos_complement_num(data, 128, 39, 16) / 1 << 19
-                a_f1_pos2 = get_twos_complement_num(data, 128, 55, 13) / 1 << 38
+                a_f1_pos2 = get_twos_complement_num(data, 128, 55, 13) * 2.0^-38
                 signal_health_e5b_pos2 = SignalHealth(get_bits(data, 128, 68, 2))
                 signal_health_e1b_pos2 = SignalHealth(get_bits(data, 128, 70, 2))
                 SVID = Int(get_bits(data, 128, 72, 6))
@@ -1050,19 +1059,24 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     get_twos_complement_num(data, 128, 11, 16) * state.constants.PI /
                     1 << 15
                 Ω_dot_pos3 =
-                    get_twos_complement_num(data, 128, 27, 11) * state.constants.PI /
-                    1 << 33
+                    get_twos_complement_num(data, 128, 27, 11) *
+                    state.constants.PI *
+                    2.0^-33
                 M_0_pos3 =
                     get_twos_complement_num(data, 128, 38, 16) * state.constants.PI /
                     1 << 15
                 a_f0_pos3 = get_twos_complement_num(data, 128, 54, 16) / 1 << 19
-                a_f1_pos3 = get_twos_complement_num(data, 128, 70, 13) / 1 << 38
+                a_f1_pos3 = get_twos_complement_num(data, 128, 70, 13) * 2.0^-38
                 signal_health_e5b_pos3 = SignalHealth(get_bits(data, 128, 83, 2))
                 signal_health_e1b_pos3 = SignalHealth(get_bits(data, 128, 85, 2))
-                A_0G = get_twos_complement_num(data, 128, 87, 16) / 1 << 35
-                A_1G = get_twos_complement_num(data, 128, 103, 12) / 1 << 51
-                t_0G = Int(get_bits(data, 128, 115, 8) * 3600)
-                WN_0G = Int(get_bits(data, 128, 123, 6))
+                # GGTO — all four fields all-ones means "not valid" (ICD
+                # 5.1.8), so they are read raw and scaled by `galileo_ggto`.
+                A_0G, A_1G, t_0G, WN_0G = galileo_ggto(
+                    get_bits(data, 128, 87, 16),
+                    get_bits(data, 128, 103, 12),
+                    get_bits(data, 128, 115, 8),
+                    get_bits(data, 128, 123, 6),
+                )
                 # Position 3 partial sits in cache pos1 (set by WT9)
                 completed_pos3 = GalileoAlmanac(
                     state.cache.almanac_chain_pos1;
@@ -1108,7 +1122,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     get_twos_complement_num(data, 128, 78, 23) * state.constants.PI /
                     1 << 22
                 a_f0_red = get_twos_complement_num(data, 128, 101, 22) / 1 << 26
-                a_f1_red = get_twos_complement_num(data, 128, 123, 6) / 1 << 35
+                a_f1_red = get_twos_complement_num(data, 128, 123, 6) * 2.0^-35
                 reduced_ced = GalileoReducedCED(;
                     ΔA_red,
                     e_x_red,

@@ -118,9 +118,10 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `e::Float64`: Eccentricity (dimensionless, range 0-0.03)
   - `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
-  - `t_0e::Int64`: Ephemeris reference time (seconds)
+  - `t_0e::Int64`: Ephemeris reference time (seconds; the ICD writes `toe`)
   - `fit_interval::Bool`: Curve fit interval flag (0=4h, 1=>4h)
-  - `AODO::Int64`: Age of Data Offset for NMCT (seconds)
+  - `AODO::Int64`: Age of Data Offset for the NMCT (seconds; 5-bit broadcast
+    count with an LSB of 900 s, so 27900 s means "NMCT unavailable")
 
 # Subframe 3 - Ephemeris Parameters (Part 2)
 
@@ -872,7 +873,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
         state = can_decode_word(state, buffer, 7) do word7, state
             # group time differential
-            T_GD = get_twos_complement_num(word7, 30, 17, 8) / 1 << 31
+            T_GD = get_twos_complement_num(word7, 30, 17, 8) * 2.0^-31
             GPSL1CAData(state.raw_data; T_GD)
         end
 
@@ -884,15 +885,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
         state = can_decode_word(state, buffer, 9) do word9, state
             # clock correction parameter a_f2
-            a_f2 = get_twos_complement_num(word9, 30, 1, 8) / 1 << 55
+            a_f2 = get_twos_complement_num(word9, 30, 1, 8) * 2.0^-55
             # clock correction parameter a_f1
-            a_f1 = get_twos_complement_num(word9, 30, 9, 16) / 1 << 43
+            a_f1 = get_twos_complement_num(word9, 30, 9, 16) * 2.0^-43
             GPSL1CAData(state.raw_data; a_f2, a_f1)
         end
 
         state = can_decode_word(state, buffer, 10) do word10, state
             # Clock data reference
-            a_f0 = get_twos_complement_num(word10, 30, 1, 22) / 1 << 31
+            a_f0 = get_twos_complement_num(word10, 30, 1, 22) * 2.0^-31
             GPSL1CAData(state.raw_data; a_f0)
         end
     elseif subframe_id == 2
@@ -905,7 +906,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
         state = can_decode_word(state, buffer, 4) do word4, state
             # Mean motion difference from computed value
-            Δn = get_twos_complement_num(word4, 30, 1, 16) * state.constants.PI / 1 << 43
+            Δn = get_twos_complement_num(word4, 30, 1, 16) * state.constants.PI * 2.0^-43
             GPSL1CAData(state.raw_data; Δn)
         end
 
@@ -914,8 +915,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             combined_word =
                 UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
             M_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
-                1 << 31
+                get_twos_complement_num(combined_word, 32, 1, 32) *
+                state.constants.PI *
+                2.0^-31
             GPSL1CAData(state.raw_data; M_0)
         end
 
@@ -927,7 +929,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
         state = can_decode_two_words(state, buffer, 6, 7) do word6, word7, state
             # Eccentricity
-            e = (get_bits(word6, 30, 17, 8) << 24 + get_bits(word7, 30, 1, 24)) / 1 << 33
+            e = (get_bits(word6, 30, 17, 8) << 24 + get_bits(word7, 30, 1, 24)) * 2.0^-33
             GPSL1CAData(state.raw_data; e)
         end
 
@@ -948,7 +950,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # Reference Time ephemeris
             t_0e = get_bits(word10, 30, 1, 16) << 4
             fit_interval = get_bit(word10, 30, 17)
-            AODO = get_bits(word10, 30, 18, 5)
+            # IS-GPS-200N 20.3.3.4: "a five-bit unsigned term with an LSB scale
+            # factor of 900, a range from 0 to 31, and units of seconds", and
+            # 20.3.3.4.4's worked example reads "27900 seconds (i.e. binary
+            # 11111)". The raw count is not the value.
+            AODO = Int64(get_bits(word10, 30, 18, 5)) * 900
             GPSL1CAData(state.raw_data; t_0e, fit_interval, AODO)
         end
     elseif subframe_id == 3
@@ -963,8 +969,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             combined_word =
                 UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
             Ω_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
-                1 << 31
+                get_twos_complement_num(combined_word, 32, 1, 32) *
+                state.constants.PI *
+                2.0^-31
             GPSL1CAData(state.raw_data; Ω_0)
         end
 
@@ -979,8 +986,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             combined_word =
                 UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
             i_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
-                1 << 31
+                get_twos_complement_num(combined_word, 32, 1, 32) *
+                state.constants.PI *
+                2.0^-31
             GPSL1CAData(state.raw_data; i_0)
         end
 
@@ -995,14 +1003,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             combined_word =
                 UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
             ω =
-                get_twos_complement_num(combined_word, 32, 1, 32) * state.constants.PI /
-                1 << 31
+                get_twos_complement_num(combined_word, 32, 1, 32) *
+                state.constants.PI *
+                2.0^-31
             GPSL1CAData(state.raw_data; ω)
         end
 
         state = can_decode_word(state, buffer, 9) do word9, state
             # Amplitude of the cosine harmonic correction term to orbit Radius
-            Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI / 1 << 43
+            Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI * 2.0^-43
             GPSL1CAData(state.raw_data; Ω_dot)
         end
 
@@ -1011,7 +1020,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[(end-7):end]
             # Rate of Inclination Angle
             i_dot =
-                get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI / 1 << 43
+                get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI * 2.0^-43
             GPSL1CAData(state.raw_data; IODE_Sub_3, i_dot)
         end
     elseif subframe_id == 4
@@ -1087,7 +1096,7 @@ function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        A_1 = get_twos_complement_num(word6, 30, 1, 24) / 1 << 50
+        A_1 = get_twos_complement_num(word6, 30, 1, 24) * 2.0^-50
         GPSL1CAData(state.raw_data; A_1)
     end
 
@@ -1361,7 +1370,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
     alm_toa = Int(get_bits(word4_comp, 30, 1, 8) << 12)
     alm_δi = get_twos_complement_num(word4_comp, 30, 9, 16) * state.constants.PI / 1 << 19
     alm_Ω_dot =
-        get_twos_complement_num(word5_comp, 30, 1, 16) * state.constants.PI / 1 << 38
+        get_twos_complement_num(word5_comp, 30, 1, 16) * state.constants.PI * 2.0^-38
     alm_sv_health = bitstring(get_bits(word5_comp, 30, 17, 8))[(end-7):end]
     alm_sqrt_A = get_bits(word6_comp, 30, 1, 24) / 1 << 11
     alm_Ω_0 = get_twos_complement_num(word7_comp, 30, 1, 24) * state.constants.PI / 1 << 23
@@ -1373,7 +1382,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
     af0_lsbs = get_bits(word10_comp, 30, 20, 3)
     af0_combined = UInt(af0_msbs << 3 + af0_lsbs)
     alm_af0 = get_twos_complement_num(af0_combined, 11, 1, 11) / 1 << 20
-    alm_af1 = get_twos_complement_num(word10_comp, 30, 9, 11) / 1 << 38
+    alm_af1 = get_twos_complement_num(word10_comp, 30, 9, 11) * 2.0^-38
 
     # Store almanac data for this SV
     almanac_entry = GPSL1CAAlmanac(;
