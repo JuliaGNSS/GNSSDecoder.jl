@@ -22,6 +22,8 @@
 # through an E5b decoder: identical symbols must yield identical navigation data,
 # which is the claim "one decoder, two signals" stated as a test.
 
+using GNSSDecoder: crc24q
+
 """
 I/NAV page synchronisation pattern `0101100000` (OS SIS ICD §4.3.2.1).
 """
@@ -43,8 +45,8 @@ function inav_word_type_5(;
     storm_flags = (false, false, false, false, false),
     bgd_e1_e5a_raw = 24,
     bgd_e1_e5b_raw = -31,
-    signal_health_e5b = 0,
-    signal_health_e1b = 0,
+    E5b_SHS = 0,
+    E1B_SHS = 0,
     data_validity_e5b = 0,
     data_validity_e1b = 0,
     WN = 1234,
@@ -60,8 +62,8 @@ function inav_word_type_5(;
     end
     galileo_push_field!(bits, bgd_e1_e5a_raw & 0x3ff, 10)
     galileo_push_field!(bits, bgd_e1_e5b_raw & 0x3ff, 10)
-    galileo_push_field!(bits, signal_health_e5b, 2)
-    galileo_push_field!(bits, signal_health_e1b, 2)
+    galileo_push_field!(bits, E5b_SHS, 2)
+    galileo_push_field!(bits, E1B_SHS, 2)
     galileo_push_field!(bits, data_validity_e5b, 1)
     galileo_push_field!(bits, data_validity_e1b, 1)
     galileo_push_field!(bits, WN, 12)
@@ -162,8 +164,8 @@ end
     # E1-B produced": these are the fixture's known TOW/WN and health.
     @test e5b.data.TOW == 259_235
     @test e5b.data.WN == 1082
-    @test e5b.data.signal_health_e5b == GNSSDecoder.signal_ok
-    @test e5b.data.data_validity_status_e5b == GNSSDecoder.navigation_data_valid
+    @test e5b.data.E5b_SHS == GNSSDecoder.signal_ok
+    @test e5b.data.E5b_DVS == GNSSDecoder.navigation_data_valid
     @test is_sat_healthy(e5b)
     # Word type 16 (Reduced CED) is broadcast on E1-B only (Table 40); the
     # fixture is an E1-B capture, so it is present here. The parser is shared and
@@ -177,8 +179,8 @@ end
     reserved_1 = rand(rng, Bool, 64)
     reserved_2 = rand(rng, Bool, 8)
     word = inav_word_type_5(;
-        signal_health_e5b = 0,
-        signal_health_e1b = 1,
+        E5b_SHS = 0,
+        E1B_SHS = 1,
         data_validity_e5b = 0,
         data_validity_e1b = 1,
         WN = 1234,
@@ -195,13 +197,13 @@ end
     # Arbitrary Reserved 1 / Reserved 2 content must not disturb the decode.
     @test decoder.raw_data.WN == 1234
     @test decoder.raw_data.TOW == 345_600
-    @test decoder.raw_data.signal_health_e5b == GNSSDecoder.signal_ok
-    @test decoder.raw_data.signal_health_e1b == GNSSDecoder.signal_out_of_service
-    @test decoder.raw_data.data_validity_status_e5b == GNSSDecoder.navigation_data_valid
-    @test decoder.raw_data.data_validity_status_e1b == GNSSDecoder.working_without_guarantee
+    @test decoder.raw_data.E5b_SHS == GNSSDecoder.signal_ok
+    @test decoder.raw_data.E1B_SHS == GNSSDecoder.signal_out_of_service
+    @test decoder.raw_data.E5b_DVS == GNSSDecoder.navigation_data_valid
+    @test decoder.raw_data.E1B_DVS == GNSSDecoder.working_without_guarantee
     @test decoder.raw_data.a_i0 == 300 / 4
-    @test decoder.raw_data.broadcast_group_delay_e1_e5a == 24 / 2^32
-    @test decoder.raw_data.broadcast_group_delay_e1_e5b == -31 / 2^32
+    @test decoder.raw_data.BGD_E1_E5a == 24 / 2^32
+    @test decoder.raw_data.BGD_E1_E5b == -31 / 2^32
 
     @testset "Reserved 2 is not CRC-protected" begin
         # Flipping a Reserved 2 bit leaves the checksum valid, so the word must
@@ -246,8 +248,8 @@ end
     reserved_2 = rand(rng, Bool, 8)
     # E5b healthy, E1-B/C out of service and working without guarantee.
     word = inav_word_type_5(;
-        signal_health_e5b = 0,
-        signal_health_e1b = 1,
+        E5b_SHS = 0,
+        E1B_SHS = 1,
         data_validity_e5b = 0,
         data_validity_e1b = 1,
     )
@@ -264,8 +266,8 @@ end
 
     # And the other way round.
     word = inav_word_type_5(;
-        signal_health_e5b = 3,
-        signal_health_e1b = 0,
+        E5b_SHS = 3,
+        E1B_SHS = 0,
         data_validity_e5b = 1,
         data_validity_e1b = 0,
     )
@@ -277,7 +279,7 @@ end
     e1b = GNSSDecoder.GNSSDecoderState(e1b; data = e1b.raw_data)
     @test !is_sat_healthy(e5b)
     @test is_sat_healthy(e1b)
-    @test e5b.raw_data.signal_health_e5b == GNSSDecoder.signal_component_currently_in_test
+    @test e5b.raw_data.E5b_SHS == GNSSDecoder.signal_component_currently_in_test
 end
 
 @testset "Galileo E5b reset_decoder_state" begin

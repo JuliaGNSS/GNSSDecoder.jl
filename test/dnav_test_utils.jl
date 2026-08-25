@@ -241,7 +241,7 @@ function dnav_test_d1_almanac_page_content(;
     Ω_0_raw,
     e_raw,
     δi_raw,
-    t_oa_raw,
+    t_0a_raw,
     Ω_dot_raw,
     ω_raw,
     M_0_raw,
@@ -260,7 +260,7 @@ function dnav_test_d1_almanac_page_content(;
         (Ω_0_raw, 24),
         (e_raw, 17),
         (δi_raw, 16),
-        (t_oa_raw, 8),
+        (t_0a_raw, 8),
         (Ω_dot_raw, 17),
         (ω_raw, 24),
         (M_0_raw, 24),
@@ -324,7 +324,7 @@ function dnav_test_d1_subframe5_page10_content(;
 end
 
 # Subframe 5 page 8 (Figure 5-11-3): health 20-30 + almanac reference time.
-function dnav_test_d1_subframe5_page8_content(; SOW, health_codes, WN_a, t_oa_raw)
+function dnav_test_d1_subframe5_page8_content(; SOW, health_codes, WN_a, t_0a_raw)
     length(health_codes) == 11 || throw(ArgumentError("11 health codes expected"))
     dnav_test_content(
         (DNAV_TEST_PREAMBLE, 11),
@@ -335,7 +335,7 @@ function dnav_test_d1_subframe5_page8_content(; SOW, health_codes, WN_a, t_oa_ra
         (8, 7),          # Pnum = 8
         ntuple(i -> (Int(health_codes[i]), 9), 11)...,
         (WN_a, 8),
-        (t_oa_raw, 8),
+        (t_0a_raw, 8),
         (0, 63),         # Rev
     )
 end

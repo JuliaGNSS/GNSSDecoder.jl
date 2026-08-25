@@ -1,8 +1,8 @@
 # Galileo E5b (I/NAV) signal layer — Galileo OS SIS ICD, Issue 2.2 §4.3.
 #
 # I/NAV is broadcast on the E5b-I (in-phase, data) component of the E5b
-# sideband at 1207.14 MHz as well as on E1-B; E5b-Q is a dataless pilot
-# (§2.3.1.2, Table 2). The ICD is explicit that the two I/NAV components "use
+# sideband at 1207.14 MHz (Table 2) as well as on E1-B; E5b-Q is a dataless
+# pilot (§2.3.1.1, Table 5 — "no data ('pilot component')"). The ICD is explicit that the two I/NAV components "use
 # the same page layout since the service provided on these frequencies is a
 # dual frequency service, using frequency diversity. Only page sequencing is
 # different" (§4.3.1) — same 250 sps, same 250-symbol page parts, same 10-bit
@@ -95,7 +95,7 @@ end
 
 # Dispatch from a GNSSSignals system type, mirroring `GNSSDecoderState(::GalileoE1B, …)`.
 # I/NAV rides on the E5b-I (data) component — `GalileoE5bI` — while `GalileoE5bQ`
-# is the dataless pilot (OS SIS ICD Table 2), so only `GalileoE5bI` maps to a
+# is the dataless pilot (OS SIS ICD Table 5), so only `GalileoE5bI` maps to a
 # decoder.
 function GNSSDecoderState(system::GalileoE5bI, prn)
     GalileoE5bDecoderState(prn)
@@ -113,8 +113,8 @@ $(TYPEDSIGNATURES)
 
 Check if the Galileo satellite is healthy and usable for positioning on E5b.
 
-Examines both the E5b signal health status (`signal_health_e5b`) and E5b data
-validity status (`data_validity_status_e5b`) from I/NAV word type 5
+Examines both the E5b signal health status (`E5b_SHS`) and E5b data
+validity status (`E5b_DVS`) from I/NAV word type 5
 (OS SIS ICD Tables 81 and 84). A satellite is considered healthy only if both
 conditions are met:
 
@@ -128,7 +128,7 @@ facets, so a decoder on either component always has both available.
 !!! warning
 
     This function requires that word type 5 has been successfully decoded.
-    Check that `state.data.signal_health_e5b` is not `nothing` before relying
+    Check that `state.data.E5b_SHS` is not `nothing` before relying
     on this result.
 
 # Arguments
@@ -155,6 +155,5 @@ end
   - [`decode`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GalileoINAVData,<:GalileoE5bConstants})
-    state.data.signal_health_e5b == signal_ok &&
-        state.data.data_validity_status_e5b == navigation_data_valid
+    state.data.E5b_SHS == signal_ok && state.data.E5b_DVS == navigation_data_valid
 end

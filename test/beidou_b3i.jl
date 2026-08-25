@@ -80,10 +80,10 @@
         @test state.data.WN == 900
         @test state.data.t_0c == 7200
         @test state.data.t_0e == 7200
-        @test state.data.a_0 == -100 / 2.0^33
+        @test state.data.a_f0 == -100 / 2.0^33
         @test state.data.Δn == -111 * PI / 2.0^43
         @test state.data.ω == -6789 * PI / 2.0^31
-        @test state.data.ura == 2.0            # URAI = 0
+        @test state.data.URAI == 0
         # The shared core's SOW epoch handling reaches B3I too: 311 symbols
         # (one subframe + the trailing preamble) past the last SOW.
         @test state.num_bits_after_valid_syncro_sequence == 311

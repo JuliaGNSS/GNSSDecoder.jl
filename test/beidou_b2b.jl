@@ -88,7 +88,7 @@ function b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE)
     end
 end
 
-function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, hs = 0)
+function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, HS = 0)
     b2b_build_message(30, sow_field) do bits
         b2b_set_field!(bits, 27, 13, 913)       # WN
         b2b_set_field!(bits, 44, 11, 1500)      # t_0c = 1500*300
@@ -96,21 +96,21 @@ function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, hs = 0)
         b2b_set_field!(bits, 80, 22, 123456)    # a_f1
         b2b_set_field!(bits, 102, 11, -321)     # a_f2
         b2b_set_field!(bits, 113, 12, -1000)    # T_GD_B2bI
-        b2b_set_field!(bits, 125, 10, 200)      # α_1 (unsigned)
-        b2b_set_field!(bits, 135, 8, -50)       # α_2 (signed)
-        b2b_set_field!(bits, 143, 8, 60)        # α_3 (unsigned)
-        b2b_set_field!(bits, 151, 8, 70)        # α_4 (unsigned)
-        b2b_set_field!(bits, 159, 8, 80)        # α_5 (unsigned, scale -2⁻³)
-        b2b_set_field!(bits, 167, 8, -90)       # α_6
-        b2b_set_field!(bits, 175, 8, 100)       # α_7
-        b2b_set_field!(bits, 183, 8, -110)      # α_8
-        b2b_set_field!(bits, 191, 8, 120)       # α_9
-        b2b_set_field!(bits, 199, 16, -20000)   # A0_UTC
-        b2b_set_field!(bits, 215, 13, 3000)     # A1_UTC
-        b2b_set_field!(bits, 228, 7, -40)       # A2_UTC
+        b2b_set_field!(bits, 125, 10, 200)      # α_bdgim_1 (unsigned)
+        b2b_set_field!(bits, 135, 8, -50)       # α_bdgim_2 (signed)
+        b2b_set_field!(bits, 143, 8, 60)        # α_bdgim_3 (unsigned)
+        b2b_set_field!(bits, 151, 8, 70)        # α_bdgim_4 (unsigned)
+        b2b_set_field!(bits, 159, 8, 80)        # α_bdgim_5 (unsigned, scale -2⁻³)
+        b2b_set_field!(bits, 167, 8, -90)       # α_bdgim_6
+        b2b_set_field!(bits, 175, 8, 100)       # α_bdgim_7
+        b2b_set_field!(bits, 183, 8, -110)      # α_bdgim_8
+        b2b_set_field!(bits, 191, 8, 120)       # α_bdgim_9
+        b2b_set_field!(bits, 199, 16, -20000)   # A_0UTC
+        b2b_set_field!(bits, 215, 13, 3000)     # A_1UTC
+        b2b_set_field!(bits, 228, 7, -40)       # A_2UTC
         b2b_set_field!(bits, 235, 8, 4)         # Δt_LS
-        b2b_set_field!(bits, 243, 16, 37800)    # t_ot = 37800*16
-        b2b_set_field!(bits, 259, 13, 913)      # WN_ot
+        b2b_set_field!(bits, 243, 16, 37800)    # t_0t = 37800*16
+        b2b_set_field!(bits, 259, 13, 913)      # WN_0t
         b2b_set_field!(bits, 272, 13, 829)      # WN_LSF
         b2b_set_field!(bits, 285, 3, 6)         # DN
         b2b_set_field!(bits, 288, 8, 5)         # Δt_LSF
@@ -121,12 +121,12 @@ function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, hs = 0)
         b2b_set_field!(bits, 369, 15, -9000)    # PM_Y_dot
         b2b_set_field!(bits, 384, 31, -12345678)# ΔUT1
         b2b_set_field!(bits, 415, 19, 200000)   # ΔUT1_dot
-        b2b_set_field!(bits, 434, 11, 1750)     # sisai_t_op (raw)
-        b2b_set_field!(bits, 445, 5, 12)        # sisai_ocb
-        b2b_set_field!(bits, 450, 3, 3)         # sisai_oc1
-        b2b_set_field!(bits, 453, 3, 5)         # sisai_oc2
-        b2b_set_field!(bits, 456, 5, 7)         # sisai_oe
-        b2b_set_field!(bits, 461, 2, hs)        # HS
+        b2b_set_field!(bits, 434, 11, 1750)     # t_op (raw)
+        b2b_set_field!(bits, 445, 5, 12)        # SISAI_ocb
+        b2b_set_field!(bits, 450, 3, 3)         # SISAI_oc1
+        b2b_set_field!(bits, 453, 3, 5)         # SISAI_oc2
+        b2b_set_field!(bits, 456, 5, 7)         # SISAI_oe
+        b2b_set_field!(bits, 461, 2, HS)        # HS
     end
 end
 
@@ -135,9 +135,9 @@ function b2b_mt40_message(; sow_field = B2B_SOW_FIELD_BASE + 2)
         b2b_set_field!(bits, 27, 3, 1)          # GNSS_ID = GPS
         b2b_set_field!(bits, 30, 13, 913)       # WN_0BGTO
         b2b_set_field!(bits, 43, 16, 11250)     # t_0BGTO = 11250*16
-        b2b_set_field!(bits, 59, 16, -1234)     # A0_BGTO
-        b2b_set_field!(bits, 75, 13, 987)       # A1_BGTO
-        b2b_set_field!(bits, 88, 7, -12)        # A2_BGTO
+        b2b_set_field!(bits, 59, 16, -1234)     # A_0BGTO
+        b2b_set_field!(bits, 75, 13, 987)       # A_1BGTO
+        b2b_set_field!(bits, 88, 7, -12)        # A_2BGTO
         # Midi almanac for PRN 30 (IGSO):
         b2b_set_field!(bits, 95, 6, 30)         # PRN_a
         b2b_set_field!(bits, 101, 2, 0b10)      # IGSO
@@ -231,10 +231,10 @@ end
         @test d.C_rc == 44444 * 2.0^-8
         @test d.C_us == -5555 * 2.0^-30
         @test d.C_uc == 6666 * 2.0^-30
-        @test d.dif === false
-        @test d.sif === true
-        @test d.aif === false
-        @test d.sismai == 9
+        @test d.DIF === false
+        @test d.SIF === true
+        @test d.AIF === false
+        @test d.SISMAI == 9
 
         # MT30 — clock/TGD/iono/UTC/EOP/SISAI/health:
         @test d.WN == 913
@@ -243,21 +243,21 @@ end
         @test d.a_f1 == 123456 * 2.0^-50
         @test d.a_f2 == -321 * 2.0^-66
         @test d.T_GD_B2bI == -1000 * 2.0^-34
-        @test d.α_1 == 200 * 2.0^-3
-        @test d.α_2 == -50 * 2.0^-3
-        @test d.α_3 == 60 * 2.0^-3
-        @test d.α_4 == 70 * 2.0^-3
-        @test d.α_5 == 80 * -(2.0^-3)
-        @test d.α_6 == -90 * 2.0^-3
-        @test d.α_7 == 100 * 2.0^-3
-        @test d.α_8 == -110 * 2.0^-3
-        @test d.α_9 == 120 * 2.0^-3
-        @test d.A0_UTC == -20000 * 2.0^-35
-        @test d.A1_UTC == 3000 * 2.0^-51
-        @test d.A2_UTC == -40 * 2.0^-68
+        @test d.α_bdgim_1 == 200 * 2.0^-3
+        @test d.α_bdgim_2 == -50 * 2.0^-3
+        @test d.α_bdgim_3 == 60 * 2.0^-3
+        @test d.α_bdgim_4 == 70 * 2.0^-3
+        @test d.α_bdgim_5 == 80 * -(2.0^-3)
+        @test d.α_bdgim_6 == -90 * 2.0^-3
+        @test d.α_bdgim_7 == 100 * 2.0^-3
+        @test d.α_bdgim_8 == -110 * 2.0^-3
+        @test d.α_bdgim_9 == 120 * 2.0^-3
+        @test d.A_0UTC == -20000 * 2.0^-35
+        @test d.A_1UTC == 3000 * 2.0^-51
+        @test d.A_2UTC == -40 * 2.0^-68
         @test d.Δt_LS == 4
-        @test d.t_ot == 37800 * 16
-        @test d.WN_ot == 913
+        @test d.t_0t == 37800 * 16
+        @test d.WN_0t == 913
         @test d.WN_LSF == 829
         @test d.DN == 6
         @test d.Δt_LSF == 5
@@ -268,27 +268,27 @@ end
         @test d.PM_Y_dot == -9000 * 2.0^-21
         @test d.ΔUT1 == -12345678 * 2.0^-24
         @test d.ΔUT1_dot == 200000 * 2.0^-25
-        @test d.sisai_t_op == 1750
-        @test d.sisai_ocb == 12
-        @test d.sisai_oc1 == 3
-        @test d.sisai_oc2 == 5
-        @test d.sisai_oe == 7
-        @test d.hs == 0
+        @test d.t_op == 1750
+        @test d.SISAI_ocb == 12
+        @test d.SISAI_oc1 == 3
+        @test d.SISAI_oc2 == 5
+        @test d.SISAI_oe == 7
+        @test d.HS == 0
 
         # MT40 — BGTO + almanacs:
         @test d.GNSS_ID == 1
         @test d.WN_0BGTO == 913
         @test d.t_0BGTO == 11250 * 16
-        @test d.A0_BGTO == -1234 * 2.0^-35
-        @test d.A1_BGTO == 987 * 2.0^-51
-        @test d.A2_BGTO == -12 * 2.0^-68
+        @test d.A_0BGTO == -1234 * 2.0^-35
+        @test d.A_1BGTO == 987 * 2.0^-51
+        @test d.A_2BGTO == -12 * 2.0^-68
         @test d.WN_a == 913
         @test d.t_0a == 101 * 4096
         midi = d.midi_almanacs[30]
         @test midi.PRN_a == 30
         @test midi.sat_type == 2
         @test midi.WN_a == 913
-        @test midi.t_oa == 100 * 4096
+        @test midi.t_0a == 100 * 4096
         @test midi.e == 500 * 2.0^-16
         @test midi.δi == -200 * 2.0^-14 * PI
         @test midi.sqrt_A == 103900 * 2.0^-4
@@ -332,11 +332,11 @@ end
         state = BeiDouB2bDecoderState(prn)
         frames = [
             b2b_frame_symbols(b2b_mt10_message(; sow_field = 2000); prn),
-            b2b_frame_symbols(b2b_mt30_message(; sow_field = 2001, hs = 1); prn),
+            b2b_frame_symbols(b2b_mt30_message(; sow_field = 2001, HS = 1); prn),
         ]
         state = b2b_decode_frames(state, frames)
         @test state.raw_data.SOW == 2001
-        @test state.data.hs == 1
+        @test state.data.HS == 1
         @test is_decoding_completed_for_positioning(state)
         @test !is_sat_healthy(state)
     end

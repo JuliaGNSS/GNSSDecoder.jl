@@ -13,7 +13,7 @@
 const GALILEO_VITERBI_POLY = [0o171, 0o133]
 
 # Every Galileo data channel interleaves over 8 rows — I/NAV 8×30, E5a F/NAV
-# 8×61, E6-B C/NAV 8×123 (OS SIS ICD, Issue 2.2 §4.1.4.2 and Table 5; HAS SIS
+# 8×61, E6-B C/NAV 8×123 (OS SIS ICD, Issue 2.2 §4.1.4.2 and Table 27; HAS SIS
 # ICD, Issue 1.0 Table 4). Only the column count differs, so it is the one number
 # each signal states, and `galileo_viterbi` takes that alone.
 const GALILEO_INTERLEAVER_ROWS = 8
@@ -32,7 +32,7 @@ const GALILEO_F = -4.442807309e-10 # relativistic correction constant (s/√m)
 Galileo signal health status enumeration.
 
 Indicates the operational status of a Galileo signal component (I/NAV word type 5,
-E5a F/NAV word type 1, and the per-satellite almanacs of both).
+E5a F/NAV page type 1, and the per-satellite almanacs of both).
 
 # Values
 
@@ -80,9 +80,8 @@ Almanac data for one Galileo satellite.
 
 The almanac provides reduced-precision orbital and clock parameters for predicting
 satellite positions and selecting satellites for tracking. Differences (`Δsqrt_A`,
-`δi`) are relative to nominal Galileo constellation values (`A_nominal = 29600.318 km`,
-`i_nominal = 56°`). The same record is produced by both the I/NAV decoder (word
-types 7-10) and the F/NAV decoder (word types 5-6); they differ only in which
+`δi`) are relative to nominal Galileo constellation values (`A_nominal = 29 600 000 m`, `i_nominal = 56°`; OS SIS ICD Issue 2.2 Table 1). The same record is produced by both the I/NAV decoder (word
+types 7-10) and the F/NAV decoder (page types 5-6); they differ only in which
 signal-health facet they populate (see below).
 
 # Fields
@@ -90,23 +89,25 @@ signal-health facet they populate (see below).
   - `SVID::Int`: Satellite identifier (1-36 nominal range; 0 = unused entry)
   - `Δsqrt_A::Float64`: Difference of √(semi-major axis) from nominal (√m)
   - `e::Float64`: Eccentricity (dimensionless)
-  - `ω::Float64`: Argument of perigee (semi-circles)
-  - `δi::Float64`: Inclination delta from nominal (semi-circles)
-  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
-  - `Ω_dot::Float64`: Rate of change of right ascension (semi-circles/s)
-  - `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+  - `ω::Float64`: Argument of perigee (rad)
+  - `δi::Float64`: Inclination delta from nominal (rad)
+  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
+  - `Ω_dot::Float64`: Rate of change of right ascension (rad/s)
+  - `M_0::Float64`: Mean anomaly at reference time (rad)
   - `a_f0::Float64`: Truncated SV clock bias (seconds)
   - `a_f1::Float64`: Truncated SV clock drift (s/s)
-  - `signal_health_e5b::SignalHealth`: Predicted E5b signal health status (Galileo I/NAV word types 7-10)
-  - `signal_health_e1b::SignalHealth`: Predicted E1-B/C signal health status (Galileo I/NAV word types 7-10)
-  - `signal_health_e5a::SignalHealth`: Predicted E5a signal health status (Galileo F/NAV word types 5-6; `nothing` for I/NAV-decoded almanacs)
+  - `E5b_SHS::SignalHealth`: Predicted E5b signal health status (Galileo I/NAV word types 7-10)
+  - `E1B_SHS::SignalHealth`: Predicted E1-B/C signal health status (Galileo I/NAV word types 7-10)
+  - `E5a_SHS::SignalHealth`: Predicted E5a signal health status (Galileo F/NAV page types 5-6; `nothing` for I/NAV-decoded almanacs)
   - `IOD_a::Int`: Almanac IOD
   - `WN_a::Int`: Almanac reference Week Number
   - `t_0a::Int`: Almanac reference time (seconds)
 
 # Reference
 
-Galileo OS SIS ICD, Issue 2.2, Table 86 (I/NAV) and Tables 75-76 (F/NAV)
+Galileo OS SIS ICD, Issue 2.2, Table 86 (the almanac parameters, shared by
+I/NAV and F/NAV); bit allocations in Tables 51-54 (I/NAV word types 7-10) and
+Tables 34-35 (F/NAV page types 5-6)
 """
 Base.@kwdef struct GalileoAlmanac
     SVID::Union{Nothing,Int} = nothing
@@ -119,9 +120,9 @@ Base.@kwdef struct GalileoAlmanac
     M_0::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
     a_f1::Union{Nothing,Float64} = nothing
-    signal_health_e5b::Union{Nothing,SignalHealth} = nothing
-    signal_health_e1b::Union{Nothing,SignalHealth} = nothing
-    signal_health_e5a::Union{Nothing,SignalHealth} = nothing
+    E5b_SHS::Union{Nothing,SignalHealth} = nothing
+    E1B_SHS::Union{Nothing,SignalHealth} = nothing
+    E5a_SHS::Union{Nothing,SignalHealth} = nothing
     IOD_a::Union{Nothing,Int} = nothing
     WN_a::Union{Nothing,Int} = nothing
     t_0a::Union{Nothing,Int} = nothing
@@ -139,9 +140,9 @@ function GalileoAlmanac(
     M_0 = a.M_0,
     a_f0 = a.a_f0,
     a_f1 = a.a_f1,
-    signal_health_e5b = a.signal_health_e5b,
-    signal_health_e1b = a.signal_health_e1b,
-    signal_health_e5a = a.signal_health_e5a,
+    E5b_SHS = a.E5b_SHS,
+    E1B_SHS = a.E1B_SHS,
+    E5a_SHS = a.E5a_SHS,
     IOD_a = a.IOD_a,
     WN_a = a.WN_a,
     t_0a = a.t_0a,
@@ -157,9 +158,9 @@ function GalileoAlmanac(
         M_0,
         a_f0,
         a_f1,
-        signal_health_e5b,
-        signal_health_e1b,
-        signal_health_e5a,
+        E5b_SHS,
+        E1B_SHS,
+        E5a_SHS,
         IOD_a,
         WN_a,
         t_0a,

@@ -9,6 +9,8 @@ import Aff3ct
 
 export decode,
     GPSL1CADecoderState,
+    GPSL1CAData,
+    GPSL1CAAlmanac,
     GPSL1C_DDecoderState,
     GPSL1C_DData,
     GPSL1C_DReducedAlmanac,
@@ -27,6 +29,7 @@ export decode,
     GalileoE5bDecoderState,
     GalileoE6BDecoderState,
     GalileoINAVData,
+    GalileoReducedCED,
     GalileoE5aData,
     GalileoE6BData,
     GalileoHASMessage,
@@ -37,6 +40,17 @@ export decode,
     GalileoHASClockCorrection,
     GalileoHASCodeBias,
     GalileoHASPhaseBias,
+    GalileoAlmanac,
+    # The three status enums are exported; their *values* deliberately are not.
+    # `signal_ok`, `navigation_data_valid` and `has_test_mode` are exactly the
+    # names a receiver, plotting or GUI package alongside this one is liable to
+    # define, and nothing gains from having them unqualified: this package's own
+    # tests and `PositionVelocityTime.jl` write `GNSSDecoder.signal_ok` at every
+    # one of their ~60 call sites already, and most consumers never touch a value
+    # at all because `is_sat_healthy` does the comparison for them.
+    SignalHealth,
+    DataValidityStatus,
+    HASStatus,
     BeiDouB1IDecoderState,
     BeiDouB3IDecoderState,
     BeiDouDNAVData,
@@ -55,23 +69,16 @@ export decode,
     get_signal_type,
     GNSSDecoderState,
     reset_decoder_state
-# v2 shared utilities — see issue #36. Used directly by issue #37 (Galileo
-# soft-input migration) and #38 (GPS L1C-D).
-# The Reed-Solomon primitives this commit adds (`GaloisField256`,
-# `GALILEO_HAS_GF256`, `rs_generator_polynomial`,
-# `rs_systematic_generator_matrix`, `rs_erasure_decode`) are public and
-# documented, but deliberately not exported: `GNSSDecoder.rs_erasure_decode` is
-# the honest spelling for a codes primitive in a decoder package, and nothing
-# outside this repository calls them — the E6-B decoder inverts the generator
-# matrix on the user's behalf and hands back a parsed `GalileoHASMessage`.
-export crc24q,
-    BCH_TOI_CODEWORDS,
-    BCHToiSync,
-    sync_bch_toi,
-    pack_hard_codeword,
-    soft_to_hard_codeword,
-    deinterleave!,
-    interleave!
+# The signal-independent primitives — CRC-24Q, the BCH(51,8) TOI codec, the
+# block (de)interleaver, the GF(2^8) Reed-Solomon codec — are deliberately *not*
+# exported, though they are public and documented under their qualified names
+# (`GNSSDecoder.crc24q` and friends; see docs/src/api.md). This package's
+# interface is decoding a navigation message, not being a codes library, and
+# nothing outside it reaches for these: `PositionVelocityTime.jl` and
+# `GNSSReceiver.jl` use none of them. Meanwhile `crc24q`, `interleave!` and
+# `deinterleave!` are exactly the names a DSP or communications package loaded
+# alongside this one would plausibly define, so exporting them spent the user's
+# namespace on collisions to serve no caller.
 
 include("gnss.jl")
 include("bit_fiddling.jl")
@@ -159,9 +166,9 @@ include("beidou/beidou.jl")
 # Shared BeiDou legacy NAV core (the D1/D2 message broadcast identically on
 # B1I, BDS-SIS-ICD-B1I-3.0 §5, and B3I, BDS-SIS-ICD-B3I-1.0 §5): BCH(15,11,1)
 # word decoding, subframe/page parsing, SOW screening, data voting, and the
-# shared `BeiDouDNAVData` container. Consumes `beidou/beidou.jl` and the
-# shared GPS primitive `increment_voting` in `gps/l1ca.jl`, so it is included
-# after both.
+# shared `BeiDouDNAVData` container. Consumes `beidou/beidou.jl` and, for its
+# repetition voting, the shared `increment_voting` in `gnss.jl` — nothing from
+# another signal file.
 include("beidou/dnav.jl")
 
 # BeiDou B1I and B3I signal layers — each a thin wrapper over `beidou/dnav.jl`
@@ -170,9 +177,10 @@ include("beidou/dnav.jl")
 include("beidou/b1i.jl")
 include("beidou/b3i.jl")
 
-# BeiDou B1C (B-CNAV1) decoder. Included after `gps/l1c_d.jl` (it reuses the
-# `UInt600` packed-word type and mirrors the BCH two-subframe sync pattern)
-# and after the shared LDPC helper (`ldpc_decode_word`, `load_ldpc_decoder`).
+# BeiDou B1C (B-CNAV1) decoder. It mirrors `gps/l1c_d.jl`'s BCH two-subframe
+# sync pattern but depends on none of it: the packed-word types (`UInt600`,
+# `UInt288`) come from `gnss.jl`, the codeword generator from `bch_toi.jl`, and
+# the LDPC pipeline (`ldpc_decode_word`, `load_ldpc_decoder`) from `ldpc.jl`.
 include("beidou/b1c.jl")
 
 # BeiDou B2a (B-CNAV2) decoder. Consumes the shared BeiDou definitions above

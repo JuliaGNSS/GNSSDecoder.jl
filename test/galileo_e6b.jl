@@ -17,6 +17,8 @@
 # the 486 page bits come from the ICD verbatim, CRC included, so the CRC scope is
 # checked against a checksum this package did not compute.
 
+using GNSSDecoder: crc24q
+
 """
 C/NAV synchronisation pattern `1011011101110000` (HAS SIS ICD §2.3.1).
 """
@@ -193,7 +195,12 @@ end
         )
         bits = e6b_page_bits(header, octets)
         on_air = GNSSDecoder.interleave(galileo_conv_encode(bits), 123, 8)
-        recovered = GNSSDecoder.galileo_e6b_viterbi(decoder.cache.viterbi, on_air)
+        recovered = GNSSDecoder.galileo_viterbi(
+            decoder.cache.viterbi,
+            on_air,
+            GNSSDecoder.E6B_INTERLEAVER_COLUMNS,
+            GNSSDecoder.UInt512,
+        )
         expected = GNSSDecoder.UInt512(0)
         for b in bits
             expected = (expected << 1) | GNSSDecoder.UInt512(b)
@@ -266,19 +273,19 @@ end
     @test mask.mask_id == 0
     @test length(mask.satellite_masks) == 2
     gps, galileo = mask.satellite_masks
-    @test gps.gnss_id == 0
-    @test gps.svids == vcat(1:10, 12:32)
+    @test gps.GNSS_ID == 0
+    @test gps.SVIDs == vcat(1:10, 12:32)
     @test gps.signal_indices == [0, 7]
     @test !isnothing(gps.cell_mask)
     @test size(gps.cell_mask) == (31, 2)
     @test gps.nav_message_index == 0
-    @test galileo.gnss_id == 2
-    @test galileo.svids ==
+    @test galileo.GNSS_ID == 2
+    @test galileo.SVIDs ==
           [1, 2, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15, 19, 21, 24, 25, 26, 27, 30, 31, 33, 36]
     @test galileo.signal_indices == [1, 4, 7, 13]
     @test isnothing(galileo.cell_mask)
     @test galileo.nav_message_index == 0
-    @test sum(length(m.svids) for m in mask.satellite_masks) == 53
+    @test sum(length(m.SVIDs) for m in mask.satellite_masks) == 53
     # The mask is remembered under its Mask ID for later messages.
     @test decoder.data.masks[0] == mask
 
@@ -289,31 +296,31 @@ end
     @test orbit.mask_id == 0 && orbit.IOD_set_id == 11 && orbit.TOH == 0
     @test length(orbit.corrections) == 53
     let c = orbit.corrections[1]     # G01: 96, 0.0500, 0.4160, 0.2960
-        @test (c.gnss_id, c.svid, c.IOD_ref) == (0, 1, 96)
+        @test (c.GNSS_ID, c.SVID, c.IOD_ref) == (0, 1, 96)
         @test c.δ_radial ≈ 0.05
         @test c.δ_in_track ≈ 0.416
         @test c.δ_cross_track ≈ 0.296
     end
     let c = orbit.corrections[2]     # G02: the "data not available" sentinels
-        @test (c.gnss_id, c.svid, c.IOD_ref) == (0, 2, 0)
+        @test (c.GNSS_ID, c.SVID, c.IOD_ref) == (0, 2, 0)
         @test isnothing(c.δ_radial)
         @test isnothing(c.δ_in_track)
         @test isnothing(c.δ_cross_track)
     end
     let c = orbit.corrections[32]    # E01: 18, -0.0825, 0.4480, -0.3760
-        @test (c.gnss_id, c.svid, c.IOD_ref) == (2, 1, 18)
+        @test (c.GNSS_ID, c.SVID, c.IOD_ref) == (2, 1, 18)
         @test c.δ_radial ≈ -0.0825
         @test c.δ_in_track ≈ 0.448
         @test c.δ_cross_track ≈ -0.376
     end
     let c = orbit.corrections[53]    # E36: 18, -0.1500, -0.0240, -0.0720
-        @test (c.gnss_id, c.svid, c.IOD_ref) == (2, 36, 18)
+        @test (c.GNSS_ID, c.SVID, c.IOD_ref) == (2, 36, 18)
         @test c.δ_radial ≈ -0.15
         @test c.δ_in_track ≈ -0.024
         @test c.δ_cross_track ≈ -0.072
     end
     # Every Galileo entry in this example references IODnav 15, 17 or 18.
-    @test all(c.IOD_ref in (15, 17, 18) for c in orbit.corrections if c.gnss_id == 2)
+    @test all(c.IOD_ref in (15, 17, 18) for c in orbit.corrections if c.GNSS_ID == 2)
 
     # ICD Annex D, code biases: Validity Interval Index 14 = 3600 s. GPS carries
     # one or two biases per satellite as the Cell Mask dictates (23 satellites
@@ -321,21 +328,21 @@ end
     code = message.code_biases
     @test code.validity_interval == 3600
     @test length(code.corrections) == 142
-    @test count(c -> c.gnss_id == 0, code.corrections) == 54
-    @test count(c -> c.gnss_id == 2, code.corrections) == 88
+    @test count(c -> c.GNSS_ID == 0, code.corrections) == 54
+    @test count(c -> c.GNSS_ID == 2, code.corrections) == 88
     let c = code.corrections[1]      # G01 signal 0: 3.74 m
-        @test (c.gnss_id, c.svid, c.signal_index) == (0, 1, 0)
+        @test (c.GNSS_ID, c.SVID, c.signal_index) == (0, 1, 0)
         @test c.bias ≈ 3.74
     end
     let c = code.corrections[2]      # G01 signal 7: 5.72 m
-        @test (c.gnss_id, c.svid, c.signal_index) == (0, 1, 7)
+        @test (c.GNSS_ID, c.SVID, c.signal_index) == (0, 1, 7)
         @test c.bias ≈ 5.72
     end
     let c = code.corrections[3]      # G02: only signal 0 (Cell Mask), -4.38 m
-        @test (c.gnss_id, c.svid, c.signal_index) == (0, 2, 0)
+        @test (c.GNSS_ID, c.SVID, c.signal_index) == (0, 2, 0)
         @test c.bias ≈ -4.38
     end
-    let e01 = filter(c -> c.gnss_id == 2 && c.svid == 1, code.corrections)
+    let e01 = filter(c -> c.GNSS_ID == 2 && c.SVID == 1, code.corrections)
         @test [c.signal_index for c in e01] == [1, 4, 7, 13]
         @test [c.bias for c in e01] ≈ [0.08, 0.14, 0.14, 1.04]
     end
@@ -387,15 +394,15 @@ end
     # Galileo) and the *un-multiplied* corrections. Table 29 maps those raw
     # fields to multipliers 3 and 1, so the usable corrections are the printed
     # values times 3 and 1 respectively.
-    @test all(c.multiplier == 3 for c in clock.corrections if c.gnss_id == 0)
-    @test all(c.multiplier == 1 for c in clock.corrections if c.gnss_id == 2)
+    @test all(c.multiplier == 3 for c in clock.corrections if c.GNSS_ID == 0)
+    @test all(c.multiplier == 1 for c in clock.corrections if c.GNSS_ID == 2)
     let c = clock.corrections[1]            # G01: -6.4100 × 3
-        @test (c.gnss_id, c.svid) == (0, 1)
+        @test (c.GNSS_ID, c.SVID) == (0, 1)
         @test c.δ_clock ≈ -6.41 * 3
         @test !c.do_not_use
     end
     let c = clock.corrections[2]            # G02: -10.2400 = data not available
-        @test (c.gnss_id, c.svid) == (0, 2)
+        @test (c.GNSS_ID, c.SVID) == (0, 2)
         @test isnothing(c.δ_clock)
         @test !c.do_not_use
     end
@@ -403,11 +410,11 @@ end
         @test c.δ_clock ≈ -6.0775 * 3
     end
     let c = clock.corrections[32]           # E01: 0.0800 × 1
-        @test (c.gnss_id, c.svid) == (2, 1)
+        @test (c.GNSS_ID, c.SVID) == (2, 1)
         @test c.δ_clock ≈ 0.08
     end
     let c = clock.corrections[53]           # E36: -0.1025 × 1
-        @test (c.gnss_id, c.svid) == (2, 36)
+        @test (c.GNSS_ID, c.SVID) == (2, 36)
         @test c.δ_clock ≈ -0.1025
     end
 end
@@ -494,9 +501,9 @@ end
 """
 One constellation's entry in a Mask block (ICD Table 16), with no Cell Mask.
 """
-function e6b_system_mask_bits(; gnss_id, satellite_mask, signal_mask, nav_message = 0)
+function e6b_system_mask_bits(; GNSS_ID, satellite_mask, signal_mask, nav_message = 0)
     bits = Bool[]
-    galileo_push_field!(bits, gnss_id, 4)
+    galileo_push_field!(bits, GNSS_ID, 4)
     galileo_push_field!(bits, satellite_mask, 40)
     galileo_push_field!(bits, signal_mask, 16)
     push!(bits, false)                   # Cell Mask Availability Flag
@@ -507,7 +514,7 @@ end
 @testset "Galileo E6-B rejects the reserved Nsys and Nsys_sub values" begin
     # One GPS satellite (index 0 = PRN 1) on one signal, for the positive controls.
     one_gps_system = e6b_system_mask_bits(;
-        gnss_id = 0,
+        GNSS_ID = 0,
         satellite_mask = UInt64(1) << 39,
         signal_mask = UInt16(1) << 15,
     )
@@ -536,7 +543,7 @@ end
         message = GNSSDecoder.parse_has_message(e6b_message_octets(bits), 1, 1, 1, nothing)
         @test message isa GalileoHASMessage
         @test message.mask.mask_id == 7
-        @test message.mask.satellite_masks[1].svids == [1]
+        @test message.mask.satellite_masks[1].SVIDs == [1]
     end
 
     @testset "Nsys_sub = 0 ends the Clock Subset block" begin
@@ -574,7 +581,7 @@ end
         @test !isnothing(subset)
         @test subset.validity_interval == 60
         @test length(subset.corrections) == 1
-        @test subset.corrections[1].svid == 1
+        @test subset.corrections[1].SVID == 1
         @test subset.corrections[1].multiplier == 3
         @test subset.corrections[1].δ_clock ≈ 400 * 0.0025 * 3
     end

@@ -99,8 +99,8 @@ $(TYPEDSIGNATURES)
 
 Check if the Galileo satellite is healthy and usable for positioning on E1-B.
 
-Examines both the signal health status (`signal_health_e1b`) and data validity
-status (`data_validity_status_e1b`) from I/NAV word type 5. A satellite is
+Examines both the signal health status (`E1B_SHS`) and data validity
+status (`E1B_DVS`) from I/NAV word type 5. A satellite is
 considered healthy only if both conditions are met:
 
   - Signal health is `signal_ok`
@@ -112,7 +112,7 @@ reports the E5b facet of the same word type 5.
 !!! warning
 
     This function requires that word type 5 has been successfully decoded.
-    Check that `state.data.signal_health_e1b` is not `nothing` before relying
+    Check that `state.data.E1B_SHS` is not `nothing` before relying
     on this result.
 
 # Arguments
@@ -139,6 +139,5 @@ end
   - [`decode`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GalileoINAVData,<:GalileoE1BConstants})
-    state.data.signal_health_e1b == signal_ok &&
-        state.data.data_validity_status_e1b == navigation_data_valid
+    state.data.E1B_SHS == signal_ok && state.data.E1B_DVS == navigation_data_valid
 end

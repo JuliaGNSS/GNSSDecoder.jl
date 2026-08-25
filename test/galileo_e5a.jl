@@ -6,6 +6,8 @@
 # (4 trailing pad bits). The companion Spirent text dump (with per-field decoded
 # values and verified CRCs) was used to transcribe the expected values asserted
 # below; every numeric field here was cross-checked against that dump.
+using GNSSDecoder: crc24q
+
 #
 # The capture provides decoded pages, not raw E5a-I symbols, so the test
 # *re-encodes* each page through the transmit FEC chain (rate-1/2 K=7 NSC
@@ -87,7 +89,12 @@ end
         info = e5a_info_bits(pages[idx])
         info_vec = Bool[GNSSDecoder.get_bit(info, 238, k) for k = 1:238]
         on_air = GNSSDecoder.interleave(galileo_conv_encode(info_vec), 61, 8)
-        recovered = GNSSDecoder.galileo_e5a_viterbi(decoder.cache.viterbi, on_air)
+        recovered = GNSSDecoder.galileo_viterbi(
+            decoder.cache.viterbi,
+            on_air,
+            GNSSDecoder.GALILEO_E5A_INTERLEAVER_COLUMNS,
+            GNSSDecoder.UInt256,
+        )
         @test recovered == GNSSDecoder.UInt256(info)
     end
 end
@@ -129,7 +136,7 @@ end
         C_rs = 6.0,
         C_ic = 3.0007213354110718e-6,
         C_is = 3.999099135398865e-6,
-        SISA_e1_e5a = 25,
+        SISA_E1_E5a = 25,
         t_0c = 259200.0,
         a_f0 = 9.999802568927407e-5,
         a_f1 = 1.0000036354540498e-9,
@@ -140,9 +147,9 @@ end
         IOD_nav4 = 0x0000000000000030,
         num_pages_after_last_TOW = 2,
         num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
-        signal_health_e5a = GNSSDecoder.signal_ok,
-        data_validity_status_e5a = GNSSDecoder.navigation_data_valid,
-        broadcast_group_delay_e1_e5a = -9.313225746154785e-10,
+        E5a_SHS = GNSSDecoder.signal_ok,
+        E5a_DVS = GNSSDecoder.navigation_data_valid,
+        BGD_E1_E5a = -9.313225746154785e-10,
         a_i0 = 100.0,
         a_i1 = 1.0,
         a_i2 = 0.100006103515625,
@@ -151,8 +158,8 @@ end
         iono_storm_flag_region3 = true,
         iono_storm_flag_region4 = false,
         iono_storm_flag_region5 = false,
-        A_0_utc = 1.000240445137024e-6,
-        A_1_utc = 8.881784197001252e-16,
+        A_0UTC = 1.000240445137024e-6,
+        A_1UTC = 8.881784197001252e-16,
         Δt_LS = 18,
         t_0t = 259200,
         WN_0t = 58,
@@ -219,7 +226,7 @@ end
         M_0 = 0.9006384700873591,
         a_f0 = 0.0,
         a_f1 = 0.0,
-        signal_health_e5a = GNSSDecoder.signal_ok,
+        E5a_SHS = GNSSDecoder.signal_ok,
         IOD_a = 0,
         WN_a = 2,
         t_0a = 259200,
@@ -237,7 +244,7 @@ end
         M_0 = 1.6860366334848091,
         a_f0 = 0.0,
         a_f1 = 0.0,
-        signal_health_e5a = GNSSDecoder.signal_ok,
+        E5a_SHS = GNSSDecoder.signal_ok,
         IOD_a = 0,
         WN_a = 2,
         t_0a = 259200,
@@ -255,7 +262,7 @@ end
         M_0 = 2.5832236467994254,
         a_f0 = 9.918212890625e-5,
         a_f1 = 1.000444171950221e-9,
-        signal_health_e5a = GNSSDecoder.signal_ok,
+        E5a_SHS = GNSSDecoder.signal_ok,
         IOD_a = 0,
         WN_a = 2,
         t_0a = 259200,

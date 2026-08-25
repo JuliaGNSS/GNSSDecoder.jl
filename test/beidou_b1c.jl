@@ -202,16 +202,16 @@ end
 # --- Golden subframe-3 pages (ICD Figures 6-8 .. 6-11) ----------------------
 
 # Common page header after the PageID: HS DIF SIF AIF SISMAI.
-_sf3_header(page; hs = 0) = [(6, page), (2, hs), (1, 0), (1, 0), (1, 1), (4, 5)]
+_sf3_header(page; HS = 0) = [(6, page), (2, HS), (1, 0), (1, 0), (1, 1), (4, 5)]
 
 """
 Page type 1: SISAI_oe + SISAI_oc + BDGIM iono + BDT-UTC (Figure 6-8).
 """
-function _golden_sf3_page1_bits(; hs = 0)
+function _golden_sf3_page1_bits(; HS = 0)
     _pack_block_with_crc(
         264,
         vcat(
-            _sf3_header(1; hs),
+            _sf3_header(1; HS),
             [
                 (5, 12),                               # SISAI_oe
                 (11, 900),
@@ -245,7 +245,7 @@ function _golden_sf3_page1_bits(; hs = 0)
 end
 
 """
-Page type 2: SISAI_oc + WN_a/t_oa + four reduced almanacs (Figure 6-9).
+Page type 2: SISAI_oc + WN_a/t_0a + four reduced almanacs (Figure 6-9).
 """
 function _golden_sf3_page2_bits()
     red(prn) = [(6, prn), (2, 3), (8, -30), (7, 20), (7, -25), (8, 48)]
@@ -254,7 +254,7 @@ function _golden_sf3_page2_bits()
         vcat(
             _sf3_header(2),
             [(11, 900), (5, 7), (3, 2), (3, 3)],       # SISAI_oc
-            [(13, 812), (8, 100)],                     # WN_a, t_oa
+            [(13, 812), (8, 100)],                     # WN_a, t_0a
             red(7),
             red(8),
             [(6, 0), (2, 0), (8, 0), (7, 0), (7, 0), (8, 0)],
@@ -422,7 +422,7 @@ end
         @test d.IODC == 517
         @test d.IODE == 5
         # Ephemeris (ICD Table 7-8 scale factors).
-        @test d.t_oe == 1200 * 300
+        @test d.t_0e == 1200 * 300
         @test d.sat_type == 3
         @test d.ΔA ≈ -8000 * 2.0^-9
         @test d.A_dot ≈ 1024 * 2.0^-21
@@ -442,41 +442,41 @@ end
         @test d.C_us ≈ -80000 * 2.0^-30
         @test d.C_uc ≈ 70000 * 2.0^-30
         # Clock + group delay (Tables 7-5, 7-6).
-        @test d.t_oc == 1200 * 300
-        @test d.a_0 ≈ -1000000 * 2.0^-34
-        @test d.a_1 ≈ 200000 * 2.0^-50
-        @test d.a_2 ≈ -500 * 2.0^-66
+        @test d.t_0c == 1200 * 300
+        @test d.a_f0 ≈ -1000000 * 2.0^-34
+        @test d.a_f1 ≈ 200000 * 2.0^-50
+        @test d.a_f2 ≈ -500 * 2.0^-66
         @test d.T_GD_B2ap ≈ -100 * 2.0^-34
         @test d.ISC_B1Cd ≈ 50 * 2.0^-34
         @test d.T_GD_B1Cp ≈ -75 * 2.0^-34
         # Page header fields (all pages carried HS=0, AIF=1, SISMAI=5).
-        @test d.hs == 0
-        @test d.dif === false
-        @test d.sif === false
-        @test d.aif === true
-        @test d.sismai == 5
-        @test d.sisai_oe == 12
+        @test d.HS == 0
+        @test d.DIF === false
+        @test d.SIF === false
+        @test d.AIF === true
+        @test d.SISMAI == 5
+        @test d.SISAI_oe == 12
         @test d.t_op == 900
-        @test d.sisai_ocb == 7
-        @test d.sisai_oc1 == 2
-        @test d.sisai_oc2 == 3
+        @test d.SISAI_ocb == 7
+        @test d.SISAI_oc1 == 2
+        @test d.SISAI_oc2 == 3
         @test is_sat_healthy(state)
         # Page 1: BDGIM iono (Table 7-10; α₅ scale −2⁻³) + BDT-UTC (Table 7-20).
-        @test d.α_1 ≈ 800 * 2.0^-3
-        @test d.α_2 ≈ -40 * 2.0^-3
-        @test d.α_3 ≈ 16 * 2.0^-3
-        @test d.α_4 ≈ 24 * 2.0^-3
-        @test d.α_5 ≈ -(32 * 2.0^-3)
-        @test d.α_6 ≈ -8 * 2.0^-3
-        @test d.α_7 ≈ 12 * 2.0^-3
-        @test d.α_8 ≈ -16 * 2.0^-3
-        @test d.α_9 ≈ 20 * 2.0^-3
+        @test d.α_bdgim_1 ≈ 800 * 2.0^-3
+        @test d.α_bdgim_2 ≈ -40 * 2.0^-3
+        @test d.α_bdgim_3 ≈ 16 * 2.0^-3
+        @test d.α_bdgim_4 ≈ 24 * 2.0^-3
+        @test d.α_bdgim_5 ≈ -(32 * 2.0^-3)
+        @test d.α_bdgim_6 ≈ -8 * 2.0^-3
+        @test d.α_bdgim_7 ≈ 12 * 2.0^-3
+        @test d.α_bdgim_8 ≈ -16 * 2.0^-3
+        @test d.α_bdgim_9 ≈ 20 * 2.0^-3
         @test d.A_0UTC ≈ -12000 * 2.0^-35
         @test d.A_1UTC ≈ 3000 * 2.0^-51
         @test d.A_2UTC ≈ -50 * 2.0^-68
         @test d.Δt_LS == 4
-        @test d.t_ot == 30000 * 2^4
-        @test d.WN_ot == 800
+        @test d.t_0t == 30000 * 2^4
+        @test d.WN_0t == 800
         @test d.WN_LSF == 801
         @test d.DN == 3
         @test d.Δt_LSF == 5
@@ -486,7 +486,7 @@ end
         @test red.PRN_a == 7
         @test red.sat_type == 3
         @test red.WN_a == 812
-        @test red.t_oa == 100 * 2^12
+        @test red.t_0a == 100 * 2^12
         @test red.δA ≈ -30 * 2.0^9
         @test red.Ω_0 ≈ 20 * 2.0^-6 * 3.1415926535898
         @test red.Φ_0 ≈ -25 * 2.0^-6 * 3.1415926535898
@@ -513,7 +513,7 @@ end
         @test alm.PRN_a == 25
         @test alm.sat_type == 2
         @test alm.WN_a == 812
-        @test alm.t_oa == 100 * 2^12
+        @test alm.t_0a == 100 * 2^12
         @test alm.e ≈ 500 * 2.0^-16
         @test alm.δi ≈ -256 * 2.0^-14 * 3.1415926535898
         @test alm.sqrt_A ≈ 103894 * 2.0^-4
@@ -548,11 +548,11 @@ end
     @testset "Unhealthy satellite (HS = 1) is reported" begin
         sf2 = Bool.(_golden_sf2_bits())
         stream = vcat(
-            _b1c_frame_symbols(prn, 10, sf2, Bool.(_golden_sf3_page1_bits(hs = 1))),
-            _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits(hs = 1)))[1:72],
+            _b1c_frame_symbols(prn, 10, sf2, Bool.(_golden_sf3_page1_bits(HS = 1))),
+            _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits(HS = 1)))[1:72],
         )
         state = decode(BeiDouB1CDecoderState(prn), stream, length(stream))
-        @test state.data.hs == 1
+        @test state.data.HS == 1
         @test is_decoding_completed_for_positioning(state)
         @test !is_sat_healthy(state)
     end
@@ -571,7 +571,7 @@ end
         @test isnothing(state.raw_data.WN)          # SF2 dropped
         @test state.raw_data.soh == 10              # sync still locked
         @test state.raw_data.num_sf3_pages_received == 1   # SF3 decoded
-        @test state.raw_data.hs == 0
+        @test state.raw_data.HS == 0
         @test !is_decoding_completed_for_positioning(state)  # promotion gated
         @test !is_sat_healthy(state)
     end

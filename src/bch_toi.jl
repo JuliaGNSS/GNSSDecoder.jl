@@ -1,4 +1,14 @@
-# BCH(51,8) Time-Of-Interval (TOI) codec for GPS L1C-D CNAV-2 subframe 1.
+# BCH codeword generation from a Fibonacci LFSR, and the GPS L1C-D
+# Time-Of-Interval (TOI) table built with it.
+#
+# Two signals synchronise on a BCH codeword rather than a preamble, and both
+# generate it the same way — an LFSR of `width` stages seeded with the
+# bit-reversed information value and clocked `num_symbols` times, emitting the
+# register LSB. GPS L1C-D's TOI is BCH(51,8) (this file, below); BeiDou B1C's
+# subframe 1 is BCH(21,6) over the PRN concatenated with BCH(51,8) over the SOH
+# (`beidou/b1c.jl`). `bch_lfsr_codeword` is that construction, taking the three
+# numbers that differ; only the L1C-D table is precomputed here, because only
+# its 400 entries are searched exhaustively on every symbol.
 #
 # Per IS-GPS-800G §3.2.3.2 the 52-symbol subframe 1 is built from a 9-bit
 # TOI value `t ∈ 0..399` as follows:
@@ -29,41 +39,55 @@ const TOI_BCH_MASK52 = (UInt64(1) << TOI_BCH_CODEWORD_LEN) - UInt64(1)
 const TOI_RANGE = 400  # 9-bit modulo-400 counter
 
 # Reverse the low `n` bits of `x` (matches PocketSDR's `sdr_code.rev_reg`).
-function _toi_rev_reg(x::UInt, n::Int)
+function reverse_low_bits(x::Integer, n::Int)
     r = UInt(0)
-    for i = 0:(n-1)
-        r = (r << 1) | ((x >> i) & UInt(1))
+    @inbounds for i = 0:(n-1)
+        r = (r << 1) | ((UInt(x) >> i) & UInt(1))
     end
     return r
 end
 
-# Run the 8-stage LFSR for one TOI value; return the 51-bit BCH output
-# (bit 0 = first emitted symbol) packed into a UInt64. Matches PocketSDR's
-# `LFSR(51, rev_reg(t_low8, 8), 0b10011111, 8)` followed by `(code+1)//2`:
-# `LFSR` emits `CHIP[R & 1]` with `CHIP = (-1, 1)`, so `(code+1)//2` maps the
-# ±1 symbol back to exactly the register LSB. The emitted bit is the LSB
-# itself — verified against a Spirent GSS7000 L1C recording (the first 8
-# emitted bits for TOI `t` spell the low 8 TOI bits MSB-first, i.e. the
-# code is systematic in its data prefix).
-function _toi_lfsr51(t_low8::UInt)
-    R = _toi_rev_reg(t_low8 & UInt(0xff), TOI_BCH_REGISTER_WIDTH) % UInt32
+"""
+    bch_lfsr_codeword(value, num_symbols, width, tap) -> UInt64
+
+Emit the `num_symbols` output symbols of a `width`-stage Fibonacci LFSR seeded
+with the bit-reversed `value`, packed into a `UInt64` with **bit 0 = the first
+emitted symbol**. `tap` is the feedback mask: the non-leading coefficients of the
+generator polynomial, on the binary state register.
+
+Seeding with the *reversed* value and emitting the register LSB is what makes the
+code systematic — the first `width` emitted symbols spell `value` MSB-first —
+which is the convention both ICDs that use this construction rely on, and the one
+PocketSDR implements as `LFSR(n, rev_reg(v, k), taps, k)`. (Its `LFSR` emits
+`CHIP[R & 1]` with `CHIP = (-1, 1)`, so its `(code + 1) / 2` recovers exactly the
+register LSB this returns.)
+
+Callers: the GPS L1C-D TOI table below (`num_symbols = 51`, `width = 8`) and
+BeiDou B1C's subframe-1 PRN and SOH codewords (21/6 and 51/8, `beidou/b1c.jl`).
+"""
+function bch_lfsr_codeword(value::Integer, num_symbols::Int, width::Int, tap::Integer)
+    R = reverse_low_bits(UInt(value) & ((UInt(1) << width) - UInt(1)), width) % UInt32
     out = UInt64(0)
-    @inbounds for i = 0:(TOI_BCH_DATA_LEN-1)
+    @inbounds for i = 0:(num_symbols-1)
         out |= UInt64(R & UInt32(0x1)) << i
         # Galois-style update: new MSB = parity of R AND tap; shift right.
-        feedback_bits = R & UInt32(TOI_BCH_TAP)
-        feedback = UInt32(count_ones(feedback_bits) & 1)
-        R = (feedback << (TOI_BCH_REGISTER_WIDTH - 1)) | (R >> 1)
+        feedback = UInt32(count_ones(R & UInt32(tap)) & 1)
+        R = (feedback << (width - 1)) | (R >> 1)
     end
     return out
 end
 
 # Compute the full 52-bit codeword for a given TOI `t ∈ 0..399`.
 # Bit 0 (LSB of the returned `UInt64`) is the first transmitted symbol.
+#
+# The 51 BCH symbols are the shared construction above with L1C-D's three
+# numbers. Verified against a Spirent GSS7000 L1C recording: the first 8 emitted
+# bits for TOI `t` spell the low 8 TOI bits MSB-first, i.e. the code really is
+# systematic in the direction assumed here.
 function _toi_codeword(t::Int)
     0 <= t < TOI_RANGE || error("TOI out of range: $t")
     msb = UInt64((t >> 8) & 1)
-    bch = _toi_lfsr51(UInt(t & 0xff))
+    bch = bch_lfsr_codeword(t & 0xff, TOI_BCH_DATA_LEN, TOI_BCH_REGISTER_WIDTH, TOI_BCH_TAP)
     # Each BCH output bit is XORed with the MSB before transmission (matches
     # PocketSDR's `((code+1)//2) ^ bit9` and IS-GPS-800G §3.2.3.2 wiring,
     # in which the MSB rides on top of the LFSR output).

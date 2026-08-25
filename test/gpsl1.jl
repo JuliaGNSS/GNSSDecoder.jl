@@ -95,12 +95,12 @@ end
 
     e_values = zeros(31);
     e_values[25] = 0.006249904632568359
-    t_oa_values = fill(507904, 31)
+    t_0a_values = fill(507904, 31)
     δi_values = fill(0.017455023574651885, 31);
     δi_values[25] = 0.12939966841558787
     Ω_dot_values = zeros(31);
     Ω_dot_values[25] = 3.141616575226232e-7
-    sv_healths = fill("00000000", 31)
+    sv_healths = fill(0, 31)
     sqrt_A_values = fill(5153.70068359375, 31)
     Ω_0_values = [
         0.9309151162826294,
@@ -246,7 +246,7 @@ end
         [
             GNSSDecoder.GPSL1CAAlmanac(;
                 e = e_values[prn],
-                t_oa = t_oa_values[prn],
+                t_0a = t_0a_values[prn],
                 δi = δi_values[prn],
                 Ω_dot = Ω_dot_values[prn],
                 sv_health = sv_healths[prn],
@@ -267,18 +267,18 @@ end
         anti_spoof_flag = false,
         # Rebased to preamble_length at every data promotion (see promote_data)
         num_bits_after_valid_syncro_sequence_after_last_TOW = 8,
-        trans_week = 58,
-        codeonl2 = 1,
-        ura = 2.0,
-        sv_health = "000000",
-        IODC = "0000000001",
-        l2pcode = false,
+        WN = 58,
+        code_on_L2 = 1,
+        URA_index = 0,
+        sv_health = 0,
+        IODC = 1,
+        L2_P_data_flag = false,
         T_GD = 9.313225746154785e-10,
         t_0c = 266400,
         a_f2 = 2.9976021664879227e-15,
         a_f1 = 1.0431904229335487e-9,
         a_f0 = 8.355360478162766e-6,
-        IODE_Sub_2 = "00000001",
+        IODE_Sub_2 = 1,
         C_rs = 6,
         Δn = 1.1702987476403108e-8,
         M_0 = 0.7425089733705321,
@@ -296,7 +296,7 @@ end
         C_rc = 5,
         ω = -1.2294114827458582,
         Ω_dot = 3.1415915741848384e-7,
-        IODE_Sub_3 = "00000001",
+        IODE_Sub_3 = 1,
         i_dot = 3.142988060925545e-10,
         α_0 = 4.6566128730773926e-9,
         α_1 = 1.4901161193847656e-8,
@@ -306,19 +306,19 @@ end
         β_1 = 65536.0,
         β_2 = -65536.0,
         β_3 = -393216.0,
-        A_0 = 0.00024970434606075287,
-        A_1 = 1.000000082740371e-9,
+        A_0UTC = 0.00024970434606075287,
+        A_1UTC = 1.000000082740371e-9,
         Δt_LS = 18,
-        t_ot = 507904,
-        WN_t = 58,
+        t_0t = 507904,
+        WN_0t = 58,
         WN_LSF = 56,
         DN = 2,
         Δt_LSF = 18,
         sv_config = [4*ones(31); 1],
-        sv_health_sf4_25 = [repeat(["000000"], 7); "111111"],
-        almanac = test_almanac_data,
-        sv_health_sf5_25 = repeat(["000000"], 24),
-        t_oa = 507904,
+        sv_health_sf4_25 = [fill(0, 7); 63],
+        almanacs = test_almanac_data,
+        sv_health_sf5_25 = fill(0, 24),
+        t_0a = 507904,
         WN_a = 58,
     )
 
@@ -498,7 +498,7 @@ end
 
     # Edge case: Different IODC added to non-empty cache
     @testset "different IODC added to existing cache" begin
-        existing_data = GNSSDecoder.GPSL1CAData(base_data; IODC = "1111111111")
+        existing_data = GNSSDecoder.GPSL1CAData(base_data; IODC = 1023)
         new_data = base_data  # has different IODC
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(
             state;
@@ -512,14 +512,14 @@ end
         @test result.data == existing_data  # data NOT changed (still high score data)
         @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
         @test length(result.cache.old_data) == 2  # both entries kept
-        @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
+        @test result.cache.old_data[1].data.IODC == 1023  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry added
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(result; raw_data = new_data)
         result = GNSSDecoder.confirm_data(state_diff_iodc)
         @test result.data == new_data  # new IODC data is used now
         @test result.raw_data == new_data  # raw_data is not reset
         @test length(result.cache.old_data) == 2  # both entries kept
-        @test result.cache.old_data[1].data.IODC == "1111111111"  # old entry preserved
+        @test result.cache.old_data[1].data.IODC == 1023  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry preserved
     end
 end
@@ -693,10 +693,10 @@ end
     # struct `==` would be reference equality and two decoders fed the same
     # subframes would never compare equal once an almanac page had been decoded.
     mk(M_0) = GNSSDecoder.GPSL1CAData(;
-        IODC = "0000101010",
+        IODC = 42,
         sv_config = Int64[1, 2, 3],
-        sv_health_sf4_25 = ["000000", "000001"],
-        almanac = Dictionary(Int64[7], [GNSSDecoder.GPSL1CAAlmanac(; M_0)]),
+        sv_health_sf4_25 = [0, 1],
+        almanacs = Dictionary(Int64[7], [GNSSDecoder.GPSL1CAAlmanac(; M_0)]),
     )
     @test mk(0.1) == mk(0.1)
     @test mk(0.1) != mk(0.2)

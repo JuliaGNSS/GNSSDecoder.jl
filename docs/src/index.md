@@ -42,7 +42,7 @@ julia> state.prn  # Access PRN
 1
 
 julia> typeof(state)
-GNSSDecoderState{GNSSDecoder.GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
+GNSSDecoderState{GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
 ```
 
 Process incoming soft symbols and check the decoder state:
@@ -144,9 +144,9 @@ message = state.data.message
 # ...or the accumulated latest of each content block, which is usually what a
 # correction consumer wants (HAS splits masks/orbits from clocks across messages)
 for correction in state.data.orbit_corrections.corrections
-    correction.gnss_id == 2 || continue          # 0 = GPS, 2 = Galileo
+    correction.GNSS_ID == 2 || continue          # 0 = GPS, 2 = Galileo
     isnothing(correction.δ_radial) && continue   # "data not available" sentinel
-    @show correction.svid, correction.IOD_ref, correction.δ_radial
+    @show correction.SVID, correction.IOD_ref, correction.δ_radial
 end
 ```
 
@@ -252,11 +252,15 @@ julia> GNSSDecoder.num_bits_buffered(state)
 ```
 
 The modernized BDS-3 signals B1C (B-CNAV1), B2a (B-CNAV2), and B2b (B-CNAV3)
-decode their ICDs' 64-ary LDPC codes via the exact binary-image parity
-matrices in `data/` (see `scripts/generate_beidou_alist.jl`); their LDPC
-belief-propagation stage is scale-sensitive, so feed confidence-weighted soft
-symbols on a roughly LLR-like scale (`≈ 2·r/σ²`) for best sensitivity — see
-[`decode`](@ref):
+are coded with non-binary LDPC codes over GF(2⁶). They are decoded here through
+the exact binary image of the ICD's parity-check matrix (`data/bcnv*.alist`, see
+`scripts/generate_beidou_alist.jl`) with binary belief propagation, which makes
+the code definition exact but the decoder weaker than a non-binary one: expect
+of the order of a dB less sensitivity than an FFT-QSPA decoder would give,
+visible as a raised frame-erasure rate at low C/N₀ rather than as bad data (a
+failed decode is dropped by the CRC gate). The belief-propagation stage is also
+scale-sensitive, so feed confidence-weighted soft symbols on a roughly LLR-like
+scale (`≈ 2·r/σ²`) for best sensitivity — see [`decode`](@ref):
 
 ```jldoctest b2a_example
 julia> using GNSSDecoder
@@ -323,8 +327,8 @@ After successful decoding, `state.data` contains:
 | Field | Description |
 |-------|-------------|
 | `TOW` | Time of Week (seconds) |
-| `trans_week` | Transmission week number |
-| `svhealth` | Satellite health status |
+| `WN` | Transmission week number (modulo 1024) |
+| `sv_health` | Raw 6-bit satellite health word (0 = healthy) |
 | `t_0e`, `t_0c` | Reference times for ephemeris and clock |
 | `e` | Eccentricity |
 | `sqrt_A` | Square root of semi-major axis |
@@ -343,10 +347,10 @@ Similar ephemeris and clock parameters are available for Galileo, plus:
 | Field | Description |
 |-------|-------------|
 | `WN` | Week number |
-| `signal_health_e1b` / `signal_health_e5b` | E1-B/C and E5b signal health status |
-| `data_validity_status_e1b` / `data_validity_status_e5b` | Data validity status per component |
-| `broadcast_group_delay_e1_e5a` | E1-E5a group delay |
-| `broadcast_group_delay_e1_e5b` | E1-E5b group delay |
+| `E1B_SHS` / `E5b_SHS` | E1-B/C and E5b signal health status |
+| `E1B_DVS` / `E5b_DVS` | Data validity status per component |
+| `BGD_E1_E5a` | E1-E5a group delay |
+| `BGD_E1_E5b` | E1-E5b group delay |
 | `almanacs` | Per-SV almanac dictionary (word types 7-10) |
 | `reduced_ced` | Reduced clock and ephemeris data (word type 16, E1-B only) |
 
@@ -373,9 +377,9 @@ CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
 |-------|-------------|
 | `toi`, `ITOW`, `WN` | Time of interval, interval time of week, week number |
 | `t_0e`, `ΔA`, `e`, `M_0`, `ω`, `Ω_0`, `i_0`, … | Clock and ephemeris (CED) parameters |
-| `α0..α3`, `β0..β3` | Klobuchar ionospheric coefficients (subframe-3 page 1) |
-| `A0_UTC`, `Δt_LS`, … | UTC parameters (page 1) |
-| `A0_GGTO`, `t_GGTO`, … | GPS/GNSS time offset and EOP (page 2) |
+| `α_0..α_3`, `β_0..β_3` | Klobuchar ionospheric coefficients (subframe-3 page 1) |
+| `A_0UTC`, `Δt_LS`, … | UTC parameters (page 1) |
+| `A_0GGTO`, `t_GGTO`, … | GPS/GNSS time offset and EOP (page 2) |
 | `reduced_almanacs`, `midi_almanacs` | Per-SV almanac dictionaries (pages 3/4) |
 | `differential_corrections` | Per-SV differential corrections (page 5) |
 | `text_message` | Broadcast text (page 6) |

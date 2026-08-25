@@ -47,13 +47,13 @@ struct LDPCScratch
 end
 
 """
-    LDPCScratch(alist_path; num_iterations = 50)
+    LDPCScratch(path; num_iterations = 50)
 
 Load a committed `.alist` parity-check matrix, build the decoder for it (see
 [`load_ldpc_decoder`](@ref)), and size the three buffers from its `N` and `K`.
 """
-function LDPCScratch(alist_path::AbstractString; num_iterations::Integer = 50)
-    decoder = load_ldpc_decoder(alist_path; num_iterations)
+function LDPCScratch(path::AbstractString; num_iterations::Integer = 50)
+    decoder = load_ldpc_decoder(path; num_iterations)
     LDPCScratch(
         decoder,
         Vector{Float32}(undef, decoder.N),
@@ -89,8 +89,8 @@ function ldpc_decode_word(scratch::LDPCScratch, symbols, ::Type{T}) where {T}
     # CRC-24Q over the whole info block (message bits + trailing 24-bit CRC) is
     # 0 iff the checksum matches; check on the bit vector before packing.
     crc24q(bits) == 0 || return nothing
-    # Pack MSB-first so bit 1 is the most-significant bit and bit `info_bits`
-    # the least-significant (right-aligned), matching `word_length = info_bits`.
+    # Pack MSB-first so bit 1 is the most-significant bit and the last bit the
+    # least-significant (right-aligned), matching `word_length = K`.
     word = T(0)
     @inbounds for b in bits
         word = (word << 1) | T(b ? 1 : 0)
@@ -99,7 +99,20 @@ function ldpc_decode_word(scratch::LDPCScratch, symbols, ::Type{T}) where {T}
 end
 
 """
-    load_ldpc_decoder(alist_path; num_iterations = 50) -> LDPCBPDecoder
+    alist_path(name) -> String
+
+Absolute path of a committed `.alist` parity-check matrix in `data/`, resolved
+relative to this file so it works from any working directory.
+
+Every consumer of a committed matrix is an LDPC cache — GPS L1C-D's two, BeiDou
+B1C's two, B2a's and B2b's — so the path lives here with the decoder they feed
+rather than being restated once per signal file, which is how it came to exist
+in four identical copies at two different directory depths.
+"""
+alist_path(name) = joinpath(@__DIR__, "..", "data", name)
+
+"""
+    load_ldpc_decoder(path; num_iterations = 50) -> LDPCBPDecoder
 
 Load a committed `.alist` parity-check matrix and build an Aff3ct flooding
 belief-propagation decoder for it. All the alist artefacts in `data/` lay the
@@ -108,8 +121,8 @@ alist loader derives its own info-bit positions by Gaussian elimination and
 does not generally pick the first K columns, so the ICD layout is forced
 before the decoder captures the positions.
 """
-function load_ldpc_decoder(alist_path::AbstractString; num_iterations::Integer = 50)
-    H = LDPCMatrix(String(alist_path))
+function load_ldpc_decoder(path::AbstractString; num_iterations::Integer = 50)
+    H = LDPCMatrix(String(path))
     H.info_bits_pos = collect(UInt32, 0:(H.K-1))
     LDPCBPDecoder(H; num_iterations = num_iterations)
 end

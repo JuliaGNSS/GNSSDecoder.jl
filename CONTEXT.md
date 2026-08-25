@@ -49,8 +49,9 @@ code; this file is for naming and meaning only.
   E1B (G1 = 0o171, G2 = 0o133, G2 inverted) but a 61×8 block interleaver; one
   page decodes to 238 information bits (page type + data + CRC). Unlike I/NAV,
   each page is a complete, independently CRC-protected word (no even/odd
-  stitching). Word types 1-4 carry clock/iono/health (WT1), ephemeris (WT2-3),
-  and GST-UTC/GGTO + Cic/Cis (WT4); word types 5-6 carry the almanac chain.
+  stitching). F/NAV numbers its units *page types*, not word types (the I/NAV
+  term): page types 1-4 carry clock/iono/health (PT1), ephemeris (PT2-3), and
+  GST-UTC/GGTO + Cic/Cis (PT4); page types 5-6 carry the almanac chain.
   F/NAV rides on the E5a-I (data) component, so `GNSSDecoderState(::GalileoE5aI,
   prn)` maps here (E5a-Q is the dataless pilot); `GalileoE5aDecoderState(prn)` is
   the equivalent direct constructor.
@@ -109,7 +110,78 @@ code; this file is for naming and meaning only.
   64-ary-LDPC(162,81)-coded 486-bit message (MesType, SOW, 436 data bits,
   CRC-24Q). Message types 10 (complete ephemeris), 30 (complete clock set +
   iono/UTC), 40 (BGTO + almanacs). B-CNAV3 broadcasts no IODs — every message
-  is atomic behind its CRC.
+  is atomic behind its CRC. B-CNAV3 is the MEO/IGSO message; the BDS-3 GEO
+  satellites put the PPP-B2b service (message types 1-7, its own ICD) in the
+  same framing on the same component, which this decoder frames and CRC-checks
+  but does not parse — the same treatment as the legacy D2 differential
+  subframes.
+
+### The B-CNAV LDPC codes are decoded through their binary image
+
+B1C, B2a and B2b are coded with *non-binary* LDPC codes over GF(2⁶) (the ICDs'
+LDPC(200,100), (88,44), (96,48) and (162,81)). This package decodes them with
+the same binary belief-propagation machinery every other LDPC signal here uses,
+applied to the **binary image** of the ICD's own parity-check matrix: each
+non-zero GF(2⁶) entry expands into the 6×6 GF(2) matrix of "multiply by that
+element", so a bit sequence is a codeword of the image iff its symbol sequence
+is a codeword of the non-binary code (`scripts/generate_beidou_alist.jl` builds
+`data/bcnv*.alist` this way and cross-checks each against an independent
+non-binary encoder). The code definition is therefore exact — no approximation
+enters what counts as a valid frame.
+
+The **decoder** is weaker, though, and by an amount this package has not
+measured. Binary BP over the image is strictly worse than non-binary BP over
+GF(2⁶): the 6×6 expansion plants length-4 cycles densely through the Tanner
+graph, and the constraint binding a symbol's six bits together is discarded.
+Both effects bite hardest for short, high-order codes, which is exactly what
+these are, so expect a loss on the order of a dB rather than a fraction of one
+— showing up as a raised frame-erasure rate at low C/N₀, since the CRC gate
+turns a failed decode into a dropped frame rather than into bad data. Quantifying
+it needs a reference non-binary (FFT-QSPA) decoder to compare against, which
+this repository does not have.
+
+## Field naming
+
+Two rules, in this order:
+
+ 1. **A quantity that is the same across signals gets one package-wide name**,
+    and the field documentation names the ICD symbol wherever that name departs
+    from it. One spelling per quantity is what lets a consumer read a clock, an
+    ephemeris or a UTC offset out of any decoder here without dispatching on the
+    constellation; a per-ICD spelling would push a naming difference into every
+    downstream reader as a real branch. `PositionVelocityTime.jl` evaluates the
+    clock polynomial as `data.a_f0 + data.a_f1 * (t - data.t_0c) + …` for every
+    decoder it supports, and that one expression only stays one expression while
+    the containers agree.
+ 2. **A quantity that genuinely differs keeps its ICD name**, even where two
+    ICDs' names then look alike or unalike. `SOW` (BDT seconds of week) is not
+    `TOW`; `ΔUT1` (BDS, UT1 − UTC) is not `ΔUT_GPS` (GPS, UT1 − GPS time);
+    `T_GD1`, `T_GD_B2ap` and `ISC_L5I5` are three different group delays.
+
+The quantities where rule 1 bites — the ICDs disagree, so some ICD is departed
+from and the field lists say which:
+
+| Quantity | ICD spellings | Package |
+| --- | --- | --- |
+| SV clock polynomial | GPS/Galileo `a_f0`…, BDS `a_0`… (but BDS midi almanac `af0`) | `a_f0`, `a_f1`, `a_f2` |
+| Clock reference epoch | GPS/BDS `t_oc`, Galileo `t_0c` | `t_0c` |
+| Ephemeris reference epoch | GPS/BDS `t_oe`, Galileo `t_0e` | `t_0e` |
+| Almanac reference epoch | GPS/BDS `t_oa`, Galileo `t_0a` | `t_0a` |
+| Data prediction epoch | GPS `t_op`, BDS `t_op` (B2b figure prints it inside SISAIoc) | `t_op` |
+| UTC polynomial | GPS `A0`/`A0-n`, Galileo `A0`, BDS `A_0UTC` | `A_0UTC`, `A_1UTC`, `A_2UTC` |
+| UTC reference epoch | GPS/BDS `t_ot`, Galileo `t_0t` | `t_0t` |
+| UTC reference week | GPS `WN_t`/`WN_ot`, BDS `WN_ot`, Galileo `WN_0t` | `WN_0t` |
+| GNSS-GNSS offset polynomial | GPS `A0GGTO`…, BDS `A_0BGTO`… | `A_0GGTO`…, `A_0BGTO`… |
+| GNSS-offset target id | GPS CNAV `GNSS ID`, GPS L1C `GGTO ID`, BDS `GNSS ID` | `GNSS_ID`; `GGTO_ID` on L1C-D only, which IRN-IS-800J-003 renamed |
+| Week number | GPS LNAV `WN` (was `trans_week` here) | `WN` |
+| Satellite identifier | Galileo `SVID`, GPS/BDS `PRN` | `SVID` in Galileo containers, `PRN_a` in almanac records |
+| Message type of the last frame | BDS `MesType`, GPS `Message type ID` | `last_message_type` |
+| Per-satellite almanac store | — (package-internal) | `almanacs` |
+| BDGIM ionosphere | BDS `α_1`…`α_9` | `α_bdgim_1`…`α_bdgim_9` |
+
+The last row is rule 2 wearing rule 1's clothes: BDS writes `α` for BDGIM and
+GPS writes `α` for Klobuchar, so following both ICDs literally would give one
+name to two different models. The qualifier keeps them apart.
 
 Where the whole set is the ICD's own spelling and no note is needed: the
 Keplerian elements and harmonic corrections (`M_0`, `sqrt_A`, `e`, `Ω_0`, `i_0`,
@@ -195,7 +267,10 @@ The same word means different things in different ICDs. Within this codebase:
   broadcast unit (3 s / 1 s). BeiDou B1I/B3I: five subframes = 1500 bits (the
   ICD term; the decoder unit is the subframe).
 - **page** — Galileo I/NAV unit (1 sec, 250 channel symbols). Each page has
-  even and odd halves; a *word* spans two consecutive pages. For Galileo E6-B
+  even and odd halves; a *word* spans two consecutive pages, and I/NAV types its
+  content by *word type*. Galileo F/NAV inverts the relationship: a page is the
+  complete CRC-protected unit and the ICD types it by *page type* (Tables 30-36),
+  never "word type". For Galileo E6-B
   C/NAV: one 1000-symbol (1 s) broadcast unit — and, separately, one 424-bit
   slice of a HAS *message*, either non-encoded (`M_i`) or RS-encoded (`C_i`);
   the HAS Page ID names the latter. For BeiDou
