@@ -547,12 +547,7 @@ end
 
 # The default struct `==` falls back to `===` for the mutable `Dictionary`
 # fields; compare field-by-field (mirrors `GPSL1C_DData`).
-function Base.:(==)(a::BeiDouB1CData, b::BeiDouB1CData)
-    for f in fieldnames(BeiDouB1CData)
-        getfield(a, f) == getfield(b, f) || return false
-    end
-    return true
-end
+Base.:(==)(a::BeiDouB1CData, b::BeiDouB1CData) = fields_equal(a, b)
 
 """
 $(TYPEDEF)

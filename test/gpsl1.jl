@@ -687,3 +687,45 @@ end
     @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
 end
+
+@testset "GPS L1 C/A data equality is structural" begin
+    # `GPSL1CAData` carries `Vector` and `Dictionary` fields, so the default
+    # struct `==` would be reference equality and two decoders fed the same
+    # subframes would never compare equal once an almanac page had been decoded.
+    mk(M_0) = GNSSDecoder.GPSL1CAData(;
+        IODC = "0000101010",
+        sv_config = Int64[1, 2, 3],
+        sv_health_sf4_25 = ["000000", "000001"],
+        almanac = Dictionary(Int64[7], [GNSSDecoder.GPSL1CAAlmanac(; M_0)]),
+    )
+    @test mk(0.1) == mk(0.1)
+    @test mk(0.1) != mk(0.2)
+    @test GNSSDecoder.GPSL1CAData() == GNSSDecoder.GPSL1CAData()
+
+    # The voting wrapper needs its own method rather than inheriting that one:
+    # Julia's default struct `==` is `===`, which compares fields with `===`
+    # instead of dispatching to their `==`. Without it the cache's `old_data`
+    # vector — and so the whole state — stays reference-compared.
+    voted(M_0) = [GNSSDecoder.VotedGPSL1CAData(3, mk(M_0))]
+    @test voted(0.1) == voted(0.1)
+    @test voted(0.1) != voted(0.2)
+    @test GNSSDecoder.VotedGPSL1CAData(4, mk(0.1)) !=
+          GNSSDecoder.VotedGPSL1CAData(3, mk(0.1))
+    @test GNSSDecoder.GPSL1CACache(voted(0.1)) == GNSSDecoder.GPSL1CACache(voted(0.1))
+    @test GNSSDecoder.GPSL1CACache(voted(0.1)) != GNSSDecoder.GPSL1CACache(voted(0.2))
+
+    # ...so that it reaches the decoder state, which compares field by field.
+    twin(M_0) = GNSSDecoderState(
+        GPSL1CADecoderState(1);
+        raw_data = mk(M_0),
+        data = mk(M_0),
+        cache = GNSSDecoder.GPSL1CACache(voted(M_0)),
+    )
+    @test twin(0.1) == twin(0.1)
+    @test twin(0.1) != twin(0.2)
+
+    # Subframe voting is deliberately *not* this comparison: `compare_data`
+    # weighs the ephemeris fields the vote is about, and the almanac is not one
+    # of them, so these two still count as the same candidate.
+    @test GNSSDecoder.compare_data(mk(0.1), mk(0.2))
+end

@@ -614,13 +614,8 @@ end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `Dictionary` fields even when their contents match. Compare
-# field-by-field (mirrors `GalileoE1BData`).
-function Base.:(==)(a::GPSL1C_DData, b::GPSL1C_DData)
-    for f in fieldnames(GPSL1C_DData)
-        getfield(a, f) == getfield(b, f) || return false
-    end
-    return true
-end
+# field-by-field (mirrors `GalileoINAVData`).
+Base.:(==)(a::GPSL1C_DData, b::GPSL1C_DData) = fields_equal(a, b)
 
 """
 $(TYPEDEF)

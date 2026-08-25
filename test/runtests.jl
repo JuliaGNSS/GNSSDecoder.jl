@@ -41,8 +41,15 @@ end
     include("cnav_test_utils.jl")
     include("gps_l5i.jl")
     include("gps_l2cm.jl")
+    # Shared Galileo transmit-chain helpers (the K=7 NSC encoder every Galileo
+    # data channel uses), consumed by the E5a and E6-B tests.
+    include("galileo_test_utils.jl")
     include("galileo_e1b.jl")
+    include("galileo_e5b.jl")
     include("galileo_e5a.jl")
+    # Galileo HAS reference vectors transcribed from the HAS SIS ICD annexes.
+    include("has_test_vectors.jl")
+    include("galileo_e6b.jl")
     # BeiDou B1I/B3I legacy NAV transmit-chain helpers, consumed by both tests.
     include("dnav_test_utils.jl")
     include("beidou_b1i.jl")
@@ -53,6 +60,7 @@ end
 
     # v2 shared-utility deep-module tests (issue #36)
     include("crc.jl")
+    include("reed_solomon.jl")
     include("bch_toi.jl")
     include("deinterleave.jl")
     include("alist.jl")

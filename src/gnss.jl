@@ -22,17 +22,38 @@ abstract type AbstractGPSData <: AbstractGNSSData end
     AbstractGalileoData <: AbstractGNSSData
 
 Abstract supertype for the decoded navigation data of a signal transmitted by
-the Galileo constellation, e.g. `GalileoE1BData`, `GalileoE5aData`.
+the Galileo constellation, e.g. `GalileoINAVData` (E1-B, E5b-I), `GalileoE5aData`,
+`GalileoE6BData`.
 
-The Galileo counterpart to [`AbstractGPSData`](@ref). It carries the facts every
-Galileo signal's data shares: `is_ephemeris_decoded` and
-`is_clock_correction_decoded` check the same orbital and clock fields for I/NAV
-(E1B) and F/NAV (E5a), so they are defined once on this supertype (see
-`src/galileo/galileo.jl`) instead of once per signal. The health-status and
-positioning-readiness checks genuinely differ per signal and stay on the
-concrete data types.
+The Galileo counterpart to [`AbstractGPSData`](@ref): it carries the facts every
+Galileo signal's data shares, whatever that signal broadcasts. The
+health-status and positioning-readiness checks genuinely differ per signal and
+stay on the concrete data types.
+
+Note that "every Galileo signal" is not "every Galileo signal carries an
+ephemeris" — `GalileoE6BData` holds HAS corrections *to* another signal's
+navigation data and has no orbital fields at all. The ephemeris and clock
+completeness checks therefore live one level down, on
+[`AbstractGalileoEphemerisData`](@ref).
 """
 abstract type AbstractGalileoData <: AbstractGNSSData end
+
+"""
+    AbstractGalileoEphemerisData <: AbstractGalileoData
+
+Abstract supertype for the Galileo signals whose navigation message carries an
+ephemeris and clock of its own: `GalileoINAVData` (E1-B, E5b-I) and
+`GalileoE5aData` (E5a-I).
+
+This exists so `is_ephemeris_decoded` and `is_clock_correction_decoded` — which
+check the same orbital and clock fields for I/NAV and F/NAV, and so are stated
+once (see `src/galileo/galileo.jl`) — are dispatched on a type that actually has
+those fields. Declaring them on `AbstractGalileoData` instead would put a method
+on the supertype that raises a `FieldError` for `GalileoE6BData`, whose C/NAV
+message broadcasts corrections rather than an ephemeris; a future
+corrections-only or almanac-only Galileo signal would inherit the same trap.
+"""
+abstract type AbstractGalileoEphemerisData <: AbstractGalileoData end
 
 """
     AbstractBeiDouData <: AbstractGNSSData
@@ -92,37 +113,54 @@ it is computed as a local value at sync time and threaded through the sync
 path (see `pack_buffer` / `try_sync`).
 
 # Type Parameters
-- `D<:AbstractGNSSData`: The data type holding decoded navigation message fields
-- `C<:AbstractGNSSConstants`: Constants specific to the GNSS system (e.g., preamble, timing)
-- `CA<:AbstractGNSSCache`: Cache for intermediate decoding state (carries the soft-symbol buffer)
+
+  - `D<:AbstractGNSSData`: The data type holding decoded navigation message fields
+  - `C<:AbstractGNSSConstants`: Constants specific to the GNSS system (e.g., preamble, timing)
+  - `CA<:AbstractGNSSCache`: Cache for intermediate decoding state (carries the soft-symbol buffer)
 
 # Fields
+
 $(TYPEDFIELDS)
 
 # See Also
-- [`GPSL1CADecoderState`](@ref): Constructor for GPS L1 C/A decoder state
-- [`GalileoE1BDecoderState`](@ref): Constructor for Galileo E1B decoder state
-- [`decode`](@ref): Main function to decode soft symbols using this state
-- [`reset_decoder_state`](@ref): Reset decoder state after signal loss
+
+  - [`GPSL1CADecoderState`](@ref): Constructor for GPS L1 C/A decoder state
+  - [`GalileoE1BDecoderState`](@ref): Constructor for Galileo E1B decoder state
+  - [`decode`](@ref): Main function to decode soft symbols using this state
+  - [`reset_decoder_state`](@ref): Reset decoder state after signal loss
 """
 Base.@kwdef struct GNSSDecoderState{
     D<:AbstractGNSSData,
     C<:AbstractGNSSConstants,
     CA<:AbstractGNSSCache,
 }
-    "Pseudo-Random Noise code identifier for the satellite"
+    """
+    Pseudo-Random Noise code identifier for the satellite
+    """
     prn::Int
-    "Partially decoded navigation data (not yet validated)"
+    """
+    Partially decoded navigation data (not yet validated)
+    """
     raw_data::D
-    "Validated navigation data ready for use"
+    """
+    Validated navigation data ready for use
+    """
     data::D
-    "System-specific constants (preamble, timing parameters)"
+    """
+    System-specific constants (preamble, timing parameters)
+    """
     constants::C
-    "Cache for intermediate decoding state (holds the soft-symbol `CircularDeque{Float32}`)"
+    """
+    Cache for intermediate decoding state (holds the soft-symbol `CircularDeque{Float32}`)
+    """
     cache::CA
-    "Number of symbols received after the last valid synchronization sequence, or `nothing` if not yet synchronized"
+    """
+    Number of symbols received after the last valid synchronization sequence, or `nothing` if not yet synchronized
+    """
     num_bits_after_valid_syncro_sequence::Union{Nothing,Int} = 0
-    "Whether the signal phase is inverted by 180 degrees"
+    """
+    Whether the signal phase is inverted by 180 degrees
+    """
     is_shifted_by_180_degrees::Bool = false
 end
 
@@ -147,11 +185,25 @@ end
 
 # The default `==` for structs containing fields with mutable types (like the
 # `CircularDeque{Float32}` soft-symbol buffer or the `Vector{GalileoAlmanac}`
-# inside `GalileoE1BData`) falls back to `===`. Compare field-by-field so that
+# inside `GalileoINAVData`) falls back to `===`. Compare field-by-field so that
 # two states with equal-but-not-identical contents are considered equal.
 function Base.:(==)(a::GNSSDecoderState, b::GNSSDecoderState)
     typeof(a) === typeof(b) || return false
-    for f in fieldnames(typeof(a))
+    return fields_equal(a, b)
+end
+
+"""
+    fields_equal(a::T, b::T) -> Bool
+
+Internal helper: structural equality field by field.
+
+Julia's default `==` on a struct falls back to `===`, which is *reference*
+equality for any field of mutable type — a `Vector`, a `Dictionary`, a
+`CircularDeque`. Every container in this package that holds one therefore has to
+define `==` explicitly, and this is that definition, written once.
+"""
+function fields_equal(a::T, b::T) where {T}
+    for f in fieldnames(T)
         getfield(a, f) == getfield(b, f) || return false
     end
     return true
@@ -168,7 +220,7 @@ flagged by Aqua). Per-signal caches' `==` calls this directly.
 function deques_equal(a::CircularDeque{T}, b::CircularDeque{T}) where {T}
     length(a) == length(b) || return false
     capacity(a) == capacity(b) || return false
-    for i in 1:length(a)
+    for i = 1:length(a)
         a[i] == b[i] || return false
     end
     return true
@@ -302,10 +354,14 @@ for accessor in (
         GNSSSignals.$accessor(get_signal_type(state))
 end
 
-"Soft-symbol buffer accessor — the per-signal cache stores it as `soft_buffer`."
+"""
+Soft-symbol buffer accessor — the per-signal cache stores it as `soft_buffer`.
+"""
 soft_buffer(state::GNSSDecoderState) = state.cache.soft_buffer
 
-"Number of soft symbols currently buffered."
+"""
+Number of soft symbols currently buffered.
+"""
 num_bits_buffered(state::GNSSDecoderState) = length(soft_buffer(state))
 
 """
@@ -344,9 +400,13 @@ Hard-slice the leading `total_bits` of `soft_buffer` (oldest first) into a
 `T<:Unsigned` packed-bit buffer, MSB = oldest bit. Mirrors how the legacy
 `push_bit` shifted bits into `raw_buffer`.
 """
-function pack_soft_buffer(::Type{T}, deque::CircularDeque{Float32}, total_bits::Int) where {T<:Unsigned}
+function pack_soft_buffer(
+    ::Type{T},
+    deque::CircularDeque{Float32},
+    total_bits::Int,
+) where {T<:Unsigned}
     word = T(0)
-    @inbounds for i in 1:total_bits
+    @inbounds for i = 1:total_bits
         bit = hard_slice(deque[i]) ? T(1) : T(0)
         word = (word << 1) | bit
     end
@@ -420,10 +480,87 @@ either both upright OR both inverted (180-degree polarity ambiguity).
 function find_preamble(buffer, constants::AbstractGNSSConstants)
     mask = calc_preamble_mask(constants)
     buffer & mask == constants.preamble &&
-        (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
+    (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
         buffer & mask == ~constants.preamble & mask &&
-            (buffer >> constants.syncro_sequence_length) & mask ==
-            ~constants.preamble & mask
+        (buffer >> constants.syncro_sequence_length) & mask == ~constants.preamble & mask
+end
+
+"""
+    find_preamble_in_deque(deque, preamble, preamble_length, syncro_sequence_length)
+        -> Union{Nothing,Bool}
+
+Soft-domain counterpart of [`find_preamble`](@ref): match the preamble at both
+ends of the candidate window by slicing the soft-symbol deque directly, rather
+than hard-slicing the whole window into a packed integer first.
+
+Returns `nothing` when there is no sync, and otherwise the resolved polarity —
+`true` when both ends carry the *inverted* preamble. The rule is `find_preamble`'s:
+both ends must match, and in a common polarity, which is what resolves the
+180-degree carrier ambiguity.
+
+This is the form every FEC-bearing decoder wants. The default `pack_buffer` path
+would shift a window-wide integer once per symbol to expose a preamble sitting at
+two known offsets, and those decoders consume their payload as soft symbols
+anyway, so the packed window is never needed at all — hence no
+`packed_buffer_type` method for Galileo I/NAV, E5a or E6-B, nor for BeiDou B2b.
+Measured per `try_sync` call on a full window: 195 ns → 18 ns for I/NAV's
+260-symbol window and 521 ns → 18 ns for E5a's 512-symbol one, which is 0.26 →
+0.09 and 0.57 → 0.07 µs per symbol end to end. For the two 1000 sps decoders it
+is a 1016-bit shift per symbol that never happens at all.
+
+The head is tested before the tail is packed: on noise the head matches with
+probability `2^-(preamble_length-1)`, so packing the tail first is wasted work on
+essentially every symbol.
+
+!!! note "Pass the lengths, not the state"
+
+    This runs once per *symbol* — the hottest path in the package. The two
+    lengths are taken as arguments rather than read from `state.constants` so
+    that callers can hand over their own module-level constants: those fold at
+    compile time and let `pack_soft_bits` unroll, which reading the equivalent
+    struct fields does not. Measured at 1000 sps, sourcing them from `constants`
+    instead costs about 14 % of the whole per-symbol budget.
+"""
+@inline function find_preamble_in_deque(
+    deque::CircularDeque{Float32},
+    preamble::Unsigned,
+    preamble_length::Int,
+    syncro_sequence_length::Int,
+)
+    pattern = UInt64(preamble)
+    inverted = pattern ⊻ ((UInt64(1) << preamble_length) - UInt64(1))
+    head = pack_soft_bits(deque, 1, preamble_length)
+    upright = head == pattern
+    (upright || head == inverted) || return nothing
+    tail = pack_soft_bits(deque, syncro_sequence_length + 1, preamble_length)
+    tail == (upright ? pattern : inverted) || return nothing
+    return !upright
+end
+
+"""
+    copy_soft_window!(dst, deque, offset, num_symbols, polarity_flipped) -> dst
+
+Copy `num_symbols` soft symbols out of `deque`, starting at 1-based
+`offset + 1`, resolving the 180-degree polarity as it goes: an inverted symbol
+stream is a negated one, so the LLR magnitudes (and hence the confidences the
+FEC decoders weigh) survive unchanged.
+
+`dst` is the caller's long-lived scratch buffer from its cache, so the copy does
+not allocate. Every FEC-bearing decoder here needs exactly this step between
+"sync found" and "hand the payload to the decoder".
+"""
+function copy_soft_window!(
+    dst::AbstractVector{Float32},
+    deque::CircularDeque{Float32},
+    offset::Int,
+    num_symbols::Int,
+    polarity_flipped::Bool,
+)
+    sign = polarity_flipped ? -1.0f0 : 1.0f0
+    @inbounds for i = 1:num_symbols
+        dst[i] = sign * deque[offset+i]
+    end
+    return dst
 end
 
 """
@@ -461,7 +598,7 @@ would `popfirst!` an empty `CircularDeque` and throw.
 function drain_after_sync!(state::GNSSDecoderState)
     deque = soft_buffer(state)
     n_drop = min(state.constants.syncro_sequence_length, length(deque))
-    for _ in 1:n_drop
+    for _ = 1:n_drop
         popfirst!(deque)
     end
     state
@@ -482,49 +619,54 @@ handles both normal and 180-degree phase-shifted signals automatically.
 carries the bit decision and the magnitude carries confidence (standard LLR
 convention):
 
-- **positive ⇒ bit 0**, **negative ⇒ bit 1** — but treat this as a *convention*,
-  not a hard input requirement. The absolute polarity of a Costas-tracked signal
-  is inherently 180°-ambiguous, so the decoder does not depend on it: it matches
-  the preamble in either polarity and flips internally (recording the result in
-  `is_shifted_by_180_degrees`). Feeding the opposite sign decodes the same data;
-  only the reported polarity flag differs. (Note: `Tracking.jl`'s
-  `get_soft_bits` happens to use the opposite sign — positive ⇒ bit 1 — which is
-  harmless for exactly this reason.)
-- magnitude ⇒ confidence. **No normalization is required; values need not lie in
-  `[-1, 1]`.** GPS L1 C/A (hard-slice + parity) and Galileo E1B (Viterbi, whose
-  ML path is invariant to a global scale) use the sign and are indifferent to
-  the magnitude scale. The LDPC decodes (GPS L1C-D and the BeiDou B-CNAV
-  family: B1C, B2a, B2b) are flooding sum-product, which *is* scale-sensitive,
-  so there the magnitudes should be confidence-weighted on a roughly LLR-like
-  scale (`≈ 2·r/σ²`) for best performance at marginal SNR — but still need not
-  be normalized to a fixed range.
+  - **positive ⇒ bit 0**, **negative ⇒ bit 1** — but treat this as a *convention*,
+    not a hard input requirement. The absolute polarity of a Costas-tracked signal
+    is inherently 180°-ambiguous, so the decoder does not depend on it: it matches
+    the preamble in either polarity and flips internally (recording the result in
+    `is_shifted_by_180_degrees`). Feeding the opposite sign decodes the same data;
+    only the reported polarity flag differs. (Note: `Tracking.jl`'s
+    `get_soft_bits` happens to use the opposite sign — positive ⇒ bit 1 — which is
+    harmless for exactly this reason.)
+  - magnitude ⇒ confidence. **No normalization is required; values need not lie in
+    `[-1, 1]`.** GPS L1 C/A (hard-slice + parity) and Galileo E1B (Viterbi, whose
+    ML path is invariant to a global scale) use the sign and are indifferent to
+    the magnitude scale. The LDPC decodes (GPS L1C-D and the BeiDou B-CNAV
+    family: B1C, B2a, B2b) are flooding sum-product, which *is* scale-sensitive,
+    so there the magnitudes should be confidence-weighted on a roughly LLR-like
+    scale (`≈ 2·r/σ²`) for best performance at marginal SNR — but still need not
+    be normalized to a fixed range.
 
 Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
 amplitude-weighted soft bits) for every signal. See `CONTEXT.md` for the full
 glossary.
 
 # Arguments
-- `state::GNSSDecoderState`: Current decoder state
-- `soft_symbols::AbstractVector{<:Real}`: Soft symbols to consume, oldest first
-- `num_symbols::Int`: Number of leading entries of `soft_symbols` to process
+
+  - `state::GNSSDecoderState`: Current decoder state
+  - `soft_symbols::AbstractVector{<:Real}`: Soft symbols to consume, oldest first
+  - `num_symbols::Int`: Number of leading entries of `soft_symbols` to process
 
 # Keywords
-- `decode_once::Bool=false`: If `true`, stops once all required positioning
-  data has been validated (subframes 1-3 for GPS L1 C/A; word types 1-5 for
-  Galileo E1B)
+
+  - `decode_once::Bool=false`: If `true`, stops once all required positioning
+    data has been validated (subframes 1-3 for GPS L1 C/A; word types 1-5 for
+    Galileo E1B)
 
 # Returns
-- `GNSSDecoderState`: Updated decoder state with newly decoded data
+
+  - `GNSSDecoderState`: Updated decoder state with newly decoded data
 
 # Example
+
 ```julia
 state = GPSL1CADecoderState(1)            # PRN 1
 state = decode(state, Float32[+1, -1, ...], 8)
 ```
 
 # See Also
-- [`GNSSDecoderState`](@ref): The state structure being updated
-- [`is_sat_healthy`](@ref): Check satellite health after decoding
+
+  - [`GNSSDecoderState`](@ref): The state structure being updated
+  - [`is_sat_healthy`](@ref): Check satellite health after decoding
 """
 function decode(
     state::GNSSDecoderState,
@@ -534,7 +676,7 @@ function decode(
 )
     num_symbols <= length(soft_symbols) ||
         throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
-    for i in 1:num_symbols
+    for i = 1:num_symbols
         sym = soft_symbols[i]
         state = push_soft_symbol!(state, sym)
         if !isnothing(state.num_bits_after_valid_syncro_sequence)
@@ -560,18 +702,28 @@ function decode(
     return state
 end
 
-# ---- Shared GPS decoder primitives ------------------------------------------
+# ---- Shared decoder primitives ----------------------------------------------
 #
-# Signal-agnostic primitives used by more than one GPS signal decoder. They
-# live here (a shared file included before every signal) rather than in a
-# per-signal file so that no signal decoder has to be included after another
-# just to borrow them.
+# Signal-agnostic primitives used by more than one signal decoder. They live
+# here (a shared file included before every signal) rather than in a per-signal
+# file so that no signal decoder has to be included after another just to borrow
+# them.
 
-# Packed-word integer type shared across the GPS decoders: a GPS L1 C/A
-# subframe, a GPS L1C-D subframe, and a GPS CNAV message (GPS L5I / L2C) each
-# pack into a single `UInt320` — 300 data bits plus up to 8 trailing sync bits.
-# `BitIntegers.@define_integers` also defines the signed companion `Int320`.
+# Packed-word integer types shared across signal decoders. `BitIntegers` widths
+# are global once defined, so the ones more than one constellation reaches for
+# are stated here rather than in whichever signal file happened to need them
+# first — otherwise the include order silently becomes load-bearing.
+#
+#   - `UInt320`: a GPS L1 C/A subframe, a GPS L1C-D subframe, a GPS CNAV message
+#     (L5I / L2C) and a BeiDou D1/D2 subframe — 300 data bits plus up to 8
+#     trailing sync bits.
+#   - `UInt512`: the 486-bit information word of a Galileo E6-B C/NAV page and
+#     of a BeiDou B2b message.
+#
+# `BitIntegers.@define_integers` also defines the signed companions `Int320` and
+# `Int512`.
 BitIntegers.@define_integers 320
+BitIntegers.@define_integers 512
 
 """
 Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.

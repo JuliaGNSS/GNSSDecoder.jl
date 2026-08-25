@@ -3,7 +3,8 @@
     # forwarded accessor must agree with what GNSSSignals reports for that
     # signal. The pairs below are the whole mapping; the data-bearing component
     # is the one named, since that is what carries the navigation message
-    # (`GPSL2CM` not `GPSL2CL`, `GalileoE5aI` not `GalileoE5aQ`, `GPSL1C_D` not
+    # (`GPSL2CM` not `GPSL2CL`, `GalileoE5aI` not `GalileoE5aQ`, `GalileoE5bI`
+    # not `GalileoE5bQ`, `GalileoE6B` not `GalileoE6C`, `GPSL1C_D` not
     # `GPSL1C_P`).
     signal_of_state = [
         (GPSL1CADecoderState(1), GPSL1CA),
@@ -11,7 +12,9 @@
         (GPSL5IDecoderState(1), GPSL5I),
         (GPSL2CMDecoderState(1), GPSL2CM),
         (GalileoE1BDecoderState(1), GalileoE1B),
+        (GalileoE5bDecoderState(1), GalileoE5bI),
         (GalileoE5aDecoderState(1), GalileoE5aI),
+        (GalileoE6BDecoderState(1), GalileoE6B),
     ]
 
     # The accessors GNSSDecoder forwards from a decoder state to its signal.

@@ -1,14 +1,22 @@
-# Definitions shared across Galileo signals (E1B I/NAV and E5a F/NAV): the
-# signal-health / data-validity enums, the per-satellite almanac record, and the
-# common forward-error-correction primitive. Each individual signal's framing,
-# page layout, and parser live in its own file (`e1b.jl`, `e5a.jl`). This mirrors
-# how `src/gnss.jl` holds the definitions shared across *all* signals.
+# Definitions shared across Galileo signals (I/NAV on E1-B and E5b-I, F/NAV on
+# E5a-I, C/NAV on E6-B): the signal-health / data-validity enums, the
+# per-satellite almanac record, and the common
+# forward-error-correction primitive. Each message's framing, page layout, and
+# parser live in its own file (`inav.jl`, `e5a.jl`, `e6b.jl`), with the
+# per-signal layers on top (`e1b.jl`, `e5b.jl`). This mirrors how `src/gnss.jl`
+# holds the definitions shared across *all* signals.
 
 # All Galileo open-service signals share the same rate-1/2, constraint-length-7
 # (K=7) non-systematic convolutional (NSC) FEC: generator polynomials G1 = 0o171,
 # G2 = 0o133, with the G2 output inverted (Galileo OS SIS ICD, Issue 2.2, §4.1.4).
 # Only the block-interleaver dimensions and codeword length differ per signal.
 const GALILEO_VITERBI_POLY = [0o171, 0o133]
+
+# Every Galileo data channel interleaves over 8 rows — I/NAV 8×30, E5a F/NAV
+# 8×61, E6-B C/NAV 8×123 (OS SIS ICD, Issue 2.2 §4.1.4.2 and Table 5; HAS SIS
+# ICD, Issue 1.0 Table 4). Only the column count differs, so it is the one number
+# each signal states, and `galileo_viterbi` takes that alone.
+const GALILEO_INTERLEAVER_ROWS = 8
 
 # GTRF constants specific to Galileo (Galileo OS SIS ICD, Issue 2.2, Table 68).
 # Only the two that differ from the GPS WGS-84 values live here; π, the speed of
@@ -23,7 +31,7 @@ const GALILEO_F = -4.442807309e-10 # relativistic correction constant (s/√m)
 
 Galileo signal health status enumeration.
 
-Indicates the operational status of a Galileo signal component (E1B word type 5,
+Indicates the operational status of a Galileo signal component (I/NAV word type 5,
 E5a F/NAV word type 1, and the per-satellite almanacs of both).
 
 # Values
@@ -158,13 +166,20 @@ function GalileoAlmanac(
     )
 end
 
-# Ephemeris/clock completeness are per-constellation facts: I/NAV (E1B) and
-# F/NAV (E5a) broadcast the same orbital and clock parameters, so the "all
-# present?" checks are identical and dispatch on the constellation supertype
-# `AbstractGalileoData` (both `GalileoE1BData` and `GalileoE5aData` subtype it).
+# Ephemeris/clock completeness are per-message facts: I/NAV (E1-B, E5b-I) and
+# F/NAV (E5a-I) broadcast the same orbital and clock parameters, so the "all
+# present?" checks are identical and are stated once — on
+# `AbstractGalileoEphemerisData`, the supertype of exactly the Galileo data types
+# that have these fields (`GalileoINAVData`, `GalileoE5aData`).
+#
+# `GalileoE6BData` is an `AbstractGalileoData` but deliberately *not* an
+# `AbstractGalileoEphemerisData`: E6-B's C/NAV broadcasts HAS corrections *to*
+# another signal's ephemeris and has no orbital fields, so it defines
+# `is_decoding_completed_for_positioning` itself. Dispatching these on the wider
+# supertype would give it methods that raise a `FieldError` on its own subtype.
 # The health-status and positioning-readiness checks genuinely differ per signal
-# and stay in `e1b.jl` / `e5a.jl`.
-function is_ephemeris_decoded(data::AbstractGalileoData)
+# and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.
+function is_ephemeris_decoded(data::AbstractGalileoEphemerisData)
     !isnothing(data.t_0e) &&
         !isnothing(data.M_0) &&
         !isnothing(data.e) &&
@@ -183,7 +198,7 @@ function is_ephemeris_decoded(data::AbstractGalileoData)
         !isnothing(data.C_is)
 end
 
-function is_clock_correction_decoded(data::AbstractGalileoData)
+function is_clock_correction_decoded(data::AbstractGalileoEphemerisData)
     !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
@@ -191,19 +206,23 @@ function is_clock_correction_decoded(data::AbstractGalileoData)
 end
 
 """
-    galileo_viterbi(decoder, soft_page, interleaver_rows, interleaver_cols, ::Type{T}) -> T
+    galileo_viterbi(decoder, soft_page, interleaver_columns, ::Type{T}) -> T
 
 Recover one Galileo page's information bits from `soft_page` — the
 polarity-corrected `Float32` LLR soft symbols between the leading and trailing
-page-sync sequences. Shared by E1B I/NAV and E5a F/NAV, which use the same FEC
-and differ only in the block-interleaver shape and codeword length. `decoder` is
-the caller's long-lived `Aff3ct.ConvViterbiDecoder`, reused across pages.
+page-sync sequences. Shared by I/NAV (E1-B, E5b-I), E5a F/NAV, and E6-B C/NAV,
+which all use the same FEC and differ only in the block-interleaver shape and
+codeword length. `decoder` is the caller's long-lived
+`Aff3ct.ConvViterbiDecoder`, reused across pages.
 
 The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in order:
 
- 1. **`interleaver_rows`×`interleaver_cols` block deinterleave** of the LLRs
-    (`deinterleave` from `src/deinterleave.jl`; the argument order matches the
-    ICD column/row counts — E1B uses `(30, 8)`, E5a `(61, 8)`).
+ 1. **Block deinterleave** of the LLRs (`deinterleave` from
+    `src/deinterleave.jl`). The ICD's interleaver is 8 rows by
+    `interleaver_columns` columns; undoing it means filling the *transposed*
+    matrix — `interleaver_columns × 8`, written by column and read by row — so
+    only the column count varies per signal (I/NAV 30, E5a 61, E6-B C/NAV 123)
+    and `GALILEO_INTERLEAVER_ROWS` supplies the other dimension.
  2. **Invert every second symbol** — the spec inverts the G2 output of the
     rate-1/2 encoder. On soft symbols an inversion is a sign flip (negation), so
     confidence magnitudes are preserved.
@@ -212,17 +231,17 @@ The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in ord
     decoder returns only the information bits (the 6 tail bits are consumed by
     trellis termination).
 
-The decoded bits are packed MSB-first into the low bits of `T<:Unsigned` (E1B uses
-`UInt128` for its 114 bits, E5a `UInt256` for its 238).
+The decoded bits are packed MSB-first into the low bits of `T<:Unsigned` (I/NAV
+uses `UInt128` for its 114 bits, E5a `UInt256` for its 238, E6-B `UInt512` for
+its 486).
 """
 function galileo_viterbi(
     decoder::Aff3ct.ConvViterbiDecoder,
     soft_page::AbstractVector{Float32},
-    interleaver_rows::Int,
-    interleaver_cols::Int,
+    interleaver_columns::Int,
     ::Type{T},
 ) where {T<:Unsigned}
-    deinterleaved = deinterleave(soft_page, interleaver_rows, interleaver_cols)
+    deinterleaved = deinterleave(soft_page, interleaver_columns, GALILEO_INTERLEAVER_ROWS)
     @inbounds for i = 2:2:length(deinterleaved)
         deinterleaved[i] = -deinterleaved[i]
     end

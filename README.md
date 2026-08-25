@@ -19,7 +19,9 @@ Currently implemented:
  * GPS L2C (CNAV)
  * GPS L5I (CNAV)
  * Galileo E1B (I/NAV), including the BOC(1,1) approximation
+ * Galileo E5b (I/NAV)
  * Galileo E5a (F/NAV)
+ * Galileo E6B (C/NAV — the High Accuracy Service corrections)
  * BeiDou B1I (D1/D2 NAV)
  * BeiDou B3I (D1/D2 NAV)
  * BeiDou B1C (B-CNAV1)

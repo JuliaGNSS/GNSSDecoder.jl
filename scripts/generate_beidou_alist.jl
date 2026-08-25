@@ -12,11 +12,27 @@
 # the 6 coefficient bits, so every GF(2^6) parity check expands into exactly 6
 # binary parity checks on the bit stream: the *binary image* of the non-binary
 # code. The binary image is the same set of bit sequences the satellite
-# transmits — no approximation is involved in the code definition, only the
-# decoder changes (binary belief propagation instead of non-binary BP, a
-# standard trade of a fraction of a dB for reuse of the binary machinery).
-# This mirrors how the GPS L1C-D LDPC codes are handled via `.alist` files
-# and AFF3CT's binary BP decoder (see `generate_alist.jl`).
+# transmits, so no approximation enters the code definition. Only the decoder
+# changes: binary belief propagation over the image instead of non-binary BP
+# over GF(2^6), which buys reuse of the binary machinery (this mirrors how the
+# GPS L1C-D LDPC codes are handled via `.alist` files and AFF3CT's binary BP
+# decoder, see `generate_alist.jl`).
+#
+# That substitution costs sensitivity, and this package has not measured how
+# much. Binary BP over the image is strictly weaker than non-binary BP over the
+# GF(2^6) code, for two reasons that compound: the 6x6 companion-matrix
+# expansion of each non-zero entry plants length-4 cycles densely through the
+# Tanner graph, exactly where BP's independence assumption is least defensible;
+# and the joint constraint binding a symbol's 6 bits is discarded. Both bite
+# hardest for short, high-order codes, which is what these are — LDPC(200,100),
+# (88,44), (96,48) and (162,81) over GF(64). Expect a loss on the order of a dB
+# rather than a fraction of one, showing up as a raised frame-erasure rate at
+# low C/N0 once the CRC gate turns a failed decode into a dropped frame.
+#
+# Quantifying it would need a reference non-binary (FFT-QSPA) decoder to compare
+# against, which this repository does not have — `beidou_ldpc_encode` below is an
+# encoder only. Until someone writes one and runs the curves, no number here is
+# more than a guess.
 #
 # Layout of the binary image: GF symbol j (0-based) of the codeword occupies
 # bit columns 6j+1 .. 6j+6 (1-based), MSB (coefficient of x^5) first —

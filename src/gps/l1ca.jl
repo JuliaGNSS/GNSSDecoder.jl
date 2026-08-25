@@ -344,10 +344,27 @@ function GPSL1CAData(
     )
 end
 
+# The default struct `==` falls back to `===` (reference equality), which fails
+# for the `Vector` and `Dictionary` fields — `sv_config`, the two
+# `sv_health_sf*_25` lists, `almanac` — even when their contents match. Compare
+# field-by-field (mirrors `GPSCNAVData`).
+#
+# This is equality of the *published* data only. Subframe voting compares
+# candidates with `compare_data` below, which weighs the ephemeris fields the
+# vote is about rather than every field, and is deliberately not this.
+Base.:(==)(a::GPSL1CAData, b::GPSL1CAData) = fields_equal(a, b)
+
 struct VotedGPSL1CAData
     vote::Int
     data::GPSL1CAData
 end
+
+# Needed on top of the `GPSL1CAData` method above, not implied by it: Julia's
+# default `==` for a struct is `===`, which compares fields with `===` rather
+# than dispatching to their `==`. So without this the wrapper — and hence
+# `GPSL1CACache`'s `old_data` vector, and hence the whole decoder state — would
+# still compare by reference.
+Base.:(==)(a::VotedGPSL1CAData, b::VotedGPSL1CAData) = fields_equal(a, b)
 
 """
 $(TYPEDEF)
@@ -388,7 +405,7 @@ function GPSL1CACache(old_data::Vector{VotedGPSL1CAData})
     GPSL1CACache(CircularDeque{Float32}(308), old_data)
 end
 
-# Keyword "rebuild" constructor, mirroring `GalileoE1BCache`. Reuses the shared
+# Keyword "rebuild" constructor, mirroring `GalileoINAVCache`. Reuses the shared
 # soft-symbol buffer by reference and swaps in a freshly-built `old_data`
 # tally, so `confirm_data` can thread a new cache through `GNSSDecoderState`
 # instead of mutating the voting vector in place.
