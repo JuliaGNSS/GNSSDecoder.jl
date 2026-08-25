@@ -1415,9 +1415,14 @@ function parse_mt13(raw::GPSCNAVData, word::UInt320)
     for start in (61, 96, 131, 166, 201, 236)
         dc_data_type = get_bit(word, word_length, start)
         packet = _cnav_cdc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
-        # All-ones PRN ends the data block (like PRN 0 in the reduced almanac);
-        # `continue` over it — any trailing packets are filler too.
-        isnothing(packet) && continue
+        # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is
+        # contained in the remainder of the data block ... the remainder shall
+        # be filler bits, i.e. alternating ones and zeros beginning with one".
+        # `break`, not `continue`: reading on would parse `10101010` as PRN 170
+        # (or 85 — the 35-/93-bit packet stride flips the parity) and merge a
+        # correction for a satellite that does not exist. Same rule as
+        # `parse_mt12` / `parse_mt31` above.
+        isnothing(packet) && break
         corrections = _merge_keyed(corrections, packet.PRN_a, packet)
     end
     GPSCNAVData(raw; clock_corrections = corrections)
@@ -1435,9 +1440,14 @@ function parse_mt14(raw::GPSCNAVData, word::UInt320, PI::Float64)
     for start in (61, 154)
         dc_data_type = get_bit(word, word_length, start)
         packet = _cnav_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type, PI)
-        # All-ones PRN ends the data block (like PRN 0 in the reduced almanac);
-        # `continue` over it — any trailing packets are filler too.
-        isnothing(packet) && continue
+        # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is
+        # contained in the remainder of the data block ... the remainder shall
+        # be filler bits, i.e. alternating ones and zeros beginning with one".
+        # `break`, not `continue`: reading on would parse `10101010` as PRN 170
+        # (or 85 — the 35-/93-bit packet stride flips the parity) and merge a
+        # correction for a satellite that does not exist. Same rule as
+        # `parse_mt12` / `parse_mt31` above.
+        isnothing(packet) && break
         corrections = _merge_keyed(corrections, packet.PRN_a, packet)
     end
     GPSCNAVData(raw; ephemeris_corrections = corrections)

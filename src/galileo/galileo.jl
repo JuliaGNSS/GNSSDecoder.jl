@@ -206,6 +206,49 @@ function is_clock_correction_decoded(data::AbstractGalileoEphemerisData)
 end
 
 """
+    galileo_ggto(A_0G_raw, A_1G_raw, t_0G_raw, WN_0G_raw)
+        -> (; A_0G, A_1G, t_0G, WN_0G)
+
+Scale the four broadcast GNSS-Time-Offset fields, or report the ICD's
+"not valid" encoding as four `nothing`s.
+
+Galileo OS SIS ICD, Issue 2.2, 5.1.8 (above Table 76): "When the GGTO is not
+available the GGTO parameters disseminated are: A0G (all ones - 16 bits), A1G
+(all ones - 12 bits), t0G (all ones - 8 bits), WN0G (all ones - 6 bits). When a
+user receives all four parameters set to all ones the GGTO is considered as not
+valid."
+
+All four must be all-ones together — the ICD makes the *set* the sentinel, not
+any one field, and `A_0G` alone being `0xffff` is the perfectly legal value
+-2^-35 s. Scaling an unavailable GGTO regardless would publish
+`A_0G ~= -2.9e-11`, `t_0G = 918000`, `WN_0G = 63`: numbers a consumer has no way
+to tell from a real offset. Reporting `nothing` is the same treatment E6-B gives
+the HAS "data not available" sentinels.
+
+Takes the *unsigned* raw fields; the sign extension of `A_0G` and `A_1G` happens
+here, after the test.
+
+The two I/NAV/F/NAV call sites are the only ones: GGTO rides in I/NAV word
+type 10 and F/NAV page type 4.
+"""
+function galileo_ggto(
+    A_0G_raw::Integer,
+    A_1G_raw::Integer,
+    t_0G_raw::Integer,
+    WN_0G_raw::Integer,
+)
+    if A_0G_raw == 0xffff && A_1G_raw == 0x0fff && t_0G_raw == 0xff && WN_0G_raw == 0x3f
+        return (A_0G = nothing, A_1G = nothing, t_0G = nothing, WN_0G = nothing)
+    end
+    return (
+        A_0G = get_twos_complement_num(UInt64(A_0G_raw), 16, 1, 16) * 2.0^-35,
+        A_1G = get_twos_complement_num(UInt64(A_1G_raw), 12, 1, 12) * 2.0^-51,
+        t_0G = Int(t_0G_raw) * 3600,
+        WN_0G = Int(WN_0G_raw),
+    )
+end
+
+"""
     galileo_viterbi(decoder, soft_page, interleaver_columns, ::Type{T}) -> T
 
 Recover one Galileo page's information bits from `soft_page` — the

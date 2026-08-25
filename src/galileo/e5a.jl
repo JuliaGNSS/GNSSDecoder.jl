@@ -684,9 +684,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         SVID = Int(get_bits(bits, 238, 7, 6))
         IOD_nav1 = get_bits(bits, 238, 13, 10)
         t_0c = get_bits(bits, 238, 23, 14) * 60
-        a_f0 = get_twos_complement_num(bits, 238, 37, 31) / (1 << 34)
-        a_f1 = get_twos_complement_num(bits, 238, 68, 21) / (1 << 46)
-        a_f2 = get_twos_complement_num(bits, 238, 89, 6) / Float64(1 << 59)
+        a_f0 = get_twos_complement_num(bits, 238, 37, 31) * 2.0^-34
+        a_f1 = get_twos_complement_num(bits, 238, 68, 21) * 2.0^-46
+        a_f2 = get_twos_complement_num(bits, 238, 89, 6) * 2.0^-59
         SISA_e1_e5a = Int(get_bits(bits, 238, 95, 8))
         a_i0 = get_bits(bits, 238, 103, 11) / (1 << 2)
         a_i1 = get_twos_complement_num(bits, 238, 114, 11) / (1 << 8)
@@ -696,8 +696,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         iono_storm_flag_region3 = get_bit(bits, 238, 141)
         iono_storm_flag_region4 = get_bit(bits, 238, 142)
         iono_storm_flag_region5 = get_bit(bits, 238, 143)
-        broadcast_group_delay_e1_e5a =
-            get_twos_complement_num(bits, 238, 144, 10) / Float64(1 << 32)
+        broadcast_group_delay_e1_e5a = get_twos_complement_num(bits, 238, 144, 10) * 2.0^-32
         signal_health_e5a = SignalHealth(get_bits(bits, 238, 154, 2))
         WN = get_bits(bits, 238, 156, 12)
         TOW = get_bits(bits, 238, 168, 20)
@@ -732,12 +731,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         )
     elseif page_type == 2
         IOD_nav2 = get_bits(bits, 238, 7, 10)
-        M_0 = get_twos_complement_num(bits, 238, 17, 32) * PI / (1 << 31)
-        Ω_dot = get_twos_complement_num(bits, 238, 49, 24) * PI / Float64(1 << 43)
-        e = get_bits(bits, 238, 73, 32) / Float64(1 << 33)
+        M_0 = get_twos_complement_num(bits, 238, 17, 32) * PI * 2.0^-31
+        Ω_dot = get_twos_complement_num(bits, 238, 49, 24) * PI * 2.0^-43
+        e = get_bits(bits, 238, 73, 32) * 2.0^-33
         sqrt_A = get_bits(bits, 238, 105, 32) / (1 << 19)
-        Ω_0 = get_twos_complement_num(bits, 238, 137, 32) * PI / (1 << 31)
-        i_dot = get_twos_complement_num(bits, 238, 169, 14) * PI / Float64(1 << 43)
+        Ω_0 = get_twos_complement_num(bits, 238, 137, 32) * PI * 2.0^-31
+        i_dot = get_twos_complement_num(bits, 238, 169, 14) * PI * 2.0^-43
         WN = get_bits(bits, 238, 183, 12)
         TOW = get_bits(bits, 238, 195, 20)
         state = GNSSDecoderState(
@@ -759,9 +758,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         )
     elseif page_type == 3
         IOD_nav3 = get_bits(bits, 238, 7, 10)
-        i_0 = get_twos_complement_num(bits, 238, 17, 32) * PI / (1 << 31)
-        ω = get_twos_complement_num(bits, 238, 49, 32) * PI / (1 << 31)
-        Δn = get_twos_complement_num(bits, 238, 81, 16) * PI / Float64(1 << 43)
+        i_0 = get_twos_complement_num(bits, 238, 17, 32) * PI * 2.0^-31
+        ω = get_twos_complement_num(bits, 238, 49, 32) * PI * 2.0^-31
+        Δn = get_twos_complement_num(bits, 238, 81, 16) * PI * 2.0^-43
         C_uc = get_twos_complement_num(bits, 238, 97, 16) / Float64(1 << 29)
         C_us = get_twos_complement_num(bits, 238, 113, 16) / Float64(1 << 29)
         C_rc = get_twos_complement_num(bits, 238, 129, 16) / (1 << 5)
@@ -793,17 +792,21 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         C_ic = get_twos_complement_num(bits, 238, 17, 16) / Float64(1 << 29)
         C_is = get_twos_complement_num(bits, 238, 33, 16) / Float64(1 << 29)
         A_0_utc = get_twos_complement_num(bits, 238, 49, 32) / Float64(1 << 30)
-        A_1_utc = get_twos_complement_num(bits, 238, 81, 24) / Float64(1 << 50)
+        A_1_utc = get_twos_complement_num(bits, 238, 81, 24) * 2.0^-50
         Δt_LS = Int(get_twos_complement_num(bits, 238, 105, 8))
         t_0t = Int(get_bits(bits, 238, 113, 8) * 3600)
         WN_0t = Int(get_bits(bits, 238, 121, 8))
         WN_LSF = Int(get_bits(bits, 238, 129, 8))
         DN = Int(get_bits(bits, 238, 137, 3))
         Δt_LSF = Int(get_twos_complement_num(bits, 238, 140, 8))
-        t_0G = Int(get_bits(bits, 238, 148, 8) * 3600)
-        A_0G = get_twos_complement_num(bits, 238, 156, 16) / Float64(1 << 35)
-        A_1G = get_twos_complement_num(bits, 238, 172, 12) / Float64(1 << 51)
-        WN_0G = Int(get_bits(bits, 238, 184, 6))
+        # GGTO — all four fields all-ones means "not valid" (ICD 5.1.8), so
+        # they are read raw and scaled by `galileo_ggto`.
+        A_0G, A_1G, t_0G, WN_0G = galileo_ggto(
+            get_bits(bits, 238, 156, 16),
+            get_bits(bits, 238, 172, 12),
+            get_bits(bits, 238, 148, 8),
+            get_bits(bits, 238, 184, 6),
+        )
         TOW = get_bits(bits, 238, 190, 20)
         state = GNSSDecoderState(
             state;
@@ -842,10 +845,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ω = get_twos_complement_num(bits, 238, 53, 16) * PI / (1 << 15),
             δi = get_twos_complement_num(bits, 238, 69, 11) * PI / (1 << 14),
             Ω_0 = get_twos_complement_num(bits, 238, 80, 16) * PI / (1 << 15),
-            Ω_dot = get_twos_complement_num(bits, 238, 96, 11) * PI / Float64(1 << 33),
+            Ω_dot = get_twos_complement_num(bits, 238, 96, 11) * PI * 2.0^-33,
             M_0 = get_twos_complement_num(bits, 238, 107, 16) * PI / (1 << 15),
             a_f0 = get_twos_complement_num(bits, 238, 123, 16) / Float64(1 << 19),
-            a_f1 = get_twos_complement_num(bits, 238, 139, 13) / Float64(1 << 38),
+            a_f1 = get_twos_complement_num(bits, 238, 139, 13) * 2.0^-38,
             signal_health_e5a = SignalHealth(get_bits(bits, 238, 152, 2)),
             IOD_a,
             WN_a,
@@ -898,10 +901,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             completed2 = GalileoAlmanac(
                 partial;
                 Ω_0 = combine_almanac_omega0(msb, omega0_lsb, PI),
-                Ω_dot = get_twos_complement_num(bits, 238, 23, 11) * PI / Float64(1 << 33),
+                Ω_dot = get_twos_complement_num(bits, 238, 23, 11) * PI * 2.0^-33,
                 M_0 = get_twos_complement_num(bits, 238, 34, 16) * PI / (1 << 15),
                 a_f0 = get_twos_complement_num(bits, 238, 50, 16) / Float64(1 << 19),
-                a_f1 = get_twos_complement_num(bits, 238, 66, 13) / Float64(1 << 38),
+                a_f1 = get_twos_complement_num(bits, 238, 66, 13) * 2.0^-38,
                 signal_health_e5a = SignalHealth(get_bits(bits, 238, 79, 2)),
             )
             almanacs =
@@ -928,10 +931,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 ω = get_twos_complement_num(bits, 238, 111, 16) * PI / (1 << 15),
                 δi = get_twos_complement_num(bits, 238, 127, 11) * PI / (1 << 14),
                 Ω_0 = get_twos_complement_num(bits, 238, 138, 16) * PI / (1 << 15),
-                Ω_dot = get_twos_complement_num(bits, 238, 154, 11) * PI / Float64(1 << 33),
+                Ω_dot = get_twos_complement_num(bits, 238, 154, 11) * PI * 2.0^-33,
                 M_0 = get_twos_complement_num(bits, 238, 165, 16) * PI / (1 << 15),
                 a_f0 = get_twos_complement_num(bits, 238, 181, 16) / Float64(1 << 19),
-                a_f1 = get_twos_complement_num(bits, 238, 197, 13) / Float64(1 << 38),
+                a_f1 = get_twos_complement_num(bits, 238, 197, 13) * 2.0^-38,
                 signal_health_e5a = SignalHealth(get_bits(bits, 238, 210, 2)),
                 IOD_a,
                 WN_a = shared_wn_a,
