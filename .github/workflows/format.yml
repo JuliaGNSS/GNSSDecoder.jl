@@ -23,7 +23,20 @@ jobs:
       # so the fix is copy-pasteable. Scoped to the Julia source/test trees:
       # the config's `format_markdown = true` currently trips the markdown
       # formatter on the repo's .md files, so docs are not checked here.
+      # Two failure modes, both checked. A file JuliaFormatter cannot *parse* is
+      # skipped with a warning and a success exit code, so `git diff` sees no
+      # change and the job passes while the file goes unchecked — that is how
+      # `src/gnss.jl`, which every decoder includes, went unformatted for as long
+      # as `format_docstrings` had been on (an ellipsis inside an array literal
+      # in a docstring example). So: capture the output, fail on any skip, then
+      # fail on any reformatting.
       - name: Check formatting
         run: |
-          julia --color=yes -e 'using JuliaFormatter; format(["src", "test"])'
+          set -o pipefail
+          julia --color=yes -e 'using JuliaFormatter; format(["src", "test"])' 2>&1 | tee format.log
+          if grep -q "Failed to format file" format.log; then
+            echo "::error::JuliaFormatter could not parse a file, so it was silently skipped:"
+            grep -A 3 "Failed to format file" format.log
+            exit 1
+          fi
           git diff --color --exit-code

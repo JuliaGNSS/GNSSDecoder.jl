@@ -660,7 +660,7 @@ glossary.
 
 ```julia
 state = GPSL1CADecoderState(1)            # PRN 1
-state = decode(state, Float32[+1, -1, ...], 8)
+state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1], 8)
 ```
 
 # See Also
