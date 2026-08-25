@@ -1,10 +1,15 @@
 # Definitions shared across BeiDou signals (B1I/B3I D1-D2 NAV and the B-CNAV
-# family on B1C, B2a, and B2b): the BDCS physical constants and the GEO-orbit
-# PRN partition that selects between the D1 and D2 legacy message formats.
-# Each individual signal's framing, message layout, and parser live in their
-# own files (`dnav.jl` + `b1i.jl`/`b3i.jl`, `b1c.jl`, `b2a.jl`, `b2b.jl`).
-# This mirrors how `src/gnss.jl` holds the definitions shared across *all*
-# signals and `src/galileo/galileo.jl` those shared across Galileo.
+# family on B1C, B2a, and B2b): the BDCS physical constants, shared by all five
+# decoders, and the midi and reduced almanac records, shared by the three
+# B-CNAV ones. Each individual signal's framing, message layout, and parser
+# live in their own files (`dnav.jl` + `b1i.jl`/`b3i.jl`, `b1c.jl`, `b2a.jl`,
+# `b2b.jl`). This mirrors how `src/gnss.jl` holds the definitions shared across
+# *all* signals and `src/galileo/galileo.jl` those shared across Galileo.
+#
+# The test for belonging here is that no single signal file can own it. The
+# GEO-orbit PRN partition looks like it qualifies and does not: it selects
+# between the D1 and D2 *message formats*, so it is used by `dnav.jl` alone and
+# lives there.
 
 # BDCS (BeiDou Coordinate System) constants specific to BeiDou (BDS-SIS-ICD-
 # B1I-3.0 Table 3-1 / §5.2.4.12; identical across the B1I, B3I, B1C, B2a, and
@@ -61,7 +66,7 @@ are converted to radians on decode.
   - `sat_type::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
     3 = MEO, 0 reserved).
   - `WN_a::Int`: Almanac reference week number (BDT week).
-  - `t_oa::Int`: Almanac reference time of week (seconds, LSB 2¹²).
+  - `t_0a::Int`: Almanac reference time of week (seconds, LSB 2¹²).
   - `e::Float64`: Eccentricity (dimensionless).
   - `δi::Float64`: Inclination delta from the `sat_type` reference (rad).
   - `sqrt_A::Float64`: Square root of the semi-major axis (√m).
@@ -70,6 +75,9 @@ are converted to radians on decode.
   - `ω::Float64`: Argument of perigee (rad).
   - `M_0::Float64`: Mean anomaly at reference time (rad).
   - `a_f0::Float64`, `a_f1::Float64`: Satellite clock bias / drift (s, s/s).
+    The midi-almanac terms are the one BeiDou clock pair the ICDs already spell
+    `af0`/`af1` (B2b-1.0 Table 7-11, B1C/B2a-1.0 Table 7-13) — unlike the
+    clock-correction block, which they write `a_0`/`a_1`/`a_2`.
   - `health::Int`: Raw 8-bit satellite health word (BDS-SIS-ICD-B2b-1.0
     Table 7-12, the fullest definition: bit 8 (MSB) = satellite clock,
     bit 7 = B1C signal, bit 6 = B2a signal, bit 5 = B2b_I signal, bits 4-1
@@ -80,7 +88,7 @@ Base.@kwdef struct BeiDouMidiAlmanac
     PRN_a::Int
     sat_type::Int
     WN_a::Int
-    t_oa::Int
+    t_0a::Int
     e::Float64
     δi::Float64
     sqrt_A::Float64
@@ -122,7 +130,7 @@ the midi almanac's with the missing parameters set to zero.
   - `sat_type::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
     3 = MEO, 0 reserved).
   - `WN_a::Int`: Almanac reference week number (from the carrying page/message).
-  - `t_oa::Int`: Almanac reference time of week (seconds, from the carrying page/message).
+  - `t_0a::Int`: Almanac reference time of week (seconds, from the carrying page/message).
   - `δA::Float64`: Semi-major-axis correction to the `sat_type` reference (m).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
   - `Φ_0::Float64`: Argument of latitude at reference time, `M₀ + ω` (rad).
@@ -133,22 +141,9 @@ Base.@kwdef struct BeiDouReducedAlmanac
     PRN_a::Int
     sat_type::Int
     WN_a::Int
-    t_oa::Int
+    t_0a::Int
     δA::Float64
     Ω_0::Float64
     Φ_0::Float64
     health::Int
 end
-
-"""
-$(SIGNATURES)
-
-Whether a BeiDou PRN is one of the GEO satellites (PRN 1-5 and 59-63).
-
-The distinction selects the legacy navigation message format on B1I and B3I:
-MEO/IGSO satellites broadcast the D1 message (50 bps, with the NH20 secondary
-code), GEO satellites the D2 message (500 bps, no secondary code)
-(BDS-SIS-ICD-B1I-3.0 §5.1.1 / Table 4-1). The B-CNAV messages (B1C, B2a, B2b)
-are broadcast by BDS-3 MEO/IGSO satellites only and do not use this partition.
-"""
-is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63

@@ -251,6 +251,7 @@ can be checked together without a separate `nothing` guard.
 
       - **Ephemeris freshness.** Only presence is checked, not age. The decoder
         has no notion of "now", so the consumer must still reject ephemerides
+        outside their fit interval (`fit_interval` / `t_0e` age).
 
       - **Second-order corrections.** Klobuchar / BDGIM ionosphere and UTC
         parameters are intentionally excluded: they are broadcast far less
@@ -438,7 +439,7 @@ calc_preamble_mask(constants::AbstractGNSSConstants) =
     UInt(1) << UInt(constants.preamble_length) - UInt(1)
 
 """
-    pack_soft_bits(deque, offset, len) -> UInt64
+    pack_bits_msb_first(deque, offset, len) -> UInt64
 
 Hard-slice `len` soft symbols of `deque` starting at 1-based `offset` into a
 `UInt64`, oldest symbol at the MSB — the same bit order [`pack_buffer`](@ref)
@@ -449,7 +450,7 @@ end, and any unencoded header field), so a decoder whose window is long and
 whose symbol rate is high can read exactly those bits instead of repacking
 the entire window on every symbol. `len` must be at most 64.
 """
-function pack_soft_bits(deque::CircularDeque{Float32}, offset::Int, len::Int)
+function pack_bits_msb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)
     @inbounds for i = 0:(len-1)
         word = (word << 1) | (hard_slice(deque[offset+i]) ? UInt64(1) : UInt64(0))
@@ -458,11 +459,11 @@ function pack_soft_bits(deque::CircularDeque{Float32}, offset::Int, len::Int)
 end
 
 """
-    pack_soft_codeword(deque, offset, len) -> UInt64
+    pack_bits_lsb_first(deque, offset, len) -> UInt64
 
 Hard-slice `len` soft symbols of `deque` starting at 1-based `offset` into a
 `UInt64` with **bit 0 = the first symbol** — the opposite end from
-[`pack_soft_bits`](@ref), and the order the codeword tables use
+[`pack_bits_msb_first`](@ref), and the order the codeword tables use
 (`BCH_TOI_CODEWORDS`, `b1c_prn_codeword`, `b1c_soh_codeword`; cf.
 [`soft_to_hard_codeword`](@ref), which is this over an iterable).
 
@@ -471,7 +472,7 @@ on its PRN + SOH pair — compare against those tables once per symbol, at both
 ends of the window, so this reads the deque in place rather than materialising a
 slice. `len` must be at most 64.
 """
-function pack_soft_codeword(deque::CircularDeque{Float32}, offset::Int, len::Int)
+function pack_bits_lsb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)
     @inbounds for i = 0:(len-1)
         if hard_slice(deque[offset+i])
@@ -562,7 +563,7 @@ essentially every symbol.
     This runs once per *symbol* — the hottest path in the package. The two
     lengths are taken as arguments rather than read from `state.constants` so
     that callers can hand over their own module-level constants: those fold at
-    compile time and let `pack_soft_bits` unroll, which reading the equivalent
+    compile time and let `pack_bits_msb_first` unroll, which reading the equivalent
     struct fields does not. Measured at 1000 sps, sourcing them from `constants`
     instead costs about 14 % of the whole per-symbol budget.
 """
@@ -574,10 +575,10 @@ essentially every symbol.
 )
     pattern = UInt64(preamble)
     inverted = pattern ⊻ ((UInt64(1) << preamble_length) - UInt64(1))
-    head = pack_soft_bits(deque, 1, preamble_length)
+    head = pack_bits_msb_first(deque, 1, preamble_length)
     upright = head == pattern
     (upright || head == inverted) || return nothing
-    tail = pack_soft_bits(deque, syncro_sequence_length + 1, preamble_length)
+    tail = pack_bits_msb_first(deque, syncro_sequence_length + 1, preamble_length)
     tail == (upright ? pattern : inverted) || return nothing
     return !upright
 end
@@ -759,16 +760,34 @@ end
 # are stated here rather than in whichever signal file happened to need them
 # first — otherwise the include order silently becomes load-bearing.
 #
+#   - `UInt288`: the 220 bits a Galileo I/NAV page pair runs the CRC-24Q over,
+#     the 274-bit GPS L1C-D subframe 3 and the 264-bit BeiDou B1C subframe 3.
 #   - `UInt320`: a GPS L1 C/A subframe, a GPS L1C-D subframe, a GPS CNAV message
 #     (L5I / L2C) and a BeiDou D1/D2 subframe — 300 data bits plus up to 8
 #     trailing sync bits.
 #   - `UInt512`: the 486-bit information word of a Galileo E6-B C/NAV page and
 #     of a BeiDou B2b message.
+#   - `UInt600`: the 600-bit subframe 2 of GPS L1C-D and of BeiDou B1C.
 #
-# `BitIntegers.@define_integers` also defines the signed companions `Int320` and
-# `Int512`.
+# `BitIntegers.@define_integers` also defines the signed companions `Int288`,
+# `Int320`, `Int512` and `Int600`.
+BitIntegers.@define_integers 288
 BitIntegers.@define_integers 320
 BitIntegers.@define_integers 512
+BitIntegers.@define_integers 600
+
+"""
+    increment_voting(old_vote, max_vote) -> Int
+
+Raise a broadcast-repetition vote by one, saturating at `max_vote`.
+
+Two decoders promote `raw_data` to `data` by repetition voting rather than by an
+issue-of-data match — GPS L1 C/A and the BeiDou D1/D2 legacy message, which has
+no IODs at all — and both count with this. It lives here rather than in whichever
+of them was written first, so that neither has to be included after the other
+just to borrow it (see the note on the packed-word widths below).
+"""
+increment_voting(old_vote, max_vote) = min(max_vote, old_vote + 1)
 
 """
 Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.

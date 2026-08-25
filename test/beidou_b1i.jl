@@ -82,10 +82,9 @@ using GNSSSignals: Hz
 
     function check_d1_fundamental(data; SOW = D1_LAST_SOW)
         @test data.SOW == SOW
-        @test data.sat_h1 === false
+        @test data.SatH1 === false
         @test data.AODC == 1
-        @test data.urai == 2
-        @test data.ura == 2.0^(2 / 2 + 1)
+        @test data.URAI == 2
         @test data.WN == 810
         @test data.t_0c == 43200
         @test data.T_GD1 ≈ -52 * 1.0e-10
@@ -98,9 +97,9 @@ using GNSSSignals: Hz
         @test data.β_1 == -6.0 * 2^14
         @test data.β_2 == 7.0 * 2^16
         @test data.β_3 == -8.0 * 2^16
-        @test data.a_2 == -3 / 2.0^66
-        @test data.a_0 == 123456 / 2.0^33
-        @test data.a_1 == -2345 / 2.0^50
+        @test data.a_f2 == -3 / 2.0^66
+        @test data.a_f0 == 123456 / 2.0^33
+        @test data.a_f1 == -2345 / 2.0^50
         @test data.AODE == 4
         @test data.t_0e == 560000
         @test data.Δn == 1234 * PI / 2.0^43
@@ -241,7 +240,7 @@ using GNSSSignals: Hz
             Ω_0_raw = -4_000_000,
             e_raw = 6789,
             δi_raw = -321,
-            t_oa_raw = 147,
+            t_0a_raw = 147,
             Ω_dot_raw = -654,
             ω_raw = 2_222_222,
             M_0_raw = -3_333_333,
@@ -256,14 +255,14 @@ using GNSSSignals: Hz
                 alm...,
             ),
         )
-        # Subframe 5 page 8: health codes for SV 20-30, WN_a, t_oa.
+        # Subframe 5 page 8: health codes for SV 20-30, WN_a, t_0a.
         health_codes = UInt16[k == 3 ? 0x100 : 0x000 for k = 1:11]  # SV 22 unhealthy
         sf5_p8 = dnav_test_encode_subframe(
             dnav_test_d1_subframe5_page8_content(;
                 SOW = D1_LAST_SOW + 12,
                 health_codes,
                 WN_a = 55,
-                t_oa_raw = 147,
+                t_0a_raw = 147,
             ),
         )
         sf5_p9 = dnav_test_encode_subframe(
@@ -314,15 +313,15 @@ using GNSSSignals: Hz
         state = decode(state, symbols, length(symbols))
 
         for sv_id in (1, 31)
-            @test !isnothing(state.data.almanac) && haskey(state.data.almanac, sv_id)
-            entry = state.data.almanac[sv_id]
+            @test !isnothing(state.data.almanacs) && haskey(state.data.almanacs, sv_id)
+            entry = state.data.almanacs[sv_id]
             @test entry.sqrt_A == 10_460_000 / 2.0^11
-            @test entry.a_1 == -12 / 2.0^38
-            @test entry.a_0 == 345 / 2.0^20
+            @test entry.a_f1 == -12 / 2.0^38
+            @test entry.a_f0 == 345 / 2.0^20
             @test entry.Ω_0 == -4_000_000 * PI / 2.0^23
             @test entry.e == 6789 / 2.0^21
             @test entry.δi == -321 * PI / 2.0^19
-            @test entry.t_oa == 147 * 2^12
+            @test entry.t_0a == 147 * 2^12
             @test entry.Ω_dot == -654 * PI / 2.0^38
             @test entry.ω == 2_222_222 * PI / 2.0^23
             @test entry.M_0 == -3_333_333 * PI / 2.0^23
@@ -332,7 +331,7 @@ using GNSSSignals: Hz
         @test state.data.health[20] == 0x000
         @test state.data.health[30] == 0x000
         @test state.data.WN_a == 55
-        @test state.data.t_oa == 147 * 2^12
+        @test state.data.t_0a == 147 * 2^12
         @test state.data.A_0GPS == -15 * 1.0e-10
         @test state.data.A_1GPS == 25 * 1.0e-10
         @test state.data.A_0Gal == -35 * 1.0e-10
@@ -514,16 +513,16 @@ using GNSSSignals: Hz
               SOW_D2 + D2_CYCLE_SPAN + 27 + 3.022
         @test data.WN == WN
         @test data.AODC == 1
-        @test data.urai == 2
+        @test data.URAI == 2
         @test data.t_0c == 43200
         @test data.T_GD1 ≈ -52 * 1.0e-10
         @test data.T_GD2 ≈ 37 * 1.0e-10
         @test data.α_0 == 10 / 2^30
         @test data.α_3 == -40 / 2^24
         @test data.β_1 == -6.0 * 2^14
-        @test data.a_0 == 123456 / 2.0^33
-        @test data.a_1 == -2345 / 2.0^50
-        @test data.a_2 == -3 / 2.0^66
+        @test data.a_f0 == 123456 / 2.0^33
+        @test data.a_f1 == -2345 / 2.0^50
+        @test data.a_f2 == -3 / 2.0^66
         @test data.AODE == 4
         @test data.Δn == 1234 * PI / 2.0^43
         @test data.C_uc == -9876 / 2.0^31
@@ -606,7 +605,7 @@ end
     # the same subframes would never compare equal once either was populated.
     mk(M_0) = BeiDouDNAVData(;
         WN = 810,
-        almanac = Dictionary([7], [BeiDouDNAVAlmanac(; M_0)]),
+        almanacs = Dictionary([7], [BeiDouDNAVAlmanac(; M_0)]),
         health = Dictionary([7], [0x0000]),
     )
     @test mk(0.1) == mk(0.1)

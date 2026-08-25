@@ -169,13 +169,13 @@ const E6B_GNSS_ID_GPS = 0
 const E6B_GNSS_ID_GALILEO = 2
 
 """
-    e6b_iod_ref_length(gnss_id) -> Union{Nothing,Int}
+    e6b_iod_ref_length(GNSS_ID) -> Union{Nothing,Int}
 
 Width in bits of the Reference IOD field for a GNSS (ICD Table 26): 8 for GPS
 (IODE/IODC), 10 for Galileo (IODnav). `nothing` for a reserved GNSS ID.
 """
-e6b_iod_ref_length(gnss_id::Integer) =
-    gnss_id == E6B_GNSS_ID_GPS ? 8 : gnss_id == E6B_GNSS_ID_GALILEO ? 10 : nothing
+e6b_iod_ref_length(GNSS_ID::Integer) =
+    GNSS_ID == E6B_GNSS_ID_GPS ? 8 : GNSS_ID == E6B_GNSS_ID_GALILEO ? 10 : nothing
 
 # ---- HAS status --------------------------------------------------------------
 
@@ -252,12 +252,12 @@ masks are what later blocks' lengths are computed from.
 
 # Fields
 
-  - `gnss_id::Int`: GNSS index — 0 = GPS, 2 = Galileo (Table 18)
+  - `GNSS_ID::Int`: GNSS index — 0 = GPS, 2 = Galileo (Table 18)
   - `satellite_mask::UInt64`: 40-bit Satellite Mask, MSB = satellite index 0 (Table 19)
   - `signal_mask::UInt16`: 16-bit Signal Mask, MSB = signal index 0 (Table 20)
   - `cell_mask::Union{Nothing,Matrix{Bool}}`: `Nsat × Nsig` Cell Mask, or `nothing` when the Cell Mask Availability Flag is 0 (biases then cover every masked satellite/signal pair)
   - `nav_message_index::Int`: Navigation Message Index — 0 = I/NAV (Galileo) / LNAV (GPS) (Table 21)
-  - `svids::Vector{Int}`: Satellite IDs of the masked satellites (satellite index + 1, i.e. Galileo SVID / GPS PRN)
+  - `SVIDs::Vector{Int}`: Satellite IDs of the masked satellites (satellite index + 1, i.e. Galileo SVID / GPS PRN)
   - `signal_indices::Vector{Int}`: Signal indices of the masked signals (0-based, per Table 20)
 
 # Reference
@@ -265,12 +265,12 @@ masks are what later blocks' lengths are computed from.
 Galileo HAS SIS ICD, Issue 1.0, Tables 16-21
 """
 Base.@kwdef struct GalileoHASSatelliteMask
-    gnss_id::Int
+    GNSS_ID::Int
     satellite_mask::UInt64
     signal_mask::UInt16
     cell_mask::Union{Nothing,Matrix{Bool}} = nothing
     nav_message_index::Int
-    svids::Vector{Int}
+    SVIDs::Vector{Int}
     signal_indices::Vector{Int}
 end
 
@@ -312,8 +312,8 @@ choice to map both to 0 m downstream loses that.
 
 # Fields
 
-  - `gnss_id::Int`: GNSS index the satellite belongs to (Table 18)
-  - `svid::Int`: Satellite ID (Galileo SVID / GPS PRN)
+  - `GNSS_ID::Int`: GNSS index the satellite belongs to (Table 18)
+  - `SVID::Int`: Satellite ID (Galileo SVID / GPS PRN)
   - `IOD_ref::Int`: Reference IOD of the corrected broadcast navigation data — IODnav for Galileo, IODE/IODC for GPS (Table 26)
   - `δ_radial::Union{Nothing,Float64}`: Delta Radial correction (meters, LSB 0.0025)
   - `δ_in_track::Union{Nothing,Float64}`: Delta In-Track correction (meters, LSB 0.008)
@@ -324,8 +324,8 @@ choice to map both to 0 m downstream loses that.
 Galileo HAS SIS ICD, Issue 1.0, Tables 24-25
 """
 Base.@kwdef struct GalileoHASOrbitCorrection
-    gnss_id::Int
-    svid::Int
+    GNSS_ID::Int
+    SVID::Int
     IOD_ref::Int
     δ_radial::Union{Nothing,Float64} = nothing
     δ_in_track::Union{Nothing,Float64} = nothing
@@ -346,8 +346,8 @@ stronger.
 
 # Fields
 
-  - `gnss_id::Int`: GNSS index the satellite belongs to (Table 18)
-  - `svid::Int`: Satellite ID (Galileo SVID / GPS PRN)
+  - `GNSS_ID::Int`: GNSS index the satellite belongs to (Table 18)
+  - `SVID::Int`: Satellite ID (Galileo SVID / GPS PRN)
   - `multiplier::Int`: Delta Clock Multiplier applied, 1-4 (Table 29)
   - `δ_clock::Union{Nothing,Float64}`: Delta clock correction (meters, LSB 0.0025 × `multiplier`)
   - `do_not_use::Bool`: The satellite shall not be used (Table 31)
@@ -357,8 +357,8 @@ stronger.
 Galileo HAS SIS ICD, Issue 1.0, Tables 28-34
 """
 Base.@kwdef struct GalileoHASClockCorrection
-    gnss_id::Int
-    svid::Int
+    GNSS_ID::Int
+    SVID::Int
     multiplier::Int
     δ_clock::Union{Nothing,Float64} = nothing
     do_not_use::Bool = false
@@ -372,8 +372,8 @@ Code bias for one satellite/signal cell (ICD §7.4). `bias` is `nothing` for the
 
 # Fields
 
-  - `gnss_id::Int`: GNSS index (Table 18)
-  - `svid::Int`: Satellite ID (Galileo SVID / GPS PRN)
+  - `GNSS_ID::Int`: GNSS index (Table 18)
+  - `SVID::Int`: Satellite ID (Galileo SVID / GPS PRN)
   - `signal_index::Int`: Signal index within the constellation's Signal Mask (0-based, Table 20)
   - `bias::Union{Nothing,Float64}`: Code bias (meters, LSB 0.02)
 
@@ -382,8 +382,8 @@ Code bias for one satellite/signal cell (ICD §7.4). `bias` is `nothing` for the
 Galileo HAS SIS ICD, Issue 1.0, Tables 36-37
 """
 Base.@kwdef struct GalileoHASCodeBias
-    gnss_id::Int
-    svid::Int
+    GNSS_ID::Int
+    SVID::Int
     signal_index::Int
     bias::Union{Nothing,Float64} = nothing
 end
@@ -398,8 +398,8 @@ re-initialised (ICD §5.2.6.1).
 
 # Fields
 
-  - `gnss_id::Int`: GNSS index (Table 18)
-  - `svid::Int`: Satellite ID (Galileo SVID / GPS PRN)
+  - `GNSS_ID::Int`: GNSS index (Table 18)
+  - `SVID::Int`: Satellite ID (Galileo SVID / GPS PRN)
   - `signal_index::Int`: Signal index within the constellation's Signal Mask (0-based, Table 20)
   - `bias::Union{Nothing,Float64}`: Phase bias (cycles, LSB 0.01)
   - `phase_discontinuity_indicator::Int`: Phase Discontinuity Indicator (0-3)
@@ -409,8 +409,8 @@ re-initialised (ICD §5.2.6.1).
 Galileo HAS SIS ICD, Issue 1.0, Tables 39-40
 """
 Base.@kwdef struct GalileoHASPhaseBias
-    gnss_id::Int
-    svid::Int
+    GNSS_ID::Int
+    SVID::Int
     signal_index::Int
     bias::Union{Nothing,Float64} = nothing
     phase_discontinuity_indicator::Int
@@ -904,20 +904,6 @@ end
 # ---- Page FEC and sync -------------------------------------------------------
 
 """
-    galileo_e6b_viterbi(scratch, soft_page) -> UInt512
-
-Recover one C/NAV page's 486 information bits from `soft_page` — the 984
-polarity-corrected `Float32` LLR soft symbols following the page's 16-symbol
-sync pattern.
-
-Thin wrapper over the shared [`galileo_viterbi`](@ref) with C/NAV's 8×123
-interleaver shape (HAS SIS ICD Table 4) and `UInt512` payload type; the FEC
-itself is the Galileo-wide K=7 NSC code (ICD Table 3), G2 inverted.
-"""
-galileo_e6b_viterbi(scratch::GalileoViterbiScratch, soft_page::AbstractVector{Float32}) =
-    galileo_viterbi(scratch, soft_page, E6B_INTERLEAVER_COLUMNS, UInt512)
-
-"""
 $(TYPEDEF)
 
 Result of a successful C/NAV page sync: the CRC-validated 486-bit page and the
@@ -973,7 +959,7 @@ function try_sync(state::GNSSDecoderState{<:GalileoE6BData})
         E6B_ENCODED_SYMBOLS,
         polarity_flipped,
     )
-    page = galileo_e6b_viterbi(state.cache.viterbi, window)
+    page = galileo_viterbi(state.cache.viterbi, window, E6B_INTERLEAVER_COLUMNS, UInt512)
     # CRC-24Q over the whole 486-bit page (message ++ checksum) must be zero.
     # 486 bits is not a whole number of octets; the leading two zero bits of the
     # 61-octet representation are neutral because CRC-24Q initialises its
@@ -1168,24 +1154,24 @@ function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
     masks = GalileoHASSatelliteMask[]
     for _ = 1:num_systems
         bits_remaining(reader) >= 4 + 40 + 16 + 1 || return nothing
-        gnss_id = Int(read_bits!(reader, 4))
+        GNSS_ID = Int(read_bits!(reader, 4))
         # A reserved GNSS ID makes the Reference IOD width, and therefore every
         # later block length, unknowable (ICD Table 26).
-        isnothing(e6b_iod_ref_length(gnss_id)) && return nothing
+        isnothing(e6b_iod_ref_length(GNSS_ID)) && return nothing
         satellite_mask = read_bits!(reader, 40)
         signal_mask = UInt16(read_bits!(reader, 16))
         cell_mask_available = read_bits!(reader, 1) == 1
-        svids = e6b_expand_mask(satellite_mask, 40; first_index = 1)
+        SVIDs = e6b_expand_mask(satellite_mask, 40; first_index = 1)
         signal_indices = e6b_expand_mask(signal_mask, 16)
         cell_mask = nothing
         if cell_mask_available
             # L_CM = Nsig · Nsat, read satellite-major: the table is "read from
             # left to right and from top to bottom" of Nsat rows by Nsig columns
             # (ICD §5.2.1.5, Eq. 3).
-            num_cells = length(svids) * length(signal_indices)
+            num_cells = length(SVIDs) * length(signal_indices)
             bits_remaining(reader) >= num_cells + 3 || return nothing
-            cells = Matrix{Bool}(undef, length(svids), length(signal_indices))
-            for row = 1:length(svids), column = 1:length(signal_indices)
+            cells = Matrix{Bool}(undef, length(SVIDs), length(signal_indices))
+            for row = 1:length(SVIDs), column = 1:length(signal_indices)
                 cells[row, column] = read_bits!(reader, 1) == 1
             end
             cell_mask = cells
@@ -1195,12 +1181,12 @@ function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
         push!(
             masks,
             GalileoHASSatelliteMask(;
-                gnss_id,
+                GNSS_ID,
                 satellite_mask,
                 signal_mask,
                 cell_mask,
                 nav_message_index,
-                svids,
+                SVIDs,
                 signal_indices,
             ),
         )
@@ -1222,9 +1208,9 @@ function parse_has_orbit_block!(reader::HASBitReader, context::GalileoHASBlockCo
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
     corrections = GalileoHASOrbitCorrection[]
     for satellite_mask in context.mask.satellite_masks
-        iod_length = e6b_iod_ref_length(satellite_mask.gnss_id)
+        iod_length = e6b_iod_ref_length(satellite_mask.GNSS_ID)
         isnothing(iod_length) && return nothing
-        for svid in satellite_mask.svids
+        for SVID in satellite_mask.SVIDs
             bits_remaining(reader) >= iod_length + 13 + 12 + 12 || return nothing
             IOD_ref = Int(read_bits!(reader, iod_length))
             # "Data not available" is the most negative value of each field
@@ -1235,8 +1221,8 @@ function parse_has_orbit_block!(reader::HASBitReader, context::GalileoHASBlockCo
             push!(
                 corrections,
                 GalileoHASOrbitCorrection(;
-                    gnss_id = satellite_mask.gnss_id,
-                    svid,
+                    GNSS_ID = satellite_mask.GNSS_ID,
+                    SVID,
                     IOD_ref,
                     δ_radial = radial_raw == -4096 ? nothing : radial_raw * 0.0025,
                     δ_in_track = in_track_raw == -2048 ? nothing : in_track_raw * 0.008,
@@ -1267,9 +1253,13 @@ Multiplier per constellation of the mask, then one 13-bit correction per
 corrected satellite. Returns `nothing` on a truncated message.
 
 The 2-bit multiplier field maps `0…3` to multipliers `1…4` (ICD Table 29); the
-raw field is *not* the multiplier. HAS SIS ICD Annex D's worked example prints
-the raw field (`2` for a constellation whose corrections need ×3), which is easy
-to misread as the multiplier itself.
+raw field is *not* the multiplier, and reading it as one scales every correction
+in the block by the wrong integer. Table 29 is the only authority for that
+mapping: the ICD's own worked example (the Annex D attachment embedded in the
+PDF, transcribed in `test/has_test_vectors.jl`) prints the *raw* Delta Clock
+Multiplier fields and the *un-multiplied* corrections, so it pins the field
+positions and the 0.0025 m LSB but cannot confirm or refute the multiplier
+table either way.
 """
 function parse_has_clock_full_set_block!(
     reader::HASBitReader,
@@ -1282,14 +1272,14 @@ function parse_has_clock_full_set_block!(
     corrections = GalileoHASClockCorrection[]
     for (system_index, satellite_mask) in enumerate(context.mask.satellite_masks)
         multiplier = multipliers[system_index]
-        for svid in satellite_mask.svids
+        for SVID in satellite_mask.SVIDs
             bits_remaining(reader) >= 13 || return nothing
             value, do_not_use = e6b_delta_clock(read_signed_bits!(reader, 13), multiplier)
             push!(
                 corrections,
                 GalileoHASClockCorrection(;
-                    gnss_id = satellite_mask.gnss_id,
-                    svid,
+                    GNSS_ID = satellite_mask.GNSS_ID,
+                    SVID,
                     multiplier,
                     δ_clock = value,
                     do_not_use,
@@ -1330,26 +1320,26 @@ function parse_has_clock_subset_block!(
     corrections = GalileoHASClockCorrection[]
     for _ = 1:num_subset_systems
         bits_remaining(reader) >= 6 || return nothing
-        gnss_id = Int(read_bits!(reader, 4))
+        GNSS_ID = Int(read_bits!(reader, 4))
         multiplier = Int(read_bits!(reader, 2)) + 1
-        index = findfirst(m -> m.gnss_id == gnss_id, context.mask.satellite_masks)
+        index = findfirst(m -> m.GNSS_ID == GNSS_ID, context.mask.satellite_masks)
         # A subset naming a constellation the mask does not cover leaves the
         # submask length unknown.
         isnothing(index) && return nothing
-        svids = context.mask.satellite_masks[index].svids
-        bits_remaining(reader) >= length(svids) || return nothing
-        subset_svids = Int[]
-        for svid in svids
-            read_bits!(reader, 1) == 1 && push!(subset_svids, svid)
+        SVIDs = context.mask.satellite_masks[index].SVIDs
+        bits_remaining(reader) >= length(SVIDs) || return nothing
+        subset_SVIDs = Int[]
+        for SVID in SVIDs
+            read_bits!(reader, 1) == 1 && push!(subset_SVIDs, SVID)
         end
-        for svid in subset_svids
+        for SVID in subset_SVIDs
             bits_remaining(reader) >= 13 || return nothing
             value, do_not_use = e6b_delta_clock(read_signed_bits!(reader, 13), multiplier)
             push!(
                 corrections,
                 GalileoHASClockCorrection(;
-                    gnss_id,
-                    svid,
+                    GNSS_ID,
+                    SVID,
                     multiplier,
                     δ_clock = value,
                     do_not_use,
@@ -1365,7 +1355,7 @@ end
 
 Walk the mask's satellite/signal cells in broadcast order — constellation, then
 satellite, then signal — skipping the pairs a Cell Mask excludes, and call
-`f(gnss_id, svid, signal_index)` on each. `f` returns `false` to abort (a
+`f(GNSS_ID, SVID, signal_index)` on each. `f` returns `false` to abort (a
 truncated message); `e6b_foreach_cell` then returns `false` too, and `true` when
 every cell was visited.
 
@@ -1377,13 +1367,13 @@ cell, which no CRC downstream can catch.
 """
 function e6b_foreach_cell(f, mask::GalileoHASMask)
     for satellite_mask in mask.satellite_masks
-        for (row, svid) in enumerate(satellite_mask.svids)
+        for (row, SVID) in enumerate(satellite_mask.SVIDs)
             for (column, signal_index) in enumerate(satellite_mask.signal_indices)
                 if !isnothing(satellite_mask.cell_mask) &&
                    !satellite_mask.cell_mask[row, column]
                     continue
                 end
-                f(satellite_mask.gnss_id, svid, signal_index) || return false
+                f(satellite_mask.GNSS_ID, SVID, signal_index) || return false
             end
         end
     end
@@ -1400,14 +1390,14 @@ function parse_has_code_bias_block!(reader::HASBitReader, context::GalileoHASBlo
     bits_remaining(reader) >= 4 || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
     biases = GalileoHASCodeBias[]
-    complete = e6b_foreach_cell(context.mask) do gnss_id, svid, signal_index
+    complete = e6b_foreach_cell(context.mask) do GNSS_ID, SVID, signal_index
         bits_remaining(reader) >= 11 || return false
         raw = read_signed_bits!(reader, 11)
         push!(
             biases,
             GalileoHASCodeBias(;
-                gnss_id,
-                svid,
+                GNSS_ID,
+                SVID,
                 signal_index,
                 bias = raw == -1024 ? nothing : raw * 0.02,
             ),
@@ -1430,15 +1420,15 @@ function parse_has_phase_bias_block!(reader::HASBitReader, context::GalileoHASBl
     bits_remaining(reader) >= 4 || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
     biases = GalileoHASPhaseBias[]
-    complete = e6b_foreach_cell(context.mask) do gnss_id, svid, signal_index
+    complete = e6b_foreach_cell(context.mask) do GNSS_ID, SVID, signal_index
         bits_remaining(reader) >= 13 || return false
         raw = read_signed_bits!(reader, 11)
         phase_discontinuity_indicator = Int(read_bits!(reader, 2))
         push!(
             biases,
             GalileoHASPhaseBias(;
-                gnss_id,
-                svid,
+                GNSS_ID,
+                SVID,
                 signal_index,
                 bias = raw == -1024 ? nothing : raw * 0.01,
                 phase_discontinuity_indicator,

@@ -102,9 +102,9 @@ end
 
 function set_clock!(bits, start)
     b2a_setbits!(bits, start, 11, 1005)        # t_0c raw (×300 = 301500 s)
-    b2a_setbits!(bits, start + 11, 25, -5000000) # a_0
-    b2a_setbits!(bits, start + 36, 22, -150000)  # a_1
-    b2a_setbits!(bits, start + 58, 11, 300)      # a_2
+    b2a_setbits!(bits, start + 11, 25, -5000000) # a_f0
+    b2a_setbits!(bits, start + 36, 22, -150000)  # a_f1
+    b2a_setbits!(bits, start + 58, 11, 300)      # a_f2
 end
 
 build_b2a_mt10(; sow, iode = B2A_IODE, prn = B2A_PRN, corrupt_crc = false) =
@@ -167,7 +167,7 @@ build_b2a_mt31(; sow) =
         set_clock!(bits, 43)
         b2a_setbits!(bits, 112, 10, B2A_IODC)
         b2a_setbits!(bits, 122, 13, B2A_WN) # WN_a
-        b2a_setbits!(bits, 135, 8, 100)     # t_oa raw (×2¹² = 409600 s)
+        b2a_setbits!(bits, 135, 8, 100)     # t_0a raw (×2¹² = 409600 s)
         b2a_setbits!(bits, 143, 6, 7)       # PRN_a
         b2a_setbits!(bits, 149, 2, 3)       # MEO
         b2a_setbits!(bits, 151, 8, -50)     # δA
@@ -206,9 +206,9 @@ build_b2a_mt33(; sow) =
         b2a_setbits!(bits, 112, 3, 1)       # GNSS_ID = GPS
         b2a_setbits!(bits, 115, 13, 880)    # WN_0BGTO
         b2a_setbits!(bits, 128, 16, 20000)  # t_0BGTO raw (×2⁴ = 320000 s)
-        b2a_setbits!(bits, 144, 16, -20000) # A0_BGTO
-        b2a_setbits!(bits, 160, 13, 3000)   # A1_BGTO
-        b2a_setbits!(bits, 173, 7, -60)     # A2_BGTO
+        b2a_setbits!(bits, 144, 16, -20000) # A_0BGTO
+        b2a_setbits!(bits, 160, 13, 3000)   # A_1BGTO
+        b2a_setbits!(bits, 173, 7, -60)     # A_2BGTO
         b2a_setbits!(bits, 180, 6, 9)       # reduced almanac PRN_a
         b2a_setbits!(bits, 186, 2, 1)       # GEO
         b2a_setbits!(bits, 188, 8, 100)     # δA
@@ -217,7 +217,7 @@ build_b2a_mt33(; sow) =
         b2a_setbits!(bits, 210, 8, 2)       # health
         b2a_setbits!(bits, 218, 10, B2A_IODC)
         b2a_setbits!(bits, 228, 13, B2A_WN) # WN_a
-        b2a_setbits!(bits, 241, 8, 100)     # t_oa raw
+        b2a_setbits!(bits, 241, 8, 100)     # t_0a raw
     end
 
 build_b2a_mt34(; sow) =
@@ -230,12 +230,12 @@ build_b2a_mt34(; sow) =
         b2a_setbits!(bits, 62, 3, 2)      # SISAI_oc2
         set_clock!(bits, 65)
         b2a_setbits!(bits, 134, 10, B2A_IODC)
-        b2a_setbits!(bits, 144, 16, -30000) # A0_UTC
-        b2a_setbits!(bits, 160, 13, 2500)   # A1_UTC
-        b2a_setbits!(bits, 173, 7, -50)     # A2_UTC
+        b2a_setbits!(bits, 144, 16, -30000) # A_0UTC
+        b2a_setbits!(bits, 160, 13, 2500)   # A_1UTC
+        b2a_setbits!(bits, 173, 7, -50)     # A_2UTC
         b2a_setbits!(bits, 180, 8, 4)       # Δt_LS
-        b2a_setbits!(bits, 188, 16, 35000)  # t_ot raw (×2⁴ = 560000 s)
-        b2a_setbits!(bits, 204, 13, B2A_WN) # WN_ot
+        b2a_setbits!(bits, 188, 16, 35000)  # t_0t raw (×2⁴ = 560000 s)
+        b2a_setbits!(bits, 204, 13, B2A_WN) # WN_0t
         b2a_setbits!(bits, 217, 13, 902)    # WN_LSF
         b2a_setbits!(bits, 230, 3, 6)       # DN
         b2a_setbits!(bits, 233, 8, 5)       # Δt_LSF
@@ -253,7 +253,7 @@ build_b2a_mt40(; sow) =
         b2a_setbits!(bits, 70, 6, 23)     # midi PRN_a
         b2a_setbits!(bits, 76, 2, 2)      # IGSO
         b2a_setbits!(bits, 78, 13, B2A_WN)
-        b2a_setbits!(bits, 91, 8, 100)    # t_oa raw
+        b2a_setbits!(bits, 91, 8, 100)    # t_0a raw
         b2a_setbits!(bits, 99, 11, 1500)  # e (unsigned)
         b2a_setbits!(bits, 110, 11, -800) # δi
         b2a_setbits!(bits, 121, 17, 105000) # √A (unsigned)
@@ -295,7 +295,7 @@ end
         state = decode_b2a_frames(state, messages)
 
         # Header / time
-        @test state.raw_data.last_message_id == 40
+        @test state.raw_data.last_message_type == 40
         @test state.raw_data.SOW == t0 + 21
         @test state.raw_data.WN == B2A_WN
         @test state.is_shifted_by_180_degrees == false
@@ -342,23 +342,23 @@ end
         # Clock block (identical in MT30-34)
         @test state.raw_data.IODC == B2A_IODC
         @test state.raw_data.t_0c == 301500
-        @test state.raw_data.a_0 == -5000000 * 2.0^-34
-        @test state.raw_data.a_1 == -150000 * 2.0^-50
-        @test state.raw_data.a_2 == 300 * 2.0^-66
+        @test state.raw_data.a_f0 == -5000000 * 2.0^-34
+        @test state.raw_data.a_f1 == -150000 * 2.0^-50
+        @test state.raw_data.a_f2 == 300 * 2.0^-66
 
         # MT30: group delay + BDGIM
         @test state.raw_data.T_GD_B2ap == -800 * 2.0^-34
         @test state.raw_data.ISC_B2ad == 600 * 2.0^-34
         @test state.raw_data.T_GD_B1Cp == -1024 * 2.0^-34
-        @test state.raw_data.α_1 == 800 * 2.0^-3
-        @test state.raw_data.α_2 == -100 * 2.0^-3
-        @test state.raw_data.α_3 == 200 * 2.0^-3
-        @test state.raw_data.α_4 == 90 * 2.0^-3
-        @test state.raw_data.α_5 == 40 * -2.0^-3
-        @test state.raw_data.α_6 == -3 * 2.0^-3
-        @test state.raw_data.α_7 == 17 * 2.0^-3
-        @test state.raw_data.α_8 == -128 * 2.0^-3
-        @test state.raw_data.α_9 == 127 * 2.0^-3
+        @test state.raw_data.α_bdgim_1 == 800 * 2.0^-3
+        @test state.raw_data.α_bdgim_2 == -100 * 2.0^-3
+        @test state.raw_data.α_bdgim_3 == 200 * 2.0^-3
+        @test state.raw_data.α_bdgim_4 == 90 * 2.0^-3
+        @test state.raw_data.α_bdgim_5 == 40 * -2.0^-3
+        @test state.raw_data.α_bdgim_6 == -3 * 2.0^-3
+        @test state.raw_data.α_bdgim_7 == 17 * 2.0^-3
+        @test state.raw_data.α_bdgim_8 == -128 * 2.0^-3
+        @test state.raw_data.α_bdgim_9 == 127 * 2.0^-3
 
         # MT31 + MT33: reduced almanacs (PRN 0 slot skipped)
         @test !isnothing(state.raw_data.reduced_almanacs)
@@ -370,7 +370,7 @@ end
         @test alm7.Φ_0 == -64 * 2.0^-6 * PI
         @test alm7.health == 0
         @test alm7.WN_a == B2A_WN
-        @test alm7.t_oa == 100 * 2^12
+        @test alm7.t_0a == 100 * 2^12
         @test state.raw_data.reduced_almanacs[8].health == 128
         alm9 = state.raw_data.reduced_almanacs[9]
         @test alm9.sat_type == 1
@@ -390,21 +390,21 @@ end
         @test state.raw_data.GNSS_ID == 1
         @test state.raw_data.WN_0BGTO == 880
         @test state.raw_data.t_0BGTO == 20000 * 2^4
-        @test state.raw_data.A0_BGTO == -20000 * 2.0^-35
-        @test state.raw_data.A1_BGTO == 3000 * 2.0^-51
-        @test state.raw_data.A2_BGTO == -60 * 2.0^-68
+        @test state.raw_data.A_0BGTO == -20000 * 2.0^-35
+        @test state.raw_data.A_1BGTO == 3000 * 2.0^-51
+        @test state.raw_data.A_2BGTO == -60 * 2.0^-68
 
         # MT34: SISAIoc + BDT-UTC
         @test state.raw_data.t_op == 1200
         @test state.raw_data.SISAI_ocb == 17
         @test state.raw_data.SISAI_oc1 == 5
         @test state.raw_data.SISAI_oc2 == 2
-        @test state.raw_data.A0_UTC == -30000 * 2.0^-35
-        @test state.raw_data.A1_UTC == 2500 * 2.0^-51
-        @test state.raw_data.A2_UTC == -50 * 2.0^-68
+        @test state.raw_data.A_0UTC == -30000 * 2.0^-35
+        @test state.raw_data.A_1UTC == 2500 * 2.0^-51
+        @test state.raw_data.A_2UTC == -50 * 2.0^-68
         @test state.raw_data.Δt_LS == 4
-        @test state.raw_data.t_ot == 35000 * 2^4
-        @test state.raw_data.WN_ot == B2A_WN
+        @test state.raw_data.t_0t == 35000 * 2^4
+        @test state.raw_data.WN_0t == B2A_WN
         @test state.raw_data.WN_LSF == 902
         @test state.raw_data.DN == 6
         @test state.raw_data.Δt_LSF == 5
@@ -416,7 +416,7 @@ end
         midi = state.raw_data.midi_almanacs[23]
         @test midi.sat_type == 2
         @test midi.WN_a == B2A_WN
-        @test midi.t_oa == 100 * 2^12
+        @test midi.t_0a == 100 * 2^12
         @test midi.e == 1500 * 2.0^-16
         @test midi.δi == -800 * 2.0^-14 * PI
         @test midi.sqrt_A == 105000 * 2.0^-4

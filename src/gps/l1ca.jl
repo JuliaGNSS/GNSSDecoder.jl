@@ -48,10 +48,12 @@ which the decoder stores in `δi`.
 # Fields
 
   - `e::Float64`: Eccentricity (dimensionless)
-  - `t_oa::Int`: Almanac reference time of week (seconds)
+  - `t_0a::Int`: Almanac reference time of week (seconds)
   - `δi::Float64`: Inclination delta from nominal 0.3 semi-circles (rad)
   - `Ω_dot::Float64`: Rate of right ascension (rad/s)
-  - `sv_health::String`: 8-bit SV health status (binary string; "00000000" = healthy)
+  - `sv_health::Int64`: Raw 8-bit SV health word (0 = healthy; IS-GPS-200N
+    20.3.3.5.1.3, Table 20-VII — the MSB summarises the navigation data and the
+    five LSBs are a coded signal-component status, so the word is kept raw)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
   - `ω::Float64`: Argument of perigee (rad)
@@ -65,10 +67,10 @@ IS-GPS-200N, Section 20.3.3.5.1.2, Table 20-VI
 """
 Base.@kwdef struct GPSL1CAAlmanac
     e::Union{Nothing,Float64} = nothing
-    t_oa::Union{Nothing,Int} = nothing
+    t_0a::Union{Nothing,Int} = nothing
     δi::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
-    sv_health::Union{Nothing,String} = nothing
+    sv_health::Union{Nothing,Int64} = nothing
     sqrt_A::Union{Nothing,Float64} = nothing
     Ω_0::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
@@ -88,7 +90,11 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 # Telemetry and Handover Word (TLM/HOW) Fields
 
   - `last_subframe_id::Int`: ID of the last decoded subframe (1-5)
-  - `integrity_status_flag::Bool`: LNAV data integrity status (0=OK, 1=bad)
+  - `integrity_status_flag::Bool`: Level of integrity assurance the URA carries
+    (IS-GPS-200N 20.3.3.1). `false` is the *legacy* level (4.42 x URA bounds the
+    instantaneous URE with probability 1 - 1e-5 per hour); `true` is the
+    *enhanced* level (5.73 x URA at 1 - 1e-8 per hour). A `true` therefore means
+    stronger integrity, not a fault - the fault indicator is `alert_flag`.
   - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
@@ -96,24 +102,33 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 
 # Subframe 1 - Clock Correction Parameters
 
-  - `trans_week::Int64`: GPS week number (modulo 1024)
-  - `codeonl2::Int64`: Code on L2 channel (0=invalid, 1=P-code, 2=C/A-code, 3=invalid)
-  - `ura::Float64`: User Range Accuracy (meters), derived from URA index
-  - `sv_health::String`: 6-bit satellite health status ("000000" = healthy)
-  - `IODC::String`: Issue of Data, Clock (10-bit binary string)
-  - `l2pcode::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
+  - `WN::Int64`: GPS week number (modulo 1024)
+  - `code_on_L2::Int64`: Code on L2 channel (0=invalid, 1=P-code, 2=C/A-code, 3=invalid)
+  - `URA_index::Int64`: User Range Accuracy index, the raw 4-bit broadcast value
+    (IS-GPS-200N 20.3.3.3.1.3, Table 20-I). Not converted to metres: the index
+    is what the SV transmits, the table maps it to a *bound* rather than a
+    value, and index 15 means "no accuracy prediction available - use at own
+    risk", which a metre value cannot express.
+  - `sv_health::Int64`: Raw 6-bit satellite health word (0 = healthy;
+    IS-GPS-200N 20.3.3.3.1.4, Table 20-VIII)
+  - `IODC::Int64`: Issue of Data, Clock (10 bits, 0-1023). An integer because
+    every operation the ICD defines on it is arithmetic: `IODE == IODC & 0xff`
+    (20.3.4.4), inequality against the values of the preceding six hours, and
+    the Table 20-XII range tests that select the curve-fit interval
+    (`IODC < 240`, `240-247`, `248-255, 496`)
+  - `L2_P_data_flag::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
   - `T_GD::Float64`: L1-L2 group delay correction (seconds)
-  - `t_0c::Int64`: Clock reference time (seconds)
+  - `t_0c::Int64`: Clock reference time (seconds; the ICD writes `toc`)
   - `a_f0::Float64`: Clock bias correction coefficient (seconds)
   - `a_f1::Float64`: Clock drift correction coefficient (s/s)
   - `a_f2::Float64`: Clock drift rate correction coefficient (s/s²)
 
 # Subframe 2 - Ephemeris Parameters (Part 1)
 
-  - `IODE_Sub_2::String`: Issue of Data, Ephemeris from subframe 2 (8-bit binary string)
+  - `IODE_Sub_2::Int64`: Issue of Data, Ephemeris from subframe 2 (8 bits)
   - `C_rs::Float64`: Sine harmonic correction to orbit radius (meters)
-  - `Δn::Float64`: Mean motion difference from computed value (semi-circles/s)
-  - `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+  - `Δn::Float64`: Mean motion difference from computed value (rad/s)
+  - `M_0::Float64`: Mean anomaly at reference time (rad)
   - `C_uc::Float64`: Cosine harmonic correction to argument of latitude (rad)
   - `e::Float64`: Eccentricity (dimensionless, range 0-0.03)
   - `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
@@ -126,14 +141,39 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 # Subframe 3 - Ephemeris Parameters (Part 2)
 
   - `C_ic::Float64`: Cosine harmonic correction to inclination (rad)
-  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
+  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
   - `C_is::Float64`: Sine harmonic correction to inclination (rad)
-  - `i_0::Float64`: Inclination angle at reference time (semi-circles)
+  - `i_0::Float64`: Inclination angle at reference time (rad)
   - `C_rc::Float64`: Cosine harmonic correction to orbit radius (meters)
-  - `ω::Float64`: Argument of perigee (semi-circles)
-  - `Ω_dot::Float64`: Rate of right ascension (semi-circles/s)
-  - `IODE_Sub_3::String`: Issue of Data, Ephemeris from subframe 3 (8-bit binary string)
-  - `i_dot::Float64`: Rate of inclination angle (semi-circles/s)
+  - `ω::Float64`: Argument of perigee (rad)
+  - `Ω_dot::Float64`: Rate of right ascension (rad/s)
+  - `IODE_Sub_3::Int64`: Issue of Data, Ephemeris from subframe 3 (8 bits)
+  - `i_dot::Float64`: Rate of inclination angle (rad/s)
+
+# Subframe 4 Page 18 - Ionosphere and UTC
+
+  - `α_0..α_3::Float64`: Klobuchar ionospheric delay coefficients (s, s/sc, s/sc², s/sc³)
+  - `β_0..β_3::Float64`: Klobuchar ionospheric period coefficients (s, s/sc, s/sc², s/sc³)
+  - `A_0UTC::Float64`: Constant term of the UTC polynomial (s; the ICD writes `A0`)
+  - `A_1UTC::Float64`: 1st-order term of the UTC polynomial (s/s; the ICD writes `A1`)
+  - `Δt_LS::Int64`: Leap-second count before the pending adjustment (s)
+  - `t_0t::Int64`: UTC reference time of week (s; the ICD writes `tot`)
+  - `WN_0t::Int64`: UTC reference week number (modulo 256; the ICD writes `WNt`)
+  - `WN_LSF::Int64`: Week number of the leap-second adjustment (modulo 256)
+  - `DN::Int64`: Day number at the end of which the leap second becomes effective (1-7)
+  - `Δt_LSF::Int64`: Leap-second count after the pending adjustment (s)
+
+# Subframe 4 Page 25 / Subframe 5 Page 25 - Configuration and health
+
+  - `sv_config::Vector{Int64}`: 4-bit A-S flag and SV configuration per SV 1-32
+  - `sv_health_sf4_25::Vector{Int64}`: Raw 6-bit health words for SV 25-32
+  - `sv_health_sf5_25::Vector{Int64}`: Raw 6-bit health words for SV 1-24
+
+# Subframe 5 Pages 1-24 - Almanac
+
+  - `almanacs::Dictionary{Int64,GPSL1CAAlmanac}`: Per-SV almanacs, keyed by SV ID
+  - `t_0a::Int64`: Almanac reference time of week (s; the ICD writes `toa`)
+  - `WN_a::Int64`: Almanac reference week number (modulo 256)
 
 # Reference
 
@@ -149,19 +189,19 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     # `is_plausible_TOW` predict the next legal TOW exactly (issue #82).
     num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
 
-    trans_week::Union{Nothing,Int64} = nothing
-    codeonl2::Union{Nothing,Int64} = nothing
-    ura::Union{Nothing,Float64} = nothing
-    sv_health::Union{Nothing,String} = nothing
-    IODC::Union{Nothing,String} = nothing
-    l2pcode::Union{Nothing,Bool} = nothing
+    WN::Union{Nothing,Int64} = nothing
+    code_on_L2::Union{Nothing,Int64} = nothing
+    URA_index::Union{Nothing,Int64} = nothing
+    sv_health::Union{Nothing,Int64} = nothing
+    IODC::Union{Nothing,Int64} = nothing
+    L2_P_data_flag::Union{Nothing,Bool} = nothing
     T_GD::Union{Nothing,Float64} = nothing
     t_0c::Union{Nothing,Int64} = nothing
     a_f2::Union{Nothing,Float64} = nothing
     a_f1::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
 
-    IODE_Sub_2::Union{Nothing,String} = nothing
+    IODE_Sub_2::Union{Nothing,Int64} = nothing
     C_rs::Union{Nothing,Float64} = nothing
     Δn::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
@@ -180,7 +220,7 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     C_rc::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
-    IODE_Sub_3::Union{Nothing,String} = nothing
+    IODE_Sub_3::Union{Nothing,Int64} = nothing
     i_dot::Union{Nothing,Float64} = nothing
 
     # Subframe 4 page 18: Ionospheric parameters
@@ -194,11 +234,11 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     β_3::Union{Nothing,Float64} = nothing
 
     # Subframe 4 page 18: UTC parameters
-    A_0::Union{Nothing,Float64} = nothing
-    A_1::Union{Nothing,Float64} = nothing
+    A_0UTC::Union{Nothing,Float64} = nothing
+    A_1UTC::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_ot::Union{Nothing,Int64} = nothing
-    WN_t::Union{Nothing,Int64} = nothing
+    t_0t::Union{Nothing,Int64} = nothing
+    WN_0t::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -207,16 +247,16 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     sv_config::Union{Nothing,Vector{Int64}} = nothing
 
     # Subframe 4 page 25: SV health for SV 25-32 (6-bit health words)
-    sv_health_sf4_25::Union{Nothing,Vector{String}} = nothing
+    sv_health_sf4_25::Union{Nothing,Vector{Int64}} = nothing
 
     # Subframe 5 pages 1-24: Almanac data (stored per SV ID)
-    almanac::Union{Nothing,Dictionary{Int64,GPSL1CAAlmanac}} = nothing
+    almanacs::Union{Nothing,Dictionary{Int64,GPSL1CAAlmanac}} = nothing
 
     # Subframe 5 page 25: SV health for SV 1-24 (6-bit health words)
-    sv_health_sf5_25::Union{Nothing,Vector{String}} = nothing
+    sv_health_sf5_25::Union{Nothing,Vector{Int64}} = nothing
 
     # Subframe 5 page 25: Almanac reference time and week
-    t_oa::Union{Nothing,Int64} = nothing
+    t_0a::Union{Nothing,Int64} = nothing
     WN_a::Union{Nothing,Int64} = nothing
 end
 
@@ -228,12 +268,12 @@ function GPSL1CAData(
     alert_flag = data.alert_flag,
     anti_spoof_flag = data.anti_spoof_flag,
     num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-    trans_week = data.trans_week,
-    codeonl2 = data.codeonl2,
-    ura = data.ura,
+    WN = data.WN,
+    code_on_L2 = data.code_on_L2,
+    URA_index = data.URA_index,
     sv_health = data.sv_health,
     IODC = data.IODC,
-    l2pcode = data.l2pcode,
+    L2_P_data_flag = data.L2_P_data_flag,
     T_GD = data.T_GD,
     t_0c = data.t_0c,
     a_f2 = data.a_f2,
@@ -267,19 +307,19 @@ function GPSL1CAData(
     β_1 = data.β_1,
     β_2 = data.β_2,
     β_3 = data.β_3,
-    A_0 = data.A_0,
-    A_1 = data.A_1,
+    A_0UTC = data.A_0UTC,
+    A_1UTC = data.A_1UTC,
     Δt_LS = data.Δt_LS,
-    t_ot = data.t_ot,
-    WN_t = data.WN_t,
+    t_0t = data.t_0t,
+    WN_0t = data.WN_0t,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
     sv_config = data.sv_config,
     sv_health_sf4_25 = data.sv_health_sf4_25,
-    almanac = data.almanac,
+    almanacs = data.almanacs,
     sv_health_sf5_25 = data.sv_health_sf5_25,
-    t_oa = data.t_oa,
+    t_0a = data.t_0a,
     WN_a = data.WN_a,
 )
     GPSL1CAData(
@@ -289,12 +329,12 @@ function GPSL1CAData(
         alert_flag,
         anti_spoof_flag,
         num_bits_after_valid_syncro_sequence_after_last_TOW,
-        trans_week,
-        codeonl2,
-        ura,
+        WN,
+        code_on_L2,
+        URA_index,
         sv_health,
         IODC,
-        l2pcode,
+        L2_P_data_flag,
         T_GD,
         t_0c,
         a_f2,
@@ -328,26 +368,26 @@ function GPSL1CAData(
         β_1,
         β_2,
         β_3,
-        A_0,
-        A_1,
+        A_0UTC,
+        A_1UTC,
         Δt_LS,
-        t_ot,
-        WN_t,
+        t_0t,
+        WN_0t,
         WN_LSF,
         DN,
         Δt_LSF,
         sv_config,
         sv_health_sf4_25,
-        almanac,
+        almanacs,
         sv_health_sf5_25,
-        t_oa,
+        t_0a,
         WN_a,
     )
 end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the `Vector` and `Dictionary` fields — `sv_config`, the two
-# `sv_health_sf*_25` lists, `almanac` — even when their contents match. Compare
+# `sv_health_sf*_25` lists, `almanacs` — even when their contents match. Compare
 # field-by-field (mirrors `GPSCNAVData`).
 #
 # This is equality of the *published* data only. Subframe voting compares
@@ -425,12 +465,12 @@ end
 packed_buffer_type(::GNSSDecoderState{<:GPSL1CAData}) = UInt320
 
 function is_subframe1_decoded(data::GPSL1CAData)
-    !isnothing(data.trans_week) &&
-        !isnothing(data.codeonl2) &&
-        !isnothing(data.ura) &&
+    !isnothing(data.WN) &&
+        !isnothing(data.code_on_L2) &&
+        !isnothing(data.URA_index) &&
         !isnothing(data.sv_health) &&
         !isnothing(data.IODC) &&
-        !isnothing(data.l2pcode) &&
+        !isnothing(data.L2_P_data_flag) &&
         !isnothing(data.T_GD) &&
         !isnothing(data.t_0c) &&
         !isnothing(data.a_f2) &&
@@ -475,11 +515,11 @@ function is_subframe4_decoded(data::GPSL1CAData)
         !isnothing(data.β_1) &&
         !isnothing(data.β_2) &&
         !isnothing(data.β_3) &&
-        !isnothing(data.A_0) &&
-        !isnothing(data.A_1) &&
+        !isnothing(data.A_0UTC) &&
+        !isnothing(data.A_1UTC) &&
         !isnothing(data.Δt_LS) &&
-        !isnothing(data.t_ot) &&
-        !isnothing(data.WN_t) &&
+        !isnothing(data.t_0t) &&
+        !isnothing(data.WN_0t) &&
         !isnothing(data.WN_LSF) &&
         !isnothing(data.DN) &&
         !isnothing(data.Δt_LSF) &&
@@ -490,7 +530,7 @@ end
 function is_subframe5_decoded(data::GPSL1CAData)
     # Subframe 5 is considered decoded when we have SV health (page 25)
     # and almanac reference time/week
-    !isnothing(data.sv_health_sf5_25) && !isnothing(data.t_oa) && !isnothing(data.WN_a)
+    !isnothing(data.sv_health_sf5_25) && !isnothing(data.t_0a) && !isnothing(data.WN_a)
 end
 
 function is_decoding_completed_for_positioning(data::GPSL1CAData)
@@ -572,7 +612,7 @@ after brief signal outages without requiring a full re-decode of all subframes.
 
 !!! note
 
-    The `trans_week` field is intentionally not reset as it is only broadcast
+    The `WN` field is intentionally not reset as it is only broadcast
     in subframe 1. This may cause brief errors if a GPS week rollover occurs
     during a signal outage.
 
@@ -605,7 +645,7 @@ function reset_decoder_state(state::GNSSDecoderState{<:GPSL1CAData})
     # remaining parameters in raw_data. This allows a GNSSReceiver
     # to use a satellite after a reacquisition without waiting for
     # the decoding of all data fields.
-    # Note: trans_week is currently not reset as it is only
+    # Note: WN is currently not reset as it is only
     # broadcast in subframe 1 and thus may increase the time until
     # the decoder is available again after an outage. This will
     # lead to erroneous decoder information for a few seconds after
@@ -832,43 +872,39 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
     if subframe_id == 1
         state = can_decode_word(state, buffer, 3) do word3, state
-            trans_week = get_bits(word3, 30, 1, 10)
+            WN = get_bits(word3, 30, 1, 10)
 
             # Codes on L2 Channel
-            codeonl2 = get_bits(word3, 30, 11, 2)
+            code_on_L2 = get_bits(word3, 30, 11, 2)
 
-            # SV Accuracy, user range accuracy
-            ura = get_bits(word3, 30, 13, 4)
-            if ura <= 6
-                ura = 2^(1 + (ura / 2))
-            elseif 6 < ura <= 14
-                ura = 2^(ura - 2)
-            elseif ura == 15
-                ura = nothing
-            end
+            # SV accuracy: the raw URA index, unconverted. Table 20-I maps it
+            # to a bound rather than a value, and index 15 is "no accuracy
+            # prediction available"; folding that to `nothing` made it
+            # indistinguishable from "subframe 1 not decoded yet" and kept such
+            # a satellite out of `is_decoding_completed_for_positioning`
+            # forever.
+            URA_index = Int64(get_bits(word3, 30, 13, 4))
 
             # Satellite Health
-            sv_health = bitstring(get_bits(word3, 30, 17, 6))[(end-5):end]
+            sv_health = Int64(get_bits(word3, 30, 17, 6))
             if get_bit(word3, 30, 17)
                 @warn "Bad LNAV Data, SV-Health critical", sv_health
             end
 
-            GPSL1CAData(state.raw_data; trans_week, codeonl2, ura, sv_health)
+            GPSL1CAData(state.raw_data; WN, code_on_L2, URA_index, sv_health)
         end
 
         state = can_decode_two_words(state, buffer, 3, 8) do word3, word8, state
             # Issue of Data Clock
-            # 2 MSB in Word 2, LSB 8 in Word 8
-            IODC =
-                bitstring(get_bits(word3, 30, 23, 2))[(end-1):end] *
-                bitstring(get_bits(word8, 30, 1, 8))[(end-7):end]
+            # IODC: 2 MSBs in word 3 bits 23-24, 8 LSBs in word 8 (Figure 20-1)
+            IODC = Int64(get_bits(word3, 30, 23, 2)) << 8 | Int64(get_bits(word8, 30, 1, 8))
             GPSL1CAData(state.raw_data; IODC)
         end
 
         state = can_decode_word(state, buffer, 4) do word4, state
             # True: LNAV Datastream on PCode commanded OFF
-            l2pcode = get_bit(word4, 30, 1)
-            GPSL1CAData(state.raw_data; l2pcode)
+            L2_P_data_flag = get_bit(word4, 30, 1)
+            GPSL1CAData(state.raw_data; L2_P_data_flag)
         end
 
         state = can_decode_word(state, buffer, 7) do word7, state
@@ -899,7 +935,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     elseif subframe_id == 2
         state = can_decode_word(state, buffer, 3) do word3, state
             # Issue of ephemeris data
-            IODE_Sub_2 = bitstring(get_bits(word3, 30, 1, 8))[(end-7):end]
+            IODE_Sub_2 = Int64(get_bits(word3, 30, 1, 8))
             C_rs = get_twos_complement_num(word3, 30, 9, 16) / 1 << 5
             GPSL1CAData(state.raw_data; IODE_Sub_2, C_rs)
         end
@@ -911,7 +947,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
         end
 
         state = can_decode_two_words(state, buffer, 4, 5) do word4, word5, state
-            # Mean motion difference from computed value
+            # Mean anomaly at reference time
             combined_word =
                 UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
             M_0 =
@@ -1010,14 +1046,14 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
         end
 
         state = can_decode_word(state, buffer, 9) do word9, state
-            # Amplitude of the cosine harmonic correction term to orbit Radius
+            # Rate of right ascension
             Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI * 2.0^-43
             GPSL1CAData(state.raw_data; Ω_dot)
         end
 
         state = can_decode_word(state, buffer, 10) do word10, state
             # Issue of Ephemeris Data
-            IODE_Sub_3 = bitstring(get_bits(word10, 30, 1, 8))[(end-7):end]
+            IODE_Sub_3 = Int64(get_bits(word10, 30, 1, 8))
             # Rate of Inclination Angle
             i_dot =
                 get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI * 2.0^-43
@@ -1096,21 +1132,21 @@ function decode_subframe4_page18(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        A_1 = get_twos_complement_num(word6, 30, 1, 24) * 2.0^-50
-        GPSL1CAData(state.raw_data; A_1)
+        A_1UTC = get_twos_complement_num(word6, 30, 1, 24) * 2.0^-50
+        GPSL1CAData(state.raw_data; A_1UTC)
     end
 
     state = can_decode_two_words(state, buffer, 7, 8) do word7, word8, state
         # A0 is 32 bits: 24 MSBs in word 7, 8 LSBs in word 8
         combined_word = UInt(get_bits(word7, 30, 1, 24) << 8 + get_bits(word8, 30, 1, 8))
-        A_0 = get_twos_complement_num(combined_word, 32, 1, 32) / 1 << 30
-        GPSL1CAData(state.raw_data; A_0)
+        A_0UTC = get_twos_complement_num(combined_word, 32, 1, 32) / 1 << 30
+        GPSL1CAData(state.raw_data; A_0UTC)
     end
 
     state = can_decode_word(state, buffer, 8) do word8, state
-        t_ot = get_bits(word8, 30, 9, 8) << 12
-        WN_t = get_bits(word8, 30, 17, 8)
-        GPSL1CAData(state.raw_data; t_ot, WN_t)
+        t_0t = get_bits(word8, 30, 9, 8) << 12
+        WN_0t = get_bits(word8, 30, 17, 8)
+        GPSL1CAData(state.raw_data; t_0t, WN_0t)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
@@ -1185,23 +1221,23 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             cfg[28+i] = get_bits(word8, 30, 1 + (i - 1) * 4, 4)
         end
         # SV 25 health (6 bits) at bits 19-24
-        sv_health_sf4_25 = Vector{String}(undef, 8)
-        sv_health_sf4_25[1] = bitstring(get_bits(word8, 30, 19, 6))[(end-5):end]
+        sv_health_sf4_25 = Vector{Int64}(undef, 8)
+        sv_health_sf4_25[1] = Int64(get_bits(word8, 30, 19, 6))
         GPSL1CAData(state.raw_data; sv_config = cfg, sv_health_sf4_25)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
-        health = something(state.raw_data.sv_health_sf4_25, Vector{String}(undef, 8))
+        health = something(state.raw_data.sv_health_sf4_25, Vector{Int64}(undef, 8))
         for i = 1:4
-            health[1+i] = bitstring(get_bits(word9, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[1+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf4_25 = health)
     end
 
     state = can_decode_word(state, buffer, 10) do word10, state
-        health = something(state.raw_data.sv_health_sf4_25, Vector{String}(undef, 8))
+        health = something(state.raw_data.sv_health_sf4_25, Vector{Int64}(undef, 8))
         for i = 1:3
-            health[5+i] = bitstring(get_bits(word10, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[5+i] = Int64(get_bits(word10, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf4_25 = health)
     end
@@ -1217,57 +1253,56 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     # Word 9: bits 1-24 = SV21-24 health (6 bits each)
 
     state = can_decode_word(state, buffer, 3) do word3, state
-        t_oa = get_bits(word3, 30, 9, 8) << 12
+        t_0a = get_bits(word3, 30, 9, 8) << 12
         WN_a = get_bits(word3, 30, 17, 8)
-        GPSL1CAData(state.raw_data; t_oa, WN_a)
+        GPSL1CAData(state.raw_data; t_0a, WN_a)
     end
 
-    sv_health_sf5_25 = Vector{String}(undef, 24)
+    sv_health_sf5_25 = Vector{Int64}(undef, 24)
 
     state = can_decode_word(state, buffer, 4) do word4, state
         for i = 1:4
-            sv_health_sf5_25[i] =
-                bitstring(get_bits(word4, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            sv_health_sf5_25[i] = Int64(get_bits(word4, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     state = can_decode_word(state, buffer, 5) do word5, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
+        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[4+i] = bitstring(get_bits(word5, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[4+i] = Int64(get_bits(word5, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
+        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[8+i] = bitstring(get_bits(word6, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[8+i] = Int64(get_bits(word6, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
     state = can_decode_word(state, buffer, 7) do word7, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
+        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[12+i] = bitstring(get_bits(word7, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[12+i] = Int64(get_bits(word7, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
     state = can_decode_word(state, buffer, 8) do word8, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
+        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[16+i] = bitstring(get_bits(word8, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[16+i] = Int64(get_bits(word8, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{String}(undef, 24))
+        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[20+i] = bitstring(get_bits(word9, 30, 1 + (i - 1) * 6, 6))[(end-5):end]
+            health[20+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
         end
         GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
     end
@@ -1371,7 +1406,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
     alm_δi = get_twos_complement_num(word4_comp, 30, 9, 16) * state.constants.PI / 1 << 19
     alm_Ω_dot =
         get_twos_complement_num(word5_comp, 30, 1, 16) * state.constants.PI * 2.0^-38
-    alm_sv_health = bitstring(get_bits(word5_comp, 30, 17, 8))[(end-7):end]
+    alm_sv_health = Int64(get_bits(word5_comp, 30, 17, 8))
     alm_sqrt_A = get_bits(word6_comp, 30, 1, 24) / 1 << 11
     alm_Ω_0 = get_twos_complement_num(word7_comp, 30, 1, 24) * state.constants.PI / 1 << 23
     alm_ω = get_twos_complement_num(word8_comp, 30, 1, 24) * state.constants.PI / 1 << 23
@@ -1387,7 +1422,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
     # Store almanac data for this SV
     almanac_entry = GPSL1CAAlmanac(;
         e = alm_e,
-        t_oa = alm_toa,
+        t_0a = alm_toa,
         δi = alm_δi,
         Ω_dot = alm_Ω_dot,
         sv_health = alm_sv_health,
@@ -1399,9 +1434,9 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
         a_f1 = alm_af1,
     )
 
-    almanac = something(state.raw_data.almanac, Dictionary{Int64,GPSL1CAAlmanac}())
-    set!(almanac, sv_id, almanac_entry)
-    state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; almanac))
+    almanacs = something(state.raw_data.almanacs, Dictionary{Int64,GPSL1CAAlmanac}())
+    set!(almanacs, sv_id, almanac_entry)
+    state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; almanacs))
 
     return state
 end
@@ -1410,8 +1445,8 @@ function compare_data(data::GPSL1CAData, new_data::GPSL1CAData)
     data.IODC == new_data.IODC && # IODE_Sub_2 and IODE_Sub_3 is already checked for in validate_data
         (
             data.TOW == new_data.TOW ||
-            (data.TOW > new_data.TOW && data.trans_week < new_data.trans_week) ||
-            (data.TOW < new_data.TOW && data.trans_week >= new_data.trans_week)
+            (data.TOW > new_data.TOW && data.WN < new_data.WN) ||
+            (data.TOW < new_data.TOW && data.WN >= new_data.WN)
         ) &&
         data.T_GD == new_data.T_GD &&
         data.t_0c == new_data.t_0c &&
@@ -1436,10 +1471,6 @@ function compare_data(data::GPSL1CAData, new_data::GPSL1CAData)
         data.ω == new_data.ω &&
         data.Ω_dot == new_data.Ω_dot &&
         data.i_dot == new_data.i_dot
-end
-
-function increment_voting(old_vote, max_vote)
-    min(max_vote, old_vote + 1)
 end
 
 # Thread an updated voting tally through a new cache, reusing the shared
@@ -1528,7 +1559,7 @@ end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1CAData})
     if is_decoding_completed_for_positioning(state.raw_data) &&
-       state.raw_data.IODC[3:10] == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
+       state.raw_data.IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
         state = confirm_data(state)
     end
     return state
@@ -1571,5 +1602,5 @@ end
   - [`decode`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GPSL1CAData})
-    state.data.sv_health == "000000"
+    state.data.sv_health == 0
 end

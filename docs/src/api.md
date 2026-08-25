@@ -108,14 +108,18 @@ Signal-independent building blocks used across the decoders (CRC-24Q, the
 BCH(51,8) TOI codec, the block (de)interleaver, and the GF(2^8) Reed-Solomon
 codec behind Galileo HAS).
 
+These are public but unexported, so they are reached through the module: write
+`GNSSDecoder.crc24q(…)`, or import what you need with
+`using GNSSDecoder: crc24q`.
+
 ```@docs
-crc24q
-BCHToiSync
-sync_bch_toi
-soft_to_hard_codeword
-pack_hard_codeword
-deinterleave!
-interleave!
+GNSSDecoder.crc24q
+GNSSDecoder.BCHToiSync
+GNSSDecoder.sync_bch_toi
+GNSSDecoder.soft_to_hard_codeword
+GNSSDecoder.pack_hard_codeword
+GNSSDecoder.deinterleave!
+GNSSDecoder.interleave!
 GNSSDecoder.GaloisField256
 GNSSDecoder.GALILEO_HAS_GF256
 GNSSDecoder.rs_generator_polynomial
@@ -144,7 +148,8 @@ GNSSDecoder.AbstractBeiDouData
 
 ```@docs
 GNSSDecoder.GPSL1CAConstants
-GNSSDecoder.GPSL1CAData
+GPSL1CAData
+GPSL1CAAlmanac
 ```
 
 ### Galileo I/NAV (shared by E1-B and E5b)
@@ -163,10 +168,10 @@ GNSSDecoder.GalileoINAVConstants
 GNSSDecoder.GalileoE1BConstants
 GNSSDecoder.GalileoE5bConstants
 GNSSDecoder.GalileoINAVData
-GNSSDecoder.GalileoReducedCED
-GNSSDecoder.GalileoAlmanac
-GNSSDecoder.SignalHealth
-GNSSDecoder.DataValidityStatus
+GalileoReducedCED
+GalileoAlmanac
+SignalHealth
+DataValidityStatus
 ```
 
 ### Galileo E5a
@@ -199,7 +204,7 @@ GalileoHASOrbitCorrection
 GalileoHASClockCorrection
 GalileoHASCodeBias
 GalileoHASPhaseBias
-GNSSDecoder.HASStatus
+HASStatus
 ```
 
 ### GPS L1C-D

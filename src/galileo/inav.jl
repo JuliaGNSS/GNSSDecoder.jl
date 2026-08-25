@@ -32,9 +32,10 @@
 # 17-20 (FEC2 RS CED) are broadcast on E1-B only (Table 40), so an E5b-I
 # decoder simply never observes them. Nothing in the parser needs to know that.
 
-# UInt288 word for a Galileo I/NAV page pair — the even part's 114 bits followed
-# by the odd part's leading 106, the 220 bits the CRC-24Q gate runs over.
-BitIntegers.@define_integers 288
+# The packed word for a Galileo I/NAV page pair — the even part's 114 bits
+# followed by the odd part's leading 106, the 220 bits the CRC-24Q gate runs
+# over — is `UInt288`, defined in `gnss.jl` because two other decoders reach
+# for the same width.
 
 # Page-part geometry, as module-level constants rather than only
 # `GalileoINAVConstants` fields: `try_sync` below hands them to
@@ -122,9 +123,9 @@ parameters must NOT be combined with full-precision parameters from words 1-4.
   - `ΔA_red::Float64`: Difference of semi-major axis from nominal (meters)
   - `e_x_red::Float64`: Eccentricity vector x-component, e·cos(ω) (dimensionless)
   - `e_y_red::Float64`: Eccentricity vector y-component, e·sin(ω) (dimensionless)
-  - `Δi_0_red::Float64`: Inclination delta from nominal (semi-circles)
-  - `Ω_0_red::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
-  - `λ_0_red::Float64`: Mean argument of latitude, M0+ω (semi-circles)
+  - `Δi_0_red::Float64`: Inclination delta from nominal (rad)
+  - `Ω_0_red::Float64`: Longitude of ascending node at weekly epoch (rad)
+  - `λ_0_red::Float64`: Mean argument of latitude, M0+ω (rad)
   - `a_f0_red::Float64`: SV clock bias correction coefficient (seconds)
   - `a_f1_red::Float64`: SV clock drift correction coefficient (s/s)
 
@@ -266,15 +267,15 @@ OS SIS ICD, Issue 2.2.
 # Ephemeris Parameters (Word Types 1-3)
 
   - `t_0e::Float64`: Ephemeris reference time (seconds)
-  - `M_0::Float64`: Mean anomaly at reference time (semi-circles)
+  - `M_0::Float64`: Mean anomaly at reference time (rad)
   - `e::Float64`: Eccentricity (dimensionless)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
-  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (semi-circles)
-  - `i_0::Float64`: Inclination angle at reference time (semi-circles)
-  - `ω::Float64`: Argument of perigee (semi-circles)
-  - `i_dot::Float64`: Rate of change of inclination angle (semi-circles/s)
-  - `Ω_dot::Float64`: Rate of change of right ascension (semi-circles/s)
-  - `Δn::Float64`: Mean motion difference from computed value (semi-circles/s)
+  - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
+  - `i_0::Float64`: Inclination angle at reference time (rad)
+  - `ω::Float64`: Argument of perigee (rad)
+  - `i_dot::Float64`: Rate of change of inclination angle (rad/s)
+  - `Ω_dot::Float64`: Rate of change of right ascension (rad/s)
+  - `Δn::Float64`: Mean motion difference from computed value (rad/s)
   - `C_uc::Float64`: Cosine harmonic correction to argument of latitude (rad)
   - `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
   - `C_rc::Float64`: Cosine harmonic correction to orbit radius (meters)
@@ -284,7 +285,7 @@ OS SIS ICD, Issue 2.2.
 
 # Signal-In-Space Accuracy (Word Type 3)
 
-  - `SISA_e1_e5b::Int`: SISA index for dual frequency E1-E5b (Table 91/92; 255 = NAPA)
+  - `SISA_E1_E5b::Int`: SISA index for dual frequency E1-E5b (Table 91/92; 255 = NAPA)
 
 # Clock Correction Parameters (Word Type 4)
 
@@ -304,15 +305,15 @@ OS SIS ICD, Issue 2.2.
 
 # Signal Health and Data Validity (Word Type 5)
 
-  - `signal_health_e1b::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=Extended Operations Mode, 3=in test)
-  - `signal_health_e5b::SignalHealth`: E5b signal health status
-  - `data_validity_status_e1b::DataValidityStatus`: E1-B data validity (0=valid, 1=working without guarantee)
-  - `data_validity_status_e5b::DataValidityStatus`: E5b data validity
+  - `E1B_SHS::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=Extended Operations Mode, 3=in test)
+  - `E5b_SHS::SignalHealth`: E5b signal health status
+  - `E1B_DVS::DataValidityStatus`: E1-B data validity (0=valid, 1=working without guarantee)
+  - `E5b_DVS::DataValidityStatus`: E5b data validity
 
 # Broadcast Group Delay (Word Type 5)
 
-  - `broadcast_group_delay_e1_e5a::Float64`: E1-E5a group delay correction (seconds)
-  - `broadcast_group_delay_e1_e5b::Float64`: E1-E5b group delay correction (seconds)
+  - `BGD_E1_E5a::Float64`: E1-E5a group delay correction (seconds)
+  - `BGD_E1_E5b::Float64`: E1-E5b group delay correction (seconds)
 
 # Ionospheric Correction (Word Type 5)
 
@@ -323,8 +324,8 @@ OS SIS ICD, Issue 2.2.
 
 # GST-UTC Conversion (Word Type 6)
 
-  - `A_0_utc::Float64`: Constant term of polynomial (s)
-  - `A_1_utc::Float64`: 1st-order term of polynomial (s/s)
+  - `A_0UTC::Float64`: Constant term of polynomial (s; the ICD writes `A0`)
+  - `A_1UTC::Float64`: 1st-order term of polynomial (s/s; the ICD writes `A1`)
   - `Δt_LS::Int`: Leap Second count before leap second adjustment (s)
   - `t_0t::Int`: UTC data reference Time of Week (s)
   - `WN_0t::Int`: UTC data reference Week Number (8-bit, modulo 256)
@@ -335,9 +336,15 @@ OS SIS ICD, Issue 2.2.
 # GST-GPS Conversion / GGTO (Word Type 10)
 
   - `A_0G::Float64`: Constant term of GST-GPS offset polynomial (s)
+
   - `A_1G::Float64`: Rate of change of GST-GPS offset (s/s)
+
   - `t_0G::Int`: GGTO reference time (s)
+
   - `WN_0G::Int`: GGTO reference Week Number (6-bit)
+
+    All four stay `nothing` when the satellite broadcasts the ICD's "GGTO not
+    valid" encoding — every one of the four fields all ones (5.1.8).
 
 # Almanac (Word Types 7-10)
 
@@ -378,7 +385,7 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     C_ic::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
 
-    SISA_e1_e5b::Union{Nothing,Int} = nothing
+    SISA_E1_E5b::Union{Nothing,Int} = nothing
 
     t_0c::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
@@ -392,13 +399,13 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     num_pages_after_last_TOW::Int = 0
     num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
 
-    signal_health_e1b::Union{Nothing,SignalHealth} = nothing
-    signal_health_e5b::Union{Nothing,SignalHealth} = nothing
-    data_validity_status_e1b::Union{Nothing,DataValidityStatus} = nothing
-    data_validity_status_e5b::Union{Nothing,DataValidityStatus} = nothing
+    E1B_SHS::Union{Nothing,SignalHealth} = nothing
+    E5b_SHS::Union{Nothing,SignalHealth} = nothing
+    E1B_DVS::Union{Nothing,DataValidityStatus} = nothing
+    E5b_DVS::Union{Nothing,DataValidityStatus} = nothing
 
-    broadcast_group_delay_e1_e5a::Union{Nothing,Float64} = nothing
-    broadcast_group_delay_e1_e5b::Union{Nothing,Float64} = nothing
+    BGD_E1_E5a::Union{Nothing,Float64} = nothing
+    BGD_E1_E5b::Union{Nothing,Float64} = nothing
 
     a_i0::Union{Nothing,Float64} = nothing
     a_i1::Union{Nothing,Float64} = nothing
@@ -409,8 +416,8 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     iono_storm_flag_region4::Union{Nothing,Bool} = nothing
     iono_storm_flag_region5::Union{Nothing,Bool} = nothing
 
-    A_0_utc::Union{Nothing,Float64} = nothing
-    A_1_utc::Union{Nothing,Float64} = nothing
+    A_0UTC::Union{Nothing,Float64} = nothing
+    A_1UTC::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int} = nothing
     t_0t::Union{Nothing,Int} = nothing
     WN_0t::Union{Nothing,Int} = nothing
@@ -449,7 +456,7 @@ function GalileoINAVData(
     C_rs = data.C_rs,
     C_ic = data.C_ic,
     C_is = data.C_is,
-    SISA_e1_e5b = data.SISA_e1_e5b,
+    SISA_E1_E5b = data.SISA_E1_E5b,
     t_0c = data.t_0c,
     a_f0 = data.a_f0,
     a_f1 = data.a_f1,
@@ -460,12 +467,12 @@ function GalileoINAVData(
     IOD_nav4 = data.IOD_nav4,
     num_pages_after_last_TOW = data.num_pages_after_last_TOW,
     num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-    signal_health_e1b = data.signal_health_e1b,
-    signal_health_e5b = data.signal_health_e5b,
-    data_validity_status_e1b = data.data_validity_status_e1b,
-    data_validity_status_e5b = data.data_validity_status_e5b,
-    broadcast_group_delay_e1_e5a = data.broadcast_group_delay_e1_e5a,
-    broadcast_group_delay_e1_e5b = data.broadcast_group_delay_e1_e5b,
+    E1B_SHS = data.E1B_SHS,
+    E5b_SHS = data.E5b_SHS,
+    E1B_DVS = data.E1B_DVS,
+    E5b_DVS = data.E5b_DVS,
+    BGD_E1_E5a = data.BGD_E1_E5a,
+    BGD_E1_E5b = data.BGD_E1_E5b,
     a_i0 = data.a_i0,
     a_i1 = data.a_i1,
     a_i2 = data.a_i2,
@@ -474,8 +481,8 @@ function GalileoINAVData(
     iono_storm_flag_region3 = data.iono_storm_flag_region3,
     iono_storm_flag_region4 = data.iono_storm_flag_region4,
     iono_storm_flag_region5 = data.iono_storm_flag_region5,
-    A_0_utc = data.A_0_utc,
-    A_1_utc = data.A_1_utc,
+    A_0UTC = data.A_0UTC,
+    A_1UTC = data.A_1UTC,
     Δt_LS = data.Δt_LS,
     t_0t = data.t_0t,
     WN_0t = data.WN_0t,
@@ -509,7 +516,7 @@ function GalileoINAVData(
         C_rs,
         C_ic,
         C_is,
-        SISA_e1_e5b,
+        SISA_E1_E5b,
         t_0c,
         a_f0,
         a_f1,
@@ -520,12 +527,12 @@ function GalileoINAVData(
         IOD_nav4,
         num_pages_after_last_TOW,
         num_bits_after_valid_syncro_sequence_after_last_TOW,
-        signal_health_e1b,
-        signal_health_e5b,
-        data_validity_status_e1b,
-        data_validity_status_e5b,
-        broadcast_group_delay_e1_e5a,
-        broadcast_group_delay_e1_e5b,
+        E1B_SHS,
+        E5b_SHS,
+        E1B_DVS,
+        E5b_DVS,
+        BGD_E1_E5a,
+        BGD_E1_E5b,
         a_i0,
         a_i1,
         a_i2,
@@ -534,8 +541,8 @@ function GalileoINAVData(
         iono_storm_flag_region3,
         iono_storm_flag_region4,
         iono_storm_flag_region5,
-        A_0_utc,
-        A_1_utc,
+        A_0UTC,
+        A_1UTC,
         Δt_LS,
         t_0t,
         WN_0t,
@@ -564,17 +571,17 @@ Base.:(==)(a::GalileoINAVData, b::GalileoINAVData) = fields_equal(a, b)
 # on either component always has both. `is_sat_healthy` picks the facet matching
 # the component being decoded (see `e1b.jl` / `e5b.jl`).
 function is_health_status_decoded(data::GalileoINAVData)
-    !isnothing(data.signal_health_e1b) &&
-        !isnothing(data.signal_health_e5b) &&
-        !isnothing(data.data_validity_status_e1b) &&
-        !isnothing(data.data_validity_status_e5b)
+    !isnothing(data.E1B_SHS) &&
+        !isnothing(data.E5b_SHS) &&
+        !isnothing(data.E1B_DVS) &&
+        !isnothing(data.E5b_DVS)
 end
 
 function is_decoding_completed_for_positioning(data::GalileoINAVData)
     !isnothing(data.TOW) &&
         !isnothing(data.WN) &&
-        !isnothing(data.broadcast_group_delay_e1_e5a) &&
-        !isnothing(data.broadcast_group_delay_e1_e5b) &&
+        !isnothing(data.BGD_E1_E5a) &&
+        !isnothing(data.BGD_E1_E5b) &&
         is_ephemeris_decoded(data) &&
         is_clock_correction_decoded(data) &&
         is_health_status_decoded(data)
@@ -668,37 +675,6 @@ function complement_buffer_if_necessary(
     GNSSDecoderState(state; is_shifted_by_180_degrees = polarity_flipped), polarity_flipped
 end
 
-"""
-    galileo_inav_viterbi(scratch, soft_page) -> UInt128
-
-Recover one I/NAV page's 114-bit payload from its `soft_page` — the 240
-polarity-corrected `Float32` LLR soft symbols of a Galileo I/NAV page part (the
-`syncro_sequence_length - preamble_length` encoded symbols between the leading
-and trailing page-sync preambles). `decoder` is the cache's long-lived
-`Aff3ct.ConvViterbiDecoder`, reused across pages rather than reallocated.
-
-The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in
-order on the soft symbols:
-
- 1. **30×8 block deinterleave** of the 240 LLRs (`deinterleave!` from `src/deinterleave.jl`).
- 2. **Invert every second symbol** — the spec inverts the G2 output of the rate-1/2
-    encoder. On soft symbols an inversion is a sign flip (negation), so confidence
-    magnitudes are preserved.
- 3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`. AFF3CT's LLR sign
-    convention matches ours (positive ⇒ bit 0), so the LLRs feed in directly. The
-    decoder returns the 114 information bits (the 6 tail bits are consumed by
-    trellis termination).
-
-The 114 decoded bits are packed MSB-first into the low bits of a `UInt128`,
-matching the legacy hard-bit `parse(UInt128, ...; base = 2)` layout the parser
-consumes.
-
-Thin wrapper over the shared [`galileo_viterbi`](@ref) with I/NAV's 8×30 interleaver
-shape and `UInt128` payload type.
-"""
-galileo_inav_viterbi(scratch::GalileoViterbiScratch, soft_page::AbstractVector{Float32}) =
-    galileo_viterbi(scratch, soft_page, GALILEO_INAV_INTERLEAVER_COLUMNS, UInt128)
-
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
     # The 240 encoded symbols are the soft-buffer entries between the leading
     # 10-bit page-sync preamble and the trailing preamble of the next page
@@ -712,7 +688,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
         GALILEO_INAV_VITERBI_N,
         state.is_shifted_by_180_degrees,
     )
-    bits = galileo_inav_viterbi(state.cache.viterbi, soft_page)
+    bits = galileo_viterbi(
+        state.cache.viterbi,
+        soft_page,
+        GALILEO_INAV_INTERLEAVER_COLUMNS,
+        UInt128,
+    )
     is_even = !get_bit(bits, 114, 1)
     is_nominal_page = !get_bit(bits, 114, 2)
     state = GNSSDecoderState(
@@ -819,7 +800,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 C_us = get_twos_complement_num(data, 128, 73, 16) / 1 << 29
                 C_rc = get_twos_complement_num(data, 128, 89, 16) / 1 << 5
                 C_rs = get_twos_complement_num(data, 128, 105, 16) / 1 << 5
-                SISA_e1_e5b = Int(get_bits(data, 128, 121, 8))
+                SISA_E1_E5b = Int(get_bits(data, 128, 121, 8))
                 state = GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
@@ -831,7 +812,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                         C_us,
                         C_rc,
                         C_rs,
-                        SISA_e1_e5b,
+                        SISA_E1_E5b,
                     ),
                 )
             elseif data_type == 4
@@ -866,14 +847,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 iono_storm_flag_region3 = get_bit(data, 128, 45)
                 iono_storm_flag_region4 = get_bit(data, 128, 46)
                 iono_storm_flag_region5 = get_bit(data, 128, 47)
-                broadcast_group_delay_e1_e5a =
-                    get_twos_complement_num(data, 128, 48, 10) * 2.0^-32
-                broadcast_group_delay_e1_e5b =
-                    get_twos_complement_num(data, 128, 58, 10) * 2.0^-32
-                signal_health_e5b = SignalHealth(get_bits(data, 128, 68, 2))
-                signal_health_e1b = SignalHealth(get_bits(data, 128, 70, 2))
-                data_validity_status_e5b = DataValidityStatus(get_bit(data, 128, 72))
-                data_validity_status_e1b = DataValidityStatus(get_bit(data, 128, 73))
+                BGD_E1_E5a = get_twos_complement_num(data, 128, 48, 10) * 2.0^-32
+                BGD_E1_E5b = get_twos_complement_num(data, 128, 58, 10) * 2.0^-32
+                E5b_SHS = SignalHealth(get_bits(data, 128, 68, 2))
+                E1B_SHS = SignalHealth(get_bits(data, 128, 70, 2))
+                E5b_DVS = DataValidityStatus(get_bit(data, 128, 72))
+                E1B_DVS = DataValidityStatus(get_bit(data, 128, 73))
                 WN = get_bits(data, 128, 74, 12)
                 TOW = get_bits(data, 128, 86, 20)
                 state = GNSSDecoderState(
@@ -888,12 +867,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                         iono_storm_flag_region3,
                         iono_storm_flag_region4,
                         iono_storm_flag_region5,
-                        broadcast_group_delay_e1_e5a,
-                        broadcast_group_delay_e1_e5b,
-                        signal_health_e5b,
-                        signal_health_e1b,
-                        data_validity_status_e5b,
-                        data_validity_status_e1b,
+                        BGD_E1_E5a,
+                        BGD_E1_E5b,
+                        E5b_SHS,
+                        E1B_SHS,
+                        E5b_DVS,
+                        E1B_DVS,
                         WN,
                         TOW,
                         num_pages_after_last_TOW = 1,
@@ -901,8 +880,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     ),
                 )
             elseif data_type == 6
-                A_0_utc = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
-                A_1_utc = get_twos_complement_num(data, 128, 39, 24) * 2.0^-50
+                A_0UTC = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
+                A_1UTC = get_twos_complement_num(data, 128, 39, 24) * 2.0^-50
                 Δt_LS = Int(get_twos_complement_num(data, 128, 63, 8))
                 t_0t = Int(get_bits(data, 128, 71, 8) * 3600)
                 WN_0t = Int(get_bits(data, 128, 79, 8))
@@ -914,8 +893,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     state;
                     raw_data = GalileoINAVData(
                         state.raw_data;
-                        A_0_utc,
-                        A_1_utc,
+                        A_0UTC,
+                        A_1UTC,
                         Δt_LS,
                         t_0t,
                         WN_0t,
@@ -999,8 +978,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     state.cache.almanac_chain_pos1;
                     a_f0 = a_f0_pos1,
                     a_f1 = a_f1_pos1,
-                    signal_health_e5b = signal_health_e5b_pos1,
-                    signal_health_e1b = signal_health_e1b_pos1,
+                    E5b_SHS = signal_health_e5b_pos1,
+                    E1B_SHS = signal_health_e1b_pos1,
                 )
                 almanacs = state.raw_data.almanacs
                 if completed_pos1.IOD_a == IOD_a && !isnothing(completed_pos1.SVID)
@@ -1042,8 +1021,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     M_0 = M_0_pos2,
                     a_f0 = a_f0_pos2,
                     a_f1 = a_f1_pos2,
-                    signal_health_e5b = signal_health_e5b_pos2,
-                    signal_health_e1b = signal_health_e1b_pos2,
+                    E5b_SHS = signal_health_e5b_pos2,
+                    E1B_SHS = signal_health_e1b_pos2,
                     WN_a,
                     t_0a,
                 )
@@ -1094,8 +1073,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     M_0 = M_0_pos3,
                     a_f0 = a_f0_pos3,
                     a_f1 = a_f1_pos3,
-                    signal_health_e5b = signal_health_e5b_pos3,
-                    signal_health_e1b = signal_health_e1b_pos3,
+                    E5b_SHS = signal_health_e5b_pos3,
+                    E1B_SHS = signal_health_e1b_pos3,
                 )
                 almanacs = state.raw_data.almanacs
                 if completed_pos3.IOD_a == IOD_a && !isnothing(completed_pos3.SVID)

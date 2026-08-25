@@ -10,7 +10,7 @@
 #     subframe 2 (600 info bits) followed by a 548-symbol rate-½ LDPC
 #     codeword for subframe 3 (274 info bits).
 #
-# This slice decodes subframe 2 fully (clock + ephemeris, IS-GPS-800G
+# This slice decodes subframe 2 fully (clock + ephemeris, IS-GPS-800J
 # Figure 3.5-1 / Table 3.5-1) and LDPC-decodes + CRC-checks subframe 3 but
 # only records that a page was received; the per-page subframe-3 field
 # parsing lands in issue #39.
@@ -32,7 +32,7 @@ const L1C_D_FRAME_LENGTH = 1800
 const L1C_D_SUBFRAME1_LENGTH = 52
 const L1C_D_WINDOW_LENGTH = L1C_D_FRAME_LENGTH + L1C_D_SUBFRAME1_LENGTH  # 1852
 
-# Subframe 2/3 channel-symbol counts (IS-GPS-800G §3.2.3).
+# Subframe 2/3 channel-symbol counts (IS-GPS-800J §3.2.3).
 const L1C_D_SF2_SYMBOLS = 1200
 const L1C_D_SF3_SYMBOLS = 548
 const L1C_D_PAYLOAD_SYMBOLS = L1C_D_SF2_SYMBOLS + L1C_D_SF3_SYMBOLS  # 1748
@@ -49,15 +49,14 @@ const L1C_D_CRC_BITS = 24
 # parsed with the shared `get_bits`/`get_twos_complement_num`/`get_bit` helpers
 # (src/bit_fiddling.jl), matching the GPS L1 C/A and Galileo E1B decoders (#48).
 #
-# SF2's 600 info bits need a dedicated `UInt600`. SF3's 274 info bits reuse the
-# `UInt288` already defined for Galileo E1B (galileo/e1b.jl is included before
-# this file): `get_bits(word, 274, …)` addresses the 274 logical bits regardless
-# of the wider storage as long as they are right-aligned.
-BitIntegers.@define_integers 600
+# SF2's 600 info bits go in a `UInt600` and SF3's 274 in a `UInt288`, both
+# defined in `gnss.jl` (BeiDou B1C reaches for the same two widths, so neither
+# belongs to a signal file): `get_bits(word, 274, …)` addresses the 274 logical
+# bits regardless of the wider storage as long as they are right-aligned.
 
-# Semi-major axis reference (IS-GPS-800G Table 3.5-1 footnote, meters).
+# Semi-major axis reference (IS-GPS-800J Table 3.5-1 footnote, meters).
 const L1C_D_A_REF = 26_559_710.0
-# Rate-of-right-ascension reference (IS-GPS-800G Table 3.5-1, semi-circles/sec).
+# Rate-of-right-ascension reference (IS-GPS-800J Table 3.5-1, semi-circles/sec).
 const L1C_D_OMEGA_DOT_REF = -2.6e-9
 
 # Subframe-3 page numbers (IS-GPS-800J §3.5.4, figure-by-figure). The 6-bit
@@ -70,7 +69,8 @@ const L1C_D_SF3_PAGE_DIFF_CORRECTION = 5  # Figure 3.5-6: clock+ephemeris DC
 const L1C_D_SF3_PAGE_TEXT = 6             # Figure 3.5-7: 29 ASCII characters
 
 # Reduced-almanac references (IS-GPS-800J Table 3.5-6 footnotes): δi relative to
-# i₀ = 0.30 semi-circles (i.e. 55°), δA relative to A_ref.
+# i₀ = 0.30 semi-circles (54°); with δi the almanac's inclination is 55°.
+# δA is relative to A_ref.
 const L1C_D_REDUCED_ALMANAC_DELTA_I_REF = 0.0056  # semi-circles
 const L1C_D_REDUCED_ALMANAC_I_REF = 0.30          # semi-circles
 # Midi-almanac inclination reference (IS-GPS-800J Table 3.5-7 footnote): δi
@@ -93,7 +93,7 @@ $(TYPEDFIELDS)
 
 # Reference
 
-IS-GPS-800G, Sections 3.2 and 3.5, Table 3.5-1.
+IS-GPS-800J, Sections 3.2 and 3.5, Table 3.5-1.
 """
 Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     """
@@ -105,7 +105,7 @@ Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     """
     preamble_length::Int = L1C_D_SUBFRAME1_LENGTH
     """
-    Mathematical constant π (IS-GPS-800G)
+    Mathematical constant π (IS-GPS-800J)
     """
     PI::Float64 = GNSS_PI
     """
@@ -141,15 +141,17 @@ whole, keyed by `PRN_a`. Reduced and Midi almanacs use *separate* structs (their
 field sets barely overlap); they share the `Dictionary` pattern.
 
 Reference values to apply (Table 3.5-6 footnotes): `e = 0`,
-`δi = +0.0056 semi-circles` (so `i₀ = 0.30 sc = 55°`),
+`δi = +0.0056 semi-circles` (so `i₀ = 0.30 sc = 54°` and `i₀ + δi = 55°`),
 `Ω̇ = -2.6e-9 semi-circles/s`, `A = A_ref + δA` with `A_ref = 26 559 710 m`,
 `Φ₀ = M₀ + ω`. Semi-circle fields are converted to radians on decode.
 
 # Fields
 
-  - `PRN_a::Int`: Almanac satellite PRN (1-63; 0 marks an empty packet).
+  - `PRN_a::Int`: Almanac satellite PRN (8-bit field; `0` marks an empty
+    packet, IS-GPS-800J §3.5.4.3.5.1.1). The CNAV reduced almanac carries the
+    same quantity in 6 bits — see [`GPSCNAVReducedAlmanac`](@ref).
   - `WN_a::Int`: Almanac reference week number (mod 8192).
-  - `t_oa::Int`: Almanac reference time of week (seconds).
+  - `t_0a::Int`: Almanac reference time of week (seconds).
   - `δA::Float64`: Semi-major-axis delta from `A_ref` (meters).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
   - `Φ_0::Float64`: Argument of latitude at reference time, `M₀+ω` (rad).
@@ -163,7 +165,7 @@ IS-GPS-800J, Figure 3.5-4 / Figure 3.5-9 / Table 3.5-6.
 Base.@kwdef struct GPSL1C_DReducedAlmanac
     PRN_a::Int
     WN_a::Int
-    t_oa::Int
+    t_0a::Int
     δA::Float64
     Ω_0::Float64
     Φ_0::Float64
@@ -181,14 +183,14 @@ Table 3.5-7).
 The Midi almanac is a medium-precision single-SV almanac. Each page-4 carries
 exactly one SV's almanac, complete in that single page (no multi-page chaining),
 so `GPSL1C_DData.midi_almanacs` entries are inserted whole, keyed by
-`PRN_a`. Inclination is `δi` relative to `i₀ = 0.30 semi-circles` (55°);
+`PRN_a`. Inclination is `δi` relative to `i₀ = 0.30 semi-circles` (54°);
 semi-circle fields are converted to radians on decode.
 
 # Fields
 
   - `PRN_a::Int`: Almanac satellite PRN.
   - `WN_a::Int`: Almanac reference week number (mod 8192).
-  - `t_oa::Int`: Almanac reference time of week (seconds).
+  - `t_0a::Int`: Almanac reference time of week (seconds).
   - `e::Float64`: Eccentricity (dimensionless).
   - `δi::Float64`: Inclination delta from `i₀ = 0.30 sc` (rad); add the reference.
   - `Ω_dot::Float64`: Rate of right ascension (rad/s).
@@ -206,7 +208,7 @@ IS-GPS-800J, Figure 3.5-5 / Table 3.5-7.
 Base.@kwdef struct GPSL1C_DMidiAlmanac
     PRN_a::Int
     WN_a::Int
-    t_oa::Int
+    t_0a::Int
     e::Float64
     δi::Float64
     Ω_dot::Float64
@@ -231,7 +233,7 @@ A page-5 carries the predict/reference times plus exactly one DC packet (a
 34-bit CDC segment and a 92-bit EDC segment that form an indivisible pair) for
 *another* SV, keyed by `PRN_a`. An all-ones PRN ID (`0xFF` = 255) in any PRN ID
 field marks an empty packet — the remainder of the data block is then filler
-(IS-GPS-800G §3.5.4.4.4.1). `dc_data_type` selects the data the corrections
+(IS-GPS-800J §3.5.4.4.4.1). `dc_data_type` selects the data the corrections
 apply to: `false` ⇒
 CNAV-2 (`D_L1C`), `true` ⇒ legacy NAV (`D`). Semi-circle fields → radians.
 
@@ -274,7 +276,7 @@ end
 
 Decoded GPS L1C-D (CNAV-2) navigation message data.
 
-Holds the subframe-2 clock, ephemeris, and accuracy parameters (IS-GPS-800G
+Holds the subframe-2 clock, ephemeris, and accuracy parameters (IS-GPS-800J
 Figure 3.5-1 / Table 3.5-1). Subframe-3 page contents are not parsed in this
 slice (issue #39); only the count of CRC-valid subframe-3 pages received is
 tracked. Field-naming follows [`GPSL1CAData`](@ref): semi-circle quantities are
@@ -287,7 +289,8 @@ first decoded.
   - `ITOW::Int64`: Interval time of week — number of two-hour epochs since the
     start of the week (subframe 2 bits 14-21).
   - `WN::Int64`: Transmission week number, modulo-8192 (subframe 2 bits 1-13).
-  - `t_op::Int64`: Data predict time of week (seconds).
+  - `t_op::Int64`: CEI data sequence propagation time of week (seconds). Not
+    the same field as `t_op_D`, which *is* the DC Data Predict Time of Week.
 
 # Health / accuracy
 
@@ -301,11 +304,14 @@ first decoded.
     modulo 256). Pairs with `t_op` in the integrity-assured URA_NED expression
     of 3.5.3.10, which needs both.
   - `ura_ned0_index::Int64`, `ura_ned1_index::Int64`, `ura_ned2_index::Int64`:
-    Clock URA indices.
+    Non-elevation-dependent accuracy indices — NED Accuracy, NED Accuracy
+    Change, and NED Accuracy Change Rate. Not three interchangeable clock URAs:
+    they are the terms of one time-dependent NED bound.
 
 # Ephemeris (Table 3.5-1)
 
-  - `t_0e::Int64`: Ephemeris/clock data reference time of week (seconds).
+  - `t_0e::Int64`: Ephemeris/clock data reference time of week (seconds; the
+    ICD writes `toe`).
   - `ΔA::Float64`: Semi-major axis difference at reference time (meters).
   - `A_dot::Float64`: Change rate in semi-major axis (m/s).
   - `Δn_0::Float64`: Mean motion difference from computed value (rad/s).
@@ -323,7 +329,8 @@ first decoded.
 
 # Clock (Table 3.5-1)
 
-  - `t_0c::Int64`: Clock data reference time of week (seconds); equals `t_0e` in CNAV-2.
+  - `t_0c::Int64`: Clock data reference time of week (seconds; the ICD writes
+    `toc`). Equals `t_0e` in CNAV-2.
   - `a_f0::Float64`, `a_f1::Float64`, `a_f2::Float64`: Clock bias / drift / drift-rate.
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CP::Float64`, `ISC_L1CD::Float64`: L1CP / L1CD inter-signal corrections (seconds).
@@ -331,24 +338,26 @@ first decoded.
 # Subframe 3 (IS-GPS-800J §3.5.4 — IRN-IS-800J layout)
 
 Subframe-3 pages are parsed after their CRC passes, dispatching on the 6-bit
-page number (bits 9-14; bits 1-8 are the transmitting PRN). The IRN-J figures
-are implemented (page 1 carries ISC fields absent from pre-IRN-J recordings,
-which are therefore out of scope). `num_sf3_pages_received` counts every
+page number (bits 9-14; bits 1-8 are the transmitting PRN). Layouts follow
+IS-GPS-800J as amended by IRN-IS-800J-003. `num_sf3_pages_received` counts every
 CRC-valid SF3 page regardless of whether its page format is parsed.
 
 ## Page 1 — UTC + Klobuchar iono + ISC
 
-  - `A0_UTC,A1_UTC,A2_UTC::Float64`: UTC polynomial (s, s/s, s/s²).
+  - `A_0UTC,A_1UTC,A_2UTC::Float64`: UTC polynomial (s, s/s, s/s²; the ICD
+    names them `A0-n`/`A1-n`/`A2-n`, Table 3.5-3).
   - `Δt_LS,Δt_LSF::Int64`: current/past and future leap-second counts (s).
-  - `t_ot::Int64`: UTC reference time of week (s).
-  - `WN_ot,WN_LSF::Int64`: UTC and leap-second reference week numbers.
+  - `t_0t::Int64`: UTC reference time of week (s; the ICD writes `t_ot`).
+  - `WN_0t,WN_LSF::Int64`: UTC and leap-second reference week numbers (the ICD
+    writes `WN_ot` for the first).
   - `DN::Int64`: leap-second reference day number (1-7).
   - `α_0,α_1,α_2,α_3,β_0,β_1,β_2,β_3::Float64`: Klobuchar ionospheric coefficients.
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
 
 ## Page 2 — GGTO + EOP
 
-  - `A0_GGTO,A1_GGTO,A2_GGTO::Float64`: GPS/GNSS time-offset polynomial.
+  - `A_0GGTO,A_1GGTO,A_2GGTO::Float64`: GPS/GNSS time-offset polynomial (the ICD
+    writes `A0GGTO`/`A1GGTO`/`A2GGTO`).
   - `t_GGTO::Int64`, `WN_GGTO::Int64`: GGTO reference time/week.
   - `GGTO_ID::Int64`: GNSS the time offset refers to — 0 none, 1 Galileo,
     2 GLONASS, 3-7 reserved. (Named "GNSS ID" in IS-GPS-800 ≤ Rev J; renamed
@@ -417,12 +426,12 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSData
     ISC_L1CD::Union{Nothing,Float64} = nothing
 
     # --- Subframe 3, page 1: UTC + iono + ISC (IS-GPS-800J Fig 3.5-2) ---
-    A0_UTC::Union{Nothing,Float64} = nothing
-    A1_UTC::Union{Nothing,Float64} = nothing
-    A2_UTC::Union{Nothing,Float64} = nothing
+    A_0UTC::Union{Nothing,Float64} = nothing
+    A_1UTC::Union{Nothing,Float64} = nothing
+    A_2UTC::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_ot::Union{Nothing,Int64} = nothing
-    WN_ot::Union{Nothing,Int64} = nothing
+    t_0t::Union{Nothing,Int64} = nothing
+    WN_0t::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -440,9 +449,9 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSData
     ISC_L5Q5::Union{Nothing,Float64} = nothing
 
     # --- Subframe 3, page 2: GGTO + EOP (IS-GPS-800J Fig 3.5-3) ---
-    A0_GGTO::Union{Nothing,Float64} = nothing
-    A1_GGTO::Union{Nothing,Float64} = nothing
-    A2_GGTO::Union{Nothing,Float64} = nothing
+    A_0GGTO::Union{Nothing,Float64} = nothing
+    A_1GGTO::Union{Nothing,Float64} = nothing
+    A_2GGTO::Union{Nothing,Float64} = nothing
     t_GGTO::Union{Nothing,Int64} = nothing
     WN_GGTO::Union{Nothing,Int64} = nothing
     GGTO_ID::Union{Nothing,Int64} = nothing
@@ -506,12 +515,12 @@ function GPSL1C_DData(
     T_GD = data.T_GD,
     ISC_L1CP = data.ISC_L1CP,
     ISC_L1CD = data.ISC_L1CD,
-    A0_UTC = data.A0_UTC,
-    A1_UTC = data.A1_UTC,
-    A2_UTC = data.A2_UTC,
+    A_0UTC = data.A_0UTC,
+    A_1UTC = data.A_1UTC,
+    A_2UTC = data.A_2UTC,
     Δt_LS = data.Δt_LS,
-    t_ot = data.t_ot,
-    WN_ot = data.WN_ot,
+    t_0t = data.t_0t,
+    WN_0t = data.WN_0t,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -527,9 +536,9 @@ function GPSL1C_DData(
     ISC_L2C = data.ISC_L2C,
     ISC_L5I5 = data.ISC_L5I5,
     ISC_L5Q5 = data.ISC_L5Q5,
-    A0_GGTO = data.A0_GGTO,
-    A1_GGTO = data.A1_GGTO,
-    A2_GGTO = data.A2_GGTO,
+    A_0GGTO = data.A_0GGTO,
+    A_1GGTO = data.A_1GGTO,
+    A_2GGTO = data.A_2GGTO,
     t_GGTO = data.t_GGTO,
     WN_GGTO = data.WN_GGTO,
     GGTO_ID = data.GGTO_ID,
@@ -583,12 +592,12 @@ function GPSL1C_DData(
         T_GD,
         ISC_L1CP,
         ISC_L1CD,
-        A0_UTC,
-        A1_UTC,
-        A2_UTC,
+        A_0UTC,
+        A_1UTC,
+        A_2UTC,
         Δt_LS,
-        t_ot,
-        WN_ot,
+        t_0t,
+        WN_0t,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -604,9 +613,9 @@ function GPSL1C_DData(
         ISC_L2C,
         ISC_L5I5,
         ISC_L5Q5,
-        A0_GGTO,
-        A1_GGTO,
-        A2_GGTO,
+        A_0GGTO,
+        A_1GGTO,
+        A_2GGTO,
         t_GGTO,
         WN_GGTO,
         GGTO_ID,
@@ -669,19 +678,15 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     deinterleaved::Vector{Float32}
 end
 
-# Path to the committed LDPC `.alist` parity matrices. `pkgdir`-free: walk up
-# from this file (src/gps/) to the package root, then into data/.
-_l1c_d_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
-
 function GPSL1C_DCache()
     # The CNAV-2 LDPC codes are systematic with the codeword laid out as
-    # [info | parity] (IS-GPS-800G §3.2.3.3: H = [[A B T] [C D E]] acts on
+    # [info | parity] (IS-GPS-800J §3.2.3.4: H = [[A B T] [C D E]] acts on
     # [info; parity]); `load_ldpc_decoder` forces that layout onto Aff3ct.
     # Verified against a Spirent GSS post-FEC L1C recording.
     GPSL1C_DCache(
         CircularDeque{Float32}(L1C_D_WINDOW_LENGTH),
-        LDPCScratch(_l1c_d_data_path("cnv2_sf2.alist")),
-        LDPCScratch(_l1c_d_data_path("cnv2_sf3.alist")),
+        LDPCScratch(alist_path("cnv2_sf2.alist")),
+        LDPCScratch(alist_path("cnv2_sf3.alist")),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
     )
@@ -819,11 +824,11 @@ the TOI and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSL1C_DData})
     deque = soft_buffer(state)
-    # `pack_soft_codeword` (src/gnss.jl) is `soft_to_hard_codeword` read straight
+    # `pack_bits_lsb_first` (src/gnss.jl) is `soft_to_hard_codeword` read straight
     # off the deque: this runs once per symbol, so materialising two 52-element
     # slices here would allocate on every one of them.
-    first52 = pack_soft_codeword(deque, 1, L1C_D_SUBFRAME1_LENGTH)
-    next52 = pack_soft_codeword(deque, L1C_D_FRAME_LENGTH + 1, L1C_D_SUBFRAME1_LENGTH)
+    first52 = pack_bits_lsb_first(deque, 1, L1C_D_SUBFRAME1_LENGTH)
+    next52 = pack_bits_lsb_first(deque, L1C_D_FRAME_LENGTH + 1, L1C_D_SUBFRAME1_LENGTH)
     sync_bch_toi(first52, next52)
 end
 
@@ -884,7 +889,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     return state
 end
 
-# ---- Subframe 2 bit-field extraction (IS-GPS-800G Figure 3.5-1) ------------
+# ---- Subframe 2 bit-field extraction (IS-GPS-800J Figure 3.5-1) ------------
 #
 # `word` is the 600-bit subframe-2 info block packed MSB-first into a `UInt600`
 # (bit 1 = MSB). Fields are read by 1-based start bit and length through the
@@ -1030,12 +1035,12 @@ function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288, PI::Float64)
     GPSL1C_DData(
         raw;
         # UTC polynomial (Table 3.5-3).
-        A0_UTC = get_twos_complement_num(word, word_length, 15, 16) * 2.0^-35,
-        A1_UTC = get_twos_complement_num(word, word_length, 31, 13) * 2.0^-51,
-        A2_UTC = get_twos_complement_num(word, word_length, 44, 7) * 2.0^-68,
+        A_0UTC = get_twos_complement_num(word, word_length, 15, 16) * 2.0^-35,
+        A_1UTC = get_twos_complement_num(word, word_length, 31, 13) * 2.0^-51,
+        A_2UTC = get_twos_complement_num(word, word_length, 44, 7) * 2.0^-68,
         Δt_LS = get_twos_complement_num(word, word_length, 51, 8),
-        t_ot = Int(get_bits(word, word_length, 59, 16)) * 2^4,
-        WN_ot = Int(get_bits(word, word_length, 75, 13)),
+        t_0t = Int(get_bits(word, word_length, 59, 16)) * 2^4,
+        WN_0t = Int(get_bits(word, word_length, 75, 13)),
         WN_LSF = Int(get_bits(word, word_length, 88, 13)),
         DN = Int(get_bits(word, word_length, 101, 4)),
         Δt_LSF = get_twos_complement_num(word, word_length, 105, 8),
@@ -1067,9 +1072,9 @@ function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         # GGTO (Table 3.5-4). Field order in Fig 3.5-3: tGGTO, WNGGTO, A0, A1, A2.
         t_GGTO = Int(get_bits(word, word_length, 18, 16)) * 2^4,
         WN_GGTO = Int(get_bits(word, word_length, 34, 13)),
-        A0_GGTO = get_twos_complement_num(word, word_length, 47, 16) * 2.0^-35,
-        A1_GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
-        A2_GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
+        A_0GGTO = get_twos_complement_num(word, word_length, 47, 16) * 2.0^-35,
+        A_1GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
+        A_2GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
         GGTO_ID = Int(get_bits(word, word_length, 15, 3)),
         # EOP (Table 3.5-5). All fields are contiguous in the info block; Figure
         # 3.5-3 only *draws* PM_X across its 100-bit row boundary — the 2 MSBs end
@@ -1092,19 +1097,19 @@ function _reduced_almanac_packet(
     word::UInt288,
     start::Int,
     WN_a::Int,
-    t_oa::Int,
+    t_0a::Int,
     PI::Float64,
 )
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, start, 8))
-    # PRNa == 0 marks an empty packet; per IS-GPS-800G §3.5.4.3.5.1.1 all
+    # PRNa == 0 marks an empty packet; per IS-GPS-800J §3.5.4.3.5.1.1 all
     # subsequent bits through the last packet are then filler, so the caller
     # stops here rather than parsing the remaining packets.
     PRN_a == 0 && return nothing
     GPSL1C_DReducedAlmanac(;
         PRN_a,
         WN_a,
-        t_oa,
+        t_0a,
         δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
         Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
         Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
@@ -1120,11 +1125,11 @@ Subframe 3, page 3 — six reduced-almanac packets (IS-GPS-800J Fig 3.5-4).
 function parse_sf3_page3(raw::GPSL1C_DData, word::UInt288, PI::Float64)
     word_length = L1C_D_SF3_INFO_BITS
     WN_a = Int(get_bits(word, word_length, 15, 13))
-    t_oa = Int(get_bits(word, word_length, 28, 8)) * 2^12
+    t_0a = Int(get_bits(word, word_length, 28, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     # Six 33-bit packets at bits 36, 69, 102, 135, 168, 201.
     for start in (36, 69, 102, 135, 168, 201)
-        packet = _reduced_almanac_packet(word, start, WN_a, t_oa, PI)
+        packet = _reduced_almanac_packet(word, start, WN_a, t_0a, PI)
         isnothing(packet) && break  # PRNa==0 ⇒ rest of page is filler (§3.5.4.3.5.1.1)
         almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
     end
@@ -1141,7 +1146,7 @@ function parse_sf3_page4(raw::GPSL1C_DData, word::UInt288, PI::Float64)
     alm = GPSL1C_DMidiAlmanac(;
         PRN_a,
         WN_a = Int(get_bits(word, word_length, 15, 13)),
-        t_oa = Int(get_bits(word, word_length, 28, 8)) * 2^12,
+        t_0a = Int(get_bits(word, word_length, 28, 8)) * 2^12,
         l1_health = get_bit(word, word_length, 44),
         l2_health = get_bit(word, word_length, 45),
         l5_health = get_bit(word, word_length, 46),
@@ -1250,7 +1255,7 @@ $(TYPEDSIGNATURES)
 
 Check if the GPS L1C-D satellite is healthy and usable for positioning.
 
-Examines the 1-bit L1C signal health flag from subframe 2 (IS-GPS-800G
+Examines the 1-bit L1C signal health flag from subframe 2 (IS-GPS-800J
 §3.5.3.4): a satellite is healthy iff the health bit is 0 (Signal OK).
 
 !!! warning

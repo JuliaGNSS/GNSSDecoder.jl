@@ -5,7 +5,10 @@
 #
 #   - Subframe 1: 72 symbols — the 6-bit PRN encoded BCH(21,6) followed by
 #     the 8-bit Seconds-Of-Hour (SOH) count encoded BCH(51,8) (ICD §6.2.2.1,
-#     §6.2.3.1). Used purely for frame sync, exactly like GPS L1C-D's TOI.
+#     §6.2.3.1). Carries system time as well as framing: SOH is a BDT parameter
+#     counting 18 s units within the hour (§7.3, Table 7-2, range 0..3582 s), and
+#     the decoder uses it for both — the sync match and the time stamp, exactly
+#     like GPS L1C-D's TOI.
 #   - Subframes 2 + 3: 1728 symbols, block-interleaved (36×48 with a
 #     staggered write, ICD §6.2.2.4) over a 1200-symbol 64-ary LDPC(200,100)
 #     codeword for subframe 2 (600 info bits) and a 528-symbol 64-ary
@@ -32,6 +35,10 @@
 # = 72; transmitted PRN-codeword first, matching the subframe-1 MSB-first
 # layout of Figure 6-5 — cross-checked against PocketSDR's `sync_BCNV1_frame`).
 #
+# Both codewords come from `bch_lfsr_codeword` (`src/bch_toi.jl`), the same
+# Fibonacci-LFSR construction the GPS L1C-D TOI table uses — only the symbol
+# count, register width and tap mask differ.
+#
 # The ICD's "generator polynomials" g21,6(x) = x⁶+x⁴+x²+x+1 and
 # g51,8(x) = x⁸+x⁷+x⁴+x³+x²+x+1 have degree k (not n-k): they are the
 # *characteristic polynomials* of the k-stage encoder registers of Figure
@@ -42,7 +49,8 @@
 # which is the same construction (and the same verified convention) as the
 # GPS L1C-D TOI table in `src/bch_toi.jl`, and matches PocketSDR's
 # `LFSR(n, rev_reg(v, k), taps, k)`. The tap masks below are the
-# non-leading coefficients of the ICD polynomials.
+# non-leading coefficients of the ICD polynomials, which is what
+# `bch_lfsr_codeword` takes.
 
 const B1C_PRN_BCH_WIDTH = 6
 const B1C_PRN_BCH_TAP = 0b010111       # g21,6 = x⁶ + x⁴ + x² + x + 1
@@ -55,40 +63,17 @@ const B1C_SOH_RANGE = 200              # SOH counts 18 s units within the hour (
 const B1C_PRN_MASK21 = (UInt64(1) << B1C_PRN_CODEWORD_LEN) - UInt64(1)
 const B1C_SOH_MASK51 = (UInt64(1) << B1C_SOH_CODEWORD_LEN) - UInt64(1)
 
-# Reverse the low `n` bits of `x` (same convention as `_toi_rev_reg`).
-function _b1c_rev_reg(x::UInt, n::Int)
-    r = UInt(0)
-    for i = 0:(n-1)
-        r = (r << 1) | ((x >> i) & UInt(1))
-    end
-    return r
-end
-
-# Run a `width`-stage Fibonacci LFSR seeded with the bit-reversed `value`,
-# emitting `nbits` register-LSB outputs packed into a UInt64 (bit 0 = first
-# emitted symbol). Mirrors `_toi_lfsr51` with parameterised width/taps.
-function _b1c_bch_codeword(value::Int, nbits::Int, width::Int, tap::Integer)
-    R = _b1c_rev_reg(UInt(value) & ((UInt(1) << width) - 1), width) % UInt32
-    out = UInt64(0)
-    @inbounds for i = 0:(nbits-1)
-        out |= UInt64(R & UInt32(0x1)) << i
-        feedback = UInt32(count_ones(R & UInt32(tap)) & 1)
-        R = (feedback << (width - 1)) | (R >> 1)
-    end
-    return out
-end
-
 """
 21-symbol BCH(21,6) codeword for a PRN (1..63), bit 0 = first transmitted symbol.
 """
 b1c_prn_codeword(prn::Int) =
-    _b1c_bch_codeword(prn, B1C_PRN_CODEWORD_LEN, B1C_PRN_BCH_WIDTH, B1C_PRN_BCH_TAP)
+    bch_lfsr_codeword(prn, B1C_PRN_CODEWORD_LEN, B1C_PRN_BCH_WIDTH, B1C_PRN_BCH_TAP)
 
 """
 51-symbol BCH(51,8) codeword for an SOH count (0..199), bit 0 = first transmitted symbol.
 """
 b1c_soh_codeword(soh::Int) =
-    _b1c_bch_codeword(soh, B1C_SOH_CODEWORD_LEN, B1C_SOH_BCH_WIDTH, B1C_SOH_BCH_TAP)
+    bch_lfsr_codeword(soh, B1C_SOH_CODEWORD_LEN, B1C_SOH_BCH_WIDTH, B1C_SOH_BCH_TAP)
 
 # 200-entry SOH codeword table, materialised once at precompile time.
 const B1C_SOH_CODEWORDS = ntuple(i -> b1c_soh_codeword(i - 1), B1C_SOH_RANGE)
@@ -187,11 +172,11 @@ type 3 (BDS-SIS-ICD-B1C-1.0 Figure 6-20, Table 7-21).
 `Δt = t_BD - t_GNSS = A_0BGTO + A_1BGTO·Δτ + A_2BGTO·Δτ²` with
 `Δτ = t_BD - t_0BGTO + 604800(WN - WN_0BGTO)` (ICD Eq. 7-30). Different
 frames may broadcast offsets for different systems, so sets are keyed by
-`gnss_id` in [`BeiDouB1CData`](@ref).
+`GNSS_ID` in [`BeiDouB1CData`](@ref).
 
 # Fields
 
-  - `gnss_id::Int`: GNSS type the offset refers to (1 GPS, 2 Galileo,
+  - `GNSS_ID::Int`: GNSS type the offset refers to (1 GPS, 2 Galileo,
     3 GLONASS; 0 marks the parameters as unavailable and is never stored).
   - `WN_0BGTO::Int`: Reference week number.
   - `t_0BGTO::Int`: Reference time of week (seconds).
@@ -203,7 +188,7 @@ frames may broadcast offsets for different systems, so sets are keyed by
 BDS-SIS-ICD-B1C-1.0, Figure 6-20, Table 7-21, §7.13.2.
 """
 Base.@kwdef struct BeiDouB1CBGTO
-    gnss_id::Int
+    GNSS_ID::Int
     WN_0BGTO::Int
     t_0BGTO::Int
     A_0BGTO::Float64
@@ -233,12 +218,15 @@ converted to radians on decode (multiplied by π); all fields are
 # Issue of data (ICD §7.4)
 
   - `IODC::Int64`: Issue of data, clock (10 bits).
-  - `IODE::Int64`: Issue of data, ephemeris (8 bits; consistent with the
-    8 LSBs of `IODC` inside one CRC-protected subframe 2).
+  - `IODE::Int64`: Issue of data, ephemeris (8 bits). Not necessarily equal to
+    the 8 LSBs of `IODC`, even inside one CRC-protected subframe 2: §7.4.3 says
+    the two "may be different … during the update of the ephemeris and clock
+    correction data", and a user "shall use the preceding matched pair" until
+    they agree. `is_decoding_completed_for_positioning` enforces that match.
 
 # Ephemeris (Figure 6-12/6-13, Table 7-8)
 
-  - `t_oe::Int64`: Ephemeris reference time of week (seconds).
+  - `t_0e::Int64`: Ephemeris reference time of week (seconds; the ICD writes `toe`).
   - `sat_type::Int64`: Satellite orbit type (raw 2 bits: 1 GEO, 2 IGSO,
     3 MEO, 0 reserved). Selects the semi-major-axis reference
     `A_ref = 27 906 100 m` (MEO) or `42 162 200 m` (IGSO/GEO).
@@ -259,6 +247,12 @@ converted to radians on decode (multiplied by π); all fields are
 
 # Clock and group delay (Figure 6-14, Tables 7-5, 7-6)
 
+  - `t_0c::Int64`: Clock reference time of week (seconds; the ICD writes `toc`).
+
+  - `a_f0::Float64`, `a_f1::Float64`, `a_f2::Float64`: Clock bias / drift /
+    drift-rate (s, s/s, s/s²; the ICD names them `a_0`/`a_1`/`a_2`). The
+    broadcast clock is referenced to the B3I signal (ICD §7.6.1).
+
   - `T_GD_B2ap::Float64`: Group delay differential of the B2a pilot (s).
 
   - `ISC_B1Cd::Float64`: Group delay differential between the B1C data and
@@ -278,25 +272,33 @@ converted to radians on decode (multiplied by π); all fields are
 
 Present on every defined page type, refreshed whenever any page decodes:
 
-  - `hs::Int64`: Satellite health status (Table 7-22: 0 healthy,
+  - `HS::Int64`: Satellite health status (Table 7-22: 0 healthy,
     1 unhealthy or in test, 2-3 reserved).
-  - `dif::Bool`, `sif::Bool`, `aif::Bool`: Data / signal / accuracy
+  - `DIF::Bool`, `SIF::Bool`, `AIF::Bool`: Data / signal / accuracy
     integrity flags for B1C (Table 7-23; `true` flags a problem).
-  - `sismai::Int64`: Signal-in-space monitoring accuracy index (4 bits).
-  - `sisai_oe::Int64`: Orbit along-track/cross-track accuracy index
+  - `SISMAI::Int64`: Signal-in-space monitoring accuracy index (4 bits).
+  - `SISAI_oe::Int64`: Orbit along-track/cross-track accuracy index
     (5 bits, pages 1 and 3).
-  - `t_op::Int64`: Time of week for data prediction (raw 11-bit count; its
-    scale is deferred to a future ICD update, §7.16), and
-    `sisai_ocb::Int64`, `sisai_oc1::Int64`, `sisai_oc2::Int64`: orbit
+  - `t_op::Int64`: Time of week for data prediction (raw 11-bit count; B1C-1.0
+    §7.16 defers the SISAI *definitions* and gives no parameter table at all, so
+    no scale factor is applied), and
+    `SISAI_ocb::Int64`, `SISAI_oc1::Int64`, `SISAI_oc2::Int64`: orbit
     radius / clock accuracy indices (pages 1, 2, and 4).
 
 # Subframe 3, page type 1 — ionosphere + BDT-UTC (Figures 6-16, 6-17)
 
-  - `α_1 .. α_9::Float64`: BDGIM ionospheric coefficients (TECu; Table 7-10 —
-    the broadcast `α_5` carries scale factor −2⁻³, applied on decode).
+  - `α_bdgim_1 .. α_bdgim_9::Float64`: BDGIM ionospheric coefficients (TECu; Table 7-10 —
+    the broadcast `α_bdgim_5` carries scale factor −2⁻³, applied on decode). The ICD
+    names them `α_1` … `α_9`; the `bdgim` qualifier is this package's, because the
+    Klobuchar `α_0` … `α_3` on `GPSL1CAData`, `GPSCNAVData`, `GPSL1C_DData` and
+    `BeiDouDNAVData` are a different model with different units, and one name for
+    both would let generic code apply the wrong one without complaint.
   - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²).
-  - `Δt_LS,Δt_LSF::Int64`: current and future leap-second counts (s).
-  - `t_ot::Int64`: UTC reference time of week (s); `WN_ot::Int64`: reference week.
+  - `Δt_LS,Δt_LSF::Int64`: current *or past* and future leap-second counts (s;
+    Table 7-20 — the past case is what selects Eq. (7-29) over (7-25)).
+  - `t_0t::Int64`: UTC reference time of week (s); `WN_0t::Int64`: reference
+    week. (The ICD writes `t_ot`/`WN_ot`.)
+    (The ICD writes `t_ot`/`WN_ot`.)
   - `WN_LSF::Int64`, `DN::Int64`: leap-second reference week/day (day 0..6).
 
 # Subframe 3, page type 3 — EOP + BGTO (Figures 6-19, 6-20)
@@ -327,7 +329,7 @@ Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouData
     IODC::Union{Nothing,Int64} = nothing
     IODE::Union{Nothing,Int64} = nothing
 
-    t_oe::Union{Nothing,Int64} = nothing
+    t_0e::Union{Nothing,Int64} = nothing
     sat_type::Union{Nothing,Int64} = nothing
     ΔA::Union{Nothing,Float64} = nothing
     A_dot::Union{Nothing,Float64} = nothing
@@ -347,42 +349,42 @@ Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouData
     C_us::Union{Nothing,Float64} = nothing
     C_uc::Union{Nothing,Float64} = nothing
 
-    t_oc::Union{Nothing,Int64} = nothing
-    a_0::Union{Nothing,Float64} = nothing
-    a_1::Union{Nothing,Float64} = nothing
-    a_2::Union{Nothing,Float64} = nothing
+    t_0c::Union{Nothing,Int64} = nothing
+    a_f0::Union{Nothing,Float64} = nothing
+    a_f1::Union{Nothing,Float64} = nothing
+    a_f2::Union{Nothing,Float64} = nothing
     T_GD_B2ap::Union{Nothing,Float64} = nothing
     ISC_B1Cd::Union{Nothing,Float64} = nothing
     T_GD_B1Cp::Union{Nothing,Float64} = nothing
 
     # --- Subframe 3 page header (every defined page type) ---
-    hs::Union{Nothing,Int64} = nothing
-    dif::Union{Nothing,Bool} = nothing
-    sif::Union{Nothing,Bool} = nothing
-    aif::Union{Nothing,Bool} = nothing
-    sismai::Union{Nothing,Int64} = nothing
-    sisai_oe::Union{Nothing,Int64} = nothing
+    HS::Union{Nothing,Int64} = nothing
+    DIF::Union{Nothing,Bool} = nothing
+    SIF::Union{Nothing,Bool} = nothing
+    AIF::Union{Nothing,Bool} = nothing
+    SISMAI::Union{Nothing,Int64} = nothing
+    SISAI_oe::Union{Nothing,Int64} = nothing
     t_op::Union{Nothing,Int64} = nothing
-    sisai_ocb::Union{Nothing,Int64} = nothing
-    sisai_oc1::Union{Nothing,Int64} = nothing
-    sisai_oc2::Union{Nothing,Int64} = nothing
+    SISAI_ocb::Union{Nothing,Int64} = nothing
+    SISAI_oc1::Union{Nothing,Int64} = nothing
+    SISAI_oc2::Union{Nothing,Int64} = nothing
 
     # --- Subframe 3, page type 1: BDGIM iono + BDT-UTC ---
-    α_1::Union{Nothing,Float64} = nothing
-    α_2::Union{Nothing,Float64} = nothing
-    α_3::Union{Nothing,Float64} = nothing
-    α_4::Union{Nothing,Float64} = nothing
-    α_5::Union{Nothing,Float64} = nothing
-    α_6::Union{Nothing,Float64} = nothing
-    α_7::Union{Nothing,Float64} = nothing
-    α_8::Union{Nothing,Float64} = nothing
-    α_9::Union{Nothing,Float64} = nothing
+    α_bdgim_1::Union{Nothing,Float64} = nothing
+    α_bdgim_2::Union{Nothing,Float64} = nothing
+    α_bdgim_3::Union{Nothing,Float64} = nothing
+    α_bdgim_4::Union{Nothing,Float64} = nothing
+    α_bdgim_5::Union{Nothing,Float64} = nothing
+    α_bdgim_6::Union{Nothing,Float64} = nothing
+    α_bdgim_7::Union{Nothing,Float64} = nothing
+    α_bdgim_8::Union{Nothing,Float64} = nothing
+    α_bdgim_9::Union{Nothing,Float64} = nothing
     A_0UTC::Union{Nothing,Float64} = nothing
     A_1UTC::Union{Nothing,Float64} = nothing
     A_2UTC::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_ot::Union{Nothing,Int64} = nothing
-    WN_ot::Union{Nothing,Int64} = nothing
+    t_0t::Union{Nothing,Int64} = nothing
+    WN_0t::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -411,7 +413,7 @@ function BeiDouB1CData(
     WN = data.WN,
     IODC = data.IODC,
     IODE = data.IODE,
-    t_oe = data.t_oe,
+    t_0e = data.t_0e,
     sat_type = data.sat_type,
     ΔA = data.ΔA,
     A_dot = data.A_dot,
@@ -430,38 +432,38 @@ function BeiDouB1CData(
     C_rc = data.C_rc,
     C_us = data.C_us,
     C_uc = data.C_uc,
-    t_oc = data.t_oc,
-    a_0 = data.a_0,
-    a_1 = data.a_1,
-    a_2 = data.a_2,
+    t_0c = data.t_0c,
+    a_f0 = data.a_f0,
+    a_f1 = data.a_f1,
+    a_f2 = data.a_f2,
     T_GD_B2ap = data.T_GD_B2ap,
     ISC_B1Cd = data.ISC_B1Cd,
     T_GD_B1Cp = data.T_GD_B1Cp,
-    hs = data.hs,
-    dif = data.dif,
-    sif = data.sif,
-    aif = data.aif,
-    sismai = data.sismai,
-    sisai_oe = data.sisai_oe,
+    HS = data.HS,
+    DIF = data.DIF,
+    SIF = data.SIF,
+    AIF = data.AIF,
+    SISMAI = data.SISMAI,
+    SISAI_oe = data.SISAI_oe,
     t_op = data.t_op,
-    sisai_ocb = data.sisai_ocb,
-    sisai_oc1 = data.sisai_oc1,
-    sisai_oc2 = data.sisai_oc2,
-    α_1 = data.α_1,
-    α_2 = data.α_2,
-    α_3 = data.α_3,
-    α_4 = data.α_4,
-    α_5 = data.α_5,
-    α_6 = data.α_6,
-    α_7 = data.α_7,
-    α_8 = data.α_8,
-    α_9 = data.α_9,
+    SISAI_ocb = data.SISAI_ocb,
+    SISAI_oc1 = data.SISAI_oc1,
+    SISAI_oc2 = data.SISAI_oc2,
+    α_bdgim_1 = data.α_bdgim_1,
+    α_bdgim_2 = data.α_bdgim_2,
+    α_bdgim_3 = data.α_bdgim_3,
+    α_bdgim_4 = data.α_bdgim_4,
+    α_bdgim_5 = data.α_bdgim_5,
+    α_bdgim_6 = data.α_bdgim_6,
+    α_bdgim_7 = data.α_bdgim_7,
+    α_bdgim_8 = data.α_bdgim_8,
+    α_bdgim_9 = data.α_bdgim_9,
     A_0UTC = data.A_0UTC,
     A_1UTC = data.A_1UTC,
     A_2UTC = data.A_2UTC,
     Δt_LS = data.Δt_LS,
-    t_ot = data.t_ot,
-    WN_ot = data.WN_ot,
+    t_0t = data.t_0t,
+    WN_0t = data.WN_0t,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -483,7 +485,7 @@ function BeiDouB1CData(
         WN,
         IODC,
         IODE,
-        t_oe,
+        t_0e,
         sat_type,
         ΔA,
         A_dot,
@@ -502,38 +504,38 @@ function BeiDouB1CData(
         C_rc,
         C_us,
         C_uc,
-        t_oc,
-        a_0,
-        a_1,
-        a_2,
+        t_0c,
+        a_f0,
+        a_f1,
+        a_f2,
         T_GD_B2ap,
         ISC_B1Cd,
         T_GD_B1Cp,
-        hs,
-        dif,
-        sif,
-        aif,
-        sismai,
-        sisai_oe,
+        HS,
+        DIF,
+        SIF,
+        AIF,
+        SISMAI,
+        SISAI_oe,
         t_op,
-        sisai_ocb,
-        sisai_oc1,
-        sisai_oc2,
-        α_1,
-        α_2,
-        α_3,
-        α_4,
-        α_5,
-        α_6,
-        α_7,
-        α_8,
-        α_9,
+        SISAI_ocb,
+        SISAI_oc1,
+        SISAI_oc2,
+        α_bdgim_1,
+        α_bdgim_2,
+        α_bdgim_3,
+        α_bdgim_4,
+        α_bdgim_5,
+        α_bdgim_6,
+        α_bdgim_7,
+        α_bdgim_8,
+        α_bdgim_9,
         A_0UTC,
         A_1UTC,
         A_2UTC,
         Δt_LS,
-        t_ot,
-        WN_ot,
+        t_0t,
+        WN_0t,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -612,13 +614,11 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     sf3_symbols::Vector{Float32}
 end
 
-_beidou_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
-
 function BeiDouB1CCache(prn::Int)
     BeiDouB1CCache(
         CircularDeque{Float32}(B1C_WINDOW_LENGTH),
-        LDPCScratch(_beidou_data_path("bcnv1_sf2.alist")),
-        LDPCScratch(_beidou_data_path("bcnv1_sf3.alist")),
+        LDPCScratch(alist_path("bcnv1_sf2.alist")),
+        LDPCScratch(alist_path("bcnv1_sf3.alist")),
         b1c_prn_codeword(prn),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
@@ -637,7 +637,7 @@ function is_subframe2_decoded(data::BeiDouB1CData)
     !isnothing(data.WN) &&
         !isnothing(data.HOW) &&
         !isnothing(data.IODE) &&
-        !isnothing(data.t_oe) &&
+        !isnothing(data.t_0e) &&
         is_known_sat_type(data.sat_type) &&
         !isnothing(data.ΔA) &&
         !isnothing(data.M_0) &&
@@ -645,12 +645,12 @@ function is_subframe2_decoded(data::BeiDouB1CData)
         !isnothing(data.ω) &&
         !isnothing(data.Ω_0) &&
         !isnothing(data.i_0) &&
-        !isnothing(data.a_0) &&
-        !isnothing(data.a_1)
+        !isnothing(data.a_f0) &&
+        !isnothing(data.a_f1)
 end
 
 # Positioning readiness: a validated SOH (time), the subframe-2 ephemeris +
-# clock set, and the subframe-3 health status `hs` — so `is_sat_healthy` is
+# clock set, and the subframe-3 health status `HS` — so `is_sat_healthy` is
 # guaranteed decodable whenever this is `true` (see
 # `is_decoding_completed_for_positioning` in src/gnss.jl).
 #
@@ -685,7 +685,7 @@ end
 # means nothing to a B1C-only user. Same rule, other side of it.
 function is_decoding_completed_for_positioning(data::BeiDouB1CData)
     !isnothing(data.soh) &&
-        !isnothing(data.hs) &&
+        !isnothing(data.HS) &&
         is_subframe2_decoded(data) &&
         !isnothing(data.T_GD_B1Cp) &&
         !isnothing(data.ISC_B1Cd) &&
@@ -818,13 +818,14 @@ end
 
 # Match one 72-symbol subframe-1 window against [PRN₂₁ | SOH₅₁(soh)] under a
 # known polarity (`flip`), returning the matching SOH or `nothing`. Both fields
-# are read straight off the deque with the shared `pack_soft_codeword`
+# are read straight off the deque with the shared `pack_bits_lsb_first`
 # (src/gnss.jl), which packs bit 0 = first symbol, the codeword tables' order.
 function _match_sf1_soh(deque, start::Int, prn_codeword::UInt64, flip::Bool)
-    prn_word = pack_soft_codeword(deque, start, B1C_PRN_CODEWORD_LEN)
+    prn_word = pack_bits_lsb_first(deque, start, B1C_PRN_CODEWORD_LEN)
     flip && (prn_word = ~prn_word & B1C_PRN_MASK21)
     prn_word == prn_codeword || return nothing
-    soh_word = pack_soft_codeword(deque, start + B1C_PRN_CODEWORD_LEN, B1C_SOH_CODEWORD_LEN)
+    soh_word =
+        pack_bits_lsb_first(deque, start + B1C_PRN_CODEWORD_LEN, B1C_SOH_CODEWORD_LEN)
     flip && (soh_word = ~soh_word & B1C_SOH_MASK51)
     @inbounds for soh = 0:(B1C_SOH_RANGE-1)
         soh_word == B1C_SOH_CODEWORDS[soh+1] && return soh
@@ -956,7 +957,7 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     IODC = Int(get_bits(word, word_length, 22, 10))
     IODE = Int(get_bits(word, word_length, 32, 8))
     # Ephemeris I (Figure 6-12, Table 7-8), bits 40-242.
-    t_oe = Int(get_bits(word, word_length, 40, 11)) * 300
+    t_0e = Int(get_bits(word, word_length, 40, 11)) * 300
     sat_type = Int(get_bits(word, word_length, 51, 2))
     ΔA = get_twos_complement_num(word, word_length, 53, 26) * 2.0^-9
     A_dot = get_twos_complement_num(word, word_length, 79, 25) * 2.0^-21
@@ -979,10 +980,10 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     C_us = get_twos_complement_num(word, word_length, 423, 21) * 2.0^-30
     C_uc = get_twos_complement_num(word, word_length, 444, 21) * 2.0^-30
     # Clock correction (Figure 6-14, Table 7-5), bits 465-533.
-    t_oc = Int(get_bits(word, word_length, 465, 11)) * 300
-    a_0 = get_twos_complement_num(word, word_length, 476, 25) * 2.0^-34
-    a_1 = get_twos_complement_num(word, word_length, 501, 22) * 2.0^-50
-    a_2 = get_twos_complement_num(word, word_length, 523, 11) * 2.0^-66
+    t_0c = Int(get_bits(word, word_length, 465, 11)) * 300
+    a_f0 = get_twos_complement_num(word, word_length, 476, 25) * 2.0^-34
+    a_f1 = get_twos_complement_num(word, word_length, 501, 22) * 2.0^-50
+    a_f2 = get_twos_complement_num(word, word_length, 523, 11) * 2.0^-66
     # Group delay differentials (Table 7-6), bits 534-569.
     T_GD_B2ap = get_twos_complement_num(word, word_length, 534, 12) * 2.0^-34
     ISC_B1Cd = get_twos_complement_num(word, word_length, 546, 12) * 2.0^-34
@@ -994,7 +995,7 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
         HOW,
         IODC,
         IODE,
-        t_oe,
+        t_0e,
         sat_type,
         ΔA,
         A_dot,
@@ -1013,10 +1014,10 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
         C_rc,
         C_us,
         C_uc,
-        t_oc,
-        a_0,
-        a_1,
-        a_2,
+        t_0c,
+        a_f0,
+        a_f1,
+        a_f2,
         T_GD_B2ap,
         ISC_B1Cd,
         T_GD_B1Cp,
@@ -1049,11 +1050,11 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
     if 1 <= page <= 4
         raw = BeiDouB1CData(
             raw;
-            hs = Int(get_bits(word, word_length, 7, 2)),
-            dif = get_bit(word, word_length, 9),
-            sif = get_bit(word, word_length, 10),
-            aif = get_bit(word, word_length, 11),
-            sismai = Int(get_bits(word, word_length, 12, 4)),
+            HS = Int(get_bits(word, word_length, 7, 2)),
+            DIF = get_bit(word, word_length, 9),
+            SIF = get_bit(word, word_length, 10),
+            AIF = get_bit(word, word_length, 11),
+            SISMAI = Int(get_bits(word, word_length, 12, 4)),
         )
     end
     raw = if page == 1
@@ -1072,16 +1073,16 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
 end
 
 # SISAI_oc data block (Figure 6-15): t_op(11) SISAI_ocb(5) SISAI_oc1(3)
-# SISAI_oc2(3), 22 bits at 1-based `start`. Index semantics are deferred to a
-# future ICD update (§7.16), so all four are stored raw.
+# SISAI_oc2(3), 22 bits at 1-based `start`. The SISAI definitions are deferred
+# to a future ICD update (§7.16), so all four are stored raw.
 function _parse_b1c_sisai_oc(raw::BeiDouB1CData, word::UInt288, start::Int)
     word_length = B1C_SF3_INFO_BITS
     BeiDouB1CData(
         raw;
         t_op = Int(get_bits(word, word_length, start, 11)),
-        sisai_ocb = Int(get_bits(word, word_length, start + 11, 5)),
-        sisai_oc1 = Int(get_bits(word, word_length, start + 16, 3)),
-        sisai_oc2 = Int(get_bits(word, word_length, start + 19, 3)),
+        SISAI_ocb = Int(get_bits(word, word_length, start + 11, 5)),
+        SISAI_oc1 = Int(get_bits(word, word_length, start + 16, 3)),
+        SISAI_oc2 = Int(get_bits(word, word_length, start + 19, 3)),
     )
 end
 
@@ -1090,28 +1091,29 @@ Subframe 3, page type 1 — SISAI + BDGIM iono + BDT-UTC (ICD Figures 6-8, 6-16,
 """
 function parse_b1c_sf3_page1(raw::BeiDouB1CData, word::UInt288)
     word_length = B1C_SF3_INFO_BITS
-    raw = BeiDouB1CData(raw; sisai_oe = Int(get_bits(word, word_length, 16, 5)))
+    raw = BeiDouB1CData(raw; SISAI_oe = Int(get_bits(word, word_length, 16, 5)))
     raw = _parse_b1c_sisai_oc(raw, word, 21)
     BeiDouB1CData(
         raw;
-        # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10; TECu). α₅
-        # is broadcast unsigned with scale factor −2⁻³; α₃, α₄ are unsigned.
-        α_1 = Int(get_bits(word, word_length, 43, 10)) * 2.0^-3,
-        α_2 = get_twos_complement_num(word, word_length, 53, 8) * 2.0^-3,
-        α_3 = Int(get_bits(word, word_length, 61, 8)) * 2.0^-3,
-        α_4 = Int(get_bits(word, word_length, 69, 8)) * 2.0^-3,
-        α_5 = Int(get_bits(word, word_length, 77, 8)) * -(2.0^-3),
-        α_6 = get_twos_complement_num(word, word_length, 85, 8) * 2.0^-3,
-        α_7 = get_twos_complement_num(word, word_length, 93, 8) * 2.0^-3,
-        α_8 = get_twos_complement_num(word, word_length, 101, 8) * 2.0^-3,
-        α_9 = get_twos_complement_num(word, word_length, 109, 8) * 2.0^-3,
+        # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10; TECu). The
+        # unsigned set is α₁, α₃, α₄, α₅ — α₅ with the negative scale factor
+        # −2⁻³; α₂ and α₆..α₉ are two's complement.
+        α_bdgim_1 = Int(get_bits(word, word_length, 43, 10)) * 2.0^-3,
+        α_bdgim_2 = get_twos_complement_num(word, word_length, 53, 8) * 2.0^-3,
+        α_bdgim_3 = Int(get_bits(word, word_length, 61, 8)) * 2.0^-3,
+        α_bdgim_4 = Int(get_bits(word, word_length, 69, 8)) * 2.0^-3,
+        α_bdgim_5 = Int(get_bits(word, word_length, 77, 8)) * -(2.0^-3),
+        α_bdgim_6 = get_twos_complement_num(word, word_length, 85, 8) * 2.0^-3,
+        α_bdgim_7 = get_twos_complement_num(word, word_length, 93, 8) * 2.0^-3,
+        α_bdgim_8 = get_twos_complement_num(word, word_length, 101, 8) * 2.0^-3,
+        α_bdgim_9 = get_twos_complement_num(word, word_length, 109, 8) * 2.0^-3,
         # BDT-UTC time offset (Figure 6-17, Table 7-20).
         A_0UTC = get_twos_complement_num(word, word_length, 117, 16) * 2.0^-35,
         A_1UTC = get_twos_complement_num(word, word_length, 133, 13) * 2.0^-51,
         A_2UTC = get_twos_complement_num(word, word_length, 146, 7) * 2.0^-68,
         Δt_LS = get_twos_complement_num(word, word_length, 153, 8),
-        t_ot = Int(get_bits(word, word_length, 161, 16)) * 2^4,
-        WN_ot = Int(get_bits(word, word_length, 177, 13)),
+        t_0t = Int(get_bits(word, word_length, 161, 16)) * 2^4,
+        WN_0t = Int(get_bits(word, word_length, 177, 13)),
         WN_LSF = Int(get_bits(word, word_length, 190, 13)),
         DN = Int(get_bits(word, word_length, 203, 3)),
         Δt_LSF = get_twos_complement_num(word, word_length, 206, 8),
@@ -1125,7 +1127,7 @@ function _b1c_reduced_almanac_packet(
     word::UInt288,
     start::Int,
     WN_a::Int,
-    t_oa::Int,
+    t_0a::Int,
     PI::Float64,
 )
     word_length = B1C_SF3_INFO_BITS
@@ -1137,7 +1139,7 @@ function _b1c_reduced_almanac_packet(
         PRN_a,
         sat_type = Int(get_bits(word, word_length, start + 6, 2)),
         WN_a,
-        t_oa,
+        t_0a,
         δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
         Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
         Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
@@ -1152,11 +1154,11 @@ function parse_b1c_sf3_page2(raw::BeiDouB1CData, word::UInt288, PI::Float64)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     WN_a = Int(get_bits(word, word_length, 38, 13))
-    t_oa = Int(get_bits(word, word_length, 51, 8)) * 2^12
+    t_0a = Int(get_bits(word, word_length, 51, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     # Four 38-bit packets at bits 59, 97, 135, 173 (Figure 6-9).
     for start in (59, 97, 135, 173)
-        packet = _b1c_reduced_almanac_packet(word, start, WN_a, t_oa, PI)
+        packet = _b1c_reduced_almanac_packet(word, start, WN_a, t_0a, PI)
         isnothing(packet) && continue
         almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
     end
@@ -1170,7 +1172,7 @@ function parse_b1c_sf3_page3(raw::BeiDouB1CData, word::UInt288)
     word_length = B1C_SF3_INFO_BITS
     raw = BeiDouB1CData(
         raw;
-        sisai_oe = Int(get_bits(word, word_length, 16, 5)),
+        SISAI_oe = Int(get_bits(word, word_length, 16, 5)),
         # EOP (Figure 6-19, Table 7-18), bits 21-158.
         t_EOP = Int(get_bits(word, word_length, 21, 16)) * 2^4,
         PM_X = get_twos_complement_num(word, word_length, 37, 21) * 2.0^-20,
@@ -1182,17 +1184,17 @@ function parse_b1c_sf3_page3(raw::BeiDouB1CData, word::UInt288)
     )
     # BGTO (Figure 6-20, Table 7-21), bits 159-226. GNSS ID 0 means "not
     # available" (§7.13.1) — nothing is stored then.
-    gnss_id = Int(get_bits(word, word_length, 159, 3))
-    gnss_id == 0 && return raw
+    GNSS_ID = Int(get_bits(word, word_length, 159, 3))
+    GNSS_ID == 0 && return raw
     bgto = BeiDouB1CBGTO(;
-        gnss_id,
+        GNSS_ID,
         WN_0BGTO = Int(get_bits(word, word_length, 162, 13)),
         t_0BGTO = Int(get_bits(word, word_length, 175, 16)) * 2^4,
         A_0BGTO = get_twos_complement_num(word, word_length, 191, 16) * 2.0^-35,
         A_1BGTO = get_twos_complement_num(word, word_length, 207, 13) * 2.0^-51,
         A_2BGTO = get_twos_complement_num(word, word_length, 220, 7) * 2.0^-68,
     )
-    BeiDouB1CData(raw; bgtos = _merge_keyed(raw.bgtos, gnss_id, bgto))
+    BeiDouB1CData(raw; bgtos = _merge_keyed(raw.bgtos, GNSS_ID, bgto))
 end
 
 """
@@ -1208,7 +1210,7 @@ function parse_b1c_sf3_page4(raw::BeiDouB1CData, word::UInt288, PI::Float64)
         PRN_a,
         sat_type = Int(get_bits(word, word_length, 44, 2)),
         WN_a = Int(get_bits(word, word_length, 46, 13)),
-        t_oa = Int(get_bits(word, word_length, 59, 8)) * 2^12,
+        t_0a = Int(get_bits(word, word_length, 59, 8)) * 2^12,
         e = Int(get_bits(word, word_length, 67, 11)) * 2.0^-16,
         δi = get_twos_complement_num(word, word_length, 78, 11) * 2.0^-14 * PI,
         sqrt_A = Int(get_bits(word, word_length, 89, 17)) * 2.0^-4,
@@ -1262,7 +1264,7 @@ Check if the BeiDou B1C satellite is healthy and usable for positioning.
 Examines the 2-bit satellite health status (HS) broadcast in every subframe-3
 page (BDS-SIS-ICD-B1C-1.0 §7.14, Table 7-22): a satellite is healthy iff
 `HS == 0` (the satellite provides services). The B1C integrity status flags
-(`dif`/`sif`/`aif`, §7.15) are reported separately on
+(`DIF`/`SIF`/`AIF`, §7.15) are reported separately on
 [`BeiDouB1CData`](@ref) and are deliberately not folded in here — they flag
 message/signal integrity for precision users, not the satellite's service
 state.
@@ -1281,7 +1283,7 @@ state.
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
 function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB1CData})
-    # `hs` is stored as Int64; compare against a typed zero so the egal check
+    # `HS` is stored as Int64; compare against a typed zero so the egal check
     # cannot fail on a platform where the literal `0` is Int32.
-    state.data.hs === Int64(0)
+    state.data.HS === Int64(0)
 end

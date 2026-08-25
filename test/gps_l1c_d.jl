@@ -375,12 +375,12 @@ end
             _setbits!(b, 216, 13, -11)    # ISC_L5Q5
         end)
         d = st.data
-        @test d.A0_UTC ≈ 1000 * 2.0^-35
-        @test d.A1_UTC ≈ -500 * 2.0^-51
-        @test d.A2_UTC ≈ 3 * 2.0^-68
+        @test d.A_0UTC ≈ 1000 * 2.0^-35
+        @test d.A_1UTC ≈ -500 * 2.0^-51
+        @test d.A_2UTC ≈ 3 * 2.0^-68
         @test d.Δt_LS == 18
-        @test d.t_ot == 100 * 16
-        @test d.WN_ot == 2200
+        @test d.t_0t == 100 * 16
+        @test d.WN_0t == 2200
         @test d.WN_LSF == 2201
         @test d.DN == 6
         @test d.Δt_LSF == 19
@@ -430,9 +430,9 @@ end
         @test d.GGTO_ID == 1
         @test d.t_GGTO == 50 * 16
         @test d.WN_GGTO == 2100
-        @test d.A0_GGTO ≈ 800 * 2.0^-35
-        @test d.A1_GGTO ≈ -200 * 2.0^-51
-        @test d.A2_GGTO ≈ 2 * 2.0^-68
+        @test d.A_0GGTO ≈ 800 * 2.0^-35
+        @test d.A_1GGTO ≈ -200 * 2.0^-51
+        @test d.A_2GGTO ≈ 2 * 2.0^-68
         # EOP — Spirent reference-decoder values (independent of our scale LSBs).
         @test d.t_EOP == 259200
         @test d.PM_X ≈ 0.10612583160400391
@@ -471,7 +471,7 @@ end
         @test !haskey(d.reduced_almanacs, 0)
         a = d.reduced_almanacs[11]
         @test a.WN_a == 2200
-        @test a.t_oa == 30 * 4096
+        @test a.t_0a == 30 * 4096
         @test a.δA ≈ 5 * 2.0^9
         @test a.Ω_0 ≈ -3 * 2.0^-6 * PI
         @test a.Φ_0 ≈ 2 * 2.0^-6 * PI
@@ -505,7 +505,7 @@ end
         @test haskey(d.midi_almanacs, 19)
         a = d.midi_almanacs[19]
         @test a.WN_a == 2150
-        @test a.t_oa == 40 * 4096
+        @test a.t_0a == 40 * 4096
         @test a.l1_health == false
         @test a.l2_health == true
         @test a.l5_health == false
@@ -584,8 +584,8 @@ end
         @test isnothing(d.midi_almanacs)
         @test isnothing(d.differential_corrections)
         @test isnothing(d.text_message)
-        @test isnothing(d.A0_UTC)
-        @test isnothing(d.A0_GGTO)
+        @test isnothing(d.A_0UTC)
+        @test isnothing(d.A_0GGTO)
     end
 
     # --- Spirent-derived recording fixtures (committed; always run) ----------
@@ -637,7 +637,7 @@ end
 
         # Subframe 3 pages observed in the recording.
         @test d.Δt_LS == 18
-        @test d.A0_UTC ≈ 0.0
+        @test d.A_0UTC ≈ 0.0
         @test d.t_GGTO == 259200
         @test d.text_message == "Test text message for page: 2"
         @test d.num_sf3_pages_received == 68
@@ -648,7 +648,7 @@ end
         @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) == 31
         ra1 = d.reduced_almanacs[1]
         @test ra1.WN_a == 2106
-        @test ra1.t_oa == 507904
+        @test ra1.t_0a == 507904
         @test ra1.δA ≈ 1024.0
         @test ra1.Ω_0 ≈ 0.296875 * π
         @test ra1.Φ_0 ≈ -0.140625 * π
@@ -663,7 +663,7 @@ end
         @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) == 11
         ma1 = d.midi_almanacs[1]
         @test ma1.WN_a == 2106
-        @test ma1.t_oa == 507904
+        @test ma1.t_0a == 507904
         @test ma1.e ≈ 0.0
         @test ma1.δi ≈ 0.00555419921875 * π
         @test ma1.Ω_dot ≈ 0.0

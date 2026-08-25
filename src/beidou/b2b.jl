@@ -25,7 +25,17 @@
 #
 # Message types (§6.2.3, Table 7-1): 10 (ephemeris + integrity flags),
 # 30 (clock, TGD, BDGIM ionosphere, BDT-UTC, EOP, SISAI, health), and
-# 40 (BGTO, one midi almanac, five reduced almanacs). Others are reserved.
+# 40 (BGTO, one midi almanac, five reduced almanacs). `000000` is Invalid and
+# the remaining values are reserved; both are dropped the same way.
+#
+# B-CNAV3 is the MEO/IGSO message. The BDS-3 GEO satellites broadcast the
+# *PPP-B2b* service on the same component with the same framing (preamble, PRN,
+# LDPC block, CRC-24Q), but with its own message types 1-7 carrying precise
+# orbit/clock/code-bias corrections — a separate ICD, and not decoded here.
+# Nothing special is needed for that: such a satellite syncs and passes CRC
+# normally, its message types fall through the reserved branch, and only
+# `last_message_type` and `SOW` are published. This mirrors how the legacy D2
+# wide-area differential subframes are framed but not parsed (`dnav.jl`).
 
 # ---- Frame constants (BDS-SIS-ICD-B2b-1.0 §6.2.1) ---------------------------
 
@@ -130,12 +140,12 @@ each CRC-gated message is atomic.
 # Header (every message type)
 
   - `last_message_type::Int`: MesType of the most recently decoded frame (Table 7-1; 0 until the first decode).
-  - `SOW::Int64`: Seconds of week of the current frame's leading edge (s). Broadcast as a 20-bit count with LSB 1 s (Table 7-2).
+  - `SOW::Int64`: Seconds of week of the current frame's leading edge (s). Broadcast as a 20-bit count with LSB 1 s — the scale factor of the Chinese-language Table 7-2; the English edition misprints it as 3. See `decode_syncro_sequence` for why the English table is not followed.
 
 # Message type 10 — ephemeris (Figures 6-3, 6-6, 6-7) and integrity flags
 
   - `sat_type::Int64`: Satellite orbit type (binary 01 = GEO, 10 = IGSO, 11 = MEO; Table 7-6).
-  - `t_0e::Int64`: Ephemeris reference time (s, LSB 300).
+  - `t_0e::Int64`: Ephemeris reference time (s, LSB 300; the ICD writes `toe`).
   - `ΔA::Float64`: Semi-major axis difference at reference time (m) relative to `A_ref = 27 906 100 m` (MEO) / `42 162 200 m` (IGSO/GEO).
   - `A_dot::Float64`: Change rate of semi-major axis (m/s).
   - `Δn_0::Float64`: Mean motion difference at reference time (rad/s).
@@ -150,29 +160,31 @@ each CRC-gated message is atomic.
   - `C_is,C_ic::Float64`: Sine/cosine harmonic correction to inclination (rad).
   - `C_rs,C_rc::Float64`: Sine/cosine harmonic correction to orbit radius (m).
   - `C_us,C_uc::Float64`: Sine/cosine harmonic correction to argument of latitude (rad).
-  - `dif,sif,aif::Bool`: Data / signal / accuracy integrity flags for the B2b_I signal (`false` = OK, Table 7-21).
-  - `sismai::Int64`: Signal in space monitoring accuracy index (4 bits; semantics deferred to a future ICD update, §7.16).
+  - `DIF,SIF,AIF::Bool`: Data / signal / accuracy integrity flags for the B2b_I signal (`false` = OK, Table 7-21).
+  - `SISMAI::Int64`: Signal in space monitoring accuracy index (4 bits; semantics deferred to a future ICD update, §7.16). B2b-1.0 Figure 6-3 labels the broadcast field `SISMA`, reserving `SISMAI` for its index; B1C-1.0 and B2a-1.0 label the same field `SISMAI`, which is the spelling this package follows.
 
 # Message type 30 — clock, group delay, ionosphere, UTC, EOP, accuracy, health
 
   - `WN::Int64`: BDT week number at the current frame's epoch (Table 7-2).
   - `t_0c::Int64`: Clock correction reference time (s, LSB 300).
+  - `a_f0::Float64`: Clock bias (s). `a_f1::Float64`: drift (s/s). `a_f2::Float64`: drift rate (s/s²). (Table 7-3; the ICD names them a0/a1/a2, and writes `toc` for `t_0c`.)
   - `T_GD_B2bI::Float64`: Group delay differential of the B2b_I signal relative to B3I (s, Table 7-4). Required, not optional: `a_f0` is referenced to B3I (§7.6), so a B2b_I receiver must add this to reach its own component. It arrives in the same MT30 as the clock, so `is_decoding_completed_for_positioning` gates on it at no cost in time to first fix.
   - `α_bdgim_1 … α_bdgim_9::Float64`: BDGIM ionospheric model parameters (TECu, Table 7-8; α_bdgim_5 is broadcast unsigned and the decoder applies its negative scale factor, -2⁻³). The ICD names them `α_1` … `α_9`; see `b1c.jl` for why the `bdgim` qualifier is added.
+  - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²; Table 7-18).
   - `Δt_LS::Int64`: Current or past leap-second count (s). `Δt_LSF::Int64`: current or future leap-second count (s).
-  - `t_ot::Int64`: UTC reference time of week (s, LSB 2⁴). `WN_ot::Int64`: UTC reference week.
+  - `t_0t::Int64`: UTC reference time of week (s, LSB 2⁴). `WN_0t::Int64`: UTC reference week. (The ICD writes `t_ot`/`WN_ot`.)
   - `WN_LSF::Int64`: Leap-second reference week. `DN::Int64`: leap-second reference day (0-6).
   - `t_EOP::Int64`: EOP reference time (s, LSB 2⁴; Table 7-16).
   - `PM_X,PM_Y::Float64`: Polar motion (arc-seconds). `PM_X_dot,PM_Y_dot::Float64`: drift (arc-seconds/day).
   - `ΔUT1::Float64`: UT1-UTC difference (s). `ΔUT1_dot::Float64`: its rate (s/day).
-  - `sisai_t_op,sisai_ocb,sisai_oc1,sisai_oc2,sisai_oe::Int64`: Signal-in-space accuracy index fields, raw broadcast values (11/5/3/3/5 bits; semantics deferred to a future ICD update, §7.15).
-  - `hs::Int64`: Satellite health status (0 = healthy, 1 = unhealthy or in test, 2-3 reserved; Table 7-20).
+  - `t_op,SISAI_ocb,SISAI_oc1,SISAI_oc2,SISAI_oe::Int64`: Signal-in-space accuracy index fields, raw broadcast values (11/5/3/3/5 bits; semantics deferred to a future ICD update, §7.15).
+  - `HS::Int64`: Satellite health status (0 = healthy, 1 = unhealthy or in test, 2-3 reserved; Table 7-20).
 
 # Message type 40 — BGTO and almanacs (Figure 6-5)
 
   - `GNSS_ID::Int64`: BGTO GNSS identification (0 = not available, 1 = GPS, 2 = Galileo, 3 = GLONASS; §7.12).
   - `WN_0BGTO::Int64`, `t_0BGTO::Int64`: BGTO reference week / time of week (s, LSB 2⁴).
-  - `A0_BGTO,A1_BGTO,A2_BGTO::Float64`: BDT-GNSS time offset polynomial (s, s/s, s/s²; Table 7-19).
+  - `A_0BGTO,A_1BGTO,A_2BGTO::Float64`: BDT-GNSS time offset polynomial (s, s/s, s/s²; Table 7-19).
   - `midi_almanacs::Dictionary{Int,BeiDouMidiAlmanac}`: Midi almanacs keyed by `PRN_a` (§7.8).
   - `reduced_almanacs::Dictionary{Int,BeiDouReducedAlmanac}`: Reduced almanacs keyed by `PRN_a` (§7.9).
   - `WN_a::Int64`, `t_0a::Int64`: Almanac reference week / time (s, LSB 2¹²) for the reduced almanacs (Table 7-15).
@@ -205,10 +217,10 @@ Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouData
     C_rc::Union{Nothing,Float64} = nothing
     C_us::Union{Nothing,Float64} = nothing
     C_uc::Union{Nothing,Float64} = nothing
-    dif::Union{Nothing,Bool} = nothing
-    sif::Union{Nothing,Bool} = nothing
-    aif::Union{Nothing,Bool} = nothing
-    sismai::Union{Nothing,Int64} = nothing
+    DIF::Union{Nothing,Bool} = nothing
+    SIF::Union{Nothing,Bool} = nothing
+    AIF::Union{Nothing,Bool} = nothing
+    SISMAI::Union{Nothing,Int64} = nothing
 
     # Message type 30: clock + TGD + ionosphere + UTC + EOP + SISAI + health
     WN::Union{Nothing,Int64} = nothing
@@ -217,21 +229,21 @@ Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouData
     a_f1::Union{Nothing,Float64} = nothing
     a_f2::Union{Nothing,Float64} = nothing
     T_GD_B2bI::Union{Nothing,Float64} = nothing
-    α_1::Union{Nothing,Float64} = nothing
-    α_2::Union{Nothing,Float64} = nothing
-    α_3::Union{Nothing,Float64} = nothing
-    α_4::Union{Nothing,Float64} = nothing
-    α_5::Union{Nothing,Float64} = nothing
-    α_6::Union{Nothing,Float64} = nothing
-    α_7::Union{Nothing,Float64} = nothing
-    α_8::Union{Nothing,Float64} = nothing
-    α_9::Union{Nothing,Float64} = nothing
-    A0_UTC::Union{Nothing,Float64} = nothing
-    A1_UTC::Union{Nothing,Float64} = nothing
-    A2_UTC::Union{Nothing,Float64} = nothing
+    α_bdgim_1::Union{Nothing,Float64} = nothing
+    α_bdgim_2::Union{Nothing,Float64} = nothing
+    α_bdgim_3::Union{Nothing,Float64} = nothing
+    α_bdgim_4::Union{Nothing,Float64} = nothing
+    α_bdgim_5::Union{Nothing,Float64} = nothing
+    α_bdgim_6::Union{Nothing,Float64} = nothing
+    α_bdgim_7::Union{Nothing,Float64} = nothing
+    α_bdgim_8::Union{Nothing,Float64} = nothing
+    α_bdgim_9::Union{Nothing,Float64} = nothing
+    A_0UTC::Union{Nothing,Float64} = nothing
+    A_1UTC::Union{Nothing,Float64} = nothing
+    A_2UTC::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_ot::Union{Nothing,Int64} = nothing
-    WN_ot::Union{Nothing,Int64} = nothing
+    t_0t::Union{Nothing,Int64} = nothing
+    WN_0t::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -242,20 +254,20 @@ Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouData
     PM_Y_dot::Union{Nothing,Float64} = nothing
     ΔUT1::Union{Nothing,Float64} = nothing
     ΔUT1_dot::Union{Nothing,Float64} = nothing
-    sisai_t_op::Union{Nothing,Int64} = nothing
-    sisai_ocb::Union{Nothing,Int64} = nothing
-    sisai_oc1::Union{Nothing,Int64} = nothing
-    sisai_oc2::Union{Nothing,Int64} = nothing
-    sisai_oe::Union{Nothing,Int64} = nothing
-    hs::Union{Nothing,Int64} = nothing
+    t_op::Union{Nothing,Int64} = nothing
+    SISAI_ocb::Union{Nothing,Int64} = nothing
+    SISAI_oc1::Union{Nothing,Int64} = nothing
+    SISAI_oc2::Union{Nothing,Int64} = nothing
+    SISAI_oe::Union{Nothing,Int64} = nothing
+    HS::Union{Nothing,Int64} = nothing
 
     # Message type 40: BGTO + almanacs
     GNSS_ID::Union{Nothing,Int64} = nothing
     WN_0BGTO::Union{Nothing,Int64} = nothing
     t_0BGTO::Union{Nothing,Int64} = nothing
-    A0_BGTO::Union{Nothing,Float64} = nothing
-    A1_BGTO::Union{Nothing,Float64} = nothing
-    A2_BGTO::Union{Nothing,Float64} = nothing
+    A_0BGTO::Union{Nothing,Float64} = nothing
+    A_1BGTO::Union{Nothing,Float64} = nothing
+    A_2BGTO::Union{Nothing,Float64} = nothing
     midi_almanacs::Union{Nothing,Dictionary{Int,BeiDouMidiAlmanac}} = nothing
     reduced_almanacs::Union{Nothing,Dictionary{Int,BeiDouReducedAlmanac}} = nothing
     WN_a::Union{Nothing,Int64} = nothing
@@ -289,31 +301,31 @@ function BeiDouB2bData(
     C_rc = data.C_rc,
     C_us = data.C_us,
     C_uc = data.C_uc,
-    dif = data.dif,
-    sif = data.sif,
-    aif = data.aif,
-    sismai = data.sismai,
+    DIF = data.DIF,
+    SIF = data.SIF,
+    AIF = data.AIF,
+    SISMAI = data.SISMAI,
     WN = data.WN,
     t_0c = data.t_0c,
     a_f0 = data.a_f0,
     a_f1 = data.a_f1,
     a_f2 = data.a_f2,
     T_GD_B2bI = data.T_GD_B2bI,
-    α_1 = data.α_1,
-    α_2 = data.α_2,
-    α_3 = data.α_3,
-    α_4 = data.α_4,
-    α_5 = data.α_5,
-    α_6 = data.α_6,
-    α_7 = data.α_7,
-    α_8 = data.α_8,
-    α_9 = data.α_9,
-    A0_UTC = data.A0_UTC,
-    A1_UTC = data.A1_UTC,
-    A2_UTC = data.A2_UTC,
+    α_bdgim_1 = data.α_bdgim_1,
+    α_bdgim_2 = data.α_bdgim_2,
+    α_bdgim_3 = data.α_bdgim_3,
+    α_bdgim_4 = data.α_bdgim_4,
+    α_bdgim_5 = data.α_bdgim_5,
+    α_bdgim_6 = data.α_bdgim_6,
+    α_bdgim_7 = data.α_bdgim_7,
+    α_bdgim_8 = data.α_bdgim_8,
+    α_bdgim_9 = data.α_bdgim_9,
+    A_0UTC = data.A_0UTC,
+    A_1UTC = data.A_1UTC,
+    A_2UTC = data.A_2UTC,
     Δt_LS = data.Δt_LS,
-    t_ot = data.t_ot,
-    WN_ot = data.WN_ot,
+    t_0t = data.t_0t,
+    WN_0t = data.WN_0t,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -324,18 +336,18 @@ function BeiDouB2bData(
     PM_Y_dot = data.PM_Y_dot,
     ΔUT1 = data.ΔUT1,
     ΔUT1_dot = data.ΔUT1_dot,
-    sisai_t_op = data.sisai_t_op,
-    sisai_ocb = data.sisai_ocb,
-    sisai_oc1 = data.sisai_oc1,
-    sisai_oc2 = data.sisai_oc2,
-    sisai_oe = data.sisai_oe,
-    hs = data.hs,
+    t_op = data.t_op,
+    SISAI_ocb = data.SISAI_ocb,
+    SISAI_oc1 = data.SISAI_oc1,
+    SISAI_oc2 = data.SISAI_oc2,
+    SISAI_oe = data.SISAI_oe,
+    HS = data.HS,
     GNSS_ID = data.GNSS_ID,
     WN_0BGTO = data.WN_0BGTO,
     t_0BGTO = data.t_0BGTO,
-    A0_BGTO = data.A0_BGTO,
-    A1_BGTO = data.A1_BGTO,
-    A2_BGTO = data.A2_BGTO,
+    A_0BGTO = data.A_0BGTO,
+    A_1BGTO = data.A_1BGTO,
+    A_2BGTO = data.A_2BGTO,
     midi_almanacs = data.midi_almanacs,
     reduced_almanacs = data.reduced_almanacs,
     WN_a = data.WN_a,
@@ -363,31 +375,31 @@ function BeiDouB2bData(
         C_rc,
         C_us,
         C_uc,
-        dif,
-        sif,
-        aif,
-        sismai,
+        DIF,
+        SIF,
+        AIF,
+        SISMAI,
         WN,
         t_0c,
         a_f0,
         a_f1,
         a_f2,
         T_GD_B2bI,
-        α_1,
-        α_2,
-        α_3,
-        α_4,
-        α_5,
-        α_6,
-        α_7,
-        α_8,
-        α_9,
-        A0_UTC,
-        A1_UTC,
-        A2_UTC,
+        α_bdgim_1,
+        α_bdgim_2,
+        α_bdgim_3,
+        α_bdgim_4,
+        α_bdgim_5,
+        α_bdgim_6,
+        α_bdgim_7,
+        α_bdgim_8,
+        α_bdgim_9,
+        A_0UTC,
+        A_1UTC,
+        A_2UTC,
         Δt_LS,
-        t_ot,
-        WN_ot,
+        t_0t,
+        WN_0t,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -398,18 +410,18 @@ function BeiDouB2bData(
         PM_Y_dot,
         ΔUT1,
         ΔUT1_dot,
-        sisai_t_op,
-        sisai_ocb,
-        sisai_oc1,
-        sisai_oc2,
-        sisai_oe,
-        hs,
+        t_op,
+        SISAI_ocb,
+        SISAI_oc1,
+        SISAI_oc2,
+        SISAI_oe,
+        HS,
         GNSS_ID,
         WN_0BGTO,
         t_0BGTO,
-        A0_BGTO,
-        A1_BGTO,
-        A2_BGTO,
+        A_0BGTO,
+        A_1BGTO,
+        A_2BGTO,
         midi_almanacs,
         reduced_almanacs,
         WN_a,
@@ -418,10 +430,6 @@ function BeiDouB2bData(
 end
 
 # ---- Cache -------------------------------------------------------------------
-
-# Path to the committed LDPC `.alist` parity matrix. `pkgdir`-free: walk up
-# from this file (src/beidou/) to the package root, then into data/.
-_b2b_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
 """
 $(TYPEDEF)
@@ -453,7 +461,7 @@ end
 BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
-    LDPCScratch(_b2b_data_path("bcnv3.alist")),
+    LDPCScratch(alist_path("bcnv3.alist")),
 )
 
 # The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
@@ -523,7 +531,7 @@ function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
     )
     isnothing(polarity_flipped) && return nothing
     # Gate 2: the unencoded PRN field (window bits 17-22, ICD Figure 6-1).
-    prn_bits = pack_soft_bits(deque, B2B_PREAMBLE_SYMBOLS + 1, B2B_PRN_SYMBOLS)
+    prn_bits = pack_bits_msb_first(deque, B2B_PREAMBLE_SYMBOLS + 1, B2B_PRN_SYMBOLS)
     prn_mask = (UInt64(1) << B2B_PRN_SYMBOLS) - UInt64(1)
     prn = Int(polarity_flipped ? prn_bits ⊻ prn_mask : prn_bits)
     prn == state.prn || return nothing
@@ -651,10 +659,10 @@ function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         C_us = get_twos_complement_num(word, word_length, 414, 21) * 2.0^-30,
         C_uc = get_twos_complement_num(word, word_length, 435, 21) * 2.0^-30,
         # Integrity flags + SISMAI (Figure 6-3, Table 7-21):
-        dif = get_bit(word, word_length, 456),
-        sif = get_bit(word, word_length, 457),
-        aif = get_bit(word, word_length, 458),
-        sismai = Int64(get_bits(word, word_length, 459, 4)),
+        DIF = get_bit(word, word_length, 456),
+        SIF = get_bit(word, word_length, 457),
+        AIF = get_bit(word, word_length, 458),
+        SISMAI = Int64(get_bits(word, word_length, 459, 4)),
     )
 end
 
@@ -676,22 +684,22 @@ function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         # BDGIM ionosphere (bits 125-198, Figure 6-10, Table 7-8): α₁, α₃, α₄
         # unsigned; α₂, α₆..α₉ two's complement; α₅ unsigned with the negative
         # scale factor -2⁻³.
-        α_1 = Float64(get_bits(word, word_length, 125, 10)) * 2.0^-3,
-        α_2 = get_twos_complement_num(word, word_length, 135, 8) * 2.0^-3,
-        α_3 = Float64(get_bits(word, word_length, 143, 8)) * 2.0^-3,
-        α_4 = Float64(get_bits(word, word_length, 151, 8)) * 2.0^-3,
-        α_5 = Float64(get_bits(word, word_length, 159, 8)) * -(2.0^-3),
-        α_6 = get_twos_complement_num(word, word_length, 167, 8) * 2.0^-3,
-        α_7 = get_twos_complement_num(word, word_length, 175, 8) * 2.0^-3,
-        α_8 = get_twos_complement_num(word, word_length, 183, 8) * 2.0^-3,
-        α_9 = get_twos_complement_num(word, word_length, 191, 8) * 2.0^-3,
+        α_bdgim_1 = Float64(get_bits(word, word_length, 125, 10)) * 2.0^-3,
+        α_bdgim_2 = get_twos_complement_num(word, word_length, 135, 8) * 2.0^-3,
+        α_bdgim_3 = Float64(get_bits(word, word_length, 143, 8)) * 2.0^-3,
+        α_bdgim_4 = Float64(get_bits(word, word_length, 151, 8)) * 2.0^-3,
+        α_bdgim_5 = Float64(get_bits(word, word_length, 159, 8)) * -(2.0^-3),
+        α_bdgim_6 = get_twos_complement_num(word, word_length, 167, 8) * 2.0^-3,
+        α_bdgim_7 = get_twos_complement_num(word, word_length, 175, 8) * 2.0^-3,
+        α_bdgim_8 = get_twos_complement_num(word, word_length, 183, 8) * 2.0^-3,
+        α_bdgim_9 = get_twos_complement_num(word, word_length, 191, 8) * 2.0^-3,
         # BDT-UTC (bits 199-295, Figure 6-11, Table 7-18):
-        A0_UTC = get_twos_complement_num(word, word_length, 199, 16) * 2.0^-35,
-        A1_UTC = get_twos_complement_num(word, word_length, 215, 13) * 2.0^-51,
-        A2_UTC = get_twos_complement_num(word, word_length, 228, 7) * 2.0^-68,
+        A_0UTC = get_twos_complement_num(word, word_length, 199, 16) * 2.0^-35,
+        A_1UTC = get_twos_complement_num(word, word_length, 215, 13) * 2.0^-51,
+        A_2UTC = get_twos_complement_num(word, word_length, 228, 7) * 2.0^-68,
         Δt_LS = Int64(get_twos_complement_num(word, word_length, 235, 8)),
-        t_ot = Int64(get_bits(word, word_length, 243, 16)) * 16,
-        WN_ot = Int64(get_bits(word, word_length, 259, 13)),
+        t_0t = Int64(get_bits(word, word_length, 243, 16)) * 16,
+        WN_0t = Int64(get_bits(word, word_length, 259, 13)),
         WN_LSF = Int64(get_bits(word, word_length, 272, 13)),
         DN = Int64(get_bits(word, word_length, 285, 3)),
         Δt_LSF = Int64(get_twos_complement_num(word, word_length, 288, 8)),
@@ -703,14 +711,16 @@ function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         PM_Y_dot = get_twos_complement_num(word, word_length, 369, 15) * 2.0^-21,
         ΔUT1 = get_twos_complement_num(word, word_length, 384, 31) * 2.0^-24,
         ΔUT1_dot = get_twos_complement_num(word, word_length, 415, 19) * 2.0^-25,
-        # SISAI (bits 434-460, Figure 6-9) — raw broadcast values; their
-        # semantics are deferred to a future ICD update (§7.15).
-        sisai_t_op = Int64(get_bits(word, word_length, 434, 11)),
-        sisai_ocb = Int64(get_bits(word, word_length, 445, 5)),
-        sisai_oc1 = Int64(get_bits(word, word_length, 450, 3)),
-        sisai_oc2 = Int64(get_bits(word, word_length, 453, 3)),
-        sisai_oe = Int64(get_bits(word, word_length, 456, 5)),
-        hs = Int64(get_bits(word, word_length, 461, 2)),
+        # `t_op` and the SISAIoc triple occupy bits 434-455 (Figure 6-9, "Bit
+        # allocation for SISAIoc"); `SISAI_oe` at 456-460 is its own field of
+        # Figure 6-4, not part of that block. Raw broadcast values throughout —
+        # their semantics are deferred to a future ICD update (§7.15).
+        t_op = Int64(get_bits(word, word_length, 434, 11)),
+        SISAI_ocb = Int64(get_bits(word, word_length, 445, 5)),
+        SISAI_oc1 = Int64(get_bits(word, word_length, 450, 3)),
+        SISAI_oc2 = Int64(get_bits(word, word_length, 453, 3)),
+        SISAI_oe = Int64(get_bits(word, word_length, 456, 5)),
+        HS = Int64(get_bits(word, word_length, 461, 2)),
     )
 end
 
@@ -731,9 +741,9 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         GNSS_ID = Int64(get_bits(word, word_length, 27, 3)),
         WN_0BGTO = Int64(get_bits(word, word_length, 30, 13)),
         t_0BGTO = Int64(get_bits(word, word_length, 43, 16)) * 16,
-        A0_BGTO = get_twos_complement_num(word, word_length, 59, 16) * 2.0^-35,
-        A1_BGTO = get_twos_complement_num(word, word_length, 75, 13) * 2.0^-51,
-        A2_BGTO = get_twos_complement_num(word, word_length, 88, 7) * 2.0^-68,
+        A_0BGTO = get_twos_complement_num(word, word_length, 59, 16) * 2.0^-35,
+        A_1BGTO = get_twos_complement_num(word, word_length, 75, 13) * 2.0^-51,
+        A_2BGTO = get_twos_complement_num(word, word_length, 88, 7) * 2.0^-68,
         # Almanac reference time for the five reduced almanacs (Table 7-15):
         WN_a = WN_a_reduced,
         t_0a = t_0a_reduced,
@@ -746,7 +756,7 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
             PRN_a,
             sat_type = Int(get_bits(word, word_length, 101, 2)),
             WN_a = Int(get_bits(word, word_length, 103, 13)),
-            t_oa = Int(get_bits(word, word_length, 116, 8)) * 4096,
+            t_0a = Int(get_bits(word, word_length, 116, 8)) * 4096,
             e = Float64(get_bits(word, word_length, 124, 11)) * 2.0^-16,
             δi = get_twos_complement_num(word, word_length, 135, 11) * 2.0^-14 * PI,
             sqrt_A = Float64(get_bits(word, word_length, 146, 17)) * 2.0^-4,
@@ -771,7 +781,7 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
             PRN_a,
             sat_type = Int(get_bits(word, word_length, base + 6, 2)),
             WN_a = Int(WN_a_reduced),
-            t_oa = Int(t_0a_reduced),
+            t_0a = Int(t_0a_reduced),
             δA = Float64(get_twos_complement_num(word, word_length, base + 8, 8)) * 512.0,
             Ω_0 = get_twos_complement_num(word, word_length, base + 16, 7) * 2.0^-6 * PI,
             Φ_0 = get_twos_complement_num(word, word_length, base + 23, 7) * 2.0^-6 * PI,
@@ -808,9 +818,13 @@ function is_ephemeris_decoded(data::BeiDouB2bData)
 end
 
 function is_clock_correction_decoded(data::BeiDouB2bData)
-    # Message type 30. T_GD_B2bI arrives in the same frame as the clock but is
-    # a metre-level inter-signal correction: apply it downstream when present,
-    # never block a fix on it (mirrors the GPS CNAV rationale).
+    # Message type 30, and `T_GD_B2bI` with it. It is required rather than
+    # optional for the B1C reason (see `b1c.jl`): ICD §7.6 references a0 to the
+    # B3I signal, so a B2b_I receiver must add `T_GD_B2bI` to reach its own
+    # component, and the field is decoded by the same constructor call as the
+    # clock out of the same CRC-24Q-protected MT30. Requiring it costs no extra
+    # wait — the alternative is a consumer treating `nothing` as zero and eating
+    # a metre-scale bias.
     !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
@@ -878,7 +892,9 @@ binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 
 # Arguments
 
-  - `prn::Int`: Pseudo-Random Noise code identifier (1-63 for BeiDou satellites)
+  - `prn::Int`: Pseudo-Random Noise code identifier (6-58 — the B2b_I ranging
+    codes of Table 5-1. The wider 1-63 range is the almanac's `PRN_a` key, not a
+    trackable B2b channel.)
 
 # Returns
 
@@ -949,5 +965,5 @@ means unhealthy or in test, 2-3 are reserved.
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
 function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB2bData})
-    state.data.hs === Int64(0)
+    state.data.HS === Int64(0)
 end

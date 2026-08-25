@@ -73,7 +73,7 @@ end
 
         state = decode(GPSL2CMDecoderState(9), stream, length(stream))
         d = state.raw_data
-        @test d.last_message_id == 10
+        @test d.last_message_type == 10
         @test d.TOW == 1234 * 6          # TOW count × 6 on L2C too (IS-GPS-200N §30.3.3)
         @test d.WN == 2345
         @test d.M_0 ≈ 12345 * 2.0^-32 * PI
@@ -127,7 +127,7 @@ end
             fec_encode_soft(enc, [falses(20); build_mt10(); build_mt10(; tow_count = 1235)])
         state = decode(GPSL2CMDecoderState(9), -stream, length(stream))
         @test state.is_shifted_by_180_degrees
-        @test state.raw_data.last_message_id == 10
+        @test state.raw_data.last_message_type == 10
         @test state.raw_data.WN == 2345
     end
 
@@ -155,7 +155,7 @@ end
         # Header of the last decoded message (#25 of the recording, message
         # type 10, message TOW count 43250). L2C messages are 12 s apart, so the
         # count steps by 2 per message (43202, 43204, …); the ×6 scaling holds.
-        @test d.last_message_id == 10
+        @test d.last_message_type == 10
         @test d.TOW == 43250 * 6
         @test d.alert_flag == false
 
@@ -227,12 +227,12 @@ end
         @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273  # rate scale unchanged
 
         # Message type 33 — UTC.
-        @test d.A0_UTC ≈ 9.5364521257579327e-7
-        @test d.A1_UTC ≈ 1.8185453143360064e-12
-        @test d.A2_UTC ≈ 0.0
+        @test d.A_0UTC ≈ 9.5364521257579327e-7
+        @test d.A_1UTC ≈ 1.8185453143360064e-12
+        @test d.A_2UTC ≈ 0.0
         @test d.Δt_LS == 18
-        @test d.t_ot == 507904
-        @test d.WN_ot == 2106
+        @test d.t_0t == 507904
+        @test d.WN_0t == 2106
         @test d.WN_LSF == 2104
         @test d.DN == 2
         @test d.Δt_LSF == 18
@@ -241,16 +241,16 @@ end
         @test d.t_GGTO == 259200
         @test d.WN_GGTO == 2106
         @test d.GNSS_ID == 0
-        @test d.A0_GGTO ≈ 0.0
-        @test d.A1_GGTO ≈ 0.0
-        @test d.A2_GGTO ≈ 0.0
+        @test d.A_0GGTO ≈ 0.0
+        @test d.A_1GGTO ≈ 0.0
+        @test d.A_2GGTO ≈ 0.0
 
         # Reduced almanacs: message type 31 broadcasts PRNs 1-4, message
         # type 12 PRNs 5-11 (semicircle fields × π).
         @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) == 11
         ra1 = d.reduced_almanacs[1]
         @test ra1.WN_a == 2106
-        @test ra1.t_oa == 507904
+        @test ra1.t_0a == 507904
         @test ra1.δA ≈ 1024.0
         @test ra1.Ω_0 ≈ 0.296875 * π
         @test ra1.Φ_0 ≈ -0.140625 * π
@@ -268,7 +268,7 @@ end
         @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) == 1
         ma = d.midi_almanacs[26]
         @test ma.WN_a == 2106
-        @test ma.t_oa == 507904
+        @test ma.t_0a == 507904
         @test ma.e ≈ 0.0
         @test ma.δi ≈ 0.00555419921875 * π
         @test ma.Ω_dot ≈ 0.0
@@ -366,7 +366,7 @@ end
         # stops there (message 4 is type 15 — its text must not have been
         # parsed into the validated `data`).
         @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
-        @test state.data.last_message_id == 30
+        @test state.data.last_message_type == 30
         @test isnothing(state.data.text_mt15)
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
