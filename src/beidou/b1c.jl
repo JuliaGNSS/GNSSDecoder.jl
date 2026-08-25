@@ -554,14 +554,17 @@ $(TYPEDEF)
 
 Per-decoder cache for the BeiDou B1C signal.
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 1872 = 1800 frame
+Holds the soft-symbol `CircularDeque{Float32}` (capacity 1872 symbols: one
+1800-symbol frame plus the next frame's 72-symbol subframe 1) and the two Aff3ct
+LDPC belief-propagation decoders for the binary images of the 64-ary
+LDPC(200,100) / LDPC(88,44) codes (subframe 2: K=600, N=1200; subframe 3: K=264,
+N=528 — bit counts of the `data/bcnv1_sf{2,3}.alist` matrices). The decoder
+objects are mutable Aff3ct handles; they are shared by reference through the
+otherwise-immutable [`GNSSDecoderState`](@ref).
 
-  - 72 next-frame subframe-1 segment) and the two Aff3ct LDPC belief-propagation
-    decoders for the binary images of the 64-ary LDPC(200,100) / LDPC(88,44)
-    codes (subframe 2: K=600, N=1200; subframe 3: K=264, N=528 — bit counts of
-    the `data/bcnv1_sf{2,3}.alist` matrices). The decoder objects are mutable
-    Aff3ct handles; they are shared by reference through the otherwise-immutable
-    [`GNSSDecoderState`](@ref).
+The rest is scratch, sized once so that a decoded frame allocates nothing: this
+satellite's PRN codeword, which `try_sync` compares against on every symbol, and
+the four symbol buffers the deinterleave and the two LDPC decodes run through.
 
 # Fields
 
@@ -575,20 +578,46 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     """
     Aff3ct LDPC BP decoder for subframe 2 (binary image, K=600, N=1200)
     """
-    sf2_decoder::LDPCBPDecoder
+    sf2_decoder::LDPCScratch
     """
     Aff3ct LDPC BP decoder for subframe 3 (binary image, K=264, N=528)
     """
-    sf3_decoder::LDPCBPDecoder
+    sf3_decoder::LDPCScratch
+    """
+    This satellite's 21-symbol BCH(21,6) PRN codeword, built once — `try_sync`
+    compares against it on every symbol
+    """
+    prn_codeword::UInt64
+    """
+    Polarity-resolved 1728-symbol interleaved SF2+SF3 payload, copied out per frame
+    """
+    payload::Vector{Float32}
+    """
+    The 36×48 interleaver array in row-major order, i.e. `payload` deinterleaved
+    """
+    array_rows::Vector{Float32}
+    """
+    The subframe-2 rows of `array_rows`, concatenated into its 1200-symbol codeword
+    """
+    sf2_symbols::Vector{Float32}
+    """
+    The subframe-3 rows of `array_rows`, concatenated into its 528-symbol codeword
+    """
+    sf3_symbols::Vector{Float32}
 end
 
 _beidou_data_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
-function BeiDouB1CCache()
+function BeiDouB1CCache(prn::Int)
     BeiDouB1CCache(
         CircularDeque{Float32}(B1C_WINDOW_LENGTH),
-        load_ldpc_decoder(_beidou_data_path("bcnv1_sf2.alist")),
-        load_ldpc_decoder(_beidou_data_path("bcnv1_sf3.alist")),
+        LDPCScratch(_beidou_data_path("bcnv1_sf2.alist")),
+        LDPCScratch(_beidou_data_path("bcnv1_sf3.alist")),
+        b1c_prn_codeword(prn),
+        Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
+        Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
+        Vector{Float32}(undef, B1C_SF2_SYMBOLS),
+        Vector{Float32}(undef, B1C_SF3_SYMBOLS),
     )
 end
 
@@ -680,7 +709,7 @@ function BeiDouB1CDecoderState(prn)
         BeiDouB1CData(),
         BeiDouB1CData(),
         BeiDouB1CConstants(),
-        BeiDouB1CCache(),
+        BeiDouB1CCache(prn),
         nothing,
         false,
     )
@@ -757,26 +786,15 @@ struct B1CSF1Sync
     polarity_flipped::Bool
 end
 
-# Hard-slice `len` soft symbols starting at `start` (1-based) into a packed
-# UInt64, bit 0 = first symbol, negative soft symbol ⇒ bit 1.
-function _pack_hard_from_deque(deque::CircularDeque{Float32}, start::Int, len::Int)
-    word = UInt64(0)
-    @inbounds for i = 1:len
-        if deque[start+i-1] < 0
-            word |= UInt64(1) << (i - 1)
-        end
-    end
-    return word
-end
-
 # Match one 72-symbol subframe-1 window against [PRN₂₁ | SOH₅₁(soh)] under a
-# known polarity (`flip`), returning the matching SOH or `nothing`.
+# known polarity (`flip`), returning the matching SOH or `nothing`. Both fields
+# are read straight off the deque with the shared `pack_soft_codeword`
+# (src/gnss.jl), which packs bit 0 = first symbol, the codeword tables' order.
 function _match_sf1_soh(deque, start::Int, prn_codeword::UInt64, flip::Bool)
-    prn_word = _pack_hard_from_deque(deque, start, B1C_PRN_CODEWORD_LEN)
+    prn_word = pack_soft_codeword(deque, start, B1C_PRN_CODEWORD_LEN)
     flip && (prn_word = ~prn_word & B1C_PRN_MASK21)
     prn_word == prn_codeword || return nothing
-    soh_word =
-        _pack_hard_from_deque(deque, start + B1C_PRN_CODEWORD_LEN, B1C_SOH_CODEWORD_LEN)
+    soh_word = pack_soft_codeword(deque, start + B1C_PRN_CODEWORD_LEN, B1C_SOH_CODEWORD_LEN)
     flip && (soh_word = ~soh_word & B1C_SOH_MASK51)
     @inbounds for soh = 0:(B1C_SOH_RANGE-1)
         soh_word == B1C_SOH_CODEWORDS[soh+1] && return soh
@@ -796,7 +814,7 @@ detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:BeiDouB1CData})
     deque = soft_buffer(state)
-    prn_codeword = b1c_prn_codeword(state.prn)
+    prn_codeword = state.cache.prn_codeword
     for flip in (false, true)
         soh = _match_sf1_soh(deque, 1, prn_codeword, flip)
         isnothing(soh) && continue
@@ -843,19 +861,26 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::
         GNSSDecoderState(state; raw_data = BeiDouB1CData(state.raw_data; soh = sync.soh))
 
     # Extract the 1728-symbol interleaved SF2+SF3 payload (symbols 73..1800),
-    # applying the polarity flip by negating soft symbols up front.
-    deque = soft_buffer(state)
-    polarity_correction = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
-    interleaved = Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS)
-    @inbounds for i = 1:B1C_PAYLOAD_SYMBOLS
-        interleaved[i] = polarity_correction * deque[B1C_SUBFRAME1_LENGTH+i]
-    end
+    # applying the polarity flip by negating soft symbols up front. All four
+    # working buffers live in the cache, so a decoded frame allocates nothing.
+    interleaved = copy_soft_window!(
+        state.cache.payload,
+        soft_buffer(state),
+        B1C_SUBFRAME1_LENGTH,
+        B1C_PAYLOAD_SYMBOLS,
+        state.is_shifted_by_180_degrees,
+    )
 
-    # Undo the column-wise readout: `deinterleave(…, 36, 48)` restores the
+    # Undo the column-wise readout: `deinterleave!(…, 36, 48)` restores the
     # 36×48 array in row-major order; the staggered row orders then split the
     # rows back into the SF2 and SF3 codewords.
-    array_rows = deinterleave(interleaved, B1C_INTERLEAVER_ROWS, B1C_INTERLEAVER_COLS)
-    sf2_symbols = Vector{Float32}(undef, B1C_SF2_SYMBOLS)
+    array_rows = deinterleave!(
+        state.cache.array_rows,
+        interleaved,
+        B1C_INTERLEAVER_ROWS,
+        B1C_INTERLEAVER_COLS,
+    )
+    sf2_symbols = state.cache.sf2_symbols
     for (i, row) in enumerate(B1C_SF2_ROW_ORDER)
         copyto!(
             sf2_symbols,
@@ -865,7 +890,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::
             B1C_INTERLEAVER_COLS,
         )
     end
-    sf3_symbols = Vector{Float32}(undef, B1C_SF3_SYMBOLS)
+    sf3_symbols = state.cache.sf3_symbols
     for (i, row) in enumerate(B1C_SF3_ROW_ORDER)
         copyto!(
             sf3_symbols,
@@ -890,8 +915,7 @@ end
 # Clock(69) T_GD_B2ap(12) ISC_B1Cd(12) T_GD_B1Cp(12) Rev(7) CRC(24).
 
 function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symbols)
-    word =
-        ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, B1C_SF2_INFO_BITS, UInt600)
+    word = ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = B1C_SF2_INFO_BITS
 
@@ -980,8 +1004,7 @@ end
 # dispatch on the PageID and merge parsed fields into `raw_data` immutably.
 
 function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symbols)
-    word =
-        ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, B1C_SF3_INFO_BITS, UInt288)
+    word = ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
     raw = BeiDouB1CData(

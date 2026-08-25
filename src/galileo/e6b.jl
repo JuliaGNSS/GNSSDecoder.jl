@@ -739,9 +739,9 @@ struct GalileoE6BCache <: AbstractGNSSCache
     """
     fec_window::Vector{Float32}
     """
-    AFF3CT K=7 NSC Viterbi decoder (K = 486, N = 984), built once and reused across pages
+    Viterbi decoder and its scratch buffers (K = 486, N = 984), built once and reused across pages
     """
-    viterbi_decoder::Aff3ct.ConvViterbiDecoder
+    viterbi::GalileoViterbiScratch
     """
     Encoded pages collected per Message ID, awaiting completion
     """
@@ -759,7 +759,7 @@ end
 GalileoE6BCache() = GalileoE6BCache(
     CircularDeque{Float32}(E6B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, E6B_ENCODED_SYMBOLS),
-    Aff3ct.ConvViterbiDecoder(E6B_PAGE_BITS, E6B_ENCODED_SYMBOLS, GALILEO_VITERBI_POLY),
+    GalileoViterbiScratch(E6B_PAGE_BITS, E6B_ENCODED_SYMBOLS),
     Dictionary{Int,GalileoHASPageGroup}(),
     Ref(0),
     Ref{Union{Nothing,GalileoHASPendingMessage}}(nothing),
@@ -904,7 +904,7 @@ end
 # ---- Page FEC and sync -------------------------------------------------------
 
 """
-    galileo_e6b_viterbi(decoder, soft_page) -> UInt512
+    galileo_e6b_viterbi(scratch, soft_page) -> UInt512
 
 Recover one C/NAV page's 486 information bits from `soft_page` — the 984
 polarity-corrected `Float32` LLR soft symbols following the page's 16-symbol
@@ -914,10 +914,8 @@ Thin wrapper over the shared [`galileo_viterbi`](@ref) with C/NAV's 8×123
 interleaver shape (HAS SIS ICD Table 4) and `UInt512` payload type; the FEC
 itself is the Galileo-wide K=7 NSC code (ICD Table 3), G2 inverted.
 """
-galileo_e6b_viterbi(
-    decoder::Aff3ct.ConvViterbiDecoder,
-    soft_page::AbstractVector{Float32},
-) = galileo_viterbi(decoder, soft_page, E6B_INTERLEAVER_COLUMNS, UInt512)
+galileo_e6b_viterbi(scratch::GalileoViterbiScratch, soft_page::AbstractVector{Float32}) =
+    galileo_viterbi(scratch, soft_page, E6B_INTERLEAVER_COLUMNS, UInt512)
 
 """
 $(TYPEDEF)
@@ -975,7 +973,7 @@ function try_sync(state::GNSSDecoderState{<:GalileoE6BData})
         E6B_ENCODED_SYMBOLS,
         polarity_flipped,
     )
-    page = galileo_e6b_viterbi(state.cache.viterbi_decoder, window)
+    page = galileo_e6b_viterbi(state.cache.viterbi, window)
     # CRC-24Q over the whole 486-bit page (message ++ checksum) must be zero.
     # 486 bits is not a whole number of octets; the leading two zero bits of the
     # 61-octet representation are neutral because CRC-24Q initialises its
@@ -1532,13 +1530,18 @@ function parse_has_message(
     # but the blocks already parsed are self-contained and are kept. Stating that
     # rule once, here, keeps it from having to be re-established at each of the
     # five call sites (and from being quietly omitted at the last one).
-    aligned = true
-    function parse_block(flag::Bool, parser)
-        (aligned && flag) || return nothing
-        block = parser(reader, context)
-        aligned = !isnothing(block)
-        return block
-    end
+    # `aligned` lives in a `Ref` rather than as a captured local: a closure that
+    # *reassigns* a captured variable forces Julia to box it, and a boxed `Bool`
+    # is both an allocation and an inference barrier for every call below.
+    aligned = Ref(true)
+    parse_block(flag::Bool, parser) =
+        if aligned[] && flag
+            block = parser(reader, context)
+            aligned[] = !isnothing(block)
+            block
+        else
+            nothing
+        end
     orbit_corrections = parse_block(orbit_flag, parse_has_orbit_block!)
     clock_corrections = parse_block(clock_full_set_flag, parse_has_clock_full_set_block!)
     clock_subset_corrections = parse_block(clock_subset_flag, parse_has_clock_subset_block!)
@@ -1644,10 +1647,17 @@ function e6b_expire_stale!(cache::GalileoE6BCache)
     if !isnothing(held) && now - held.opened_at >= E6B_MESSAGE_TIMEOUT_PAGES
         cache.pending_message[] = nothing
     end
-    stale = Int[]
+    # Collect first, then unset: `Dictionaries.unset!` while iterating `pairs`
+    # is not allowed. The vector is allocated only when something is actually
+    # stale, which on a healthy stream is never — this runs once per accepted
+    # page, i.e. once a second per tracked satellite.
+    stale = nothing
     for (message_id, group) in pairs(cache.page_groups)
-        now - group.opened_at >= E6B_MESSAGE_TIMEOUT_PAGES && push!(stale, message_id)
+        if now - group.opened_at >= E6B_MESSAGE_TIMEOUT_PAGES
+            stale = push!(something(stale, Int[]), message_id)
+        end
     end
+    isnothing(stale) && return cache
     for message_id in stale
         unset!(cache.page_groups, message_id)
     end
@@ -1656,19 +1666,20 @@ end
 
 """
 Add one HAS Encoded Page to its Message ID's group, returning the group if it is
-now complete (ready for the RS decode) and `nothing` otherwise.
+now complete (ready for the RS decode) and `nothing` otherwise. `unpack!` is
+called with the group's newly claimed octet row to fill in.
 
 A Message ID is reused over time, so a page whose Message Type or Message Size
 disagrees with the group's starts a fresh group — the previous message is gone.
 Duplicate Page IDs are ignored: the RS decode needs `k` *distinct* rows.
 """
 function e6b_collect_page!(
+    unpack!,
     cache::GalileoE6BCache,
     message_id::Int,
     message_type::Int,
     message_size::Int,
     page_id::Int,
-    octets::AbstractVector{UInt8},
 )
     group = get(cache.page_groups, message_id, nothing)
     if isnothing(group) ||
@@ -1679,7 +1690,9 @@ function e6b_collect_page!(
     end
     page_id in group.page_ids && return nothing
     push!(group.page_ids, page_id)
-    group.octets[length(group.page_ids), :] .= octets
+    # `unpack!` writes the page's octets into the row that has just been claimed;
+    # taking a callback rather than a vector lets the caller unpack in place.
+    unpack!(@view group.octets[length(group.page_ids), :])
     return length(group.page_ids) == group.message_size ? group : nothing
 end
 
@@ -1756,20 +1769,15 @@ function decode_syncro_sequence(
     # singular, so they are never collected.
     (message_size < page_id <= E6B_RS_CODE_DIMENSION) && return state
 
-    encoded_page = Vector{UInt8}(undef, E6B_OCTETS_PER_PAGE)
-    @inbounds for j = 1:E6B_OCTETS_PER_PAGE
-        encoded_page[j] =
-            UInt8(get_bits(page, E6B_PAGE_BITS, E6B_ENCODED_PAGE_START + 8 * (j - 1), 8))
+    group = e6b_collect_page!(cache, message_id, message_type, message_size, page_id) do row
+        # Unpack the 53 HAS Encoded Page octets straight into the group's
+        # matrix row rather than through a temporary vector.
+        @inbounds for j = 1:E6B_OCTETS_PER_PAGE
+            row[j] = UInt8(
+                get_bits(page, E6B_PAGE_BITS, E6B_ENCODED_PAGE_START + 8 * (j - 1), 8),
+            )
+        end
     end
-
-    group = e6b_collect_page!(
-        cache,
-        message_id,
-        message_type,
-        message_size,
-        page_id,
-        encoded_page,
-    )
     isnothing(group) && return state
 
     octets = e6b_reassemble_message(group)

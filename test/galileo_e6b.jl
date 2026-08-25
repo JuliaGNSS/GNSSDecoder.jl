@@ -193,7 +193,7 @@ end
         )
         bits = e6b_page_bits(header, octets)
         on_air = GNSSDecoder.interleave(galileo_conv_encode(bits), 123, 8)
-        recovered = GNSSDecoder.galileo_e6b_viterbi(decoder.cache.viterbi_decoder, on_air)
+        recovered = GNSSDecoder.galileo_e6b_viterbi(decoder.cache.viterbi, on_air)
         expected = GNSSDecoder.UInt512(0)
         for b in bits
             expected = (expected << 1) | GNSSDecoder.UInt512(b)
@@ -211,14 +211,16 @@ end
         cache = GNSSDecoder.GalileoE6BCache()
         group = nothing
         for (index, page_id) in enumerate(example.page_ids)
+            octets = hex2bytes(example.encoded_pages_hex[index])
             group = GNSSDecoder.e6b_collect_page!(
                 cache,
                 example.message_id,
                 example.message_type,
                 example.message_size,
                 page_id,
-                hex2bytes(example.encoded_pages_hex[index]),
-            )
+            ) do row
+                row .= octets
+            end
         end
         # Only the last page completes the group.
         @test !isnothing(group)

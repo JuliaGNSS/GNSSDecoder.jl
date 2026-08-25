@@ -206,6 +206,52 @@ function is_clock_correction_decoded(data::AbstractGalileoEphemerisData)
 end
 
 """
+$(TYPEDEF)
+
+Long-lived scratch for one Galileo FEC decode: the AFF3CT Viterbi handle plus
+the two buffers the decode would otherwise allocate per page.
+
+Every Galileo data channel runs the same K=7 NSC code and differs only in
+codeword length and interleaver shape, so one type serves I/NAV, F/NAV and
+C/NAV; each cache holds one, sized for its own signal.
+
+Bundling the buffers with the handle rather than adding two loose vectors to
+three caches is what keeps [`galileo_viterbi`](@ref) a one-argument call and
+makes it impossible to hand it a decoder and a mismatched buffer.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoViterbiScratch
+    """
+    AFF3CT K=7 NSC Viterbi decoder (`K` information bits, `N` channel symbols),
+    built once and reused across pages
+    """
+    decoder::Aff3ct.ConvViterbiDecoder
+    """
+    `N` deinterleaved LLRs, written by `deinterleave!` on each decode
+    """
+    deinterleaved::Vector{Float32}
+    """
+    `K` decoded information bits, written by `Aff3ct.decode!` on each decode
+    """
+    info_bits::Vector{Int32}
+end
+
+"""
+    GalileoViterbiScratch(K, N)
+
+Build the decoder and its two buffers for a `K`-bit, `N`-symbol Galileo
+codeword: I/NAV (114, 240), F/NAV (238, 488), C/NAV (486, 984).
+"""
+GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
+    Aff3ct.ConvViterbiDecoder(K, N, GALILEO_VITERBI_POLY),
+    Vector{Float32}(undef, N),
+    Vector{Int32}(undef, K),
+)
+
+"""
     galileo_ggto(A_0G_raw, A_1G_raw, t_0G_raw, WN_0G_raw)
         -> (; A_0G, A_1G, t_0G, WN_0G)
 
@@ -249,19 +295,20 @@ function galileo_ggto(
 end
 
 """
-    galileo_viterbi(decoder, soft_page, interleaver_columns, ::Type{T}) -> T
+    galileo_viterbi(scratch, soft_page, interleaver_columns, ::Type{T}) -> T
 
 Recover one Galileo page's information bits from `soft_page` — the
 polarity-corrected `Float32` LLR soft symbols between the leading and trailing
 page-sync sequences. Shared by I/NAV (E1-B, E5b-I), E5a F/NAV, and E6-B C/NAV,
 which all use the same FEC and differ only in the block-interleaver shape and
-codeword length. `decoder` is the caller's long-lived
-`Aff3ct.ConvViterbiDecoder`, reused across pages.
+codeword length. `scratch` is the caller's long-lived
+[`GalileoViterbiScratch`](@ref) from its cache, so a decode allocates no buffers.
 
 The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in order:
 
- 1. **Block deinterleave** of the LLRs (`deinterleave` from
-    `src/deinterleave.jl`). The ICD's interleaver is 8 rows by
+ 1. **Block deinterleave** of the LLRs (`deinterleave!` from
+    `src/deinterleave.jl`, into `scratch.deinterleaved`). The ICD's interleaver
+    is 8 rows by
     `interleaver_columns` columns; undoing it means filling the *transposed*
     matrix — `interleaver_columns × 8`, written by column and read by row — so
     only the column count varies per signal (I/NAV 30, E5a 61, E6-B C/NAV 123)
@@ -269,7 +316,8 @@ The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in ord
  2. **Invert every second symbol** — the spec inverts the G2 output of the
     rate-1/2 encoder. On soft symbols an inversion is a sign flip (negation), so
     confidence magnitudes are preserved.
- 3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`. AFF3CT's LLR sign
+ 3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`, through the
+    in-place `Aff3ct.decode!` into `scratch.info_bits`. AFF3CT's LLR sign
     convention matches ours (positive ⇒ bit 0), so the LLRs feed in directly. The
     decoder returns only the information bits (the 6 tail bits are consumed by
     trellis termination).
@@ -277,18 +325,32 @@ The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in ord
 The decoded bits are packed MSB-first into the low bits of `T<:Unsigned` (I/NAV
 uses `UInt128` for its 114 bits, E5a `UInt256` for its 238, E6-B `UInt512` for
 its 486).
+
+Both intermediate buffers come from `scratch` rather than being allocated here.
+The allocating `deinterleave` and `Aff3ct.decode` cost 1.6 kB per I/NAV page
+part, 3.2 kB per F/NAV page and 6.2 kB per C/NAV page — once per second per
+tracked satellite on E1-B, E5b and E6-B — which is the same garbage the caller's
+`copy_soft_window!` into a cached buffer exists to avoid one line earlier.
+`deinterleave!` and `Aff3ct.decode!` each measure exactly zero; what is left is
+under 100 B per page of wide-integer temporaries in the packing loop, which no
+cache field can remove.
 """
 function galileo_viterbi(
-    decoder::Aff3ct.ConvViterbiDecoder,
+    scratch::GalileoViterbiScratch,
     soft_page::AbstractVector{Float32},
     interleaver_columns::Int,
     ::Type{T},
 ) where {T<:Unsigned}
-    deinterleaved = deinterleave(soft_page, interleaver_columns, GALILEO_INTERLEAVER_ROWS)
+    deinterleaved = deinterleave!(
+        scratch.deinterleaved,
+        soft_page,
+        interleaver_columns,
+        GALILEO_INTERLEAVER_ROWS,
+    )
     @inbounds for i = 2:2:length(deinterleaved)
         deinterleaved[i] = -deinterleaved[i]
     end
-    info_bits = Aff3ct.decode(decoder, deinterleaved)
+    info_bits = Aff3ct.decode!(scratch.info_bits, scratch.decoder, deinterleaved)
     bits = T(0)
     @inbounds for b in info_bits
         bits = (bits << 1) | T(b)

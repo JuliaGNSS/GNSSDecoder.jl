@@ -437,6 +437,30 @@ function pack_soft_bits(deque::CircularDeque{Float32}, offset::Int, len::Int)
 end
 
 """
+    pack_soft_codeword(deque, offset, len) -> UInt64
+
+Hard-slice `len` soft symbols of `deque` starting at 1-based `offset` into a
+`UInt64` with **bit 0 = the first symbol** — the opposite end from
+[`pack_soft_bits`](@ref), and the order the codeword tables use
+(`BCH_TOI_CODEWORDS`, `b1c_prn_codeword`, `b1c_soh_codeword`; cf.
+[`soft_to_hard_codeword`](@ref), which is this over an iterable).
+
+The two BCH-synchronised signals — GPS L1C-D on its TOI codeword and BeiDou B1C
+on its PRN + SOH pair — compare against those tables once per symbol, at both
+ends of the window, so this reads the deque in place rather than materialising a
+slice. `len` must be at most 64.
+"""
+function pack_soft_codeword(deque::CircularDeque{Float32}, offset::Int, len::Int)
+    word = UInt64(0)
+    @inbounds for i = 0:(len-1)
+        if hard_slice(deque[offset+i])
+            word |= UInt64(1) << i
+        end
+    end
+    return word
+end
+
+"""
     pack_buffer(state) -> Unsigned
 
 Hard-slice the leading `syncro_sequence_length + preamble_length` soft

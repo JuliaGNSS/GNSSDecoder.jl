@@ -15,9 +15,8 @@
 # (`data/bcnv2.alist`, see `scripts/generate_beidou_alist.jl`) with the shared
 # `load_ldpc_decoder` / `ldpc_decode_word` pipeline from `src/ldpc.jl`, so the
 # per-frame flow is: preamble sync (both ends of the 600-symbol window, either
-# polarity, via the default `try_sync`) → LDPC BP decode → CRC-24Q gate → PRN
-# check → per-message-type field extraction (ICD §6.2.3 Figures 6-3..6-20 and
-# the §7 parameter tables).
+# polarity) → LDPC BP decode → CRC-24Q gate → PRN check → per-message-type
+# field extraction (ICD §6.2.3 Figures 6-3..6-20 and the §7 parameter tables).
 #
 # Eight message types are defined in ICD v1.0 — 10, 11, 30, 31, 32, 33, 34,
 # and 40 (§6.2.3, Table 7-1) — and all eight are parsed here. Ephemeris I
@@ -50,9 +49,6 @@ const B2A_PREAMBLE = UInt64(0xE24DE8)
 # Semi-major axis reference values (ICD Table 7-8 note ***, meters).
 const B2A_A_REF_MEO = 27_906_100.0
 const B2A_A_REF_IGSO_GEO = 42_162_200.0
-
-# Packed hard-bit buffer for the 624-symbol sync window (needs ≥ 624 bits).
-BitIntegers.@define_integers 640
 
 """
 $(TYPEDEF)
@@ -507,7 +503,7 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     """
     Aff3ct LDPC BP decoder for the B-CNAV2 binary image (K=288, N=576)
     """
-    ldpc_decoder::LDPCBPDecoder
+    ldpc_decoder::LDPCScratch
     """
     576-entry LLR scratch copied out of `soft_buffer` per frame
     """
@@ -517,7 +513,7 @@ end
 function BeiDouB2aCache()
     BeiDouB2aCache(
         CircularDeque{Float32}(B2A_WINDOW_SYMBOLS),
-        load_ldpc_decoder(_b2a_data_path("bcnv2.alist")),
+        LDPCScratch(_b2a_data_path("bcnv2.alist")),
         Vector{Float32}(undef, B2A_ENCODED_SYMBOLS),
     )
 end
@@ -528,7 +524,35 @@ function Base.:(==)(a::BeiDouB2aCache, b::BeiDouB2aCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
 
-packed_buffer_type(::GNSSDecoderState{<:BeiDouB2aData}) = UInt640
+# No `packed_buffer_type` method: B2a reads the two 24-symbol preamble windows
+# straight off the soft buffer, so the 624-bit packed window the default sync
+# path would build once per symbol is never needed — the payload is consumed as
+# soft symbols by the LDPC decoder (cf. Galileo I/NAV, E5a, E6-B and BeiDou B2b).
+
+"""
+    try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) -> Union{Nothing,Bool}
+
+B-CNAV2 frame sync: the 24-symbol preamble `0xE24DE8` must appear at both ends
+of the 624-symbol window (start of this frame and start of the next), both
+upright or both inverted. Returns the resolved polarity, or `nothing` when there
+is no sync. The LDPC + CRC-24Q + own-PRN gates then run in
+`decode_syncro_sequence`.
+"""
+try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) = find_preamble_in_deque(
+    soft_buffer(state),
+    state.constants.preamble,
+    B2A_PREAMBLE_SYMBOLS,
+    B2A_FRAME_SYMBOLS,
+)
+
+# Record the polarity `try_sync` resolved; `decode_syncro_sequence` reads it back
+# off the state when it copies the frame out of the deque (mirrors Galileo I/NAV).
+function complement_buffer_if_necessary(
+    state::GNSSDecoderState{<:BeiDouB2aData},
+    polarity_flipped::Bool,
+)
+    GNSSDecoderState(state; is_shifted_by_180_degrees = polarity_flipped), polarity_flipped
+end
 
 # ---- Constructors ---------------------------------------------------------------
 
@@ -737,20 +761,21 @@ a successfully parsed frame re-arms `num_bits_after_valid_syncro_sequence`
 to the full 624-symbol window (that epoch lies one frame plus one preamble
 behind the newest buffered symbol).
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, buffer)
+function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
     # The 576 encoded symbols sit between the leading 24-symbol preamble and
     # the trailing preamble of the next frame (deque indices
     # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
     # polarity ambiguity by negating the LLRs when the sync hook flagged the
     # frame as inverted.
-    deque = soft_buffer(state)
-    sign = state.is_shifted_by_180_degrees ? -1.0f0 : 1.0f0
-    llr = state.cache.llr_scratch
-    @inbounds for i = 1:B2A_ENCODED_SYMBOLS
-        llr[i] = sign * deque[state.constants.preamble_length+i]
-    end
+    llr = copy_soft_window!(
+        state.cache.llr_scratch,
+        soft_buffer(state),
+        B2A_PREAMBLE_SYMBOLS,
+        B2A_ENCODED_SYMBOLS,
+        state.is_shifted_by_180_degrees,
+    )
 
-    word = ldpc_decode_word(state.cache.ldpc_decoder, llr, B2A_MESSAGE_BITS, UInt320)
+    word = ldpc_decode_word(state.cache.ldpc_decoder, llr, UInt320)
     isnothing(word) && return state  # silently drop on CRC failure
 
     word_length = B2A_MESSAGE_BITS

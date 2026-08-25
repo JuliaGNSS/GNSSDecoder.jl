@@ -419,9 +419,9 @@ struct GalileoE5aCache <: AbstractGNSSCache
     """
     almanac_chain_omega0_msb::Union{Nothing,Int}
     """
-    AFF3CT K=7 NSC Viterbi decoder, built once and reused across pages.
+    Viterbi decoder and its scratch buffers, built once and reused across pages.
     """
-    viterbi_decoder::Aff3ct.ConvViterbiDecoder
+    viterbi::GalileoViterbiScratch
     """
     488 encoded symbols copied out of `soft_buffer` (with the 180° polarity
     applied) for each synced page, reused rather than reallocated per page.
@@ -437,11 +437,7 @@ GalileoE5aCache() = GalileoE5aCache(
     CircularDeque{Float32}(512),
     GalileoAlmanac(),
     nothing,
-    Aff3ct.ConvViterbiDecoder(
-        GALILEO_E5A_VITERBI_K,
-        GALILEO_E5A_VITERBI_N,
-        GALILEO_VITERBI_POLY,
-    ),
+    GalileoViterbiScratch(GALILEO_E5A_VITERBI_K, GALILEO_E5A_VITERBI_N),
     Vector{Float32}(undef, GALILEO_E5A_VITERBI_N),
     Vector{Bool}(undef, GALILEO_E5A_VITERBI_K),
 )
@@ -451,7 +447,7 @@ function GalileoE5aCache(
     soft_buffer = cache.soft_buffer,
     almanac_chain_partial = cache.almanac_chain_partial,
     almanac_chain_omega0_msb = cache.almanac_chain_omega0_msb,
-    viterbi_decoder = cache.viterbi_decoder,
+    viterbi = cache.viterbi,
     soft_page = cache.soft_page,
     crc_bits = cache.crc_bits,
 )
@@ -459,7 +455,7 @@ function GalileoE5aCache(
         soft_buffer,
         almanac_chain_partial,
         almanac_chain_omega0_msb,
-        viterbi_decoder,
+        viterbi,
         soft_page,
         crc_bits,
     )
@@ -582,7 +578,7 @@ function complement_buffer_if_necessary(
 end
 
 """
-    galileo_e5a_viterbi(decoder, soft_page) -> UInt256
+    galileo_e5a_viterbi(scratch, soft_page) -> UInt256
 
 Recover one F/NAV page's 238-bit payload from its `soft_page` — the 488
 polarity-corrected `Float32` LLR soft symbols of a Galileo E5a page (the
@@ -608,10 +604,8 @@ for `get_bits`/`get_twos_complement_num` field extraction.
 Thin wrapper over the shared [`galileo_viterbi`](@ref) with E5a's 61×8 interleaver
 shape and `UInt256` payload type.
 """
-galileo_e5a_viterbi(
-    decoder::Aff3ct.ConvViterbiDecoder,
-    soft_page::AbstractVector{Float32},
-) = galileo_viterbi(decoder, soft_page, GALILEO_E5A_INTERLEAVER_COLUMNS, UInt256)
+galileo_e5a_viterbi(scratch::GalileoViterbiScratch, soft_page::AbstractVector{Float32}) =
+    galileo_viterbi(scratch, soft_page, GALILEO_E5A_INTERLEAVER_COLUMNS, UInt256)
 
 # Combine SVID-2's split right-ascension: WT5 carries the 4 MSBs, WT6 the 12 LSBs,
 # of a 16-bit two's-complement value scaled by π·2⁻¹⁵ (semicircles → radians).
@@ -659,7 +653,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         GALILEO_E5A_VITERBI_N,
         state.is_shifted_by_180_degrees,
     )
-    bits = galileo_e5a_viterbi(state.cache.viterbi_decoder, soft_page)
+    bits = galileo_e5a_viterbi(state.cache.viterbi, soft_page)
 
     state = GNSSDecoderState(
         state;

@@ -184,26 +184,34 @@ struct GalileoINAVCache <: AbstractGNSSCache
     Polarity-resolved 240-symbol FEC window copied out per decoded page part
     """
     soft_page::Vector{Float32}
-    even_page_part_bits::UInt128
+    """
+    Bits of the even page part of a word, held until its odd partner arrives;
+    `nothing` when no even part is in flight
+    """
+    even_page_part_bits::Union{Nothing,UInt128}
+    """
+    Almanac of chain position 1, part-filled by one word type and completed by
+    the next (word types 7-10 spread three satellites over four words)
+    """
     almanac_chain_pos1::GalileoAlmanac
+    """
+    Almanac of chain position 2, filled the same way
+    """
     almanac_chain_pos2::GalileoAlmanac
     """
-    AFF3CT K=7 NSC Viterbi decoder, built once and reused across pages (cf. the GPS L1C-D LDPC decoders).
+    Viterbi decoder and its scratch buffers, built once and reused across pages
+    (cf. the GPS L1C-D LDPC decoders)
     """
-    viterbi_decoder::Aff3ct.ConvViterbiDecoder
+    viterbi::GalileoViterbiScratch
 end
 
 GalileoINAVCache() = GalileoINAVCache(
     CircularDeque{Float32}(GALILEO_INAV_PAGE_PART_SYMBOLS + GALILEO_INAV_SYNC_SYMBOLS),
     Vector{Float32}(undef, GALILEO_INAV_VITERBI_N),
-    UInt128(0),
+    nothing,
     GalileoAlmanac(),
     GalileoAlmanac(),
-    Aff3ct.ConvViterbiDecoder(
-        GALILEO_INAV_VITERBI_K,
-        GALILEO_INAV_VITERBI_N,
-        GALILEO_VITERBI_POLY,
-    ),
+    GalileoViterbiScratch(GALILEO_INAV_VITERBI_K, GALILEO_INAV_VITERBI_N),
 )
 
 function GalileoINAVCache(
@@ -213,7 +221,7 @@ function GalileoINAVCache(
     even_page_part_bits = cache.even_page_part_bits,
     almanac_chain_pos1 = cache.almanac_chain_pos1,
     almanac_chain_pos2 = cache.almanac_chain_pos2,
-    viterbi_decoder = cache.viterbi_decoder,
+    viterbi = cache.viterbi,
 )
     GalileoINAVCache(
         soft_buffer,
@@ -221,7 +229,7 @@ function GalileoINAVCache(
         even_page_part_bits,
         almanac_chain_pos1,
         almanac_chain_pos2,
-        viterbi_decoder,
+        viterbi,
     )
 end
 
@@ -661,7 +669,7 @@ function complement_buffer_if_necessary(
 end
 
 """
-    galileo_inav_viterbi(decoder, soft_page) -> UInt128
+    galileo_inav_viterbi(scratch, soft_page) -> UInt128
 
 Recover one I/NAV page's 114-bit payload from its `soft_page` — the 240
 polarity-corrected `Float32` LLR soft symbols of a Galileo I/NAV page part (the
@@ -688,10 +696,8 @@ consumes.
 Thin wrapper over the shared [`galileo_viterbi`](@ref) with I/NAV's 8×30 interleaver
 shape and `UInt128` payload type.
 """
-galileo_inav_viterbi(
-    decoder::Aff3ct.ConvViterbiDecoder,
-    soft_page::AbstractVector{Float32},
-) = galileo_viterbi(decoder, soft_page, GALILEO_INAV_INTERLEAVER_COLUMNS, UInt128)
+galileo_inav_viterbi(scratch::GalileoViterbiScratch, soft_page::AbstractVector{Float32}) =
+    galileo_viterbi(scratch, soft_page, GALILEO_INAV_INTERLEAVER_COLUMNS, UInt128)
 
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
     # The 240 encoded symbols are the soft-buffer entries between the leading
@@ -706,7 +712,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
         GALILEO_INAV_VITERBI_N,
         state.is_shifted_by_180_degrees,
     )
-    bits = galileo_inav_viterbi(state.cache.viterbi_decoder, soft_page)
+    bits = galileo_inav_viterbi(state.cache.viterbi, soft_page)
     is_even = !get_bit(bits, 114, 1)
     is_nominal_page = !get_bit(bits, 114, 2)
     state = GNSSDecoderState(
@@ -721,15 +727,18 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
             state;
             cache = GalileoINAVCache(
                 state.cache;
-                even_page_part_bits = is_nominal_page ? bits : UInt128(0),
+                even_page_part_bits = is_nominal_page ? bits : nothing,
             ),
         )
-    elseif state.cache.even_page_part_bits != 0 && is_nominal_page
-        data =
-            get_bits(state.cache.even_page_part_bits, 114, 3, 112) << 16 +
-            get_bits(bits, 114, 3, 16)
-        bits_to_check_CRC =
-            UInt288(state.cache.even_page_part_bits) << 106 + get_bits(bits, 114, 1, 106)
+        return state
+    end
+    even_bits = state.cache.even_page_part_bits
+    # `nothing`, not a zero sentinel: a nominal even page part whose 112 content
+    # bits are all zero is legal (word type 0 with the Time field '00' and a zero
+    # spare) and a `!= 0` test would silently discard its odd partner.
+    if !isnothing(even_bits) && is_nominal_page
+        data = get_bits(even_bits, 114, 3, 112) << 16 + get_bits(bits, 114, 3, 16)
+        bits_to_check_CRC = UInt288(even_bits) << 106 + get_bits(bits, 114, 1, 106)
         if crc24q(bits_to_check_CRC, GALILEO_INAV_CRC_OCTETS) == 0
             data_type = get_bits(data, 128, 1, 6)
             if data_type == 0
