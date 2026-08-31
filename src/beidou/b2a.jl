@@ -1092,55 +1092,14 @@ end
 # behind the BGTO block and a reduced almanac, MT34 to 134 behind the SISAIoc
 # block (Figures 6-5..6-9). Each parser reads it at its own offset; only the
 # four clock parameters are shared here.
-function _parse_b2a_clock_block(raw::BeiDouB2aData, word::UInt320, start::Int)
-    word_length = B2A_MESSAGE_BITS
-    BeiDouB2aData(
-        raw;
-        t_0c = Int64(get_bits(word, word_length, start, 11)) * 300,
-        a_f0 = get_twos_complement_num(word, word_length, start + 11, 25) * 2.0^-34,
-        a_f1 = get_twos_complement_num(word, word_length, start + 36, 22) * 2.0^-50,
-        a_f2 = get_twos_complement_num(word, word_length, start + 58, 11) * 2.0^-66,
-    )
-end
+_parse_b2a_clock_block(raw::BeiDouB2aData, word::UInt320, start::Int) =
+    BeiDouB2aData(raw; beidou_clock_block(word, B2A_MESSAGE_BITS, start)...)
 
 # SISAIoc data block (Figure 6-14) at 1-based bit `start`: t_op(11),
 # SISAI_ocb(5), SISAI_oc1(3), SISAI_oc2(3). Raw values — ICD v1.0 defers
 # their definition (§7.16).
-function _parse_b2a_sisai_oc_block(raw::BeiDouB2aData, word::UInt320, start::Int)
-    word_length = B2A_MESSAGE_BITS
-    BeiDouB2aData(
-        raw;
-        t_op = Int64(get_bits(word, word_length, start, 11)),
-        SISAI_ocb = Int64(get_bits(word, word_length, start + 11, 5)),
-        SISAI_oc1 = Int64(get_bits(word, word_length, start + 16, 3)),
-        SISAI_oc2 = Int64(get_bits(word, word_length, start + 19, 3)),
-    )
-end
-
-# One 38-bit reduced almanac block (Figure 6-17, Table 7-16) at 1-based bit
-# `start`. `PRN_a == 0` marks an empty slot (effective range is 1-63) ⇒
-# `nothing`.
-function _b2a_reduced_almanac_block(
-    word::UInt320,
-    start::Int,
-    WN_a::Int,
-    t_0a::Int,
-    PI::Float64,
-)
-    word_length = B2A_MESSAGE_BITS
-    PRN_a = Int(get_bits(word, word_length, start, 6))
-    PRN_a == 0 && return nothing
-    BeiDouReducedAlmanac(;
-        PRN_a,
-        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
-        δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
-        health = Int(get_bits(word, word_length, start + 30, 8)),
-        WN_a,
-        t_0a,
-    )
-end
+_parse_b2a_sisai_oc_block(raw::BeiDouB2aData, word::UInt320, start::Int) =
+    BeiDouB2aData(raw; beidou_sisai_oc_block(word, B2A_MESSAGE_BITS, start)...)
 
 """
 Message type 30 — clock, IODC, group delay, BDGIM ionosphere (ICD Fig 6-5 / 6-13 / 6-15).
@@ -1154,18 +1113,8 @@ function parse_b2a_mt30(raw::BeiDouB2aData, word::UInt320)
         IODC = Int64(get_bits(word, word_length, 112, 10)),
         T_GD_B2ap = get_twos_complement_num(word, word_length, 122, 12) * 2.0^-34,
         ISC_B2ad = get_twos_complement_num(word, word_length, 134, 12) * 2.0^-34,
-        # BDGIM block, bits 146-219 (Figure 6-15, Table 7-10): α₁ is a 10-bit
-        # unsigned value; α₃/α₄ are 8-bit unsigned; α₅ is 8-bit unsigned with
-        # the negative scale −2⁻³; α₂ and α₆..α₉ are two's complement.
-        α_bdgim_1 = Int64(get_bits(word, word_length, 146, 10)) * 2.0^-3,
-        α_bdgim_2 = get_twos_complement_num(word, word_length, 156, 8) * 2.0^-3,
-        α_bdgim_3 = Int64(get_bits(word, word_length, 164, 8)) * 2.0^-3,
-        α_bdgim_4 = Int64(get_bits(word, word_length, 172, 8)) * 2.0^-3,
-        α_bdgim_5 = Int64(get_bits(word, word_length, 180, 8)) * -2.0^-3,
-        α_bdgim_6 = get_twos_complement_num(word, word_length, 188, 8) * 2.0^-3,
-        α_bdgim_7 = get_twos_complement_num(word, word_length, 196, 8) * 2.0^-3,
-        α_bdgim_8 = get_twos_complement_num(word, word_length, 204, 8) * 2.0^-3,
-        α_bdgim_9 = get_twos_complement_num(word, word_length, 212, 8) * 2.0^-3,
+        # BDGIM block, bits 146-219 (Figure 6-15, Table 7-10):
+        beidou_bdgim_block(word, word_length, 146)...,
         T_GD_B1Cp = get_twos_complement_num(word, word_length, 220, 12) * 2.0^-34,
     )
 end
@@ -1181,7 +1130,7 @@ function parse_b2a_mt31(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     t_0a = Int(get_bits(word, word_length, 135, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     for start in (143, 181, 219)
-        packet = _b2a_reduced_almanac_block(word, start, WN_a, t_0a, PI)
+        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
         isnothing(packet) && continue
         almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
     end
@@ -1203,13 +1152,7 @@ function parse_b2a_mt32(raw::BeiDouB2aData, word::UInt320)
         raw;
         IODC = Int64(get_bits(word, word_length, 112, 10)),
         # EOP block, bits 122-259 (Figure 6-18, Table 7-18).
-        t_EOP = Int64(get_bits(word, word_length, 122, 16)) * 2^4,
-        PM_X = get_twos_complement_num(word, word_length, 138, 21) * 2.0^-20,
-        PM_X_dot = get_twos_complement_num(word, word_length, 159, 15) * 2.0^-21,
-        PM_Y = get_twos_complement_num(word, word_length, 174, 21) * 2.0^-20,
-        PM_Y_dot = get_twos_complement_num(word, word_length, 195, 15) * 2.0^-21,
-        ΔUT1 = get_twos_complement_num(word, word_length, 210, 31) * 2.0^-24,
-        ΔUT1_dot = get_twos_complement_num(word, word_length, 241, 19) * 2.0^-25,
+        beidou_eop_block(word, word_length, 122)...,
     )
 end
 
@@ -1222,19 +1165,14 @@ function parse_b2a_mt33(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     raw = _parse_b2a_clock_block(raw, word, 43)
     WN_a = Int(get_bits(word, word_length, 228, 13))
     t_0a = Int(get_bits(word, word_length, 241, 8)) * 2^12
-    packet = _b2a_reduced_almanac_block(word, 180, WN_a, t_0a, PI)
+    packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a, PI)
     almanacs =
         isnothing(packet) ? raw.reduced_almanacs :
         _merge_keyed(raw.reduced_almanacs, packet.PRN_a, packet)
     BeiDouB2aData(
         raw;
         # BGTO block, bits 112-179 (Figure 6-19, Table 7-21).
-        GNSS_ID = Int64(get_bits(word, word_length, 112, 3)),
-        WN_0BGTO = Int64(get_bits(word, word_length, 115, 13)),
-        t_0BGTO = Int64(get_bits(word, word_length, 128, 16)) * 2^4,
-        A_0BGTO = get_twos_complement_num(word, word_length, 144, 16) * 2.0^-35,
-        A_1BGTO = get_twos_complement_num(word, word_length, 160, 13) * 2.0^-51,
-        A_2BGTO = get_twos_complement_num(word, word_length, 173, 7) * 2.0^-68,
+        beidou_bgto_block(word, word_length, 112)...,
         reduced_almanacs = almanacs,
         IODC = Int64(get_bits(word, word_length, 218, 10)),
     )
@@ -1252,15 +1190,7 @@ function parse_b2a_mt34(raw::BeiDouB2aData, word::UInt320)
         raw;
         IODC = Int64(get_bits(word, word_length, 134, 10)),
         # BDT-UTC block, bits 144-240 (Figure 6-16, Table 7-20).
-        A_0UTC = get_twos_complement_num(word, word_length, 144, 16) * 2.0^-35,
-        A_1UTC = get_twos_complement_num(word, word_length, 160, 13) * 2.0^-51,
-        A_2UTC = get_twos_complement_num(word, word_length, 173, 7) * 2.0^-68,
-        Δt_LS = get_twos_complement_num(word, word_length, 180, 8),
-        t_0t = Int64(get_bits(word, word_length, 188, 16)) * 2^4,
-        WN_0t = Int64(get_bits(word, word_length, 204, 13)),
-        WN_LSF = Int64(get_bits(word, word_length, 217, 13)),
-        DN = Int64(get_bits(word, word_length, 230, 3)),
-        Δt_LSF = get_twos_complement_num(word, word_length, 233, 8),
+        beidou_bdt_utc_block(word, word_length, 144)...,
     )
 end
 
@@ -1272,25 +1202,8 @@ function parse_b2a_mt40(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     raw = _parse_b2a_flags_block(raw, word)
     raw = BeiDouB2aData(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
     raw = _parse_b2a_sisai_oc_block(raw, word, 48)
-    # Midi almanac block, bits 70-225 (Figure 6-20, Table 7-13). PRN_a == 0
-    # marks an empty slot (effective range 1-63).
-    PRN_a = Int(get_bits(word, word_length, 70, 6))
-    PRN_a == 0 && return raw
-    alm = BeiDouMidiAlmanac(;
-        PRN_a,
-        sat_type = Int(get_bits(word, word_length, 76, 2)),
-        WN_a = Int(get_bits(word, word_length, 78, 13)),
-        t_0a = Int(get_bits(word, word_length, 91, 8)) * 2^12,
-        e = Int(get_bits(word, word_length, 99, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, 110, 11) * 2.0^-14 * PI,
-        sqrt_A = Int(get_bits(word, word_length, 121, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, word_length, 138, 16) * 2.0^-15 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 154, 11) * 2.0^-33 * PI,
-        ω = get_twos_complement_num(word, word_length, 165, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 181, 16) * 2.0^-15 * PI,
-        a_f0 = get_twos_complement_num(word, word_length, 197, 11) * 2.0^-20,
-        a_f1 = get_twos_complement_num(word, word_length, 208, 10) * 2.0^-37,
-        health = Int(get_bits(word, word_length, 218, 8)),
-    )
-    BeiDouB2aData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
+    # Midi almanac block, bits 70-225 (Figure 6-20, Table 7-13).
+    alm = beidou_midi_almanac(word, word_length, 70, PI)
+    isnothing(alm) && return raw
+    BeiDouB2aData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm))
 end
