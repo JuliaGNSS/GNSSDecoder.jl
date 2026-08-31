@@ -676,49 +676,19 @@ function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         raw;
         WN = Int64(get_bits(word, word_length, 27, 13)),
         # bits 40-43 reserved. Clock correction (bits 44-112, Figure 6-8):
-        t_0c = Int64(get_bits(word, word_length, 44, 11)) * 300,
-        a_f0 = get_twos_complement_num(word, word_length, 55, 25) * 2.0^-34,
-        a_f1 = get_twos_complement_num(word, word_length, 80, 22) * 2.0^-50,
-        a_f2 = get_twos_complement_num(word, word_length, 102, 11) * 2.0^-66,
+        beidou_clock_block(word, word_length, 44)...,
         T_GD_B2bI = get_twos_complement_num(word, word_length, 113, 12) * 2.0^-34,
-        # BDGIM ionosphere (bits 125-198, Figure 6-10, Table 7-8): α₁, α₃, α₄
-        # unsigned; α₂, α₆..α₉ two's complement; α₅ unsigned with the negative
-        # scale factor -2⁻³.
-        α_bdgim_1 = Float64(get_bits(word, word_length, 125, 10)) * 2.0^-3,
-        α_bdgim_2 = get_twos_complement_num(word, word_length, 135, 8) * 2.0^-3,
-        α_bdgim_3 = Float64(get_bits(word, word_length, 143, 8)) * 2.0^-3,
-        α_bdgim_4 = Float64(get_bits(word, word_length, 151, 8)) * 2.0^-3,
-        α_bdgim_5 = Float64(get_bits(word, word_length, 159, 8)) * -(2.0^-3),
-        α_bdgim_6 = get_twos_complement_num(word, word_length, 167, 8) * 2.0^-3,
-        α_bdgim_7 = get_twos_complement_num(word, word_length, 175, 8) * 2.0^-3,
-        α_bdgim_8 = get_twos_complement_num(word, word_length, 183, 8) * 2.0^-3,
-        α_bdgim_9 = get_twos_complement_num(word, word_length, 191, 8) * 2.0^-3,
+        # BDGIM ionosphere (bits 125-198, Figure 6-10, Table 7-8):
+        beidou_bdgim_block(word, word_length, 125)...,
         # BDT-UTC (bits 199-295, Figure 6-11, Table 7-18):
-        A_0UTC = get_twos_complement_num(word, word_length, 199, 16) * 2.0^-35,
-        A_1UTC = get_twos_complement_num(word, word_length, 215, 13) * 2.0^-51,
-        A_2UTC = get_twos_complement_num(word, word_length, 228, 7) * 2.0^-68,
-        Δt_LS = Int64(get_twos_complement_num(word, word_length, 235, 8)),
-        t_0t = Int64(get_bits(word, word_length, 243, 16)) * 16,
-        WN_0t = Int64(get_bits(word, word_length, 259, 13)),
-        WN_LSF = Int64(get_bits(word, word_length, 272, 13)),
-        DN = Int64(get_bits(word, word_length, 285, 3)),
-        Δt_LSF = Int64(get_twos_complement_num(word, word_length, 288, 8)),
+        beidou_bdt_utc_block(word, word_length, 199)...,
         # EOP (bits 296-433, Figure 6-13, Table 7-16):
-        t_EOP = Int64(get_bits(word, word_length, 296, 16)) * 16,
-        PM_X = get_twos_complement_num(word, word_length, 312, 21) * 2.0^-20,
-        PM_X_dot = get_twos_complement_num(word, word_length, 333, 15) * 2.0^-21,
-        PM_Y = get_twos_complement_num(word, word_length, 348, 21) * 2.0^-20,
-        PM_Y_dot = get_twos_complement_num(word, word_length, 369, 15) * 2.0^-21,
-        ΔUT1 = get_twos_complement_num(word, word_length, 384, 31) * 2.0^-24,
-        ΔUT1_dot = get_twos_complement_num(word, word_length, 415, 19) * 2.0^-25,
+        beidou_eop_block(word, word_length, 296)...,
         # `t_op` and the SISAIoc triple occupy bits 434-455 (Figure 6-9, "Bit
         # allocation for SISAIoc"); `SISAI_oe` at 456-460 is its own field of
         # Figure 6-4, not part of that block. Raw broadcast values throughout —
         # their semantics are deferred to a future ICD update (§7.15).
-        t_op = Int64(get_bits(word, word_length, 434, 11)),
-        SISAI_ocb = Int64(get_bits(word, word_length, 445, 5)),
-        SISAI_oc1 = Int64(get_bits(word, word_length, 450, 3)),
-        SISAI_oc2 = Int64(get_bits(word, word_length, 453, 3)),
+        beidou_sisai_oc_block(word, word_length, 434)...,
         SISAI_oe = Int64(get_bits(word, word_length, 456, 5)),
         HS = Int64(get_bits(word, word_length, 461, 2)),
     )
@@ -738,56 +708,33 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
     raw = BeiDouB2bData(
         raw;
         # BGTO (bits 27-94, Figure 6-14, Table 7-19):
-        GNSS_ID = Int64(get_bits(word, word_length, 27, 3)),
-        WN_0BGTO = Int64(get_bits(word, word_length, 30, 13)),
-        t_0BGTO = Int64(get_bits(word, word_length, 43, 16)) * 16,
-        A_0BGTO = get_twos_complement_num(word, word_length, 59, 16) * 2.0^-35,
-        A_1BGTO = get_twos_complement_num(word, word_length, 75, 13) * 2.0^-51,
-        A_2BGTO = get_twos_complement_num(word, word_length, 88, 7) * 2.0^-68,
+        beidou_bgto_block(word, word_length, 27)...,
         # Almanac reference time for the five reduced almanacs (Table 7-15):
         WN_a = WN_a_reduced,
         t_0a = t_0a_reduced,
     )
     # Midi almanac (bits 95-250, Figure 6-15, Table 7-11). PRN_a = 0 marks an
     # empty block (no almanac broadcast in this frame).
-    PRN_a = Int(get_bits(word, word_length, 95, 6))
-    if PRN_a != 0
-        alm = BeiDouMidiAlmanac(;
-            PRN_a,
-            sat_type = Int(get_bits(word, word_length, 101, 2)),
-            WN_a = Int(get_bits(word, word_length, 103, 13)),
-            t_0a = Int(get_bits(word, word_length, 116, 8)) * 4096,
-            e = Float64(get_bits(word, word_length, 124, 11)) * 2.0^-16,
-            δi = get_twos_complement_num(word, word_length, 135, 11) * 2.0^-14 * PI,
-            sqrt_A = Float64(get_bits(word, word_length, 146, 17)) * 2.0^-4,
-            Ω_0 = get_twos_complement_num(word, word_length, 163, 16) * 2.0^-15 * PI,
-            Ω_dot = get_twos_complement_num(word, word_length, 179, 11) * 2.0^-33 * PI,
-            ω = get_twos_complement_num(word, word_length, 190, 16) * 2.0^-15 * PI,
-            M_0 = get_twos_complement_num(word, word_length, 206, 16) * 2.0^-15 * PI,
-            a_f0 = get_twos_complement_num(word, word_length, 222, 11) * 2.0^-20,
-            a_f1 = get_twos_complement_num(word, word_length, 233, 10) * 2.0^-37,
-            health = Int(get_bits(word, word_length, 243, 8)),
+    alm = beidou_midi_almanac(word, word_length, 95, PI)
+    if !isnothing(alm)
+        raw = BeiDouB2bData(
+            raw;
+            midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm),
         )
-        raw =
-            BeiDouB2bData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
     end
     # Five 38-bit reduced almanacs (bits 272-461, Figure 6-12, Table 7-14).
     reduced = raw.reduced_almanacs
     for j = 0:4
-        base = 272 + 38j
-        PRN_a = Int(get_bits(word, word_length, base, 6))
-        PRN_a == 0 && continue  # empty block
-        packet = BeiDouReducedAlmanac(;
-            PRN_a,
-            sat_type = Int(get_bits(word, word_length, base + 6, 2)),
-            WN_a = Int(WN_a_reduced),
-            t_0a = Int(t_0a_reduced),
-            δA = Float64(get_twos_complement_num(word, word_length, base + 8, 8)) * 512.0,
-            Ω_0 = get_twos_complement_num(word, word_length, base + 16, 7) * 2.0^-6 * PI,
-            Φ_0 = get_twos_complement_num(word, word_length, base + 23, 7) * 2.0^-6 * PI,
-            health = Int(get_bits(word, word_length, base + 30, 8)),
+        packet = beidou_reduced_almanac(
+            word,
+            word_length,
+            272 + 38j,
+            WN_a_reduced,
+            t_0a_reduced,
+            PI,
         )
-        reduced = _merge_keyed(reduced, PRN_a, packet)
+        isnothing(packet) && continue  # empty block
+        reduced = _merge_keyed(reduced, packet.PRN_a, packet)
     end
     BeiDouB2bData(raw; reduced_almanacs = reduced)
 end

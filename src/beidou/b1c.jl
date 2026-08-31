@@ -980,10 +980,7 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     C_us = get_twos_complement_num(word, word_length, 423, 21) * 2.0^-30
     C_uc = get_twos_complement_num(word, word_length, 444, 21) * 2.0^-30
     # Clock correction (Figure 6-14, Table 7-5), bits 465-533.
-    t_0c = Int(get_bits(word, word_length, 465, 11)) * 300
-    a_f0 = get_twos_complement_num(word, word_length, 476, 25) * 2.0^-34
-    a_f1 = get_twos_complement_num(word, word_length, 501, 22) * 2.0^-50
-    a_f2 = get_twos_complement_num(word, word_length, 523, 11) * 2.0^-66
+    (; t_0c, a_f0, a_f1, a_f2) = beidou_clock_block(word, word_length, 465)
     # Group delay differentials (Table 7-6), bits 534-569.
     T_GD_B2ap = get_twos_complement_num(word, word_length, 534, 12) * 2.0^-34
     ISC_B1Cd = get_twos_complement_num(word, word_length, 546, 12) * 2.0^-34
@@ -1072,19 +1069,10 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
     GNSSDecoderState(state; raw_data = raw)
 end
 
-# SISAI_oc data block (Figure 6-15): t_op(11) SISAI_ocb(5) SISAI_oc1(3)
-# SISAI_oc2(3), 22 bits at 1-based `start`. The SISAI definitions are deferred
-# to a future ICD update (§7.16), so all four are stored raw.
-function _parse_b1c_sisai_oc(raw::BeiDouB1CData, word::UInt288, start::Int)
-    word_length = B1C_SF3_INFO_BITS
-    BeiDouB1CData(
-        raw;
-        t_op = Int(get_bits(word, word_length, start, 11)),
-        SISAI_ocb = Int(get_bits(word, word_length, start + 11, 5)),
-        SISAI_oc1 = Int(get_bits(word, word_length, start + 16, 3)),
-        SISAI_oc2 = Int(get_bits(word, word_length, start + 19, 3)),
-    )
-end
+# SISAI_oc data block (Figure 6-15), 22 bits at 1-based `start`; the shared
+# parser is in `beidou/beidou.jl` because B2a and B2b carry the same block.
+_parse_b1c_sisai_oc(raw::BeiDouB1CData, word::UInt288, start::Int) =
+    BeiDouB1CData(raw; beidou_sisai_oc_block(word, B1C_SF3_INFO_BITS, start)...)
 
 """
 Subframe 3, page type 1 — SISAI + BDGIM iono + BDT-UTC (ICD Figures 6-8, 6-16, 6-17).
@@ -1095,55 +1083,11 @@ function parse_b1c_sf3_page1(raw::BeiDouB1CData, word::UInt288)
     raw = _parse_b1c_sisai_oc(raw, word, 21)
     BeiDouB1CData(
         raw;
-        # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10; TECu). The
-        # unsigned set is α₁, α₃, α₄, α₅ — α₅ with the negative scale factor
-        # −2⁻³; α₂ and α₆..α₉ are two's complement.
-        α_bdgim_1 = Int(get_bits(word, word_length, 43, 10)) * 2.0^-3,
-        α_bdgim_2 = get_twos_complement_num(word, word_length, 53, 8) * 2.0^-3,
-        α_bdgim_3 = Int(get_bits(word, word_length, 61, 8)) * 2.0^-3,
-        α_bdgim_4 = Int(get_bits(word, word_length, 69, 8)) * 2.0^-3,
-        α_bdgim_5 = Int(get_bits(word, word_length, 77, 8)) * -(2.0^-3),
-        α_bdgim_6 = get_twos_complement_num(word, word_length, 85, 8) * 2.0^-3,
-        α_bdgim_7 = get_twos_complement_num(word, word_length, 93, 8) * 2.0^-3,
-        α_bdgim_8 = get_twos_complement_num(word, word_length, 101, 8) * 2.0^-3,
-        α_bdgim_9 = get_twos_complement_num(word, word_length, 109, 8) * 2.0^-3,
+        # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10), bits 43-116:
+        beidou_bdgim_block(word, word_length, 43)...,
         # BDT-UTC time offset (Figure 6-17, Table 7-20).
-        A_0UTC = get_twos_complement_num(word, word_length, 117, 16) * 2.0^-35,
-        A_1UTC = get_twos_complement_num(word, word_length, 133, 13) * 2.0^-51,
-        A_2UTC = get_twos_complement_num(word, word_length, 146, 7) * 2.0^-68,
-        Δt_LS = get_twos_complement_num(word, word_length, 153, 8),
-        t_0t = Int(get_bits(word, word_length, 161, 16)) * 2^4,
-        WN_0t = Int(get_bits(word, word_length, 177, 13)),
-        WN_LSF = Int(get_bits(word, word_length, 190, 13)),
-        DN = Int(get_bits(word, word_length, 203, 3)),
-        Δt_LSF = get_twos_complement_num(word, word_length, 206, 8),
-    )
-end
-
-"""
-Decode one 38-bit reduced-almanac packet starting at 1-based bit `start` (ICD Figure 6-18, Table 7-16).
-"""
-function _b1c_reduced_almanac_packet(
-    word::UInt288,
-    start::Int,
-    WN_a::Int,
-    t_0a::Int,
-    PI::Float64,
-)
-    word_length = B1C_SF3_INFO_BITS
-    PRN_a = Int(get_bits(word, word_length, start, 6))
-    # PRN_a is defined for 1..63 (Table 7-16); a zero PRN marks an unused
-    # packet slot, which is skipped (the following packets may still be valid).
-    PRN_a == 0 && return nothing
-    BeiDouReducedAlmanac(;
-        PRN_a,
-        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
-        WN_a,
-        t_0a,
-        δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
-        health = Int(get_bits(word, word_length, start + 30, 8)),
+        # BDT-UTC (Figure 6-17, Table 7-20), bits 117-213:
+        beidou_bdt_utc_block(word, word_length, 117)...,
     )
 end
 
@@ -1158,7 +1102,7 @@ function parse_b1c_sf3_page2(raw::BeiDouB1CData, word::UInt288, PI::Float64)
     almanacs = raw.reduced_almanacs
     # Four 38-bit packets at bits 59, 97, 135, 173 (Figure 6-9).
     for start in (59, 97, 135, 173)
-        packet = _b1c_reduced_almanac_packet(word, start, WN_a, t_0a, PI)
+        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
         isnothing(packet) && continue
         almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
     end
@@ -1173,27 +1117,14 @@ function parse_b1c_sf3_page3(raw::BeiDouB1CData, word::UInt288)
     raw = BeiDouB1CData(
         raw;
         SISAI_oe = Int(get_bits(word, word_length, 16, 5)),
-        # EOP (Figure 6-19, Table 7-18), bits 21-158.
-        t_EOP = Int(get_bits(word, word_length, 21, 16)) * 2^4,
-        PM_X = get_twos_complement_num(word, word_length, 37, 21) * 2.0^-20,
-        PM_X_dot = get_twos_complement_num(word, word_length, 58, 15) * 2.0^-21,
-        PM_Y = get_twos_complement_num(word, word_length, 73, 21) * 2.0^-20,
-        PM_Y_dot = get_twos_complement_num(word, word_length, 94, 15) * 2.0^-21,
-        ΔUT1 = get_twos_complement_num(word, word_length, 109, 31) * 2.0^-24,
-        ΔUT1_dot = get_twos_complement_num(word, word_length, 140, 19) * 2.0^-25,
+        # EOP (Figure 6-19, Table 7-18), bits 21-158:
+        beidou_eop_block(word, word_length, 21)...,
     )
     # BGTO (Figure 6-20, Table 7-21), bits 159-226. GNSS ID 0 means "not
     # available" (§7.13.1) — nothing is stored then.
     GNSS_ID = Int(get_bits(word, word_length, 159, 3))
     GNSS_ID == 0 && return raw
-    bgto = BeiDouB1CBGTO(;
-        GNSS_ID,
-        WN_0BGTO = Int(get_bits(word, word_length, 162, 13)),
-        t_0BGTO = Int(get_bits(word, word_length, 175, 16)) * 2^4,
-        A_0BGTO = get_twos_complement_num(word, word_length, 191, 16) * 2.0^-35,
-        A_1BGTO = get_twos_complement_num(word, word_length, 207, 13) * 2.0^-51,
-        A_2BGTO = get_twos_complement_num(word, word_length, 220, 7) * 2.0^-68,
-    )
+    bgto = BeiDouB1CBGTO(; beidou_bgto_block(word, word_length, 159)...)
     BeiDouB1CData(raw; bgtos = _merge_keyed(raw.bgtos, GNSS_ID, bgto))
 end
 
@@ -1204,25 +1135,9 @@ function parse_b1c_sf3_page4(raw::BeiDouB1CData, word::UInt288, PI::Float64)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     # Midi almanac (Figure 6-21), bits 38-193.
-    PRN_a = Int(get_bits(word, word_length, 38, 6))
-    PRN_a == 0 && return raw  # empty almanac slot
-    alm = BeiDouMidiAlmanac(;
-        PRN_a,
-        sat_type = Int(get_bits(word, word_length, 44, 2)),
-        WN_a = Int(get_bits(word, word_length, 46, 13)),
-        t_0a = Int(get_bits(word, word_length, 59, 8)) * 2^12,
-        e = Int(get_bits(word, word_length, 67, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, 78, 11) * 2.0^-14 * PI,
-        sqrt_A = Int(get_bits(word, word_length, 89, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, word_length, 106, 16) * 2.0^-15 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 122, 11) * 2.0^-33 * PI,
-        ω = get_twos_complement_num(word, word_length, 133, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 149, 16) * 2.0^-15 * PI,
-        a_f0 = get_twos_complement_num(word, word_length, 165, 11) * 2.0^-20,
-        a_f1 = get_twos_complement_num(word, word_length, 176, 10) * 2.0^-37,
-        health = Int(get_bits(word, word_length, 186, 8)),
-    )
-    BeiDouB1CData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
+    alm = beidou_midi_almanac(word, word_length, 38, PI)
+    isnothing(alm) && return raw  # empty almanac slot
+    BeiDouB1CData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm))
 end
 
 """

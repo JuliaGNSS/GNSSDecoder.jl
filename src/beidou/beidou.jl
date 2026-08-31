@@ -147,3 +147,176 @@ Base.@kwdef struct BeiDouReducedAlmanac
     Φ_0::Float64
     health::Int
 end
+
+# ---- Shared B-CNAV data blocks ----------------------------------------------
+#
+# B1C, B2a and B2b are three different messages built from the same eight data
+# blocks. Each ICD defines a block once — layout, widths, signedness, scale
+# factors — and then places it at whatever bit offset its own message needs, so
+# the only thing that differs between the three decoders is that offset.
+#
+# Parsing each block once is what keeps the three from drifting. They already had:
+# `δA` was `* 2.0^9` in two files and `* 512.0` in the third, `t_0t` and `t_EOP`
+# were `* 2^4` in two and `* 16` in the third, and the integer conversions were
+# variously `Int`, `Int64` and `Float64` — the same numbers by luck rather than by
+# construction, in code verified against three separate ICD documents.
+#
+# Each function takes the packed message word, its logical bit length, and the
+# 1-based position of the block's first bit, and returns a `NamedTuple` keyed by
+# container field names — which the three containers agree on, that being what
+# the package-wide naming rule bought. Callers splat it into their container:
+#
+#     BeiDouB2bData(raw; beidou_clock_block(word, word_length, 44)...)
+#
+# References are given per block; the B1C figure/table numbers are cited, with the
+# B2a-1.0 and B2b-1.0 counterparts named at each call site.
+
+"""
+Clock correction block, 69 bits: `t_oc`(11, LSB 300 s), `a_0`(25, 2⁻³⁴ s),
+`a_1`(22, 2⁻⁵⁰ s/s), `a_2`(11, 2⁻⁶⁶ s/s²) — BDS-SIS-ICD-B1C-1.0 Figure 6-13,
+Table 7-5.
+"""
+beidou_clock_block(word::Unsigned, word_length::Int, start::Int) = (;
+    t_0c = Int64(get_bits(word, word_length, start, 11)) * 300,
+    a_f0 = get_twos_complement_num(word, word_length, start + 11, 25) * 2.0^-34,
+    a_f1 = get_twos_complement_num(word, word_length, start + 36, 22) * 2.0^-50,
+    a_f2 = get_twos_complement_num(word, word_length, start + 58, 11) * 2.0^-66,
+)
+
+"""
+SISAIoc block, 22 bits: `t_op`(11), `SISAI_ocb`(5), `SISAI_oc1`(3),
+`SISAI_oc2`(3) — Figure 6-14. Raw broadcast values: the ICDs defer the accuracy
+semantics to a future update (B1C §7.16).
+"""
+beidou_sisai_oc_block(word::Unsigned, word_length::Int, start::Int) = (;
+    t_op = Int64(get_bits(word, word_length, start, 11)),
+    SISAI_ocb = Int64(get_bits(word, word_length, start + 11, 5)),
+    SISAI_oc1 = Int64(get_bits(word, word_length, start + 16, 3)),
+    SISAI_oc2 = Int64(get_bits(word, word_length, start + 19, 3)),
+)
+
+"""
+BDGIM ionospheric block, 74 bits: `α₁`(10) then `α₂`…`α₉`(8 each), all LSB 2⁻³
+TECu — Figure 6-16, Table 7-10.
+
+The signedness is not uniform and is easy to get wrong: `α₁`, `α₃`, `α₄` and `α₅`
+are unsigned, `α₂` and `α₆`…`α₉` are two's complement, and `α₅` carries the
+*negative* scale factor −2⁻³.
+"""
+beidou_bdgim_block(word::Unsigned, word_length::Int, start::Int) = (;
+    α_bdgim_1 = Int64(get_bits(word, word_length, start, 10)) * 2.0^-3,
+    α_bdgim_2 = get_twos_complement_num(word, word_length, start + 10, 8) * 2.0^-3,
+    α_bdgim_3 = Int64(get_bits(word, word_length, start + 18, 8)) * 2.0^-3,
+    α_bdgim_4 = Int64(get_bits(word, word_length, start + 26, 8)) * 2.0^-3,
+    α_bdgim_5 = Int64(get_bits(word, word_length, start + 34, 8)) * -(2.0^-3),
+    α_bdgim_6 = get_twos_complement_num(word, word_length, start + 42, 8) * 2.0^-3,
+    α_bdgim_7 = get_twos_complement_num(word, word_length, start + 50, 8) * 2.0^-3,
+    α_bdgim_8 = get_twos_complement_num(word, word_length, start + 58, 8) * 2.0^-3,
+    α_bdgim_9 = get_twos_complement_num(word, word_length, start + 66, 8) * 2.0^-3,
+)
+
+"""
+BDT-UTC offset block, 97 bits: `A_0UTC`(16, 2⁻³⁵), `A_1UTC`(13, 2⁻⁵¹),
+`A_2UTC`(7, 2⁻⁶⁸), `Δt_LS`(8), `t_0t`(16, LSB 2⁴ s), `WN_0t`(13),
+`WN_LSF`(13), `DN`(3), `Δt_LSF`(8) — Figure 6-17, Table 7-20.
+"""
+beidou_bdt_utc_block(word::Unsigned, word_length::Int, start::Int) = (;
+    A_0UTC = get_twos_complement_num(word, word_length, start, 16) * 2.0^-35,
+    A_1UTC = get_twos_complement_num(word, word_length, start + 16, 13) * 2.0^-51,
+    A_2UTC = get_twos_complement_num(word, word_length, start + 29, 7) * 2.0^-68,
+    Δt_LS = Int64(get_twos_complement_num(word, word_length, start + 36, 8)),
+    t_0t = Int64(get_bits(word, word_length, start + 44, 16)) * 2^4,
+    WN_0t = Int64(get_bits(word, word_length, start + 60, 13)),
+    WN_LSF = Int64(get_bits(word, word_length, start + 73, 13)),
+    DN = Int64(get_bits(word, word_length, start + 86, 3)),
+    Δt_LSF = Int64(get_twos_complement_num(word, word_length, start + 89, 8)),
+)
+
+"""
+Earth orientation parameter block, 138 bits: `t_EOP`(16, LSB 2⁴ s), `PM_X`(21,
+2⁻²⁰ arcsec), `PM_X_dot`(15, 2⁻²¹), `PM_Y`(21, 2⁻²⁰), `PM_Y_dot`(15, 2⁻²¹),
+`ΔUT1`(31, 2⁻²⁴ s), `ΔUT1_dot`(19, 2⁻²⁵) — Figure 6-19, Table 7-18.
+"""
+beidou_eop_block(word::Unsigned, word_length::Int, start::Int) = (;
+    t_EOP = Int64(get_bits(word, word_length, start, 16)) * 2^4,
+    PM_X = get_twos_complement_num(word, word_length, start + 16, 21) * 2.0^-20,
+    PM_X_dot = get_twos_complement_num(word, word_length, start + 37, 15) * 2.0^-21,
+    PM_Y = get_twos_complement_num(word, word_length, start + 52, 21) * 2.0^-20,
+    PM_Y_dot = get_twos_complement_num(word, word_length, start + 73, 15) * 2.0^-21,
+    ΔUT1 = get_twos_complement_num(word, word_length, start + 88, 31) * 2.0^-24,
+    ΔUT1_dot = get_twos_complement_num(word, word_length, start + 119, 19) * 2.0^-25,
+)
+
+"""
+BDT-GNSS time offset block, 68 bits: `GNSS_ID`(3), `WN_0BGTO`(13),
+`t_0BGTO`(16, LSB 2⁴ s), `A_0BGTO`(16, 2⁻³⁵), `A_1BGTO`(13, 2⁻⁵¹),
+`A_2BGTO`(7, 2⁻⁶⁸) — Figure 6-20, Table 7-21. `GNSS_ID` 0 means the parameters
+are unavailable (1 GPS, 2 Galileo, 3 GLONASS); the caller decides what to store.
+"""
+beidou_bgto_block(word::Unsigned, word_length::Int, start::Int) = (;
+    GNSS_ID = Int64(get_bits(word, word_length, start, 3)),
+    WN_0BGTO = Int64(get_bits(word, word_length, start + 3, 13)),
+    t_0BGTO = Int64(get_bits(word, word_length, start + 16, 16)) * 2^4,
+    A_0BGTO = get_twos_complement_num(word, word_length, start + 32, 16) * 2.0^-35,
+    A_1BGTO = get_twos_complement_num(word, word_length, start + 48, 13) * 2.0^-51,
+    A_2BGTO = get_twos_complement_num(word, word_length, start + 61, 7) * 2.0^-68,
+)
+
+"""
+    beidou_midi_almanac(word, word_length, start, PI) -> Union{Nothing,BeiDouMidiAlmanac}
+
+One 156-bit midi-almanac block (Figure 6-21, Table 7-13), or `nothing` for the
+`PRN_a == 0` encoding that marks an empty slot — no almanac was broadcast in this
+frame, and the following blocks may still be valid.
+"""
+function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int, PI::Float64)
+    PRN_a = Int(get_bits(word, word_length, start, 6))
+    PRN_a == 0 && return nothing
+    BeiDouMidiAlmanac(;
+        PRN_a,
+        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
+        WN_a = Int(get_bits(word, word_length, start + 8, 13)),
+        t_0a = Int(get_bits(word, word_length, start + 21, 8)) * 2^12,
+        e = Int(get_bits(word, word_length, start + 29, 11)) * 2.0^-16,
+        δi = get_twos_complement_num(word, word_length, start + 40, 11) * 2.0^-14 * PI,
+        sqrt_A = Int(get_bits(word, word_length, start + 51, 17)) * 2.0^-4,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 68, 16) * 2.0^-15 * PI,
+        Ω_dot = get_twos_complement_num(word, word_length, start + 84, 11) * 2.0^-33 * PI,
+        ω = get_twos_complement_num(word, word_length, start + 95, 16) * 2.0^-15 * PI,
+        M_0 = get_twos_complement_num(word, word_length, start + 111, 16) * 2.0^-15 * PI,
+        a_f0 = get_twos_complement_num(word, word_length, start + 127, 11) * 2.0^-20,
+        a_f1 = get_twos_complement_num(word, word_length, start + 138, 10) * 2.0^-37,
+        health = Int(get_bits(word, word_length, start + 148, 8)),
+    )
+end
+
+"""
+    beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
+        -> Union{Nothing,BeiDouReducedAlmanac}
+
+One 38-bit reduced-almanac block (Figure 6-18, Table 7-16), or `nothing` for the
+`PRN_a == 0` empty-slot encoding. The block carries no epoch of its own, so the
+almanac reference week and time of the carrying page are passed in and copied
+into the record.
+"""
+function beidou_reduced_almanac(
+    word::Unsigned,
+    word_length::Int,
+    start::Int,
+    WN_a::Integer,
+    t_0a::Integer,
+    PI::Float64,
+)
+    PRN_a = Int(get_bits(word, word_length, start, 6))
+    PRN_a == 0 && return nothing
+    BeiDouReducedAlmanac(;
+        PRN_a,
+        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
+        WN_a = Int(WN_a),
+        t_0a = Int(t_0a),
+        δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
+        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
+        health = Int(get_bits(word, word_length, start + 30, 8)),
+    )
+end
