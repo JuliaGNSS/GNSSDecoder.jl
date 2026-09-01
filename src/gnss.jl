@@ -419,7 +419,7 @@ mapped across explicitly.
 end
 
 """
-$(TYPEDSIGNATURES)
+    get_orbit_class(state::GNSSDecoderState) -> Union{Nothing,OrbitClass}
 
 Orbit class of the satellite this decoder is tracking, or `nothing` when the
 signal does not make it knowable.
@@ -483,14 +483,14 @@ B1C counts hours plus 18-second SOH steps, and the rest carry a plain `TOW` or
 `SOW`. The reconstruction is the ICD's, so it is done here rather than in every
 consumer:
 
-| Signal                                 | Broadcast fields | Seconds of week                            |
-|:-------------------------------------- |:---------------- |:------------------------------------------ |
-| GPS L1 C/A, GPS CNAV (L2C/L5)          | `TOW`            | `TOW`                                      |
-| GPS L1C-D                              | `ITOW`, `toi`    | `ITOW·7200 + toi·18` (IS-GPS-800 §3.2.3.1) |
-| Galileo I/NAV (E1-B, E5b-I), E5a F/NAV | `TOW`            | `TOW`                                      |
-| BeiDou B1I, B3I (D1/D2)                | `SOW`            | `SOW`                                      |
-| BeiDou B1C                             | `HOW`, `soh`     | `HOW·3600 + soh·18` (BDS-SIS-ICD-B1C §7.3) |
-| BeiDou B2a, B2b                        | `SOW`            | `SOW`                                      |
+| Signal                                 | Broadcast fields | Seconds of week                                                                               |
+|:-------------------------------------- |:---------------- |:--------------------------------------------------------------------------------------------- |
+| GPS L1 C/A, GPS CNAV (L2C/L5)          | `TOW`            | `TOW`                                                                                         |
+| GPS L1C-D                              | `ITOW`, `toi`    | `ITOW·7200 + toi·18`, `toi = 0` carrying into the next interval (IS-GPS-800 §3.5.2, §3.5.3.2) |
+| Galileo I/NAV (E1-B, E5b-I), E5a F/NAV | `TOW`            | `TOW`                                                                                         |
+| BeiDou B1I, B3I (D1/D2)                | `SOW`            | `SOW`                                                                                         |
+| BeiDou B1C                             | `HOW`, `soh`     | `HOW·3600 + soh·18` (BDS-SIS-ICD-B1C §7.3)                                                    |
+| BeiDou B2a, B2b                        | `SOW`            | `SOW`                                                                                         |
 
 Galileo E6-B answers `nothing` always: C/NAV carries HAS corrections stamped
 with a time *of hour* per correction block, not a time of week, and those stay
@@ -558,8 +558,13 @@ convert a seconds-of-week reading, *subtract*: `t_target = t_own - Δt`.
     keeps broadcast values.
 
     Nothing about this shows on a Galileo decoder, where GST and GPST are both
-    TAI − 19 s and the defined part is exactly zero. It is 14 s on every BeiDou
-    signal, which is why the two cases must not be told apart by testing one.
+    TAI − 19 s and the defined part is exactly zero. It is −14 s on every BeiDou
+    signal (19 − 33: a BDT reading is 14 s *behind*, so converting away from BDT
+    subtracts a negative), which is why the two cases must not be told apart by
+    testing one. IS-GPS-800J §3.5.4.2.1.1 states the split outright: the GGTO
+    parameters provide the offset "modulo one second", and "users must also
+    apply any integer seconds difference between the systems using definitions
+    of each system time scale" — the integer part is what this field folds in.
 
 !!! note "`WN_0` is resolved, not as broadcast"
 
@@ -583,7 +588,11 @@ type: Galileo's GGTO has no quadratic term and reports `A_2 == 0`, and BeiDou
 D1/D2's two-term offsets carry no reference epoch at all and report
 `t_0 === nothing` / `WN_0 === nothing`. Both are exact — a zero coefficient
 contributes nothing, and an absent epoch is reported as absent rather than
-guessed.
+guessed. An absent epoch has a defined meaning, not a missing one: the D1/D2
+polynomial's argument is the time of week itself (BDS-SIS-ICD-B1I-3.0
+§5.2.4.19, `Δt_GPS = A_0GPS + A_1GPS · t_E`), so `t_0 === nothing` evaluates as
+`Δτ = t` — equivalent to `t_0 = 0` with `WN_0` equal to the current week, which
+is also why such an offset needs no week number to be usable.
 
 # Fields
 
@@ -593,12 +602,12 @@ $(TYPEDFIELDS)
 
   - [`get_time_offset`](@ref): the accessor that produces one
 """
-struct GNSSTimeOffset
+struct GNSSTimeOffset{T<:TimeSystem}
     """
     Time scale the offset is *to*; the broadcasting satellite's own scale is
     `get_time_system` of the decoder state
     """
-    target::TimeSystem
+    target::T
     """
     Bias coefficient (s): the broadcast steering residual *plus* the defined
     whole-second offset between the two scales — see the note above
@@ -619,13 +628,16 @@ struct GNSSTimeOffset
     """
     Reference week number, lifted out of its truncated broadcast field into the
     decoder's own week numbering (see `resolve_reference_week`), so `WN - WN_0`
-    is a real week count; `nothing` on BeiDou D1/D2, which broadcasts none
+    is a real week count; `nothing` on BeiDou D1/D2, which broadcasts none.
+    Valid only in that difference: across a week-number rollover the resolved
+    value can fall outside the broadcast field's range, including below zero,
+    so it is not an absolute week to place an epoch with
     """
     WN_0::Union{Nothing,Int}
 end
 
 """
-$(TYPEDSIGNATURES)
+    get_time_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
 The broadcast offset from this satellite's own time scale to `target`, as a
 [`GNSSTimeOffset`](@ref), or `nothing` when this decoder has no such offset.
@@ -663,7 +675,9 @@ coefficient fields directly for those.
 # Steer a BeiDou observable onto GPS time.
 offset = get_time_offset(state, GPST())
 if !isnothing(offset)
-    Δτ = tow - offset.t_0 + 604800 * (wn - offset.WN_0)
+    # D1/D2 broadcasts no reference epoch (`t_0 === nothing`); its polynomial's
+    # argument is the time of week itself (BDS-SIS-ICD-B1I-3.0 §5.2.4.19).
+    Δτ = isnothing(offset.t_0) ? tow : tow - offset.t_0 + 604800 * (wn - offset.WN_0)
     t_gps = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
 end
 ```
@@ -681,7 +695,8 @@ function get_time_offset end
 # offset available" and its correction would go quietly unapplied.
 
 """
-    broadcast_time_offset(state, target, A_0, A_1, A_2, t_0, WN_0) -> GNSSTimeOffset
+    broadcast_time_offset(state, target, A_0, A_1, A_2;
+                          t_0, WN_0, WN, WN_0_modulus) -> Union{Nothing,GNSSTimeOffset}
 
 Assemble a [`GNSSTimeOffset`](@ref) from one message's broadcast coefficients,
 adding the defined whole-second offset between this decoder's time scale and

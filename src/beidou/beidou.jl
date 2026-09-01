@@ -280,7 +280,7 @@ for and is read off the data fields directly. See [`get_time_offset`](@ref).
 beidou_bgto_target(GNSS_ID) = GNSS_ID == 1 ? GPST() : GNSS_ID == 2 ? GST() : nothing
 
 """
-    beidou_bgto_offset(data, target) -> Union{Nothing,GNSSTimeOffset}
+    beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
 Normalise the single flat BGTO parameter set that B2a (message type 33) and B2b
 (message type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when
