@@ -584,13 +584,13 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     """
     soft_buffer::CircularDeque{Float32}
     """
-    Aff3ct LDPC BP decoder for subframe 2 (binary image, K=600, N=1200)
+    Subframe-2 LDPC decoder and its scratch buffers (binary image, K=600, N=1200)
     """
-    sf2_decoder::LDPCScratch
+    sf2_ldpc::LDPCScratch
     """
-    Aff3ct LDPC BP decoder for subframe 3 (binary image, K=264, N=528)
+    Subframe-3 LDPC decoder and its scratch buffers (binary image, K=264, N=528)
     """
-    sf3_decoder::LDPCScratch
+    sf3_ldpc::LDPCScratch
     """
     This satellite's 21-symbol BCH(21,6) PRN codeword, built once — `try_sync`
     compares against it on every symbol
@@ -946,7 +946,7 @@ end
 # Clock(69) T_GD_B2ap(12) ISC_B1Cd(12) T_GD_B1Cp(12) Rev(7) CRC(24).
 
 function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symbols)
-    word = ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, UInt600)
+    word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = B1C_SF2_INFO_BITS
 
@@ -1032,7 +1032,7 @@ end
 # dispatch on the PageID and merge parsed fields into `raw_data` immutably.
 
 function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symbols)
-    word = ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, UInt288)
+    word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
     raw = BeiDouB1CData(

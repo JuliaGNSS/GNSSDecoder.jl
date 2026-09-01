@@ -453,9 +453,9 @@ struct BeiDouB2bCache <: AbstractGNSSCache
     """
     ldpc_window::Vector{Float32}
     """
-    Aff3ct LDPC BP decoder for the B-CNAV3 binary image (K=486, N=972)
+    LDPC decoder and its scratch buffers for the B-CNAV3 binary image (K=486, N=972)
     """
-    ldpc_decoder::LDPCScratch
+    ldpc::LDPCScratch
 end
 
 BeiDouB2bCache() = BeiDouB2bCache(
@@ -543,7 +543,7 @@ function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
         B2B_ENCODED_SYMBOLS,
         polarity_flipped,
     )
-    word = ldpc_decode_word(state.cache.ldpc_decoder, window, UInt512)
+    word = ldpc_decode_word(state.cache.ldpc, window, UInt512)
     isnothing(word) && return nothing
     return BeiDouB2bSync(word, polarity_flipped)
 end
