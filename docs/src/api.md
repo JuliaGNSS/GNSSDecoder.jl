@@ -134,6 +134,8 @@ each ICD's "not available" sentinel:
 
 ```julia
 offset = get_time_offset(state, GPST())     # `GPST()`, `GST()` or `BDT()`
+# Δτ is the time since the offset's reference epoch: `t - t_0 + 604800(WN - WN_0)`,
+# or simply `t` on BeiDou D1/D2, which broadcasts no epoch (`t_0 === nothing`).
 t_gpst = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
 ```
 

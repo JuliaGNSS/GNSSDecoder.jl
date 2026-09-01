@@ -260,7 +260,7 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
 const GALILEO_GGTO_WN_MODULUS = 64
 
 """
-    galileo_ggto_offset(data, target) -> Union{Nothing,GNSSTimeOffset}
+    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
 Normalise a decoded GGTO into a [`GNSSTimeOffset`](@ref), or `nothing` when the
 satellite is not broadcasting one or `target` is not GPS time.
@@ -271,8 +271,9 @@ there is no broadcast identifier to check and no other `target` can be
 answered. The quadratic term the normalised record carries is zero: the GGTO
 polynomial has two terms.
 
-`data` must carry the four GGTO fields, which `galileo_ggto` has already
-either scaled or set to `nothing` as a set. The two callers are I/NAV word type
+`state.data` must carry the four GGTO fields, which `galileo_ggto` has already
+either scaled or set to `nothing` as a set; the `state` is needed beyond them
+for the week number that resolves the 6-bit `WN_0G`. The two callers are I/NAV word type
 10 and F/NAV page type 4; this is a helper on the data rather than a method on
 `AbstractGalileoEphemerisData` so that a future ephemeris-bearing Galileo signal
 without a GGTO does not inherit a `FieldError`.
