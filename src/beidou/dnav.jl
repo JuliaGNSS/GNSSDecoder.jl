@@ -778,7 +778,7 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
         target === GPST() ? (data.A_0GPS, data.A_1GPS) :
         target === GST() ? (data.A_0Gal, data.A_1Gal) : (nothing, nothing)
     isnothing(A_0) && return nothing
-    GNSSTimeOffset(target, A_0, A_1, 0.0, nothing, nothing)
+    broadcast_time_offset(state, target, A_0, A_1, 0.0, nothing, nothing)
 end
 
 function is_decoding_completed_for_positioning(data::BeiDouDNAVData)

@@ -829,13 +829,14 @@ function get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSys
     # §30.3.3.8.1 for the L2C carriage of the same message type).
     (data.GNSS_ID == CNAV_GGTO_ID_GALILEO && target === GST()) || return nothing
     isnothing(data.A_0GGTO) && return nothing
-    GNSSTimeOffset(
+    broadcast_time_offset(
+        state,
         target,
         data.A_0GGTO,
         data.A_1GGTO,
         data.A_2GGTO,
-        Int(data.t_GGTO),
-        Int(data.WN_GGTO),
+        data.t_GGTO,
+        data.WN_GGTO,
     )
 end
 

@@ -748,7 +748,8 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouB1CData}, target::TimeS
     isnothing(bgtos) && return nothing
     for (GNSS_ID, bgto) in pairs(bgtos)
         beidou_bgto_target(GNSS_ID) === target || continue
-        return GNSSTimeOffset(
+        return broadcast_time_offset(
+            state,
             target,
             bgto.A_0BGTO,
             bgto.A_1BGTO,

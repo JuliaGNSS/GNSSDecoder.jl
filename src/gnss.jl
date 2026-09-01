@@ -539,7 +539,35 @@ satellite's own time scale is
 and `Δt` is **the broadcasting system's time minus the target system's** —
 `t_own - t_target`, the direction every ICD here defines the quantity in (Galileo
 OS SIS ICD §5.1.8; IS-GPS-800/200 GGTO; BDS-SIS-ICD-B1C §7.13.2 Eq. 7-30). To
-convert a measurement, *subtract*: `t_target = t_own - Δt`.
+convert a seconds-of-week reading, *subtract*: `t_target = t_own - Δt`.
+
+!!! note "`A_0` is not the broadcast coefficient alone"
+
+    Two systems differ by a *defined* whole-second offset plus a broadcast
+    steering residual, and only the second of those is on the air. The bias
+    coefficient every one of these messages carries is 16 bits at 2⁻³⁵ s — a
+    range of ±0.95 µs — so it cannot express a whole-second offset even in
+    principle, and does not try to: real BeiDou satellites broadcast tens of
+    nanoseconds against a BDT-to-GPST offset of 14 seconds.
+
+    `A_0` is the sum of both, so the subtraction above is true as written. The
+    defined part is `get_tai_offset(target) - get_tai_offset(get_time_system(state))`,
+    every one of these scales being a fixed offset from TAI with no leap seconds
+    of its own; the broadcast part stays available raw on the decoded data
+    (`data.A_0BGTO`, `data.A_0G`, `data.A_0GGTO`), which is where this package
+    keeps broadcast values.
+
+    Nothing about this shows on a Galileo decoder, where GST and GPST are both
+    TAI − 19 s and the defined part is exactly zero. It is 14 s on every BeiDou
+    signal, which is why the two cases must not be told apart by testing one.
+
+!!! warning "Seconds of week, not week numbers"
+
+    This converts a time *of week*; it says nothing about which week. The scales
+    do not share a week origin — BDT week 0 is GPS week 1356, exactly 9492 days
+    later — so a full `(WN, TOW)` conversion also needs the epoch difference
+    from `get_system_start_time`, and must carry the rollover when adding `Δt`
+    crosses a week boundary.
 
 Signals that broadcast fewer terms are widened rather than given a separate
 type: Galileo's GGTO has no quadratic term and reports `A_2 == 0`, and BeiDou
@@ -563,7 +591,8 @@ struct GNSSTimeOffset
     """
     target::TimeSystem
     """
-    Bias coefficient (s)
+    Bias coefficient (s): the broadcast steering residual *plus* the defined
+    whole-second offset between the two scales — see the note above
     """
     A_0::Float64
     """
@@ -639,6 +668,44 @@ function get_time_offset end
 # blanket `nothing` fallback for the same reason `get_orbit_class` has none:
 # a future signal that does broadcast an offset would silently inherit "no
 # offset available" and its correction would go quietly unapplied.
+
+"""
+    broadcast_time_offset(state, target, A_0, A_1, A_2, t_0, WN_0) -> GNSSTimeOffset
+
+Assemble a [`GNSSTimeOffset`](@ref) from one message's broadcast coefficients,
+adding the defined whole-second offset between this decoder's time scale and
+`target` to the broadcast bias.
+
+Every `get_time_offset` method routes through this rather than calling the
+constructor, because the term it adds is the one a call site is liable to omit:
+it is exactly zero on the Galileo and GPS paths — GST and GPST are both
+TAI − 19 s — and 14 s on every BeiDou one, so an omission is invisible to any
+test that does not run a BeiDou decoder. Putting the addition where the record
+is built means there is one place to be right instead of six.
+
+The scales here are all fixed offsets from TAI with no leap seconds of their
+own, so the term is a constant per pair and `get_tai_offset` is its whole
+source; nothing needs a leap-second table.
+"""
+function broadcast_time_offset(
+    state::GNSSDecoderState,
+    target::TimeSystem,
+    A_0::Real,
+    A_1::Real,
+    A_2::Real,
+    t_0::Union{Nothing,Integer},
+    WN_0::Union{Nothing,Integer},
+)
+    defined = ustrip(s, get_tai_offset(target) - get_tai_offset(get_time_system(state)))
+    GNSSTimeOffset(
+        target,
+        A_0 + defined,
+        A_1,
+        A_2,
+        isnothing(t_0) ? nothing : Int(t_0),
+        isnothing(WN_0) ? nothing : Int(WN_0),
+    )
+end
 
 """
 Soft-symbol buffer accessor — the per-signal cache stores it as `soft_buffer`.

@@ -134,7 +134,16 @@ each ICD's "not available" sentinel:
 
 ```julia
 offset = get_time_offset(state, GPST())     # `GPST()`, `GST()` or `BDT()`
+t_gpst = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
 ```
+
+It also folds in the part that is *not* broadcast. Two time scales differ by a
+defined whole-second offset plus a steering residual, and only the residual is
+on the air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs,
+which cannot express a whole second. `A_0` carries both, so the subtraction
+above is true as written. The defined part is zero between GPST and GST (both
+TAI − 19 s) and −14 s from BDT to either, so a consumer that tested only Galileo
+would never see it.
 
 ```@docs
 OrbitClass

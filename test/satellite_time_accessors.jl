@@ -1,4 +1,6 @@
-using GNSSSignals: GPST, GST, BDT, Hz
+using GNSSSignals: GPST, GST, BDT, Hz, get_tai_offset
+# `GNSSSignals.s` / `.ustrip` qualified, not imported: this file uses `s` as a
+# local for decoder states, which would shadow the second unit.
 using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_earth_orbit
 
 @testset "Satellite and time accessors" begin
@@ -132,6 +134,14 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             )
             offset = get_time_offset(state, GPST())
             @test offset.target === GPST()
+            # GST and GPST are both TAI - 19 s, so the defined offset is zero
+            # and `A_0` is the broadcast coefficient unchanged. This is the case
+            # that hides the BeiDou bug, so it is asserted as an equality on
+            # purpose rather than left implicit.
+            @test GNSSSignals.ustrip(
+                GNSSSignals.s,
+                get_tai_offset(GPST()) - get_tai_offset(GST()),
+            ) == 0
             @test offset.A_0 == scaled.A_0G
             @test offset.A_1 == scaled.A_1G
             @test offset.A_2 == 0.0        # GGTO has no quadratic term
@@ -175,7 +185,13 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 s = GNSSDecoderState(state; data)
                 offset = get_time_offset(s, target)
                 @test offset.target === target
-                @test offset.A_0 == bgto.A_0BGTO
+                # BDT is TAI - 33 s and both targets are TAI - 19 s, so the
+                # defined part of the offset is -14 s and the broadcast
+                # coefficient is only the steering residual on top of it. A
+                # 16-bit field at 2^-35 s spans +/- 0.95 us and could not carry
+                # 14 s even if the ICD meant it to.
+                @test offset.A_0 == bgto.A_0BGTO - 14.0
+                @test offset.A_0 ≈ -14.0 atol = 1e-6
                 @test offset.A_1 == bgto.A_1BGTO
                 @test offset.A_2 == bgto.A_2BGTO
                 @test offset.t_0 == bgto.t_0BGTO
@@ -221,8 +237,8 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             ],
         )
         s = GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouB1CData(; bgtos))
-        @test get_time_offset(s, GPST()).A_0 == 1.0e-9
-        @test get_time_offset(s, GST()).A_0 == 4.0e-9
+        @test get_time_offset(s, GPST()).A_0 == 1.0e-9 - 14.0
+        @test get_time_offset(s, GST()).A_0 == 4.0e-9 - 14.0
         @test get_time_offset(s, GST()).WN_0 == 901
         @test isnothing(get_time_offset(s, BDT()))
 
@@ -237,10 +253,10 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             ),
         )
         gps = get_time_offset(s, GPST())
-        @test (gps.A_0, gps.A_1, gps.A_2) == (1.5e-9, 2.5e-14, 0.0)
+        @test (gps.A_0, gps.A_1, gps.A_2) == (1.5e-9 - 14.0, 2.5e-14, 0.0)
         @test isnothing(gps.t_0) && isnothing(gps.WN_0)
         gal = get_time_offset(s, GST())
-        @test (gal.A_0, gal.A_1) == (3.5e-9, 4.5e-14)
+        @test (gal.A_0, gal.A_1) == (3.5e-9 - 14.0, 4.5e-14)
         @test isnothing(get_time_offset(s, BDT()))
         # Unlike the tagged shapes, both are answerable at once.
         @test !isnothing(get_time_offset(s, GPST())) &&
@@ -267,7 +283,7 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         )
             galileo = GNSSDecoderState(state; data = mk(1))
             offset = get_time_offset(galileo, GST())
-            @test offset.A_0 == 1.0e-9
+            @test offset.A_0 == 1.0e-9     # GPST and GST are both TAI - 19 s
             @test offset.A_2 == 3.0e-20     # GPS GGTO is the one three-term shape
             @test isnothing(get_time_offset(galileo, GPST()))
             @test isnothing(get_time_offset(galileo, BDT()))
@@ -277,6 +293,103 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 for target in (GPST(), GST(), BDT())
                     @test isnothing(get_time_offset(unusable, target))
                 end
+            end
+        end
+
+        # The contract itself, on every decoder that answers, rather than the
+        # arithmetic of any one of them: `t_target = t_own - Δt` must hold for
+        # the *defined* part of the offset, which is the part no message
+        # carries. Broadcasting zero coefficients isolates it.
+        @testset "defined scale offset is included" begin
+            zeroed = (;
+                A_0GGTO = 0.0,
+                A_1GGTO = 0.0,
+                A_2GGTO = 0.0,
+                t_GGTO = Int64(0),
+                WN_GGTO = Int64(0),
+            )
+            zbgto = (;
+                GNSS_ID = Int64(1),
+                WN_0BGTO = Int64(0),
+                t_0BGTO = Int64(0),
+                A_0BGTO = 0.0,
+                A_1BGTO = 0.0,
+                A_2BGTO = 0.0,
+            )
+            zggto = GNSSDecoder.galileo_ggto(0x0000, 0x0000, 0x00, 0x00)
+            cases = [
+                (
+                    GNSSDecoderState(
+                        GPSL5IDecoderState(1);
+                        data = GPSCNAVData(; GNSS_ID = Int64(1), zeroed...),
+                    ),
+                    GST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        GPSL1C_DDecoderState(1);
+                        data = GPSL1C_DData(; GGTO_ID = Int64(1), zeroed...),
+                    ),
+                    GST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        GalileoE1BDecoderState(1);
+                        data = GalileoINAVData(; zggto...),
+                    ),
+                    GPST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        GalileoE5aDecoderState(1);
+                        data = GalileoE5aData(; zggto...),
+                    ),
+                    GPST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        BeiDouB2aDecoderState(20);
+                        data = BeiDouB2aData(; zbgto...),
+                    ),
+                    GPST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        BeiDouB2bDecoderState(20);
+                        data = BeiDouB2bData(; zbgto...),
+                    ),
+                    GPST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        BeiDouB1CDecoderState(20);
+                        data = BeiDouB1CData(;
+                            bgtos = Dictionary([1], [BeiDouB1CBGTO(; zbgto...)]),
+                        ),
+                    ),
+                    GPST(),
+                ),
+                (
+                    GNSSDecoderState(
+                        BeiDouB1IDecoderState(20);
+                        data = BeiDouDNAVData(; A_0GPS = 0.0, A_1GPS = 0.0),
+                    ),
+                    GPST(),
+                ),
+            ]
+            for (state, target) in cases
+                offset = get_time_offset(state, target)
+                own = get_time_system(state)
+                # A zero broadcast bias must still leave the defined offset,
+                # which is what `t_target = t_own - Δt` needs to be true.
+                expected = GNSSSignals.ustrip(
+                    GNSSSignals.s,
+                    get_tai_offset(target) - get_tai_offset(own),
+                )
+                @test offset.A_0 == expected
+                # And that is 0 for every GPS/Galileo pair but -14 s for BeiDou,
+                # so a suite that only exercised Galileo would pass either way.
+                @test expected == (own === BDT() ? -14.0 : 0.0)
             end
         end
 
