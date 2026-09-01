@@ -615,19 +615,16 @@ function decode_syncro_sequence(
         raw  # reserved/invalid message type (Table 7-1): header only
     end
     # SOW refers to the start of the frame just decoded; that epoch lies
-    # syncro_sequence_length + preamble_length symbols before the newest
-    # buffered symbol. Re-arming here rather than in `validate_data` (the same
-    # split `b2a.jl` uses) means a time-only consumer gets a usable epoch from
-    # the very first frame, instead of waiting for MT10 *and* MT30 to complete
-    # the positioning set — and keeps the counter honest when a later frame
-    # fails CRC, since it then simply keeps counting from the last frame that
-    # actually delivered a SOW.
-    GNSSDecoderState(
-        state;
-        raw_data = raw,
-        num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                               state.constants.preamble_length,
-    )
+    # The symbol counter is deliberately NOT re-armed here (the same split as
+    # `b2a.jl`, for the same reason): `get_time_of_week` reads the *validated*
+    # `data.SOW`, so the counter must anchor to the last frame `validate_data`
+    # promoted, not to the last frame that passed CRC. Re-arming per frame while
+    # the published SOW stands still makes `tow + num_bits/rate` read a whole
+    # frame low whenever the completeness gate skips a frame — on B2b the gate
+    # normally holds once MT10 and MT30 are in, so this is defensive here where
+    # on B2a (whose MT10/MT11 adjacency gate skips one frame per message cycle)
+    # it was a live once-per-cycle 3-second error.
+    GNSSDecoderState(state; raw_data = raw)
 end
 
 """
@@ -821,9 +818,17 @@ the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     if is_decoding_completed_for_positioning(state.raw_data)
-        # The counter was already armed by `decode_syncro_sequence` for this
-        # very frame, so promotion only publishes the data.
-        return GNSSDecoderState(state; data = state.raw_data)
+        # Promotion publishes this frame's SOW; the symbol counter re-anchors to
+        # this frame's sync epoch with it, so the pair `data.SOW` + counter that
+        # `get_time_of_week` consumers combine always describes one frame. Runs
+        # right after `decode_syncro_sequence`, so `raw_data.SOW` is the
+        # just-decoded frame's.
+        return GNSSDecoderState(
+            state;
+            data = state.raw_data,
+            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
+                                                   state.constants.preamble_length,
+        )
     end
     return state
 end
