@@ -37,6 +37,12 @@ const TOI_BCH_CODEWORD_LEN = 52
 const TOI_BCH_DATA_LEN = 51
 const TOI_BCH_MASK52 = (UInt64(1) << TOI_BCH_CODEWORD_LEN) - UInt64(1)
 const TOI_RANGE = 400  # 9-bit modulo-400 counter
+# The BCH(51,8) construction XORs the TOI's MSB (weight 256) over the whole
+# codeword, so `codeword(t + 256) == ~codeword(t)`: a hard-decision match cannot
+# tell (TOI, polarity) from (TOI + 256, flipped polarity) whenever both are in
+# range. The consumer resolves the pair — see `decode_syncro_sequence` in
+# `src/gps/l1c_d.jl`.
+const TOI_COMPLEMENT_OFFSET = 256
 
 # Reverse the low `n` bits of `x` (matches PocketSDR's `sdr_code.rev_reg`).
 function reverse_low_bits(x::Integer, n::Int)
@@ -163,10 +169,14 @@ Note on inherent ambiguity: because the BCH(51,8) construction XORs the
 51 LFSR bits with the MSB of the 9-bit TOI, the codeword for `t + 256`
 is the bitwise complement of the codeword for `t` (whenever both are in
 range). The receiver therefore cannot tell apart "TOI=`t`, no flip" from
-"TOI=`t + 256`, with flip" for `t ∈ 0..143`. This function follows
-PocketSDR's `sync_CNV2_frame` policy and returns the lowest-TOI match
-first; downstream code uses an out-of-band check (e.g. the SF2 WN MSB)
-to break the tie.
+"TOI=`t + 256`, with flip" for `t ∈ 0..143`, and this function always
+reports the *low* branch (following PocketSDR's `sync_CNV2_frame` match
+order). The caller must resolve the pair: `decode_syncro_sequence` in
+`src/gps/l1c_d.jl` does it by TOI continuity with the previous frame
+when one is held, and otherwise by trying subframe 2's LDPC+CRC under
+both branches — the CRC is the only in-band oracle. A consumer that
+takes the reported branch at face value is wrong for every frame whose
+true TOI is ≥ 256, i.e. 43 minutes of every 2-hour interval.
 
 This mirrors PocketSDR's `sync_CNV2_frame` algorithm — see
 `/home/schoenbrod/Code/PocketSDR/python/sdr_nav.py`.

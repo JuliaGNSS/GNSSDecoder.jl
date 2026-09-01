@@ -101,11 +101,20 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         @test get_time_of_week(BeiDouB2bData(; SOW = Int64(300_001))) == 300_001
 
         # GPS L1C-D: ITOW counts two-hour intervals, toi 18-second frames.
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(0), toi = 0)) == 0
         @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 7)) ==
               3 * 7200 + 7 * 18
-        # The last frame of the week: interval 83, frame 399.
+        # `toi = 0` counts against the NEXT two-hour interval (IS-GPS-800J §3.5.2:
+        # the TOI is defined against "the ITOW count in the subframe 2 of the next
+        # 18-second frame", range 0-399): the frame broadcasting it is the last
+        # frame of the OLD interval, so its own ITOW is one behind.
+        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(0), toi = 0)) == 7200
+        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 0)) == 4 * 7200
+        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 399)) ==
+              3 * 7200 + 399 * 18
+        # The last frame of the week: interval 83, frame 399 …
         @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 399)) == 604_800 - 18
+        # … and the frame after it stamps second 0 of the following week.
+        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 0)) == 0
         # Either field alone is not a time of week.
         @test isnothing(get_time_of_week(GPSL1C_DData(; ITOW = Int64(3))))
         @test isnothing(get_time_of_week(GPSL1C_DData(; toi = 7)))

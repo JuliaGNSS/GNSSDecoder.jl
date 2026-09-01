@@ -2,7 +2,7 @@ using Test
 using Random
 import Aff3ct
 using GNSSDecoder
-using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData
+using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData, sync_bch_toi
 
 # ---------------------------------------------------------------------------
 # Synthetic CNAV-2 frame generator (test-only, mirrors the transmit chain).
@@ -311,6 +311,60 @@ end
         @test state.data.toi !== nothing
         @test state.data.WN == golden.WN
         @test state.data.M_0 ≈ golden.M0_raw * 2.0^-32 * state.constants.PI
+    end
+
+    @testset "Cold start at TOI ≥ 256 resolves the BCH complement branch" begin
+        # The BCH(51,8) construction XORs the TOI's MSB over the whole codeword,
+        # so `sync_bch_toi` cannot tell (toi, pol) from (toi + 256, !pol) and
+        # always reports the *low* branch. An unflipped stream whose true TOI is
+        # ≥ 256 — 43 minutes of every two-hour interval — therefore reaches
+        # `decode_syncro_sequence` mislabelled as (toi − 256, flipped), and the
+        # decoder has to undo that or publish a time 256·18 s = 76.8 min early.
+        toi0 = 300
+        sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])
+        @test sync.toi == toi0 - 256 && sync.polarity_flipped   # the premise
+
+        # A frame that fails CRC-24Q under either branch: the retry cannot help,
+        # so whatever TOI comes out of the second frame is continuity's alone.
+        undecodable = build_payload(build_sf2_bits(corrupt = true), sf3_info)
+        stream = vcat(
+            _frame_symbols(toi0, payload),
+            _frame_symbols(toi0 + 1, undecodable),
+            _frame_symbols(toi0 + 2, payload)[1:52],
+        )
+
+        # Cold start: no previous frame to be continuous with, so the branch is
+        # settled by retrying subframe 2's LDPC+CRC under the complement — the
+        # only in-band oracle for the pair.
+        state = decode(GPSL1C_DDecoderState(7), stream, 1800 + 52)
+        @test state.data.toi == toi0
+        @test state.is_shifted_by_180_degrees == false
+        @test state.data.WN == golden.WN
+        @test state.data.ITOW == golden.ITOW
+        @test get_time_of_week(state) == golden.ITOW * 7200 + toi0 * 18
+
+        # The next frame follows the settled (high) branch by +1, which TOI
+        # continuity resolves on its own — here it must, its subframe 2 being
+        # undecodable in both polarities.
+        state = decode(state, stream[1853:end], length(stream) - 1852)
+        @test state.data.toi == toi0 + 1
+        @test state.is_shifted_by_180_degrees == false
+        @test state.raw_data.WN == golden.WN   # kept from the previous frame
+        @test get_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 1) * 18
+    end
+
+    @testset "Control: an unambiguous TOI ≤ 143 decodes on the first branch" begin
+        # Below 256 an unflipped stream is reported as (toi, unflipped) and
+        # subframe 2 clears on the first attempt — the complement retry must not
+        # disturb the case it was added for the sake of.
+        toi0 = 100
+        sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])
+        @test sync.toi == toi0 && !sync.polarity_flipped
+        state = decode(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
+        @test state.data.toi == toi0 + 2
+        @test state.is_shifted_by_180_degrees == false
+        @test state.data.WN == golden.WN
+        @test get_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 2) * 18
     end
 
     # --- Subframe 3 page-format parsing (IS-GPS-800J §3.5.4) -----------------
