@@ -64,6 +64,26 @@ const B1C_SOH_SECONDS = 18             # seconds per SOH step, i.e. per B-CNAV1 
 const B1C_PRN_MASK21 = (UInt64(1) << B1C_PRN_CODEWORD_LEN) - UInt64(1)
 const B1C_SOH_MASK51 = (UInt64(1) << B1C_SOH_CODEWORD_LEN) - UInt64(1)
 
+# Correction radii for the two subframe-1 BCH codes. Both are the classical
+# bounded-distance radius `t = floor((d_min - 1) / 2)`, and both minimum
+# distances are properties of the codebooks this file generates rather than
+# numbers taken on trust — `test/beidou_b1c.jl` recomputes them exhaustively.
+#
+#   BCH(21,6) over the 63 assigned PRNs: d_min = 8 -> t = 3
+#   BCH(51,8) over the 200 assigned SOH counts: d_min = 24 -> t = 11
+#
+# Matching a codeword exactly, as this decoder used to, throws that away: at
+# 28 dB-Hz a 72-symbol subframe 1 arrives error-free about 6 % of the time and
+# within the correction radius about 99 % of it, which is roughly 6 dB of
+# acquisition sensitivity on a field the ICD protected precisely so it would
+# survive the margin. The cost is a false-sync rate that rises from
+# unmeasurable to still unmeasurable: `try_sync` demands two windows a frame
+# apart carrying consecutive SOH counts, which puts a random-symbol false sync
+# at ~1e-13 per window pair, well under one per thousand years at 100 sps —
+# and the LDPC CRC on subframes 2 and 3 discards it in any case.
+const B1C_PRN_MAX_ERRORS = 3
+const B1C_SOH_MAX_ERRORS = 11
+
 """
 21-symbol BCH(21,6) codeword for a PRN (1..63), bit 0 = first transmitted symbol.
 """
@@ -873,21 +893,41 @@ struct B1CSF1Sync
     polarity_flipped::Bool
 end
 
-# Match one 72-symbol subframe-1 window against [PRN₂₁ | SOH₅₁(soh)] under a
-# known polarity (`flip`), returning the matching SOH or `nothing`. Both fields
-# are read straight off the deque with the shared `pack_bits_lsb_first`
+# Decode one 72-symbol subframe-1 window as [PRN₂₁ | SOH₅₁(soh)] under a known
+# polarity (`flip`), returning the SOH it carries or `nothing`. Both fields are
+# read straight off the deque with the shared `pack_bits_lsb_first`
 # (src/gnss.jl), which packs bit 0 = first symbol, the codeword tables' order.
+#
+# Both BCH fields are decoded to the nearest codeword within their correction
+# radius rather than matched exactly, which is what the ICD encodes them for
+# (see `B1C_PRN_MAX_ERRORS` / `B1C_SOH_MAX_ERRORS`). Neither step needs a
+# tie-break: `2t < d_min` holds for both codes, so at most one codeword can lie
+# within the radius, and the search can stop early only on an exact hit.
+#
+# The order of the two fields is what makes the SOH radius safe. Its 200
+# codewords are 24 apart from each other but only 19 from some *complement* of
+# another, so a search that had to consider both polarities could not use the
+# full radius of 11. It does not have to: the PRN field is decoded first, and
+# there its complement distance is 9 against a radius of 3, so a PRN match
+# settles the polarity before any SOH symbol is de-flipped.
 function _match_sf1_soh(deque, start::Int, prn_codeword::UInt64, flip::Bool)
     prn_word = pack_bits_lsb_first(deque, start, B1C_PRN_CODEWORD_LEN)
     flip && (prn_word = ~prn_word & B1C_PRN_MASK21)
-    prn_word == prn_codeword || return nothing
+    count_ones(prn_word ⊻ prn_codeword) <= B1C_PRN_MAX_ERRORS || return nothing
     soh_word =
         pack_bits_lsb_first(deque, start + B1C_PRN_CODEWORD_LEN, B1C_SOH_CODEWORD_LEN)
     flip && (soh_word = ~soh_word & B1C_SOH_MASK51)
+    best_soh = nothing
+    best_distance = B1C_SOH_MAX_ERRORS + 1
     @inbounds for soh = 0:(B1C_SOH_RANGE-1)
-        soh_word == B1C_SOH_CODEWORDS[soh+1] && return soh
+        distance = count_ones(soh_word ⊻ B1C_SOH_CODEWORDS[soh+1])
+        if distance < best_distance
+            best_distance = distance
+            best_soh = soh
+            distance == 0 && break
+        end
     end
-    return nothing
+    return best_soh
 end
 
 """

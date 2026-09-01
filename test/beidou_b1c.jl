@@ -598,6 +598,109 @@ end
         @test is_decoding_completed_for_positioning(state)
     end
 
+    @testset "Subframe-1 BCH correction radii are the codebooks' own" begin
+        # `B1C_PRN_MAX_ERRORS` and `B1C_SOH_MAX_ERRORS` are floor((d_min-1)/2)
+        # for the two subframe-1 codes. Recompute both minimum distances from
+        # the generated codebooks rather than trusting the constants: if the
+        # LFSR taps or the assigned ranges ever change, the radii must follow or
+        # sync starts accepting words it cannot resolve.
+        hamming(a, b) = count_ones(a ⊻ b)
+        prn_cws = [GNSSDecoder.b1c_prn_codeword(p) for p = 1:63]
+        soh_cws = [GNSSDecoder.b1c_soh_codeword(s) for s = 0:199]
+        pair_min(cws) = minimum(
+            hamming(cws[i], cws[j]) for i in eachindex(cws) for
+            j in eachindex(cws) if i != j
+        )
+        @test pair_min(prn_cws) == 8
+        @test pair_min(soh_cws) == 24
+        @test GNSSDecoder.B1C_PRN_MAX_ERRORS == (8 - 1) ÷ 2
+        @test GNSSDecoder.B1C_SOH_MAX_ERRORS == (24 - 1) ÷ 2
+        # Bounded-distance decoding needs 2t < d_min so no two codewords can
+        # both lie within the radius — no tie-break is implemented, so this is
+        # a correctness precondition, not a nicety.
+        @test 2 * GNSSDecoder.B1C_PRN_MAX_ERRORS < 8
+        @test 2 * GNSSDecoder.B1C_SOH_MAX_ERRORS < 24
+
+        # The PRN field must settle polarity before any SOH symbol is de-flipped:
+        # SOH codewords come within 19 of some *complement*, which is inside
+        # 2 * 11, while PRN codewords stay 9 away against 2 * 3.
+        mask21 = (UInt64(1) << 21) - 1
+        mask51 = (UInt64(1) << 51) - 1
+        comp_min(cws, mask) = minimum(hamming(a, ~b & mask) for a in cws for b in cws)
+        @test comp_min(prn_cws, mask21) == 9
+        @test comp_min(prn_cws, mask21) > 2 * GNSSDecoder.B1C_PRN_MAX_ERRORS
+        @test comp_min(soh_cws, mask51) == 19
+        @test comp_min(soh_cws, mask51) < 2 * GNSSDecoder.B1C_SOH_MAX_ERRORS
+    end
+
+    @testset "Subframe 1 syncs through errors, up to the correction radius" begin
+        sf2 = Bool.(_golden_sf2_bits())
+        sf3 = Bool.(_golden_sf3_page1_bits())
+        rng = MersenneTwister(0xB1C5)
+
+        # Flip `n_prn` of the 21 PRN symbols and `n_soh` of the 51 SOH symbols in
+        # every subframe 1 of the stream, leaving subframes 2 and 3 clean so the
+        # test isolates sync from the LDPC.
+        function corrupt_sf1(stream, n_prn, n_soh)
+            out = copy(stream)
+            for base = 0:1800:(length(out)-72)
+                for i in randperm(rng, 21)[1:n_prn]
+                    out[base+i] = -out[base+i]
+                end
+                for i in randperm(rng, 51)[1:n_soh]
+                    out[base+21+i] = -out[base+21+i]
+                end
+            end
+            out
+        end
+
+        clean = vcat(
+            _b1c_frame_symbols(prn, 10, sf2, sf3),
+            _b1c_frame_symbols(prn, 11, sf2, sf3)[1:72],
+        )
+        # Error-free still works, and every count up to the radius does too.
+        for (n_prn, n_soh) in ((0, 0), (1, 4), (3, 0), (0, 11), (3, 11))
+            state = decode(
+                BeiDouB1CDecoderState(prn),
+                corrupt_sf1(clean, n_prn, n_soh),
+                length(clean),
+            )
+            @test state.raw_data.soh == 10
+            @test is_decoding_completed_for_positioning(state)
+        end
+        # One past either radius leaves the word closer to no codeword than the
+        # radius allows, and sync is refused rather than guessed.
+        for (n_prn, n_soh) in ((4, 0), (0, 12))
+            state = decode(
+                BeiDouB1CDecoderState(prn),
+                corrupt_sf1(clean, n_prn, n_soh),
+                length(clean),
+            )
+            @test isnothing(state.raw_data.soh)
+        end
+    end
+
+    @testset "Frames decode for PRNs across the assigned range" begin
+        # The frame-level tests above all run on one PRN; the subframe-1 match
+        # is the only part of the chain that depends on which, so sweep it here.
+        # 1 and 63 are the ends of the assigned range, 19 and 45 interior.
+        sf2 = Bool.(_golden_sf2_bits())
+        sf3 = Bool.(_golden_sf3_page1_bits())
+        for p in (1, 19, 45, 63)
+            stream = vcat(
+                _b1c_frame_symbols(p, 33, sf2, sf3),
+                _b1c_frame_symbols(p, 34, sf2, sf3)[1:72],
+            )
+            state = decode(BeiDouB1CDecoderState(p), stream, length(stream))
+            @test state.raw_data.soh == 33
+            @test is_decoding_completed_for_positioning(state)
+            # And inverted, since polarity is resolved from this PRN's codeword.
+            flipped = decode(BeiDouB1CDecoderState(p), -stream, length(stream))
+            @test flipped.raw_data.soh == 33
+            @test flipped.is_shifted_by_180_degrees
+        end
+    end
+
     @testset "Frames of another PRN never sync" begin
         sf2 = Bool.(_golden_sf2_bits())
         sf3 = Bool.(_golden_sf3_page1_bits())
