@@ -74,6 +74,10 @@ const L1C_D_OMEGA_DOT_REF = -2.6e-9
 # decoders costs more than one line does.
 const L1C_D_GGTO_ID_GALILEO = 1
 
+# `WN_GGTO` is 13 bits, the same width as the CNAV-2 week number, so resolving
+# it changes nothing except across a rollover. See `resolve_reference_week`.
+const L1C_D_GGTO_WN_MODULUS = 8192
+
 const L1C_D_SF3_PAGE_UTC_IONO = 1   # Figure 3.5-2: UTC + Klobuchar iono + ISC
 const L1C_D_SF3_PAGE_GGTO_EOP = 2   # Figure 3.5-3: GGTO + Earth orientation
 const L1C_D_SF3_PAGE_REDUCED_ALMANAC = 3  # Figure 3.5-4: 6 reduced-almanac packets
@@ -760,9 +764,11 @@ function get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSy
         target,
         data.A_0GGTO,
         data.A_1GGTO,
-        data.A_2GGTO,
-        data.t_GGTO,
-        data.WN_GGTO,
+        data.A_2GGTO;
+        t_0 = data.t_GGTO,
+        WN_0 = data.WN_GGTO,
+        WN = data.WN,
+        WN_0_modulus = L1C_D_GGTO_WN_MODULUS,
     )
 end
 

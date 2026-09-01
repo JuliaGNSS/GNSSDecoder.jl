@@ -252,6 +252,13 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
     Vector{Int32}(undef, K),
 )
 
+# The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits
+# 123-128, F/NAV page type 4), against a 12-bit `WN`. It is the one reference
+# week in this package whose field is narrower than the week it is subtracted
+# from, so it is the one that is wrong rather than merely rollover-fragile if
+# left as broadcast — see `resolve_reference_week`.
+const GALILEO_GGTO_WN_MODULUS = 64
+
 """
     galileo_ggto_offset(data, target) -> Union{Nothing,GNSSTimeOffset}
 
@@ -274,7 +281,17 @@ function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     target === GPST() || return nothing
     isnothing(data.A_0G) && return nothing
-    broadcast_time_offset(state, target, data.A_0G, data.A_1G, 0.0, data.t_0G, data.WN_0G)
+    broadcast_time_offset(
+        state,
+        target,
+        data.A_0G,
+        data.A_1G,
+        0.0;
+        t_0 = data.t_0G,
+        WN_0 = data.WN_0G,
+        WN = data.WN,
+        WN_0_modulus = GALILEO_GGTO_WN_MODULUS,
+    )
 end
 
 """

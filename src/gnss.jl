@@ -561,6 +561,15 @@ convert a seconds-of-week reading, *subtract*: `t_target = t_own - Δt`.
     TAI − 19 s and the defined part is exactly zero. It is 14 s on every BeiDou
     signal, which is why the two cases must not be told apart by testing one.
 
+!!! note "`WN_0` is resolved, not as broadcast"
+
+    The reference week is sent truncated, and not always to the width of the
+    week it is subtracted from — Galileo's `WN_0G` is 6 bits against a 12-bit
+    `WN`. `WN_0` here has been lifted into the decoder's own week numbering, so
+    `WN - WN_0` in the expression above is a real week count on every signal.
+    The raw field stays on the decoded data (`data.WN_0G`, `data.WN_0BGTO`,
+    `data.WN_GGTO`).
+
 !!! warning "Seconds of week, not week numbers"
 
     This converts a time *of week*; it says nothing about which week. The scales
@@ -608,7 +617,9 @@ struct GNSSTimeOffset
     """
     t_0::Union{Nothing,Int}
     """
-    Reference week number, or `nothing` on BeiDou D1/D2, which broadcasts none
+    Reference week number, lifted out of its truncated broadcast field into the
+    decoder's own week numbering (see `resolve_reference_week`), so `WN - WN_0`
+    is a real week count; `nothing` on BeiDou D1/D2, which broadcasts none
     """
     WN_0::Union{Nothing,Int}
 end
@@ -692,10 +703,17 @@ function broadcast_time_offset(
     target::TimeSystem,
     A_0::Real,
     A_1::Real,
-    A_2::Real,
+    A_2::Real;
     t_0::Union{Nothing,Integer},
     WN_0::Union{Nothing,Integer},
+    WN::Union{Nothing,Integer},
+    WN_0_modulus::Int,
 )
+    reference_week = resolve_reference_week(WN_0, WN, WN_0_modulus)
+    # A reference epoch that cannot be placed in the decoder's own week
+    # numbering cannot be evaluated against, and `Δτ` needs `WN` anyway, so
+    # there is no usable offset yet rather than one with an unresolved epoch.
+    isnothing(reference_week) && !isnothing(WN_0) && return nothing
     defined = ustrip(s, get_tai_offset(target) - get_tai_offset(get_time_system(state)))
     GNSSTimeOffset(
         target,
@@ -703,8 +721,49 @@ function broadcast_time_offset(
         A_1,
         A_2,
         isnothing(t_0) ? nothing : Int(t_0),
-        isnothing(WN_0) ? nothing : Int(WN_0),
+        reference_week,
     )
+end
+
+"""
+    resolve_reference_week(WN_0, WN, modulus) -> Union{Nothing,Int}
+
+Lift a truncated broadcast reference week `WN_0` into the same numbering as the
+decoder's own week `WN`, by picking the representative nearest to `WN`.
+
+Every one of these messages sends the reference week truncated, and not all of
+them truncate it to the width of the week number it will be subtracted from:
+
+| field             | width   | against a `WN` of |
+|:----------------- |:------- |:----------------- |
+| Galileo `WN_0G`   | 6 bits  | 12 bits           |
+| GPS `WN_GGTO`     | 13 bits | 13 bits           |
+| BeiDou `WN_0BGTO` | 13 bits | 13 bits           |
+
+So `WN - WN_0` as broadcast is meaningful on GPS and BeiDou and meaningless on
+Galileo, where it subtracts a 0..63 count from a 0..4095 one. Left unresolved it
+does not fail visibly: it inflates `Δτ` by up to 4032 weeks, which a full-scale
+`A_1G` turns into 0.7 ms — 200 km of range — on a quantity whose true value is
+tens of nanoseconds.
+
+Resolving against the *nearest* representative rather than the most recent one
+matters at a week boundary: a reference epoch a few hours ahead of the current
+week is legal, and rounding it down would place it `modulus - 1` weeks in the
+past instead. On the two 13-bit fields the result is `WN_0` unchanged except
+across a week-number rollover, where it is what keeps the difference small
+instead of hugely negative.
+
+`nothing` when either week is unknown — the reference cannot be placed without
+the current week, and nothing can be evaluated without it either.
+"""
+function resolve_reference_week(
+    WN_0::Union{Nothing,Integer},
+    WN::Union{Nothing,Integer},
+    modulus::Int,
+)
+    (isnothing(WN_0) || isnothing(WN)) && return nothing
+    half = modulus ÷ 2
+    return Int(WN) - (mod(Int(WN) - Int(WN_0) + half, modulus) - half)
 end
 
 """

@@ -113,6 +113,10 @@ const CNAV_PREAMBLE = 0b10001011
 # `GNSSSignals` defines no GLONASS `TimeSystem` to ask for.
 const CNAV_GGTO_ID_GALILEO = 1
 
+# `WN_GGTO` is 13 bits, the same width as the CNAV week number, so resolving it
+# changes nothing except across a rollover. See `resolve_reference_week`.
+const CNAV_GGTO_WN_MODULUS = 8192
+
 # Semi-major axis reference (IS-GPS-705J Table 20-I, meters).
 const CNAV_A_REF = 26_559_710.0
 # Rate-of-right-ascension reference (IS-GPS-705J Table 20-I, semi-circles/sec).
@@ -834,9 +838,11 @@ function get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSys
         target,
         data.A_0GGTO,
         data.A_1GGTO,
-        data.A_2GGTO,
-        data.t_GGTO,
-        data.WN_GGTO,
+        data.A_2GGTO;
+        t_0 = data.t_GGTO,
+        WN_0 = data.WN_GGTO,
+        WN = data.WN,
+        WN_0_modulus = CNAV_GGTO_WN_MODULUS,
     )
 end
 
