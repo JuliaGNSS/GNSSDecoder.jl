@@ -610,6 +610,16 @@ with the corresponding ephemeris decoder instead.
 """
 is_decoding_completed_for_positioning(data::GalileoE6BData) = false
 
+# C/NAV stamps each HAS correction block with a time *of hour*, not a time of
+# week, and broadcasts no week number to place it in — see the type docstring on
+# why those stay on the blocks that own them rather than being mirrored flat.
+get_time_of_week(::GalileoE6BData) = nothing
+
+# HAS carries orbit, clock and bias corrections; inter-system time offsets are
+# not among them. The `GNSS_ID` fields in the satellite masks are constellation
+# indices, not time-offset identifiers.
+get_time_offset(::GNSSDecoderState{<:GalileoE6BData}, ::TimeSystem) = nothing
+
 # ---- Page store (ICD §6.4) ---------------------------------------------------
 
 """

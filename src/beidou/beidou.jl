@@ -248,6 +248,61 @@ beidou_eop_block(word::Unsigned, word_length::Int, start::Int) = (;
 )
 
 """
+    beidou_orbit_class(sat_type) -> Union{Nothing,OrbitClass}
+
+Map a broadcast B-CNAV `sat_type` onto an [`OrbitClass`](@ref): 1 GEO, 2 IGSO,
+3 MEO, with the reserved 0 — and an undecoded `nothing` — reporting `nothing`.
+
+The same screen `is_known_sat_type` applies to positioning, in the form
+[`get_orbit_class`](@ref) answers in. B1I and B3I do not reach this: D1/D2 NAV
+broadcasts no orbit-type field (see `dnav.jl`).
+"""
+beidou_orbit_class(sat_type) =
+    sat_type == 1 ? geostationary_orbit :
+    sat_type == 2 ? inclined_geosynchronous_orbit :
+    sat_type == 3 ? medium_earth_orbit : nothing
+
+"""
+    beidou_bgto_target(GNSS_ID) -> Union{Nothing,TimeSystem}
+
+Map a broadcast BGTO `GNSS_ID` onto the time scale the offset refers to: 1 GPS,
+2 Galileo, 3 GLONASS, 0 "not available" (§7.13.1 of the B1C, B2a and B2b ICDs).
+
+GLONASS reports `nothing`, as do code 0 and an undecoded `nothing`: `GNSSSignals`
+defines no GLONASS `TimeSystem`, so a GLONASS offset has no target to be asked
+for and is read off the data fields directly. See [`get_time_offset`](@ref).
+"""
+beidou_bgto_target(GNSS_ID) = GNSS_ID == 1 ? GPST() : GNSS_ID == 2 ? GST() : nothing
+
+"""
+    beidou_bgto_offset(data, target) -> Union{Nothing,GNSSTimeOffset}
+
+Normalise the single flat BGTO parameter set that B2a (message type 33) and B2b
+(message type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when
+the set is absent, marked unavailable, or refers to a system other than
+`target`.
+
+Both signals carry one set at a time, tagged with the system it refers to, so
+which target is answerable is the satellite's choice at the moment of asking —
+unlike B1C, which keys a set per system (see [`BeiDouB1CBGTO`](@ref)). The
+`GNSS_ID == 0` "not available" sentinel is screened here rather than at decode,
+because both decoders keep the raw field; B1C screens it at decode instead,
+since it has a keyed store and no key to file an unavailable set under.
+"""
+function beidou_bgto_offset(data, target::TimeSystem)
+    beidou_bgto_target(data.GNSS_ID) === target || return nothing
+    isnothing(data.A_0BGTO) && return nothing
+    GNSSTimeOffset(
+        target,
+        data.A_0BGTO,
+        data.A_1BGTO,
+        data.A_2BGTO,
+        Int(data.t_0BGTO),
+        Int(data.WN_0BGTO),
+    )
+end
+
+"""
 BDT-GNSS time offset block, 68 bits: `GNSS_ID`(3), `WN_0BGTO`(13),
 `t_0BGTO`(16, LSB 2⁴ s), `A_0BGTO`(16, 2⁻³⁵), `A_1BGTO`(13, 2⁻⁵¹),
 `A_2BGTO`(7, 2⁻⁶⁸) — Figure 6-20, Table 7-21. `GNSS_ID` 0 means the parameters

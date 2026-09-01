@@ -34,6 +34,7 @@ end
 
     include("gnss_supertype.jl")
     include("signal_accessors.jl")
+    include("satellite_time_accessors.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")

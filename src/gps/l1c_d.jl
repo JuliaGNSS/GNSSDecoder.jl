@@ -32,6 +32,12 @@ const L1C_D_FRAME_LENGTH = 1800
 const L1C_D_SUBFRAME1_LENGTH = 52
 const L1C_D_WINDOW_LENGTH = L1C_D_FRAME_LENGTH + L1C_D_SUBFRAME1_LENGTH  # 1852
 
+# Time-of-week reconstruction (IS-GPS-800J §3.2.3.1, Figure 3.5-1): the week is
+# divided into 84 two-hour intervals counted by the subframe-2 `ITOW`, and each
+# interval into 400 18-second frames counted by the subframe-1 `toi`.
+const L1C_D_ITOW_SECONDS = 7200
+const L1C_D_FRAME_SECONDS = 18
+
 # Subframe 2/3 channel-symbol counts (IS-GPS-800J §3.2.3).
 const L1C_D_SF2_SYMBOLS = 1200
 const L1C_D_SF3_SYMBOLS = 548
@@ -717,6 +723,54 @@ function is_subframe2_decoded(data::GPSL1C_DData)
         !isnothing(data.a_f1) &&
         !isnothing(data.l1c_health)
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Seconds of week of the epoch the TOI stamps: `ITOW·7200 + toi·18`.
+
+CNAV-2 splits the time of week across two message parts and two rates — the
+subframe-2 `ITOW` counts the two-hour intervals since the start of the week
+(IS-GPS-800 §3.2.3.1, Figure 3.5-1) and the subframe-1 `toi` counts the
+18-second frames within the interval — so neither field is a time of week on
+its own. Both must be present; `nothing` until they are.
+"""
+function get_time_of_week(data::GPSL1C_DData)
+    (isnothing(data.ITOW) || isnothing(data.toi)) && return nothing
+    return Int(data.ITOW) * L1C_D_ITOW_SECONDS + Int(data.toi) * L1C_D_FRAME_SECONDS
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+The GPS/GNSS time offset from subframe 3 page 2, if this satellite is currently
+broadcasting one for `target`.
+
+`GGTO_ID` names the system the single broadcast set refers to — 0 none,
+1 Galileo, 2 GLONASS, 3-7 reserved (Table 6.2-7) — a narrower list than CNAV's,
+with no BeiDou code. GLONASS has no `TimeSystem` and so can never match; see
+[`get_time_offset`](@ref).
+"""
+function get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem)
+    data = state.data
+    _l1c_d_ggto_target(data.GGTO_ID) === target || return nothing
+    isnothing(data.A_0GGTO) && return nothing
+    GNSSTimeOffset(
+        target,
+        data.A_0GGTO,
+        data.A_1GGTO,
+        data.A_2GGTO,
+        Int(data.t_GGTO),
+        Int(data.WN_GGTO),
+    )
+end
+
+# GGTO ID -> time scale (Table 6.2-7): 0 none, 1 Galileo, 2 GLONASS, 3-7
+# reserved. Narrower than CNAV's list, which spends code 3 on BeiDou, so the two
+# mappings are kept apart rather than shared — reading a reserved 3 here as
+# BeiDou would fabricate an offset out of a code IS-GPS-800 has not assigned.
+# `nothing` (undecoded, code 0, or GLONASS) matches no `TimeSystem`.
+_l1c_d_ggto_target(GGTO_ID) = GGTO_ID == 1 ? GST() : nothing
 
 function is_decoding_completed_for_positioning(data::GPSL1C_DData)
     !isnothing(data.toi) && is_subframe2_decoded(data)

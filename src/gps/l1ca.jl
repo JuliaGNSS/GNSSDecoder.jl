@@ -533,6 +533,14 @@ function is_subframe5_decoded(data::GPSL1CAData)
     !isnothing(data.sv_health_sf5_25) && !isnothing(data.t_0a) && !isnothing(data.WN_a)
 end
 
+# LNAV broadcasts the time of week as seconds outright (the 17-bit HOW count is
+# scaled by 6 at parse), so there is nothing to reconstruct.
+get_time_of_week(data::GPSL1CAData) = data.TOW
+
+# LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
+# CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
+get_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing
+
 function is_decoding_completed_for_positioning(data::GPSL1CAData)
     !isnothing(data.integrity_status_flag) &&
         !isnothing(data.TOW) &&

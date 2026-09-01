@@ -253,6 +253,30 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
 )
 
 """
+    galileo_ggto_offset(data, target) -> Union{Nothing,GNSSTimeOffset}
+
+Normalise a decoded GGTO into a [`GNSSTimeOffset`](@ref), or `nothing` when the
+satellite is not broadcasting one or `target` is not GPS time.
+
+Galileo's GNSS Time Offset is GPS-only — the ICD defines exactly one, GST to
+GPST (OS SIS ICD Issue 2.2 §5.1.8) — so unlike the GPS and BeiDou messages
+there is no broadcast identifier to check and no other `target` can be
+answered. The quadratic term the normalised record carries is zero: the GGTO
+polynomial has two terms.
+
+`data` must carry the four GGTO fields, which `galileo_ggto` has already
+either scaled or set to `nothing` as a set. The two callers are I/NAV word type
+10 and F/NAV page type 4; this is a helper on the data rather than a method on
+`AbstractGalileoEphemerisData` so that a future ephemeris-bearing Galileo signal
+without a GGTO does not inherit a `FieldError`.
+"""
+function galileo_ggto_offset(data, target::TimeSystem)
+    target === GPST() || return nothing
+    isnothing(data.A_0G) && return nothing
+    GNSSTimeOffset(target, data.A_0G, data.A_1G, 0.0, data.t_0G, data.WN_0G)
+end
+
+"""
     galileo_ggto(A_0G_raw, A_1G_raw, t_0G_raw, WN_0G_raw)
         -> (; A_0G, A_1G, t_0G, WN_0G)
 
