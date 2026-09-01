@@ -48,7 +48,6 @@ const L1C_D_INTERLEAVER_COLS = 46  # 38 * 46 == 1748
 # LDPC info-block sizes (rate ½): N channel symbols -> K info bits.
 const L1C_D_SF2_INFO_BITS = 600
 const L1C_D_SF3_INFO_BITS = 274
-const L1C_D_CRC_BITS = 24
 
 # Packed-word types for bit-field extraction. After the LDPC decode + CRC check
 # the info bits are packed MSB-first (LSB = last bit) into a wide integer and
@@ -81,15 +80,6 @@ const L1C_D_SF3_PAGE_REDUCED_ALMANAC = 3  # Figure 3.5-4: 6 reduced-almanac pack
 const L1C_D_SF3_PAGE_MIDI_ALMANAC = 4     # Figure 3.5-5: one Midi almanac
 const L1C_D_SF3_PAGE_DIFF_CORRECTION = 5  # Figure 3.5-6: clock+ephemeris DC
 const L1C_D_SF3_PAGE_TEXT = 6             # Figure 3.5-7: 29 ASCII characters
-
-# Reduced-almanac references (IS-GPS-800J Table 3.5-6 footnotes): δi relative to
-# i₀ = 0.30 semi-circles (54°); with δi the almanac's inclination is 55°.
-# δA is relative to A_ref.
-const L1C_D_REDUCED_ALMANAC_DELTA_I_REF = 0.0056  # semi-circles
-const L1C_D_REDUCED_ALMANAC_I_REF = 0.30          # semi-circles
-# Midi-almanac inclination reference (IS-GPS-800J Table 3.5-7 footnote): δi
-# relative to i₀ = 0.30 semi-circles.
-const L1C_D_MIDI_ALMANAC_I_REF = 0.30  # semi-circles
 
 """
     GPSL1C_DConstants
