@@ -246,8 +246,13 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         @test !isnothing(get_time_offset(s, GPST())) &&
               !isnothing(get_time_offset(s, GST()))
 
-        # GPS: the single GGTO set is tagged, and the two ICDs assign code 3
-        # differently — BeiDou on CNAV, reserved on CNAV-2.
+        # GPS: the single GGTO set is tagged, and CNAV, CNAV-2 and the L2C
+        # carriage of message type 35 all use one table — 0 no data available,
+        # 1 Galileo, 2 GLONASS, 3-7 reserved (IS-GPS-705J §20.3.3.8.1,
+        # IS-GPS-200N §30.3.3.8.1, IS-GPS-800J §3.5.4.2.1). Galileo is the only
+        # target that can be answered: GLONASS has no `TimeSystem`, and the ICDs
+        # direct that a reserved code be read as presently unusable rather than
+        # guessed at. There is no BeiDou code on any GPS signal.
         ggto = (;
             A_0GGTO = 1.0e-9,
             A_1GGTO = 2.0e-14,
@@ -255,24 +260,25 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             t_GGTO = Int64(432_000),
             WN_GGTO = Int64(2300),
         )
-        cnav = GNSSDecoderState(
-            GPSL5IDecoderState(1);
-            data = GPSCNAVData(; GNSS_ID = Int64(3), ggto...),
+        for (state, mk) in (
+            (GPSL5IDecoderState(1), id -> GPSCNAVData(; GNSS_ID = Int64(id), ggto...)),
+            (GPSL2CMDecoderState(1), id -> GPSCNAVData(; GNSS_ID = Int64(id), ggto...)),
+            (GPSL1C_DDecoderState(1), id -> GPSL1C_DData(; GGTO_ID = Int64(id), ggto...)),
         )
-        @test get_time_offset(cnav, BDT()).A_2 == 3.0e-20
-        @test isnothing(get_time_offset(cnav, GST()))
-        l1cd = GNSSDecoderState(
-            GPSL1C_DDecoderState(1);
-            data = GPSL1C_DData(; GGTO_ID = Int64(3), ggto...),
-        )
-        for target in (GPST(), GST(), BDT())
-            @test isnothing(get_time_offset(l1cd, target))   # code 3 is reserved here
+            galileo = GNSSDecoderState(state; data = mk(1))
+            offset = get_time_offset(galileo, GST())
+            @test offset.A_0 == 1.0e-9
+            @test offset.A_2 == 3.0e-20     # GPS GGTO is the one three-term shape
+            @test isnothing(get_time_offset(galileo, GPST()))
+            @test isnothing(get_time_offset(galileo, BDT()))
+            # 0 no data, 2 GLONASS (no TimeSystem), 3-7 reserved: none answerable.
+            for id in (0, 2, 3, 4, 7)
+                unusable = GNSSDecoderState(state; data = mk(id))
+                for target in (GPST(), GST(), BDT())
+                    @test isnothing(get_time_offset(unusable, target))
+                end
+            end
         end
-        l1cd_gal = GNSSDecoderState(
-            GPSL1C_DDecoderState(1);
-            data = GPSL1C_DData(; GGTO_ID = Int64(1), ggto...),
-        )
-        @test get_time_offset(l1cd_gal, GST()).A_0 == 1.0e-9
 
         # GPS L1 C/A carries UTC parameters but no inter-GNSS offset.
         for target in (GPST(), GST(), BDT())
