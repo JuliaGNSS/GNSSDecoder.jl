@@ -729,17 +729,33 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Seconds of week of the epoch the TOI stamps: `ITOW·7200 + toi·18`.
+Seconds of week of the epoch the TOI stamps: `ITOW·7200 + toi·18`, with `toi = 0`
+counted into the *next* two-hour interval.
 
 CNAV-2 splits the time of week across two message parts and two rates — the
 subframe-2 `ITOW` counts the two-hour intervals since the start of the week
-(IS-GPS-800 §3.2.3.1, Figure 3.5-1) and the subframe-1 `toi` counts the
-18-second frames within the interval — so neither field is a time of week on
-its own. Both must be present; `nothing` until they are.
+(IS-GPS-800 §3.5.3.2) and the subframe-1 `toi` counts the 18-second frames within
+the interval (§3.5.2) — so neither field is a time of week on its own. Both must
+be present; `nothing` until they are.
+
+The `toi = 0` special case is the ICD's, not ours. §3.5.2 defines the TOI count
+relative to "the two-hour period represented by ITOW count in the subframe 2 of
+the *next* 18-second frame", with a range of 0–399: the frame broadcasting
+`toi = 0` is the last frame of the old two-hour interval, so its own subframe-2
+`ITOW` is one interval behind the one its TOI counts against. Without the
+carry, that one frame in every 400 stamps a time two hours in the past. The
+week wrap (`ITOW = 83`, `toi = 0` stamps second 0 of the *following* week, while
+the paired `WN` is still the old week) is folded by the `mod`; a consumer
+combining this with `WN` inherits that one-frame-per-week ambiguity, which is
+also the ICD's.
 """
 function get_time_of_week(data::GPSL1C_DData)
     (isnothing(data.ITOW) || isnothing(data.toi)) && return nothing
-    return Int(data.ITOW) * L1C_D_ITOW_SECONDS + Int(data.toi) * L1C_D_FRAME_SECONDS
+    itow = Int(data.ITOW) + (data.toi == 0)
+    return mod(
+        itow * L1C_D_ITOW_SECONDS + Int(data.toi) * L1C_D_FRAME_SECONDS,
+        SECONDS_PER_WEEK,
+    )
 end
 
 """
@@ -917,13 +933,29 @@ CRC-checking each. Subframe 2 fields are parsed into `raw_data`; subframe 3 is
 recorded as a received page (issue #39 will parse it).
 """
 function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
-    # Monotonic-TOI validation: a locked frame whose TOI does not follow the
-    # previous one by exactly +1 (mod 400) indicates loss of frame lock.
+    # `sync` always carries the *low* branch of the BCH complement ambiguity
+    # (`sync_bch_toi` cannot tell (toi, polarity) from (toi + 256, !polarity)
+    # when both are in range, and reports the lower TOI). Resolve it by TOI
+    # continuity when a previous frame is held — a locked frame's TOI follows
+    # the previous one by exactly +1 (mod 400) on whichever branch that frame
+    # settled — and treat any other step as loss of frame lock.
+    toi = sync.toi
+    flipped = sync.polarity_flipped
     prev_toi = state.raw_data.toi
-    if !isnothing(prev_toi) && (prev_toi + 1) % TOI_RANGE != sync.toi
-        return reset_decoder_state(state)
+    if !isnothing(prev_toi)
+        expected = (prev_toi + 1) % TOI_RANGE
+        if expected == toi + TOI_COMPLEMENT_OFFSET
+            toi += TOI_COMPLEMENT_OFFSET
+            flipped = !flipped
+        elseif expected != toi
+            return reset_decoder_state(state)
+        end
     end
-    state = GNSSDecoderState(state; raw_data = GPSL1C_DData(state.raw_data; toi = sync.toi))
+    state = GNSSDecoderState(
+        state;
+        is_shifted_by_180_degrees = flipped,
+        raw_data = GPSL1C_DData(state.raw_data; toi),
+    )
 
     # Extract the 1748-symbol interleaved SF2+SF3 payload (symbols 53..1800),
     # applying the polarity flip by negating soft symbols up front.
@@ -943,7 +975,33 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     sf2_symbols = @view deinterleaved[1:L1C_D_SF2_SYMBOLS]
     sf3_symbols = @view deinterleaved[(L1C_D_SF2_SYMBOLS+1):L1C_D_PAYLOAD_SYMBOLS]
 
-    state = decode_subframe2(state, sf2_symbols)
+    decoded = decode_subframe2(state, sf2_symbols)
+    complement =
+        toi < TOI_COMPLEMENT_OFFSET ? toi + TOI_COMPLEMENT_OFFSET :
+        toi - TOI_COMPLEMENT_OFFSET
+    if decoded === state && complement < TOI_RANGE
+        # Subframe 2 failed under this branch of the ambiguity. Its CRC is the
+        # only in-band oracle for the pair, so try the complement branch —
+        # negating the payload is exactly the 180° flip, and LLR negation
+        # commutes with the deinterleaver. This is what recovers a cold start
+        # (no previous TOI to be continuous with) whose true TOI is ≥ 256, and
+        # what un-sticks a chain that settled on the wrong branch while its
+        # subframe 2 happened to be noisy.
+        deinterleaved .= .-deinterleaved
+        alt_state = GNSSDecoderState(
+            state;
+            is_shifted_by_180_degrees = !flipped,
+            raw_data = GPSL1C_DData(state.raw_data; toi = complement),
+        )
+        alt_decoded = decode_subframe2(alt_state, sf2_symbols)
+        if alt_decoded !== alt_state
+            return decode_subframe3(alt_decoded, sf3_symbols)
+        end
+        # Both branches failed — genuine noise. Restore the payload polarity and
+        # keep the original hypothesis for subframe 3 and for continuity.
+        deinterleaved .= .-deinterleaved
+    end
+    state = decoded
     state = decode_subframe3(state, sf3_symbols)
     return state
 end
