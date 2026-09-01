@@ -67,6 +67,14 @@ const L1C_D_OMEGA_DOT_REF = -2.6e-9
 
 # Subframe-3 page numbers (IS-GPS-800J §3.5.4, figure-by-figure). The 6-bit
 # page-number field lives in bits 9-14 of every SF3 page (bits 1-8 are PRN).
+# The one assigned GGTO ID in subframe 3 page 2 (IS-GPS-800J §3.5.4.2.1, bits
+# 15-17): 000 = no data available, 001 = Galileo, 010 = GLONASS, 011-111
+# reserved and to be read as presently unusable. Stated here rather than shared
+# with CNAV's identical `CNAV_GGTO_ID_GALILEO` because GPS has no
+# constellation-shared file, and an include-order dependency between two signal
+# decoders costs more than one line does.
+const L1C_D_GGTO_ID_GALILEO = 1
+
 const L1C_D_SF3_PAGE_UTC_IONO = 1   # Figure 3.5-2: UTC + Klobuchar iono + ISC
 const L1C_D_SF3_PAGE_GGTO_EOP = 2   # Figure 3.5-3: GGTO + Earth orientation
 const L1C_D_SF3_PAGE_REDUCED_ALMANAC = 3  # Figure 3.5-4: 6 reduced-almanac packets
@@ -747,13 +755,15 @@ The GPS/GNSS time offset from subframe 3 page 2, if this satellite is currently
 broadcasting one for `target`.
 
 `GGTO_ID` names the system the single broadcast set refers to — 0 none,
-1 Galileo, 2 GLONASS, 3-7 reserved (Table 6.2-7) — a narrower list than CNAV's,
-with no BeiDou code. GLONASS has no `TimeSystem` and so can never match; see
-[`get_time_offset`](@ref).
+1 Galileo, 2 GLONASS, 3-7 reserved (IS-GPS-800J §3.5.4.2.1) — the same table
+CNAV carries in message type 35, and with the same single reachable target:
+GLONASS has no `TimeSystem` to ask for. See [`get_time_offset`](@ref).
 """
 function get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem)
     data = state.data
-    _l1c_d_ggto_target(data.GGTO_ID) === target || return nothing
+    # 001 is the only assigned target; 000 is "no data available" and 011-111
+    # are reserved, which §3.5.4.2.1 directs be read as unusable.
+    (data.GGTO_ID == L1C_D_GGTO_ID_GALILEO && target === GST()) || return nothing
     isnothing(data.A_0GGTO) && return nothing
     GNSSTimeOffset(
         target,
@@ -764,13 +774,6 @@ function get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSy
         Int(data.WN_GGTO),
     )
 end
-
-# GGTO ID -> time scale (Table 6.2-7): 0 none, 1 Galileo, 2 GLONASS, 3-7
-# reserved. Narrower than CNAV's list, which spends code 3 on BeiDou, so the two
-# mappings are kept apart rather than shared — reading a reserved 3 here as
-# BeiDou would fabricate an offset out of a code IS-GPS-800 has not assigned.
-# `nothing` (undecoded, code 0, or GLONASS) matches no `TimeSystem`.
-_l1c_d_ggto_target(GGTO_ID) = GGTO_ID == 1 ? GST() : nothing
 
 function is_decoding_completed_for_positioning(data::GPSL1C_DData)
     !isnothing(data.toi) && is_subframe2_decoded(data)
