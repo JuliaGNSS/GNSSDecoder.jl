@@ -119,6 +119,11 @@ end
 Pack 52 hard-decision symbols (any iterable of `Bool`-castable values, e.g.
 `Vector{Bool}`, `Vector{UInt8}`, `BitVector`) into a `UInt64` codeword with
 the first symbol at bit 0. Errors if `length(bits) != 52`.
+
+This is the encoder-side and test-side packer. The receiver never reaches it:
+`try_sync` hard-slices its two windows straight off the soft-symbol deque with
+`pack_bits_lsb_first` (`src/gnss.jl`), which produces the same bit order without
+materialising the 52 symbols first.
 """
 function pack_hard_codeword(bits)
     length(bits) == TOI_BCH_CODEWORD_LEN ||
@@ -133,32 +138,16 @@ function pack_hard_codeword(bits)
 end
 
 """
-    soft_to_hard_codeword(soft_symbols) -> UInt64
-
-Hard-slice 52 soft symbols (positive ⇒ bit 0, negative ⇒ bit 1; the
-package-wide convention) into a packed `UInt64` codeword.
-"""
-function soft_to_hard_codeword(soft_symbols)
-    length(soft_symbols) == TOI_BCH_CODEWORD_LEN ||
-        error("expected $(TOI_BCH_CODEWORD_LEN) soft symbols, got $(length(soft_symbols))")
-    word = UInt64(0)
-    @inbounds for (i, s) in enumerate(soft_symbols)
-        if s < 0  # negative ⇒ bit 1
-            word |= UInt64(1) << (i - 1)
-        end
-    end
-    return word
-end
-
-"""
     sync_bch_toi(first52, next52) -> Union{BCHToiSync, Nothing}
 
 Run the multi-subframe BCH(51,8) match used by GPS L1C-D frame sync.
 `first52` and `next52` are 52-symbol windows that, if the receiver is
 synchronised, hold the BCH-encoded TOI of two *consecutive* subframes. Both
-inputs are accepted as either packed `UInt64` hard codewords (output of
-[`pack_hard_codeword`](@ref)) or anything iterable of length 52 from which a
-hard codeword can be sliced.
+inputs are accepted as either packed `UInt64` hard codewords — which is what
+the receiver passes, via `pack_bits_lsb_first` (`src/gnss.jl`) — or an iterable of 52
+`Bool`-castable hard decisions, which [`pack_hard_codeword`](@ref) packs.
+*Soft* symbols are not accepted: hard-slicing them is the deque reader's job,
+one step earlier.
 
 Returns a [`BCHToiSync`](@ref) for the *lowest* `toi ∈ 0..399` that makes
 either:

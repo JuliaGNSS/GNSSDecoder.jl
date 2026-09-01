@@ -448,7 +448,12 @@ produces, but for a slice rather than the whole window.
 Sync only ever inspects a handful of known positions (the preamble at either
 end, and any unencoded header field), so a decoder whose window is long and
 whose symbol rate is high can read exactly those bits instead of repacking
-the entire window on every symbol. `len` must be at most 64.
+the entire window on every symbol.
+
+`len` must be at most 64, and `offset + len - 1` must be within the deque: the
+read is `@inbounds`, so the caller owns both bounds. Every caller is a
+`try_sync` hook, which the decode loop runs only behind
+`is_enough_buffered_bits_to_decode`.
 """
 function pack_bits_msb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)
@@ -465,12 +470,18 @@ Hard-slice `len` soft symbols of `deque` starting at 1-based `offset` into a
 `UInt64` with **bit 0 = the first symbol** — the opposite end from
 [`pack_bits_msb_first`](@ref), and the order the codeword tables use
 (`BCH_TOI_CODEWORDS`, `b1c_prn_codeword`, `b1c_soh_codeword`; cf.
-[`soft_to_hard_codeword`](@ref), which is this over an iterable).
+[`pack_hard_codeword`](@ref), which is this over an iterable of hard decisions).
 
 The two BCH-synchronised signals — GPS L1C-D on its TOI codeword and BeiDou B1C
 on its PRN + SOH pair — compare against those tables once per symbol, at both
 ends of the window, so this reads the deque in place rather than materialising a
-slice. `len` must be at most 64.
+slice.
+
+`len` must be at most 64, and `offset + len - 1` must be within the deque: the
+read is `@inbounds`, so the caller owns both bounds — the length check that
+`pack_hard_codeword` performs on a materialised slice is not available here.
+Every caller is a `try_sync` hook, which the decode loop runs only behind
+`is_enough_buffered_bits_to_decode`.
 """
 function pack_bits_lsb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)

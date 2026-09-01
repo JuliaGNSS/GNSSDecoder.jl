@@ -652,9 +652,9 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     """
     soft_buffer::CircularDeque{Float32}
     """
-    Aff3ct LDPC BP decoder for the B-CNAV2 binary image (K=288, N=576)
+    LDPC decoder and its scratch buffers for the B-CNAV2 binary image (K=288, N=576)
     """
-    ldpc_decoder::LDPCScratch
+    ldpc::LDPCScratch
     """
     576-entry LLR scratch copied out of `soft_buffer` per frame
     """
@@ -937,7 +937,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
         state.is_shifted_by_180_degrees,
     )
 
-    word = ldpc_decode_word(state.cache.ldpc_decoder, llr, UInt320)
+    word = ldpc_decode_word(state.cache.ldpc, llr, UInt320)
     isnothing(word) && return state  # silently drop on CRC failure
 
     word_length = B2A_MESSAGE_BITS

@@ -1,12 +1,13 @@
 using Test
 using Random
 using GNSSDecoder
+using DataStructures: CircularDeque
 using GNSSDecoder:
     BCH_TOI_CODEWORDS,
     BCHToiSync,
     sync_bch_toi,
     pack_hard_codeword,
-    soft_to_hard_codeword,
+    pack_bits_lsb_first,
     TOI_RANGE,
     TOI_BCH_CODEWORD_LEN,
     TOI_BCH_MASK52
@@ -100,13 +101,20 @@ end
         end
     end
 
-    @testset "pack_hard_codeword + soft_to_hard_codeword" begin
+    @testset "pack_hard_codeword + pack_bits_lsb_first" begin
+        # The encoder-side packer and the deque reader `try_sync` actually uses
+        # must agree on bit order, or frame sync silently never matches.
         t = 17
         cw = BCH_TOI_CODEWORDS[t+1]
         bits = [Bool((cw >> i) & 1) for i = 0:51]
         @test pack_hard_codeword(bits) == cw
-        soft = Float32[b ? -1.0f0 : +1.0f0 for b in bits]
-        @test soft_to_hard_codeword(soft) == cw
+        # Offset the codeword inside the deque to check the reader honours it.
+        deque = CircularDeque{Float32}(64)
+        push!(deque, 0.5f0)
+        for b in bits
+            push!(deque, b ? -1.0f0 : +1.0f0)
+        end
+        @test pack_bits_lsb_first(deque, 2, TOI_BCH_CODEWORD_LEN) == cw
     end
 
     @testset "sync detector finds matching TOI pair (unambiguous range)" begin

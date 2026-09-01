@@ -651,6 +651,11 @@ committed `.alist` parity matrices in `data/`. The decoder objects are mutable
 Aff3ct handles; they are shared by reference through the otherwise-immutable
 [`GNSSDecoderState`](@ref).
 
+Each decoder arrives inside an `LDPCScratch`, which carries the buffers
+its decode would otherwise allocate per frame; the two payload buffers below are
+the same idea for the deinterleave that feeds them, so a decoded frame allocates
+nothing.
+
 # Fields
 
 $(TYPEDFIELDS)
@@ -661,13 +666,13 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     """
     soft_buffer::CircularDeque{Float32}
     """
-    Aff3ct LDPC BP decoder for subframe 2 (K=600, N=1200)
+    Subframe-2 LDPC decoder and its scratch buffers (K=600, N=1200)
     """
-    sf2_decoder::LDPCScratch
+    sf2_ldpc::LDPCScratch
     """
-    Aff3ct LDPC BP decoder for subframe 3 (K=274, N=548)
+    Subframe-3 LDPC decoder and its scratch buffers (K=274, N=548)
     """
-    sf3_decoder::LDPCScratch
+    sf3_ldpc::LDPCScratch
     """
     Polarity-resolved 1748-symbol interleaved payload, copied out per frame
     """
@@ -824,9 +829,9 @@ the TOI and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSL1C_DData})
     deque = soft_buffer(state)
-    # `pack_bits_lsb_first` (src/gnss.jl) is `soft_to_hard_codeword` read straight
-    # off the deque: this runs once per symbol, so materialising two 52-element
-    # slices here would allocate on every one of them.
+    # `pack_bits_lsb_first` (src/gnss.jl) hard-slices straight off the deque in
+    # `pack_hard_codeword`'s bit order: this runs once per symbol, so
+    # materialising two 52-element slices here would allocate on every one.
     first52 = pack_bits_lsb_first(deque, 1, L1C_D_SUBFRAME1_LENGTH)
     next52 = pack_bits_lsb_first(deque, L1C_D_FRAME_LENGTH + 1, L1C_D_SUBFRAME1_LENGTH)
     sync_bch_toi(first52, next52)
@@ -896,7 +901,7 @@ end
 # shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers.
 
 function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
-    word = ldpc_decode_word(state.cache.sf2_decoder, sf2_symbols, UInt600)
+    word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = L1C_D_SF2_INFO_BITS
 
@@ -997,7 +1002,7 @@ end
 # are in base Rev J already (Figure 3.5-2, Table 6.2-18).
 
 function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
-    word = ldpc_decode_word(state.cache.sf3_decoder, sf3_symbols, UInt288)
+    word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
     # CRC-valid page received: count it, then dispatch on the page number.

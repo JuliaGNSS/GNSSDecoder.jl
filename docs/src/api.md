@@ -116,7 +116,6 @@ These are public but unexported, so they are reached through the module: write
 GNSSDecoder.crc24q
 GNSSDecoder.BCHToiSync
 GNSSDecoder.sync_bch_toi
-GNSSDecoder.soft_to_hard_codeword
 GNSSDecoder.pack_hard_codeword
 GNSSDecoder.deinterleave!
 GNSSDecoder.interleave!
