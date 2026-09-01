@@ -328,6 +328,41 @@ end
         @test is_sat_healthy(state)
     end
 
+    # The 1016 above is armed by `validate_data`, and by nothing else: a frame
+    # that clears CRC but does not complete the positioning set must leave the
+    # counter alone, because `get_time_of_week` publishes the *validated* SOW and
+    # the two only describe a time as a pair. On B2b the completeness gate holds
+    # once MT10 and MT30 are in, so this is defensive — it is the same split that
+    # fixes a live once-per-message-cycle 3-second error on B2a, whose MT10/MT11
+    # adjacency gate really does skip promotions (see src/beidou/b2b.jl).
+    @testset "Only promotion arms the symbol counter" begin
+        state = BeiDouB2bDecoderState(prn)
+        # MT10 alone: ephemeris, but neither the clock nor the week number, so
+        # `is_decoding_completed_for_positioning` is still false.
+        state = b2b_decode_frames(
+            state,
+            [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5000); prn)],
+        )
+        @test state.raw_data.SOW == 5000                              # frame decoded ...
+        @test !is_decoding_completed_for_positioning(state)
+        @test isnothing(state.num_bits_after_valid_syncro_sequence)   # ... armed nothing
+        # A second decoded frame does not arm it either.
+        state = b2b_decode_frames(
+            state,
+            [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5001); prn)],
+        )
+        @test state.raw_data.SOW == 5001
+        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        # The MT30 that completes the set promotes, and arms the counter to the
+        # frame plus next-frame preamble whose SOW it just published.
+        state = b2b_decode_frames(
+            state,
+            [b2b_frame_symbols(b2b_mt30_message(; sow_field = 5002); prn)],
+        )
+        @test state.data.SOW == 5002
+        @test state.num_bits_after_valid_syncro_sequence == 1016
+    end
+
     @testset "SOW stamps each frame; unhealthy satellite is flagged" begin
         state = BeiDouB2bDecoderState(prn)
         frames = [

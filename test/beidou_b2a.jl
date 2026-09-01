@@ -502,6 +502,67 @@ end
         @test GNSSDecoder.is_ephemeris_decoded(state.raw_data)
     end
 
+    @testset "Skipped promotions keep tow + num_bits/rate on the true time" begin
+        # `get_time_of_week` reads the *validated* `data.SOW`, so the symbol
+        # counter must anchor to the last frame `validate_data` promoted, not to
+        # every frame that clears CRC. A fresh ephemeris block breaks first the
+        # MT10/MT11 adjacency gate and then the IODE == IODC & 0xff match, so
+        # promotion is skipped for two frames; across that gap the published SOW
+        # stands still and only the counter may carry the elapsed time. Re-arming
+        # it per decoded frame made `now = tow + num_bits/get_data_frequency`
+        # (src/gnss.jl) read exactly one 3-second frame low for the whole skip.
+        new_iode = B2A_IODE + 1
+        new_iodc = (3 << 8) | new_iode  # 790; IODE == IODC & 0xff again
+        frames = b2a_frame_symbols.([
+            build_b2a_mt10(; sow = t0),
+            build_b2a_mt11(; sow = t0 + 3),
+            build_b2a_mt30(; sow = t0 + 6),                   # promotes
+            build_b2a_mt10(; sow = t0 + 9, iode = new_iode),  # no adjacent MT11 yet
+            build_b2a_mt11(; sow = t0 + 12),                  # pairs, but IODC is stale
+            build_b2a_mt30(; sow = t0 + 15, iodc = new_iodc), # promotes again
+        ])
+        # A frame is decoded once the *next* frame's 24 preamble symbols are
+        # buffered, so the stream is cut at those sync instants: after the first
+        # step each `decode` call below feeds exactly one frame, 600 symbols = 3 s.
+        b2a_now(state) =
+            get_time_of_week(state.data) + state.num_bits_after_valid_syncro_sequence / 200
+
+        state = BeiDouB2aDecoderState(B2A_PRN)
+        head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
+        state = decode(state, head, length(head))
+        @test state.data.SOW == t0 + 6
+        @test state.num_bits_after_valid_syncro_sequence == 624
+        t_promoted = b2a_now(state)
+
+        # Frame 4 decodes but is not promoted: the new MT10 has no partner yet.
+        step = vcat(frames[4][25:600], frames[5][1:24])
+        state = decode(state, step, length(step))
+        @test state.raw_data.SOW == t0 + 9          # the frame did decode ...
+        @test state.raw_data.IODE == new_iode
+        @test state.data.SOW == t0 + 6              # ... and nothing was promoted
+        @test state.num_bits_after_valid_syncro_sequence == 624 + 600
+        @test b2a_now(state) ≈ t_promoted + 3 atol = 1e-6
+
+        # Frame 5 pairs the ephemeris again, but the clock set still carries the
+        # old IODC, so promotion is skipped a second time.
+        step = vcat(frames[5][25:600], frames[6][1:24])
+        state = decode(state, step, length(step))
+        @test state.raw_data.SOW == t0 + 12
+        @test state.data.SOW == t0 + 6
+        @test state.num_bits_after_valid_syncro_sequence == 624 + 1200
+        @test b2a_now(state) ≈ t_promoted + 6 atol = 1e-6
+
+        # The matching MT30 promotes: SOW and counter re-anchor together, so the
+        # reported time carries on ticking without a step.
+        step = vcat(frames[6][25:600], b2a_trailing_preamble())
+        state = decode(state, step, length(step))
+        @test state.data.SOW == t0 + 15
+        @test state.data.IODE == new_iode
+        @test state.data.IODC == new_iodc
+        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test b2a_now(state) ≈ t_promoted + 9 atol = 1e-6
+    end
+
     @testset "180-degree phase inversion" begin
         state = BeiDouB2aDecoderState(B2A_PRN)
         state = decode_b2a_frames(

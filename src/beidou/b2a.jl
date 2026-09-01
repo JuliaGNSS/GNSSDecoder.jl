@@ -992,17 +992,18 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
         raw  # unknown/reserved message type: header only
     end
 
-    # SOW refers to the start of the frame just decoded; that epoch lies
-    # syncro_sequence_length + preamble_length symbols before the newest
-    # buffered symbol. Re-arming here (not in `validate_data`) keeps the
-    # counter honest when a later frame fails CRC: the counter then simply
-    # keeps counting from the last frame that actually delivered an SOW.
-    GNSSDecoderState(
-        state;
-        raw_data = raw,
-        num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                               state.constants.preamble_length,
-    )
+    # The symbol counter is deliberately NOT re-armed here. `get_time_of_week`
+    # reads the *validated* `data.SOW`, which only advances when `validate_data`
+    # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
+    # that carries a new ephemeris-I block until its partner arrives. Re-arming
+    # on every CRC-valid frame while the published SOW stands still made
+    # `tow + num_bits/rate` read exactly one 3-second frame low for the duration
+    # of every such skip — a ~9 km along-track error in every satellite position
+    # propagated from it (measured on TEX-CUP: a 2.2 km position excursion once
+    # per message cycle). The counter therefore keeps counting from the last
+    # *promoted* frame, which stays consistent through skipped promotions and
+    # CRC failures alike; `validate_data` re-anchors it whenever it promotes.
+    GNSSDecoderState(state; raw_data = raw)
 end
 
 """
@@ -1015,7 +1016,17 @@ of BDS-SIS-ICD-B2a-1.0 §7.4.3).
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     if is_decoding_completed_for_positioning(state.raw_data)
-        return GNSSDecoderState(state; data = state.raw_data)
+        # Promotion publishes this frame's SOW, so the symbol counter re-anchors
+        # to this frame's sync epoch with it — the two must move together for
+        # `tow + num_bits/rate` (see `get_time_of_week`) to stay on the true
+        # time through frames the gate skips. Runs right after
+        # `decode_syncro_sequence`, so `raw_data.SOW` is the just-decoded frame's.
+        return GNSSDecoderState(
+            state;
+            data = state.raw_data,
+            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
+                                                   state.constants.preamble_length,
+        )
     end
     return state
 end
