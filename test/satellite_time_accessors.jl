@@ -126,7 +126,13 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
     @testset "inter-system time offset" begin
         # Galileo: GGTO is GPS-only, two-term, and absent as a set of all-ones.
         scaled = GNSSDecoder.galileo_ggto(0x1234, 0x0abc, 0x10, 0x05)
-        for data in (GalileoINAVData(; scaled...), GalileoE5aData(; scaled...))
+        # `WN` must be present: `WN_0G` is 6 bits and has to be lifted into the
+        # 12-bit week numbering before `WN - WN_0` means anything.
+        WN_now = Int64(1234)
+        for data in (
+            GalileoINAVData(; WN = WN_now, scaled...),
+            GalileoE5aData(; WN = WN_now, scaled...),
+        )
             state = GNSSDecoderState(
                 data isa GalileoINAVData ? GalileoE1BDecoderState(1) :
                 GalileoE5aDecoderState(1);
@@ -146,7 +152,12 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             @test offset.A_1 == scaled.A_1G
             @test offset.A_2 == 0.0        # GGTO has no quadratic term
             @test offset.t_0 == scaled.t_0G
-            @test offset.WN_0 == scaled.WN_0G
+            # Resolved, not as broadcast: the raw field is 5, and 5 is not a
+            # week number a 12-bit `WN` of 1234 can be differenced against.
+            @test scaled.WN_0G == 5
+            @test offset.WN_0 != scaled.WN_0G
+            @test mod(offset.WN_0, 64) == scaled.WN_0G
+            @test abs(WN_now - offset.WN_0) <= 32
             # Galileo broadcasts no offset to any other scale.
             @test isnothing(get_time_offset(state, GST()))
             @test isnothing(get_time_offset(state, BDT()))
@@ -175,11 +186,11 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             for (state, data) in (
                 (
                     BeiDouB2aDecoderState(20),
-                    BeiDouB2aData(; GNSS_ID = Int64(GNSS_ID), bgto...),
+                    BeiDouB2aData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
                 ),
                 (
                     BeiDouB2bDecoderState(20),
-                    BeiDouB2bData(; GNSS_ID = Int64(GNSS_ID), bgto...),
+                    BeiDouB2bData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
                 ),
             )
                 s = GNSSDecoderState(state; data)
@@ -207,7 +218,7 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         for GNSS_ID in (0, 3)
             s = GNSSDecoderState(
                 BeiDouB2aDecoderState(20);
-                data = BeiDouB2aData(; GNSS_ID = Int64(GNSS_ID), bgto...),
+                data = BeiDouB2aData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
             )
             for target in (GPST(), GST(), BDT())
                 @test isnothing(get_time_offset(s, target))
@@ -236,7 +247,10 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 ),
             ],
         )
-        s = GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouB1CData(; bgtos))
+        s = GNSSDecoderState(
+            BeiDouB1CDecoderState(20);
+            data = BeiDouB1CData(; WN = Int64(901), bgtos),
+        )
         @test get_time_offset(s, GPST()).A_0 == 1.0e-9 - 14.0
         @test get_time_offset(s, GST()).A_0 == 4.0e-9 - 14.0
         @test get_time_offset(s, GST()).WN_0 == 901
@@ -277,9 +291,18 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             WN_GGTO = Int64(2300),
         )
         for (state, mk) in (
-            (GPSL5IDecoderState(1), id -> GPSCNAVData(; GNSS_ID = Int64(id), ggto...)),
-            (GPSL2CMDecoderState(1), id -> GPSCNAVData(; GNSS_ID = Int64(id), ggto...)),
-            (GPSL1C_DDecoderState(1), id -> GPSL1C_DData(; GGTO_ID = Int64(id), ggto...)),
+            (
+                GPSL5IDecoderState(1),
+                id -> GPSCNAVData(; WN = Int64(2300), GNSS_ID = Int64(id), ggto...),
+            ),
+            (
+                GPSL2CMDecoderState(1),
+                id -> GPSCNAVData(; WN = Int64(2300), GNSS_ID = Int64(id), ggto...),
+            ),
+            (
+                GPSL1C_DDecoderState(1),
+                id -> GPSL1C_DData(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
+            ),
         )
             galileo = GNSSDecoderState(state; data = mk(1))
             offset = get_time_offset(galileo, GST())
@@ -294,6 +317,62 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                     @test isnothing(get_time_offset(unusable, target))
                 end
             end
+        end
+
+        @testset "truncated reference week is resolved" begin
+            resolve = GNSSDecoder.resolve_reference_week
+            # Galileo: 6-bit field against a 12-bit week. Same week, one back,
+            # one ahead — all must land next to `WN`, never 63 weeks away.
+            @test resolve(mod(1234, 64), 1234, 64) == 1234
+            @test resolve(mod(1233, 64), 1234, 64) == 1233
+            @test resolve(mod(1235, 64), 1234, 64) == 1235
+            # Across the 6-bit field's own wrap, in both directions.
+            @test resolve(mod(1216, 64), 1217, 64) == 1216
+            @test resolve(mod(1215, 64), 1216, 64) == 1215
+            # Every representative resolves back to the field it came from and
+            # stays inside half a modulus of the current week.
+            for WN = 1200:1300, offset = -31:31
+                raw = mod(WN + offset, 64)
+                r = resolve(raw, WN, 64)
+                @test mod(r, 64) == raw
+                @test abs(r - WN) <= 32
+            end
+            # 13-bit fields: unchanged in the ordinary case, and rescued at a
+            # week-number rollover, which is the only time they are wrong.
+            @test resolve(900, 901, 8192) == 900
+            @test resolve(8190, 2, 8192) == -2      # 4 weeks back, not 8188 forward
+            @test 2 - resolve(8190, 2, 8192) == 4
+            # Unknown either side is unresolvable rather than guessed.
+            @test isnothing(resolve(nothing, 1234, 64))
+            @test isnothing(resolve(5, nothing, 64))
+        end
+
+        @testset "an unresolvable reference week yields no offset" begin
+            # A Galileo satellite can broadcast word type 10 (GGTO) before word
+            # type 0 or 5 (WN). Until the week arrives the reference epoch
+            # cannot be placed, and `Δτ` could not be formed either, so there is
+            # no usable offset rather than one with a 6-bit week in it.
+            scaled = GNSSDecoder.galileo_ggto(0x1234, 0x0abc, 0x10, 0x05)
+            without = GNSSDecoderState(
+                GalileoE1BDecoderState(1);
+                data = GalileoINAVData(; scaled...),
+            )
+            @test isnothing(without.data.WN)
+            @test isnothing(get_time_offset(without, GPST()))
+            with = GNSSDecoderState(
+                GalileoE1BDecoderState(1);
+                data = GalileoINAVData(; WN = Int64(1234), scaled...),
+            )
+            @test !isnothing(get_time_offset(with, GPST()))
+            # BeiDou D1/D2 broadcasts no reference epoch at all, so it is
+            # unaffected by the week being unknown.
+            dnav = GNSSDecoderState(
+                BeiDouB1IDecoderState(20);
+                data = BeiDouDNAVData(; A_0GPS = 1.5e-9, A_1GPS = 2.5e-14),
+            )
+            offset = get_time_offset(dnav, GPST())
+            @test !isnothing(offset)
+            @test isnothing(offset.WN_0) && isnothing(offset.t_0)
         end
 
         # The contract itself, on every decoder that answers, rather than the
@@ -321,42 +400,50 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 (
                     GNSSDecoderState(
                         GPSL5IDecoderState(1);
-                        data = GPSCNAVData(; GNSS_ID = Int64(1), zeroed...),
+                        data = GPSCNAVData(;
+                            WN = Int64(2300),
+                            GNSS_ID = Int64(1),
+                            zeroed...,
+                        ),
                     ),
                     GST(),
                 ),
                 (
                     GNSSDecoderState(
                         GPSL1C_DDecoderState(1);
-                        data = GPSL1C_DData(; GGTO_ID = Int64(1), zeroed...),
+                        data = GPSL1C_DData(;
+                            WN = Int64(2300),
+                            GGTO_ID = Int64(1),
+                            zeroed...,
+                        ),
                     ),
                     GST(),
                 ),
                 (
                     GNSSDecoderState(
                         GalileoE1BDecoderState(1);
-                        data = GalileoINAVData(; zggto...),
+                        data = GalileoINAVData(; WN = Int64(1234), zggto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         GalileoE5aDecoderState(1);
-                        data = GalileoE5aData(; zggto...),
+                        data = GalileoE5aData(; WN = Int64(1234), zggto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         BeiDouB2aDecoderState(20);
-                        data = BeiDouB2aData(; zbgto...),
+                        data = BeiDouB2aData(; WN = Int64(901), zbgto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         BeiDouB2bDecoderState(20);
-                        data = BeiDouB2bData(; zbgto...),
+                        data = BeiDouB2bData(; WN = Int64(901), zbgto...),
                     ),
                     GPST(),
                 ),
@@ -364,6 +451,7 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                     GNSSDecoderState(
                         BeiDouB1CDecoderState(20);
                         data = BeiDouB1CData(;
+                            WN = Int64(901),
                             bgtos = Dictionary([1], [BeiDouB1CBGTO(; zbgto...)]),
                         ),
                     ),

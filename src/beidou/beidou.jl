@@ -262,6 +262,11 @@ beidou_orbit_class(sat_type) =
     sat_type == 2 ? inclined_geosynchronous_orbit :
     sat_type == 3 ? medium_earth_orbit : nothing
 
+# `WN_0BGTO` is 13 bits, the same width as the BDT week number it is subtracted
+# from, so resolving it changes nothing except across a week-number rollover —
+# which is exactly when it matters. See `resolve_reference_week`.
+const BEIDOU_BGTO_WN_MODULUS = 8192
+
 """
     beidou_bgto_target(GNSS_ID) -> Union{Nothing,TimeSystem}
 
@@ -298,9 +303,11 @@ function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
         target,
         data.A_0BGTO,
         data.A_1BGTO,
-        data.A_2BGTO,
-        data.t_0BGTO,
-        data.WN_0BGTO,
+        data.A_2BGTO;
+        t_0 = data.t_0BGTO,
+        WN_0 = data.WN_0BGTO,
+        WN = data.WN,
+        WN_0_modulus = BEIDOU_BGTO_WN_MODULUS,
     )
 end
 
