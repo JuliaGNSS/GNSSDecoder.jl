@@ -1447,6 +1447,17 @@ function dnav_confirm_data(state, max_vote = 20)
         dnav_dataset_key(entry.data) == key && dnav_compare_data(entry.data, state.raw_data)
     end
 
+    # The non-promoting branches clear `raw_data` for the next vote round, but
+    # must carry the (SOW, anchor) screening pair across the clear: wiping it
+    # would let `is_plausible_dnav_SOW` wave the very next SOW through
+    # unscreened — and BCH(15,11,1) is a perfect code, so a two-error SOW word
+    # mis-corrects silently; one such accepted SOW then fails every honest
+    # subframe against the elapsed-symbol prediction until an external reset.
+    cleared = BeiDouDNAVData(;
+        SOW = state.raw_data.SOW,
+        num_bits_after_valid_syncro_sequence_after_last_SOW = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW,
+    )
+
     if isnothing(matching_idx)
         # First sighting of this dataset — stage it and wait for the broadcast
         # to repeat it. GPS L1 C/A promotes here on first sight, which is safe
@@ -1457,7 +1468,7 @@ function dnav_confirm_data(state, max_vote = 20)
         # first-fix promotion would walk straight past it. The cost is one
         # extra broadcast cycle before the first fix.
         new_old_data = push!(copy(old_data), VotedBeiDouDNAVData(0, state.raw_data))
-        return dnav_with_old_data(state, new_old_data; raw_data = BeiDouDNAVData())
+        return dnav_with_old_data(state, new_old_data; raw_data = cleared)
     end
 
     curr_score = old_data[matching_idx].vote
@@ -1467,7 +1478,7 @@ function dnav_confirm_data(state, max_vote = 20)
     if best_score > curr_score
         new_old_data = copy(old_data)
         new_old_data[matching_idx] = VotedBeiDouDNAVData(new_vote, state.raw_data)
-        return dnav_with_old_data(state, new_old_data; raw_data = BeiDouDNAVData())
+        return dnav_with_old_data(state, new_old_data; raw_data = cleared)
     end
 
     new_old_data = if new_vote == max_vote && length(old_data) > 1
