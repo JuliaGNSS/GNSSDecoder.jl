@@ -289,16 +289,18 @@ unlike B1C, which keys a set per system (see [`BeiDouB1CBGTO`](@ref)). The
 because both decoders keep the raw field; B1C screens it at decode instead,
 since it has a keyed store and no key to file an unavailable set under.
 """
-function beidou_bgto_offset(data, target::TimeSystem)
+function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
+    data = state.data
     beidou_bgto_target(data.GNSS_ID) === target || return nothing
     isnothing(data.A_0BGTO) && return nothing
-    GNSSTimeOffset(
+    broadcast_time_offset(
+        state,
         target,
         data.A_0BGTO,
         data.A_1BGTO,
         data.A_2BGTO,
-        Int(data.t_0BGTO),
-        Int(data.WN_0BGTO),
+        data.t_0BGTO,
+        data.WN_0BGTO,
     )
 end
 

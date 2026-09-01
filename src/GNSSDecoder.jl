@@ -1,10 +1,12 @@
 module GNSSDecoder
 
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
-# `Hz` is Unitful's, re-exported through GNSSSignals: the only decoder that
-# states a rate itself is BeiDou D1/D2, whose symbol rate is a property of the
-# satellite rather than of the signal type (see `beidou/dnav.jl`).
-using GNSSSignals: Hz
+# `Hz`, `s` and `ustrip` are Unitful's, reached through GNSSSignals. `Hz`: the
+# only decoder that states a rate itself is BeiDou D1/D2, whose symbol rate is a
+# property of the satellite rather than of the signal type (see
+# `beidou/dnav.jl`). `s` and `ustrip`: `get_tai_offset` answers in seconds, and
+# `get_time_offset` needs that difference as a bare number (see `gnss.jl`).
+using GNSSSignals: Hz, s, ustrip
 import Aff3ct
 
 export decode,

@@ -270,10 +270,11 @@ either scaled or set to `nothing` as a set. The two callers are I/NAV word type
 `AbstractGalileoEphemerisData` so that a future ephemeris-bearing Galileo signal
 without a GGTO does not inherit a `FieldError`.
 """
-function galileo_ggto_offset(data, target::TimeSystem)
+function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
+    data = state.data
     target === GPST() || return nothing
     isnothing(data.A_0G) && return nothing
-    GNSSTimeOffset(target, data.A_0G, data.A_1G, 0.0, data.t_0G, data.WN_0G)
+    broadcast_time_offset(state, target, data.A_0G, data.A_1G, 0.0, data.t_0G, data.WN_0G)
 end
 
 """

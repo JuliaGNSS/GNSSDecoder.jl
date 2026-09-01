@@ -392,7 +392,7 @@ satellite is not broadcasting a valid GGTO or `target` is not `GPST()`.
 See `galileo_ggto_offset`.
 """
 get_time_offset(state::GNSSDecoderState{<:GalileoE5aData}, target::TimeSystem) =
-    galileo_ggto_offset(state.data, target)
+    galileo_ggto_offset(state, target)
 
 function is_decoding_completed_for_positioning(data::GalileoE5aData)
     !isnothing(data.TOW) &&
