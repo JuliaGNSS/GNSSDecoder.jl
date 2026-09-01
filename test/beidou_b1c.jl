@@ -598,6 +598,42 @@ end
         @test is_decoding_completed_for_positioning(state)
     end
 
+    @testset "HOW carries across the SOH wrap when subframe 2 is lost" begin
+        # `soh` advances with every locked frame, but `HOW` only refreshes when
+        # a subframe 2 clears LDPC+CRC. The one frame in 200 that wraps `soh`
+        # 199 → 0 with a noisy subframe 2 therefore has to carry the hour
+        # itself, or `get_time_of_week` publishes a time exactly 3600 s low.
+        sf2 = Bool.(_golden_sf2_bits())
+        lost_sf2 = copy(sf2)
+        lost_sf2[600] = !lost_sf2[600]  # break the CRC: this frame's SF2 is dropped
+        sf3 = Bool.(_golden_sf3_page1_bits())
+
+        # Lock up to the last frame of the hour (SOH 199).
+        head = vcat(
+            _b1c_frame_symbols(prn, 198, sf2, sf3),
+            _b1c_frame_symbols(prn, 199, sf2, sf3),
+            _b1c_frame_symbols(prn, 0, lost_sf2, sf3)[1:72],
+        )
+        state = decode(BeiDouB1CDecoderState(prn), head, length(head))
+        @test state.data.soh == 199
+        @test state.data.HOW == _B1C_G.HOW
+        @test get_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18
+
+        # The wrapping frame keeps sync (its subframe 1 is clean) but loses its
+        # subframe 2, so the broadcast HOW never arrives — the decoder must
+        # carry the hour on its own.
+        rest = vcat(
+            _b1c_frame_symbols(prn, 0, lost_sf2, sf3)[73:end],
+            _b1c_frame_symbols(prn, 1, sf2, sf3)[1:72],
+        )
+        state = decode(state, rest, length(rest))
+        @test state.data.soh == 0
+        @test state.data.HOW == _B1C_G.HOW + 1
+        # One frame is 18 s: the wrap must step the time forward by 18 s, not
+        # back by 3582 s to the start of the hour just left.
+        @test get_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18 + 18
+    end
+
     @testset "Subframe-1 BCH correction radii are the codebooks' own" begin
         # `B1C_PRN_MAX_ERRORS` and `B1C_SOH_MAX_ERRORS` are floor((d_min-1)/2)
         # for the two subframe-1 codes. Recompute both minimum distances from
@@ -754,6 +790,11 @@ end
         @test is_decoding_completed_for_positioning(state)
         state = reset_decoder_state(state)
         @test isnothing(state.raw_data.soh)
+        # `HOW` is cleared with `soh`: the two only mean a time as a pair, and an
+        # outage can span any number of hour boundaries, so a kept `HOW` re-paired
+        # with a fresh `soh` would date the first re-locked frames hours in the past.
+        @test isnothing(state.raw_data.HOW)
+        @test isnothing(get_time_of_week(state.raw_data))
         @test state.raw_data.WN == 800   # ephemeris survives for warm re-lock
         @test isnothing(state.data.WN)   # validated data cleared
         @test GNSSDecoder.num_bits_buffered(state) == 0

@@ -59,6 +59,7 @@ const B1C_SOH_BCH_WIDTH = 8
 const B1C_SOH_BCH_TAP = 0b10011111     # g51,8 = x⁸ + x⁷ + x⁴ + x³ + x² + x + 1
 const B1C_SOH_CODEWORD_LEN = 51
 const B1C_SOH_RANGE = 200              # SOH counts 18 s units within the hour (ICD §7.3)
+const B1C_HOW_RANGE = 168              # HOW counts whole hours of the week (ICD Table 6-3)
 const B1C_SOH_SECONDS = 18             # seconds per SOH step, i.e. per B-CNAV1 frame
 
 const B1C_PRN_MASK21 = (UInt64(1) << B1C_PRN_CODEWORD_LEN) - UInt64(1)
@@ -863,7 +864,11 @@ function reset_decoder_state(state::GNSSDecoderState{<:BeiDouB1CData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        raw_data = BeiDouB1CData(state.raw_data; soh = nothing),
+        # `HOW` is cleared with `soh`: the pair only means a time as a pair, and
+        # an outage can span any number of hour boundaries, so a kept `HOW`
+        # re-paired with a fresh `soh` would date the first re-locked frames
+        # whole hours in the past. Re-learning it costs one decoded subframe 2.
+        raw_data = BeiDouB1CData(state.raw_data; soh = nothing, HOW = nothing),
         data = BeiDouB1CData(),
         num_bits_after_valid_syncro_sequence = nothing,
         is_shifted_by_180_degrees = false,
@@ -988,8 +993,21 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::
     if !isnothing(prev_soh) && (prev_soh + 1) % B1C_SOH_RANGE != sync.soh
         return reset_decoder_state(state)
     end
-    state =
-        GNSSDecoderState(state; raw_data = BeiDouB1CData(state.raw_data; soh = sync.soh))
+    # `soh` advances with every locked frame, but `HOW` only refreshes when a
+    # subframe 2 clears LDPC+CRC — so carry the hour across the SOH wrap here,
+    # or the one frame in 200 that straddles an hour boundary with a noisy
+    # subframe 2 promotes a time of week exactly 3600 s low. A later decoded
+    # subframe 2 overwrites this with the broadcast value either way. The week
+    # rollover (HOW 167 → 0 while `WN` still awaits its subframe 2) inherits
+    # the same one-frame ambiguity every WN-carrying signal has at that instant.
+    HOW = state.raw_data.HOW
+    if !isnothing(prev_soh) && sync.soh == 0 && !isnothing(HOW)
+        HOW = (HOW + 1) % B1C_HOW_RANGE
+    end
+    state = GNSSDecoderState(
+        state;
+        raw_data = BeiDouB1CData(state.raw_data; soh = sync.soh, HOW),
+    )
 
     # Extract the 1728-symbol interleaved SF2+SF3 payload (symbols 73..1800),
     # applying the polarity flip by negating soft symbols up front. All four
