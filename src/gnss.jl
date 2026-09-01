@@ -376,6 +376,270 @@ for accessor in (
         GNSSSignals.$accessor(get_signal_type(state))
 end
 
+# ---- Satellite and time metadata --------------------------------------------
+#
+# Three questions a positioning engine asks of every decoder, whatever signal it
+# is on: which orbit is this satellite in, what time of week does its decoded
+# message stamp, and how does its system time relate to another constellation's.
+# Each is answered from broadcast data by some signals and from constellation
+# structure by others, and each was, before these accessors existed, reassembled
+# by the consumer out of raw fields — `PositionVelocityTime.jl` inferred the
+# orbit class from the symbol rate, spelled out the ICD's time-of-week
+# reconstruction for two signals, and normalised three shapes of the same
+# inter-system offset. Deriving a broadcast quantity from a decoded one is
+# decoding work; it belongs here, next to the ICD knowledge, and is stated once
+# per signal rather than once per consumer.
+
+"""
+    OrbitClass
+
+Orbit class of a navigation satellite: [`get_orbit_class`](@ref) reports it.
+
+The three classes the ICDs of the constellations decoded here distinguish. The
+values are deliberately *not* exported, for the reason the health enums are not
+(see the export list in `GNSSDecoder.jl`): `medium_earth_orbit` is exactly the
+name a receiver or orbit-propagation package alongside this one may define, and
+consumers compare against them rarely enough that `GNSSDecoder.geostationary_orbit`
+costs nothing.
+
+# Values
+
+  - `geostationary_orbit`: GEO
+  - `inclined_geosynchronous_orbit`: IGSO
+  - `medium_earth_orbit`: MEO
+
+The integer values are this package's own; nothing here relies on them matching
+any ICD's encoding, and BeiDou's 2-bit `sat_type` (1 GEO / 2 IGSO / 3 MEO) is
+mapped across explicitly.
+"""
+@enum OrbitClass begin
+    geostationary_orbit
+    inclined_geosynchronous_orbit
+    medium_earth_orbit
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Orbit class of the satellite this decoder is tracking, or `nothing` when the
+signal does not make it knowable.
+
+Answered from whichever source the signal actually has:
+
+  - **GPS and Galileo** — [`medium_earth_orbit`](@ref OrbitClass) for every
+    satellite. Both constellations are MEO-only by design, so this needs no
+    decoded data and is available before the first subframe.
+  - **BeiDou B1C, B2a, B2b** — from the broadcast `sat_type` field of the
+    satellite's own Ephemeris I block (1 GEO / 2 IGSO / 3 MEO, reserved 0;
+    Table 7-6 of each ICD). `nothing` until that block has been decoded and
+    promoted, and `nothing` for the reserved code — the same screen
+    `is_known_sat_type` applies to positioning.
+  - **BeiDou B1I and B3I** — [`geostationary_orbit`](@ref OrbitClass) for the
+    GEO PRNs, `nothing` otherwise. D1/D2 NAV broadcasts no orbit-type field, and
+    the PRN partition the ICD fixes (BDS-SIS-ICD-B1I-3.0 Table 4-1) separates
+    GEO from non-GEO only, so IGSO and MEO cannot be told apart on these
+    signals.
+
+!!! warning "`nothing` is not `medium_earth_orbit`"
+
+    Because of that last case, a `nothing` means "this signal cannot say", not
+    "not GEO" and not "MEO". Testing `=== GNSSDecoder.geostationary_orbit` is
+    exact on every signal — a satellite that is GEO always reports so. Testing
+    `=== GNSSDecoder.medium_earth_orbit` is *not*: a B1I MEO satellite reports
+    `nothing`. Treat `nothing` as unknown and branch on the GEO case.
+
+# Example
+
+```julia
+# Which reference does this BeiDou satellite's ephemeris use?
+if get_orbit_class(state) === GNSSDecoder.geostationary_orbit
+    # GEO/IGSO semi-major-axis reference
+end
+```
+
+# See Also
+
+  - [`OrbitClass`](@ref): the returned enumeration
+"""
+function get_orbit_class end
+
+# GPS and Galileo fly MEO-only constellations, so the answer is a constellation
+# fact rather than a decoded one and is stated on the constellation supertype.
+# There is deliberately no `AbstractGNSSData` fallback: a constellation with
+# GEO or IGSO members (QZSS, NavIC) must state its own answer rather than
+# silently inherit "MEO".
+get_orbit_class(::GNSSDecoderState{<:AbstractGPSData}) = medium_earth_orbit
+get_orbit_class(::GNSSDecoderState{<:AbstractGalileoData}) = medium_earth_orbit
+
+"""
+$(TYPEDSIGNATURES)
+
+Seconds of week that the decoder's validated navigation data stamps, or
+`nothing` before a time has been decoded.
+
+Every signal here broadcasts one, but four of them do not broadcast it as
+seconds: GPS L1C-D counts two-hour intervals plus 18-second TOI steps, BeiDou
+B1C counts hours plus 18-second SOH steps, and the rest carry a plain `TOW` or
+`SOW`. The reconstruction is the ICD's, so it is done here rather than in every
+consumer:
+
+| Signal                                 | Broadcast fields | Seconds of week                            |
+|:-------------------------------------- |:---------------- |:------------------------------------------ |
+| GPS L1 C/A, GPS CNAV (L2C/L5)          | `TOW`            | `TOW`                                      |
+| GPS L1C-D                              | `ITOW`, `toi`    | `ITOW·7200 + toi·18` (IS-GPS-800 §3.2.3.1) |
+| Galileo I/NAV (E1-B, E5b-I), E5a F/NAV | `TOW`            | `TOW`                                      |
+| BeiDou B1I, B3I (D1/D2)                | `SOW`            | `SOW`                                      |
+| BeiDou B1C                             | `HOW`, `soh`     | `HOW·3600 + soh·18` (BDS-SIS-ICD-B1C §7.3) |
+| BeiDou B2a, B2b                        | `SOW`            | `SOW`                                      |
+
+Galileo E6-B answers `nothing` always: C/NAV carries HAS corrections stamped
+with a time *of hour* per correction block, not a time of week, and those stay
+on the blocks that own them (see [`GalileoHASCorrectionBlock`](@ref)).
+
+# The epoch it denotes, and reading the current time
+
+Every signal's value is the time of the epoch that
+[`num_bits_after_valid_syncro_sequence`](@ref GNSSDecoderState) is anchored to —
+which is why the anchor is set per signal at promotion time, to the frame the
+broadcast field actually stamps (the *next* subframe for GPS LNAV, CNAV and
+L1C-D; the *current* frame for the BeiDou signals). So the current time of week
+is the same expression on every signal:
+
+```julia
+tow = get_time_of_week(state)
+now = tow + state.num_bits_after_valid_syncro_sequence / get_data_frequency(state)
+```
+
+Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this
+returns a time only once the message set has passed CRC/parity and the
+cross-subframe consistency check — the same gate
+[`is_decoding_completed_for_positioning`](@ref) reports. Call it on
+`state.raw_data` directly to see an unvalidated time.
+
+# See Also
+
+  - [`get_time_offset`](@ref): relating that time to another constellation's
+"""
+get_time_of_week(state::GNSSDecoderState) = get_time_of_week(state.data)
+
+"""
+$(TYPEDEF)
+
+One broadcast time offset between two GNSS time scales, normalised across the
+five shapes the ICDs state it in. [`get_time_offset`](@ref) returns it.
+
+The offset at a time `t` (seconds of week) in week `WN` of the *broadcasting*
+satellite's own time scale is
+
+```julia
+Δτ = t - t_0 + 604800 * (WN - WN_0)
+Δt = A_0 + A_1 * Δτ + A_2 * Δτ^2
+```
+
+and `Δt` is **the broadcasting system's time minus the target system's** —
+`t_own - t_target`, the direction every ICD here defines the quantity in (Galileo
+OS SIS ICD §5.1.8; IS-GPS-800/200 GGTO; BDS-SIS-ICD-B1C §7.13.2 Eq. 7-30). To
+convert a measurement, *subtract*: `t_target = t_own - Δt`.
+
+Signals that broadcast fewer terms are widened rather than given a separate
+type: Galileo's GGTO has no quadratic term and reports `A_2 == 0`, and BeiDou
+D1/D2's two-term offsets carry no reference epoch at all and report
+`t_0 === nothing` / `WN_0 === nothing`. Both are exact — a zero coefficient
+contributes nothing, and an absent epoch is reported as absent rather than
+guessed.
+
+# Fields
+
+$(TYPEDFIELDS)
+
+# See Also
+
+  - [`get_time_offset`](@ref): the accessor that produces one
+"""
+struct GNSSTimeOffset
+    """
+    Time scale the offset is *to*; the broadcasting satellite's own scale is
+    `get_time_system` of the decoder state
+    """
+    target::TimeSystem
+    """
+    Bias coefficient (s)
+    """
+    A_0::Float64
+    """
+    Drift coefficient (s/s)
+    """
+    A_1::Float64
+    """
+    Drift-rate coefficient (s/s²); zero on the signals that broadcast only two terms
+    """
+    A_2::Float64
+    """
+    Reference time of week (s), or `nothing` on BeiDou D1/D2, which broadcasts none
+    """
+    t_0::Union{Nothing,Int}
+    """
+    Reference week number, or `nothing` on BeiDou D1/D2, which broadcasts none
+    """
+    WN_0::Union{Nothing,Int}
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+The broadcast offset from this satellite's own time scale to `target`, as a
+[`GNSSTimeOffset`](@ref), or `nothing` when this decoder has no such offset.
+
+`target` is a `GNSSSignals.TimeSystem` — `GPST()`, `GST()` or `BDT()`. The
+satellite's own scale is `get_time_system(state)`; asking for that returns
+`nothing`, because the offset from a scale to itself is not a broadcast
+quantity.
+
+`nothing` also covers, and does not distinguish between, the three ways a
+signal can fail to have one:
+
+  - it broadcasts no inter-system offset at all (GPS L1 C/A, Galileo E6-B),
+  - it does, but has not decoded one yet,
+  - it has, but for a different system than `target` — the GPS, B2a and B2b
+    messages carry a single offset set tagged with the system it refers to, so
+    which one is on the air is the satellite's choice, while Galileo's is
+    GPS-only by definition and BeiDou B1C keys a set per system.
+
+The ICDs' "not available" sentinels are screened here, so a returned offset is
+always a real one: a GPS/BeiDou `GNSS_ID`/`GGTO_ID` of 0 means "no offset in
+this message" (IS-GPS-800 Table 6.2-7, BDS-SIS-ICD-B1C §7.13.1), and Galileo
+marks an absent GGTO by setting all four fields to all ones (§5.1.8, handled at
+decode by `galileo_ggto`).
+
+GLONASS offsets are decoded and published as fields, but cannot be asked for
+here: `GNSSSignals` defines no GLONASS `TimeSystem`, this package decodes no
+GLONASS signal, and inventing a target type for a constellation neither package
+handles would be a name with nothing behind it. Read `data.GNSS_ID` and the
+coefficient fields directly for those.
+
+# Example
+
+```julia
+# Steer a BeiDou observable onto GPS time.
+offset = get_time_offset(state, GPST())
+if !isnothing(offset)
+    Δτ = tow - offset.t_0 + 604800 * (wn - offset.WN_0)
+    t_gps = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
+end
+```
+
+# See Also
+
+  - [`GNSSTimeOffset`](@ref): the returned record, and the sign convention
+  - [`get_time_of_week`](@ref): the `t` the polynomial is evaluated at
+"""
+function get_time_offset end
+
+# Every signal states its own method, below in its own file. There is no
+# blanket `nothing` fallback for the same reason `get_orbit_class` has none:
+# a future signal that does broadcast an offset would silently inherit "no
+# offset available" and its correction would go quietly unapplied.
+
 """
 Soft-symbol buffer accessor — the per-signal cache stores it as `soft_buffer`.
 """

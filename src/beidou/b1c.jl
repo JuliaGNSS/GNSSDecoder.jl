@@ -59,6 +59,7 @@ const B1C_SOH_BCH_WIDTH = 8
 const B1C_SOH_BCH_TAP = 0b10011111     # g51,8 = x⁸ + x⁷ + x⁴ + x³ + x² + x + 1
 const B1C_SOH_CODEWORD_LEN = 51
 const B1C_SOH_RANGE = 200              # SOH counts 18 s units within the hour (ICD §7.3)
+const B1C_SOH_SECONDS = 18             # seconds per SOH step, i.e. per B-CNAV1 frame
 
 const B1C_PRN_MASK21 = (UInt64(1) << B1C_PRN_CODEWORD_LEN) - UInt64(1)
 const B1C_SOH_MASK51 = (UInt64(1) << B1C_SOH_CODEWORD_LEN) - UInt64(1)
@@ -683,6 +684,62 @@ end
 #
 # `T_GD_B2ap` is deliberately *not* required: it is the B2a pilot's delta and
 # means nothing to a B1C-only user. Same rule, other side of it.
+# Orbit class from the satellite's own broadcast `sat_type` (Ephemeris I,
+# subframe 2); `nothing` until subframe 2 is decoded, and for the reserved code.
+get_orbit_class(state::GNSSDecoderState{<:BeiDouB1CData}) =
+    beidou_orbit_class(state.data.sat_type)
+
+"""
+$(TYPEDSIGNATURES)
+
+Seconds of week of the epoch the SOH stamps: `HOW·3600 + soh·18`.
+
+B-CNAV1 splits the time of week across two subframes and two rates — the
+subframe-2 `HOW` counts whole hours of the week and the subframe-1 `soh` counts
+the 18-second frames within the hour (BDS-SIS-ICD-B1C-1.0 §7.3, Table 7-2) — so
+neither field is a time of week on its own. Both must be present; `nothing`
+until they are.
+
+The epoch is the leading edge of the *current* frame's subframe 1, which is what
+`num_bits_after_valid_syncro_sequence` is anchored to for this signal (see
+`validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
+otherwise identical-looking reconstruction is anchored differently.
+"""
+function get_time_of_week(data::BeiDouB1CData)
+    (isnothing(data.HOW) || isnothing(data.soh)) && return nothing
+    return Int(data.HOW) * 3600 + Int(data.soh) * B1C_SOH_SECONDS
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+The BDT-to-`target` offset from subframe 3 page type 3, or `nothing` when this
+satellite has not broadcast one for `target`.
+
+B1C is the one shape that keys its offsets by system: successive frames may
+carry sets for different systems, and each is filed under its `GNSS_ID` in
+`data.bgtos` rather than overwriting the last (see [`BeiDouB1CBGTO`](@ref)), so
+every system this satellite has ever broadcast an offset for stays answerable.
+Sets tagged `GNSS_ID == 0` ("not available", §7.13.1) are dropped at decode and
+never appear here.
+"""
+function get_time_offset(state::GNSSDecoderState{<:BeiDouB1CData}, target::TimeSystem)
+    bgtos = state.data.bgtos
+    isnothing(bgtos) && return nothing
+    for (GNSS_ID, bgto) in pairs(bgtos)
+        beidou_bgto_target(GNSS_ID) === target || continue
+        return GNSSTimeOffset(
+            target,
+            bgto.A_0BGTO,
+            bgto.A_1BGTO,
+            bgto.A_2BGTO,
+            bgto.t_0BGTO,
+            bgto.WN_0BGTO,
+        )
+    end
+    return nothing
+end
+
 function is_decoding_completed_for_positioning(data::BeiDouB1CData)
     !isnothing(data.soh) &&
         !isnothing(data.HS) &&

@@ -381,6 +381,19 @@ function is_health_status_decoded(data::GalileoE5aData)
     !isnothing(data.E5a_SHS) && !isnothing(data.E5a_DVS)
 end
 
+# F/NAV broadcasts the time of week as seconds (page types 1-4).
+get_time_of_week(data::GalileoE5aData) = data.TOW
+
+"""
+$(TYPEDSIGNATURES)
+
+The GST-to-GPS time offset from F/NAV page type 4, or `nothing` when the
+satellite is not broadcasting a valid GGTO or `target` is not `GPST()`.
+See `galileo_ggto_offset`.
+"""
+get_time_offset(state::GNSSDecoderState{<:GalileoE5aData}, target::TimeSystem) =
+    galileo_ggto_offset(state.data, target)
+
 function is_decoding_completed_for_positioning(data::GalileoE5aData)
     !isnothing(data.TOW) &&
         !isnothing(data.WN) &&

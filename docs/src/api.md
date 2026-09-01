@@ -102,6 +102,48 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 get_signal_type
 ```
 
+## Satellite and Time Metadata
+
+Three questions a positioning engine asks of every decoder, whatever signal it
+is on. Each is answered from broadcast data by some signals and from
+constellation structure by others, and each is reconstruction work the ICD
+defines — so it is done here, once per signal, rather than in every consumer.
+
+| Accessor | Answers | `nothing` when |
+|:---|:---|:---|
+| [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
+| [`get_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
+| [`get_time_offset`](@ref) | offset to another constellation's time scale, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
+
+`get_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
+or `SOW` on most signals, `ITOW·7200 + toi·18` on GPS L1C-D, and
+`HOW·3600 + soh·18` on BeiDou B1C — and pairs with the state's symbol counter to
+give the current time on every signal with one expression:
+
+```julia
+using GNSSDecoder, GNSSSignals
+tow = get_time_of_week(state)
+now = tow + state.num_bits_after_valid_syncro_sequence / get_data_frequency(state)
+```
+
+`get_time_offset` folds away the five shapes the same quantity is broadcast in —
+Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
+`GNSS_ID`/`GGTO_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
+keyed per system, and D1/D2's three epochless pairs named per system — including
+each ICD's "not available" sentinel:
+
+```julia
+offset = get_time_offset(state, GPST())     # `GPST()`, `GST()` or `BDT()`
+```
+
+```@docs
+OrbitClass
+get_orbit_class
+get_time_of_week
+GNSSTimeOffset
+get_time_offset
+```
+
 ## Shared Utilities
 
 Signal-independent building blocks used across the decoders (CRC-24Q, the

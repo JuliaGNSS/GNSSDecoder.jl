@@ -796,6 +796,40 @@ function is_clock_correction_decoded(data::GPSCNAVData)
         !isnothing(data.a_f2)
 end
 
+# CNAV's `TOW` is already seconds (the 17-bit count is scaled by 6 at parse).
+get_time_of_week(data::GPSCNAVData) = data.TOW
+
+"""
+$(TYPEDSIGNATURES)
+
+The GPS/GNSS time offset from message type 35, if this satellite is currently
+broadcasting one for `target`.
+
+`GNSS_ID` names the system the single broadcast set refers to — 0 none,
+1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI) — so which target is answerable is
+the satellite's choice at the moment of asking. GLONASS has no `TimeSystem` and
+so can never match; see [`get_time_offset`](@ref).
+"""
+function get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem)
+    data = state.data
+    _cnav_ggto_target(data.GNSS_ID) === target || return nothing
+    isnothing(data.A_0GGTO) && return nothing
+    GNSSTimeOffset(
+        target,
+        data.A_0GGTO,
+        data.A_1GGTO,
+        data.A_2GGTO,
+        Int(data.t_GGTO),
+        Int(data.WN_GGTO),
+    )
+end
+
+# GNSS ID -> time scale (Table 20-XI): 0 none, 1 Galileo, 2 GLONASS, 3 BeiDou,
+# 4-7 reserved. `nothing` (undecoded, code 0, GLONASS, or reserved) matches no
+# `TimeSystem`. Deliberately not shared with L1C-D's `_l1c_d_ggto_target`: the
+# CNAV-2 field assigns code 3 to nothing at all.
+_cnav_ggto_target(GNSS_ID) = GNSS_ID == 1 ? GST() : GNSS_ID == 3 ? BDT() : nothing
+
 function is_decoding_completed_for_positioning(data::GPSCNAVData)
     !isnothing(data.TOW) && is_ephemeris_decoded(data) && is_clock_correction_decoded(data)
 end

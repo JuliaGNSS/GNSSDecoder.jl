@@ -67,6 +67,18 @@ export decode,
     is_sat_healthy,
     is_decoding_completed_for_positioning,
     get_signal_type,
+    # The three cross-signal quantities a positioning engine needs and no single
+    # signal file can own: which orbit the satellite is in, what time of week the
+    # decoded message stamps, and how this system's time relates to another's.
+    # Each is reassembled from raw broadcast fields on some signals, so it is
+    # decoding work; exporting them is what keeps a consumer from restating the
+    # reconstruction. `OrbitClass`'s values are not exported, for the reason the
+    # health enums' are not (above).
+    OrbitClass,
+    get_orbit_class,
+    get_time_of_week,
+    GNSSTimeOffset,
+    get_time_offset,
     GNSSDecoderState,
     reset_decoder_state
 # The signal-independent primitives — CRC-24Q, the BCH(51,8) TOI codec, the

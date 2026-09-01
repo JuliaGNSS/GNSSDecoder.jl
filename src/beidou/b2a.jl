@@ -832,6 +832,25 @@ function is_clock_correction_decoded(data::BeiDouB2aData)
         !isnothing(data.a_f2)
 end
 
+# Orbit class from the satellite's own broadcast `sat_type` (Ephemeris I, MT10);
+# `nothing` until MT10 is decoded, and for the reserved code.
+get_orbit_class(state::GNSSDecoderState{<:BeiDouB2aData}) =
+    beidou_orbit_class(state.data.sat_type)
+
+# B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
+# scaled at parse (§7.3, Table 7-2).
+get_time_of_week(data::BeiDouB2aData) = data.SOW
+
+"""
+$(TYPEDSIGNATURES)
+
+The BDT-to-`target` offset from message type 33, or `nothing` when this
+satellite is not currently broadcasting one for `target`. One set at a time,
+tagged by `GNSS_ID`; see `beidou_bgto_offset`.
+"""
+get_time_offset(state::GNSSDecoderState{<:BeiDouB2aData}, target::TimeSystem) =
+    beidou_bgto_offset(state.data, target)
+
 function is_decoding_completed_for_positioning(data::BeiDouB2aData)
     !isnothing(data.SOW) &&
         is_ephemeris_decoded(data) &&

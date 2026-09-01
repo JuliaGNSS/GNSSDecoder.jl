@@ -577,6 +577,19 @@ function is_health_status_decoded(data::GalileoINAVData)
         !isnothing(data.E5b_DVS)
 end
 
+# I/NAV broadcasts the time of week as seconds (word types 0, 5 and 6).
+get_time_of_week(data::GalileoINAVData) = data.TOW
+
+"""
+$(TYPEDSIGNATURES)
+
+The GST-to-GPS time offset from I/NAV word type 10, or `nothing` when the
+satellite is not broadcasting a valid GGTO or `target` is not `GPST()`.
+See `galileo_ggto_offset`.
+"""
+get_time_offset(state::GNSSDecoderState{<:GalileoINAVData}, target::TimeSystem) =
+    galileo_ggto_offset(state.data, target)
+
 function is_decoding_completed_for_positioning(data::GalileoINAVData)
     !isnothing(data.TOW) &&
         !isnothing(data.WN) &&

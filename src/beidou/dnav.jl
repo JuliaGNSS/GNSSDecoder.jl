@@ -736,6 +736,51 @@ function is_sat_healthy(state::GNSSDecoderState{<:BeiDouDNAVData})
     state.data.SatH1 === false
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+[`geostationary_orbit`](@ref OrbitClass) for the GEO PRNs, `nothing` otherwise.
+
+D1/D2 NAV broadcasts `sqrt_A` outright and carries no orbit-type field, so the
+only orbit fact available on B1I and B3I is the PRN partition
+`is_beidou_geo` encodes — the one the ICD fixes to select between the
+D1 and D2 message formats (BDS-SIS-ICD-B1I-3.0 Table 4-1, §5.1.1). That
+partition separates GEO from non-GEO and no further, so an IGSO and an MEO
+satellite are indistinguishable here and both report `nothing`. The B-CNAV
+signals answer all three classes, from the broadcast `sat_type`.
+"""
+get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
+    is_beidou_geo(state.prn) ? geostationary_orbit : nothing
+
+# D1/D2 broadcasts the seconds of week outright (LSB 1 s, §5.2.4.3/§5.3.3.1).
+get_time_of_week(data::BeiDouDNAVData) = data.SOW
+
+"""
+$(TYPEDSIGNATURES)
+
+The BDT-to-`target` offset from D1 subframe 5 / D2 page 102, or `nothing` when
+this satellite is not broadcasting one.
+
+D1/D2 is the one shape that identifies the target system by *field name* rather
+than by a `GNSS_ID` code — it carries all three offsets side by side
+(`A_0GPS`/`A_1GPS`, `A_0Gal`/`A_1Gal`, `A_0GLO`/`A_1GLO`; §5.2.4.19-21) — so
+more than one target can be answerable at once. It is also the one shape with no
+reference epoch: the returned record has `t_0 === nothing` and
+`WN_0 === nothing`, and its two-term polynomial reports `A_2 == 0`.
+
+Expect `nothing` in practice whatever the target: all three sections are marked
+"(Not broadcast temporarily)" in BDS-SIS-ICD-B1I-3.0, and the B-CNAV signals
+carry the BGTO that replaced them.
+"""
+function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::TimeSystem)
+    data = state.data
+    A_0, A_1 =
+        target === GPST() ? (data.A_0GPS, data.A_1GPS) :
+        target === GST() ? (data.A_0Gal, data.A_1Gal) : (nothing, nothing)
+    isnothing(A_0) && return nothing
+    GNSSTimeOffset(target, A_0, A_1, 0.0, nothing, nothing)
+end
+
 function is_decoding_completed_for_positioning(data::BeiDouDNAVData)
     # Klobuchar ionosphere is deliberately *not* gated on: `src/gnss.jl` states
     # that second-order corrections are excluded from readiness and should be
