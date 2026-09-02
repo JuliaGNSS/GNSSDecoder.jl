@@ -345,10 +345,12 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # `get_constellation_id` / `get_constellation_name`, `get_band` / `get_band_id` /
 # `get_band_name`), the navigation-message symbol rate (`get_data_frequency`),
 # and the time scale the decoded week numbers and times of week are referenced
-# to (`get_time_system` and friends — the epoch `get_system_start_time` and the
-# TAI offset `get_tai_offset` are what turn a decoded WN/TOW pair into an
-# absolute instant, and the Galileo epoch is 13 s shy of a UTC midnight, so
-# sourcing it rather than restating it matters).
+# to (`get_time_system` and friends — the epochs `get_system_start_time` (UTC
+# label) and `get_tai_system_start_time` (the same instant on the continuous
+# TAI scale, GNSSSignals 4.1) and the TAI offset `get_tai_offset` are what turn
+# a decoded WN/TOW pair into an absolute instant, and the Galileo epoch is 13 s
+# shy of a UTC midnight *and* anchored to GPS Time rather than to UTC, so
+# sourcing them rather than restating them matters).
 #
 # These extend GNSSSignals' own functions rather than introducing GNSSDecoder
 # names, so a caller already doing `using GNSSSignals` needs no new import and
@@ -370,6 +372,7 @@ for accessor in (
     :get_time_system_id,
     :get_time_system_name,
     :get_system_start_time,
+    :get_tai_system_start_time,
     :get_tai_offset,
 )
     @eval @inline GNSSSignals.$accessor(state::GNSSDecoderState) =
