@@ -121,7 +121,7 @@ function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, HS = 0)
         b2b_set_field!(bits, 369, 15, -9000)    # PM_Y_dot
         b2b_set_field!(bits, 384, 31, -12345678)# ΔUT1
         b2b_set_field!(bits, 415, 19, 200000)   # ΔUT1_dot
-        b2b_set_field!(bits, 434, 11, 1750)     # t_op (raw)
+        b2b_set_field!(bits, 434, 11, 1750)     # t_op (broadcast count; ×300 s on decode)
         b2b_set_field!(bits, 445, 5, 12)        # SISAI_ocb
         b2b_set_field!(bits, 450, 3, 3)         # SISAI_oc1
         b2b_set_field!(bits, 453, 3, 5)         # SISAI_oc2
@@ -268,7 +268,7 @@ end
         @test d.PM_Y_dot == -9000 * 2.0^-21
         @test d.ΔUT1 == -12345678 * 2.0^-24
         @test d.ΔUT1_dot == 200000 * 2.0^-25
-        @test d.t_op == 1750
+        @test d.t_op == 1750 * 300
         @test d.SISAI_ocb == 12
         @test d.SISAI_oc1 == 3
         @test d.SISAI_oc2 == 5

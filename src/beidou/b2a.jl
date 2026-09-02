@@ -432,7 +432,8 @@ Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouData
     # ICD v1.0 defers the SISAI definitions to a future update, so the raw
     # broadcast integers are stored unscaled.
     """
-    Time of week for data prediction (11-bit raw value; definition deferred, §7.16)
+    Time of week for data prediction (s; 11-bit count, LSB 300 s — see
+    `beidou_sisai_oc_block`)
     """
     t_op::Union{Nothing,Int64} = nothing
     """

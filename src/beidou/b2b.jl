@@ -177,7 +177,8 @@ each CRC-gated message is atomic.
   - `t_EOP::Int64`: EOP reference time (s, LSB 2⁴; Table 7-16).
   - `PM_X,PM_Y::Float64`: Polar motion (arc-seconds). `PM_X_dot,PM_Y_dot::Float64`: drift (arc-seconds/day).
   - `ΔUT1::Float64`: UT1-UTC difference (s). `ΔUT1_dot::Float64`: its rate (s/day).
-  - `t_op,SISAI_ocb,SISAI_oc1,SISAI_oc2,SISAI_oe::Int64`: Signal-in-space accuracy index fields, raw broadcast values (11/5/3/3/5 bits; semantics deferred to a future ICD update, §7.15).
+  - `t_op::Int64`: Time of week for data prediction (s; 11-bit count, LSB 300 s — see `beidou_sisai_oc_block`).
+  - `SISAI_ocb,SISAI_oc1,SISAI_oc2,SISAI_oe::Int64`: Signal-in-space accuracy index fields, raw broadcast values (5/3/3/5 bits; semantics deferred to a future ICD update, §7.15).
   - `HS::Int64`: Satellite health status (0 = healthy, 1 = unhealthy or in test, 2-3 reserved; Table 7-20).
 
 # Message type 40 — BGTO and almanacs (Figure 6-5)

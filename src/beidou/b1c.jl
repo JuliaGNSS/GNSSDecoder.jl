@@ -301,9 +301,9 @@ Present on every defined page type, refreshed whenever any page decodes:
   - `SISMAI::Int64`: Signal-in-space monitoring accuracy index (4 bits).
   - `SISAI_oe::Int64`: Orbit along-track/cross-track accuracy index
     (5 bits, pages 1 and 3).
-  - `t_op::Int64`: Time of week for data prediction (raw 11-bit count; B1C-1.0
-    §7.16 defers the SISAI *definitions* and gives no parameter table at all, so
-    no scale factor is applied), and
+  - `t_op::Int64`: Time of week for data prediction (s; 11-bit broadcast count
+    with an LSB of 300 s — see `beidou_sisai_oc_block` for why the factor holds
+    although B1C-1.0 §7.16 defers the block's parameter table), and
     `SISAI_ocb::Int64`, `SISAI_oc1::Int64`, `SISAI_oc2::Int64`: orbit
     radius / clock accuracy indices (pages 1, 2, and 4).
 
