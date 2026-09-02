@@ -184,12 +184,22 @@ beidou_clock_block(word::Unsigned, word_length::Int, start::Int) = (;
 )
 
 """
-SISAIoc block, 22 bits: `t_op`(11), `SISAI_ocb`(5), `SISAI_oc1`(3),
-`SISAI_oc2`(3) — Figure 6-14. Raw broadcast values: the ICDs defer the accuracy
-semantics to a future update (B1C §7.16).
+SISAIoc block, 22 bits: `t_op`(11, LSB 300 s), `SISAI_ocb`(5), `SISAI_oc1`(3),
+`SISAI_oc2`(3) — Figure 6-14. The three indices are raw broadcast values: the
+ICDs defer the accuracy semantics to a future update (B1C §7.16).
+
+`t_op` is scaled to seconds, though the deferral means no BDS parameter table
+states its factor, because the ICDs *do* define the field — "top: the time of
+week for data prediction" (B2b §7.15 item 5) — and only one reading satisfies
+that definition: 11 bits in unit seconds cannot span a week, while LSB 300 s
+gives 0..614100, the exact convention of `t_oc`/`t_oe` in the same ICDs
+(11 bits, LSB 300, effective range 0..604500, Table 7-5) and of GPS CNAV's
+same-named, same-width `t_op`, which IS-GPS-705J states outright. Leaving it
+raw would be the package's only `t_op` not in seconds — the same field name in
+two units, which rule 1 of CONTEXT.md's naming doctrine exists to prevent.
 """
 beidou_sisai_oc_block(word::Unsigned, word_length::Int, start::Int) = (;
-    t_op = Int64(get_bits(word, word_length, start, 11)),
+    t_op = Int64(get_bits(word, word_length, start, 11)) * 300,
     SISAI_ocb = Int64(get_bits(word, word_length, start + 11, 5)),
     SISAI_oc1 = Int64(get_bits(word, word_length, start + 16, 3)),
     SISAI_oc2 = Int64(get_bits(word, word_length, start + 19, 3)),

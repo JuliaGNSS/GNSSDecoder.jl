@@ -456,7 +456,7 @@ end
         @test d.AIF === true
         @test d.SISMAI == 5
         @test d.SISAI_oe == 12
-        @test d.t_op == 900
+        @test d.t_op == 900 * 300
         @test d.SISAI_ocb == 7
         @test d.SISAI_oc1 == 2
         @test d.SISAI_oc2 == 3

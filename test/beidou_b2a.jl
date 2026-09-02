@@ -224,7 +224,7 @@ build_b2a_mt34(; sow) =
     build_b2a_message(; prn = B2A_PRN, mestype = 34, sow_seconds = sow) do bits
         b2a_setbits!(bits, 31, 2, 0)
         set_flags!(bits, 33)
-        b2a_setbits!(bits, 43, 11, 1200)  # t_op (raw)
+        b2a_setbits!(bits, 43, 11, 1200)  # t_op (broadcast count; ×300 s on decode)
         b2a_setbits!(bits, 54, 5, 17)     # SISAI_ocb
         b2a_setbits!(bits, 59, 3, 5)      # SISAI_oc1
         b2a_setbits!(bits, 62, 3, 2)      # SISAI_oc2
@@ -395,7 +395,7 @@ end
         @test state.raw_data.A_2BGTO == -60 * 2.0^-68
 
         # MT34: SISAIoc + BDT-UTC
-        @test state.raw_data.t_op == 1200
+        @test state.raw_data.t_op == 1200 * 300
         @test state.raw_data.SISAI_ocb == 17
         @test state.raw_data.SISAI_oc1 == 5
         @test state.raw_data.SISAI_oc2 == 2

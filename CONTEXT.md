@@ -167,7 +167,7 @@ from and the field lists say which:
 | Clock reference epoch | GPS/BDS `t_oc`, Galileo `t_0c` | `t_0c` |
 | Ephemeris reference epoch | GPS/BDS `t_oe`, Galileo `t_0e` | `t_0e` |
 | Almanac reference epoch | GPS/BDS `t_oa`, Galileo `t_0a` | `t_0a` |
-| Data prediction epoch | GPS `t_op`, BDS `t_op` (B2b figure prints it inside SISAIoc) | `t_op` |
+| Data prediction epoch | GPS `t_op`, BDS `t_op` (B2b figure prints it inside SISAIoc; its LSB of 300 s is inferred — the block's parameter table is deferred — from the field's own "time of week" definition, the 11-bit width, and the `t_oc`/`t_oe`/GPS-`t_op` convention) | `t_op` |
 | UTC polynomial | GPS `A0`/`A0-n`, Galileo `A0`, BDS `A_0UTC` | `A_0UTC`, `A_1UTC`, `A_2UTC` |
 | UTC reference epoch | GPS/BDS `t_ot`, Galileo `t_0t` | `t_0t` |
 | UTC reference week | GPS `WN_t`/`WN_ot`, BDS `WN_ot`, Galileo `WN_0t` | `WN_0t` |
