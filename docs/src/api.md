@@ -70,7 +70,7 @@ to a compile-time constant.
 | `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
 | `get_data_frequency` | navigation-message symbol rate | `50 Hz` |
 | `get_time_system` / `get_time_system_id` / `get_time_system_name` | time scale the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
-| `get_system_start_time` / `get_tai_offset` | that scale's epoch and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `19 s` |
+| `get_system_start_time` / `get_tai_system_start_time` / `get_tai_offset` | that scale's epoch (as a UTC label, and on the continuous TAI scale) and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `1980-01-06T00:00:19` / `19 s` |
 
 Dispatch is on the constants type, which keeps decoders that share a data
 container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and

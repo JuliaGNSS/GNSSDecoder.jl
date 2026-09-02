@@ -31,6 +31,7 @@
         get_time_system_id,
         get_time_system_name,
         get_system_start_time,
+        get_tai_system_start_time,
         get_tai_offset,
     ]
 
@@ -92,6 +93,7 @@
             @test get_time_system(state) == (is_gps ? GPST() : GST())
             @test get_time_system_id(state) == (is_gps ? :GPST : :GST)
             @test get_system_start_time(state) == get_system_start_time(signal)
+            @test get_tai_system_start_time(state) == get_tai_system_start_time(signal)
         end
         @test get_time_system_name(GPSL1CADecoderState(1)) == "GPS Time"
         @test get_time_system_name(GalileoE1BDecoderState(1)) == "Galileo System Time"
