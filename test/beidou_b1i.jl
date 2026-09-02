@@ -140,6 +140,83 @@ using GNSSSignals: Hz
         @test state.data == BeiDouDNAVData()
     end
 
+    @testset "D1 SOW screen stays armed across the vote-round clear" begin
+        # `dnav_confirm_data` clears `raw_data` when it stages a new dataset for
+        # the next vote round, but must carry the (SOW, anchor) screening pair
+        # through the clear: `is_plausible_dnav_SOW` falls back to the coarse
+        # ΔSOW gap check once `prev_SOW` is `nothing`, and BCH(15,11,1) is a
+        # perfect code — a two-error SOW word decodes to *some* valid codeword,
+        # never an erasure. One unscreened mis-correction then poisons the
+        # reference, and every honest subframe after it fails the elapsed-symbol
+        # prediction until an external reset.
+        #
+        # The elapsed-symbol screen only arms once the symbol counter runs, i.e.
+        # after a first promotion — so the wedge scenario is: promote dataset A,
+        # stage a clock update B (which clears the vote round), then hit the
+        # cleared state with a poisoned SOW.
+        #
+        # One contiguous stream, decoded in slices so the state can be examined
+        # between subframes. A slice boundary must lie 11 symbols past the last
+        # subframe it is meant to have decoded: the 311-symbol sync window wants
+        # the next subframe's preamble as lookahead (`dnav_test_soft_symbols`
+        # appends exactly that after the final subframe).
+        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_0c = 46800 s
+        d1_cycleB(Δ) = (
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe1_content(; merge(d1_sf1B, (SOW = SOW0 + Δ,))...),
+            ),
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe2_content(; merge(d1_sf2, (SOW = SOW0 + Δ + 6,))...),
+            ),
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe3_content(; merge(d1_sf3, (SOW = SOW0 + Δ + 12,))...),
+            ),
+        )
+        # The next slot after dataset B broadcasts a SOW one second off — the
+        # shape of a BCH mis-correction of the SOW word.
+        bad_sf1 = dnav_test_encode_subframe(
+            dnav_test_d1_subframe1_content(; merge(d1_sf1B, (SOW = SOW0 + 55,))...),
+        )
+        stream = dnav_test_soft_symbols(
+            d1_two_cycles...,      # dataset A, twice: promotes (slots 0-30)
+            d1_cycleB(36)...,      # dataset B once: staged, vote round cleared
+            bad_sf1,               # slot 54, broadcasting SOW0 + 55
+            d1_cycleB(60)...,      # dataset B again, honest cadence
+        )
+        state = BeiDouB1IDecoderState(20)
+        consumed = 0
+        function feed!(state, upto)
+            slice = view(stream, (consumed+1):upto)
+            consumed = upto
+            decode(state, slice, length(slice))
+        end
+
+        state = feed!(state, 6 * 300 + 11)
+        @test is_decoding_completed_for_positioning(state)   # dataset A promoted
+        @test state.data.t_0c == 43200
+
+        state = feed!(state, 9 * 300 + 11)
+        @test state.data.t_0c == 43200               # B staged, not yet promoted
+        @test state.raw_data.SOW == SOW0 + 48        # …with the pair carried
+        @test !isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW)
+        @test isnothing(state.raw_data.t_0c)         # the clear itself happened
+
+        # The carried pair predicts SOW0 + 54 from the elapsed 300 symbols, so
+        # the poisoned SOW0 + 55 must be rejected, keeping the reference.
+        state = feed!(state, 10 * 300 + 11)
+        @test state.raw_data.SOW == SOW0 + 48
+
+        # Honest subframes at the true cadence still pass against the carried
+        # reference (the prediction spans any whole number of skipped subframes)
+        # and complete B's repetition vote. Had the poisoned SOW been accepted,
+        # every one of these would fail the prediction and the decoder would be
+        # wedged on dataset A until reset.
+        state = feed!(state, length(stream))
+        @test is_decoding_completed_for_positioning(state)
+        @test state.data.t_0c == 46800
+        @test state.data.SOW == SOW0 + 72
+    end
+
     @testset "D1 time counter is anchored to this subframe's SOW epoch" begin
         # BDS-SIS-ICD-B1I-3.0 §5.2.4.3: the SOW stamps the leading edge of the
         # preamble of *this* subframe, so at promotion the counter must span
