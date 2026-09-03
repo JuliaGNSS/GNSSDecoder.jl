@@ -81,11 +81,11 @@ Base.@kwdef struct GPSCNAVConstants{S} <: AbstractGNSSConstants
     """
     WGS 84 Earth gravitational parameter (m³/s²)
     """
-    μ::Float64 = 3.986005e14
+    μ::Float64 = GPS_μ
     """
     Relativistic correction constant (s/√m)
     """
-    F::Float64 = -4.442807633e-10
+    F::Float64 = GPS_F
 end
 
 """
@@ -105,22 +105,6 @@ const CNAV_WINDOW_BITS = CNAV_MESSAGE_BITS + CNAV_PREAMBLE_BITS  # 308
 CNAV preamble `10001011` (IS-GPS-705J §20.3.3).
 """
 const CNAV_PREAMBLE = 0b10001011
-
-# The one assigned GNSS Type ID in the message-type-35 GGTO field. IS-GPS-705J
-# §20.3.3.8.1 and IS-GPS-200N §30.3.3.8.1 define 000 = no data available,
-# 001 = Galileo, 010 = GLONASS, 011-111 = reserved, with the reserved codes to
-# be read as "presently unusable". GLONASS is assigned but unreachable here:
-# `GNSSSignals` defines no GLONASS `TimeSystem` to ask for.
-const CNAV_GGTO_ID_GALILEO = 1
-
-# `WN_GGTO` is 13 bits, the same width as the CNAV week number, so resolving it
-# changes nothing except across a rollover. See `resolve_reference_week`.
-const CNAV_GGTO_WN_MODULUS = 8192
-
-# Semi-major axis reference (IS-GPS-705J Table 20-I, meters).
-const CNAV_A_REF = 26_559_710.0
-# Rate-of-right-ascension reference (IS-GPS-705J Table 20-I, semi-circles/sec).
-const CNAV_OMEGA_DOT_REF = -2.6e-9
 
 """
     GPSCNAVReducedAlmanac
@@ -821,30 +805,10 @@ The GPS/GNSS time offset from message type 35, if this satellite is currently
 broadcasting one for `target`.
 
 `GNSS_ID` names the system the single broadcast set refers to — 0 none,
-1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI) — so which target is answerable is
-the satellite's choice at the moment of asking. GLONASS has no `TimeSystem` and
-so can never match; see [`get_time_offset`](@ref).
+1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI); see `gps_ggto_offset`.
 """
-function get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem)
-    data = state.data
-    # GNSS Type ID 001 is the only assigned target: 000 is "no data available"
-    # and 011-111 are reserved, which the ICD says to read as unusable rather
-    # than to guess at (IS-GPS-705J §20.3.3.8.1, identical in IS-GPS-200N
-    # §30.3.3.8.1 for the L2C carriage of the same message type).
-    (data.GNSS_ID == CNAV_GGTO_ID_GALILEO && target === GST()) || return nothing
-    isnothing(data.A_0GGTO) && return nothing
-    broadcast_time_offset(
-        state,
-        target,
-        data.A_0GGTO,
-        data.A_1GGTO,
-        data.A_2GGTO;
-        t_0 = data.t_GGTO,
-        WN_0 = data.WN_GGTO,
-        WN = data.WN,
-        WN_0_modulus = CNAV_GGTO_WN_MODULUS,
-    )
-end
+get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
+    gps_ggto_offset(state, target, state.data.GNSS_ID)
 
 function is_decoding_completed_for_positioning(data::GPSCNAVData)
     !isnothing(data.TOW) && is_ephemeris_decoded(data) && is_clock_correction_decoded(data)

@@ -4,9 +4,9 @@
 # of 1800 symbols at 100 sps:
 #
 #   - Subframe 1: 52 symbols — a BCH(51,8)+parity encoding of a 9-bit TOI
-#     count (0..399), used purely for frame sync (see `src/bch_toi.jl`).
+#     count (0..399), used purely for frame sync (see `src/coding/bch_toi.jl`).
 #   - Subframes 2 + 3: 1748 symbols, block-interleaved (38×46, see
-#     `src/deinterleave.jl`) over a 1200-symbol rate-½ LDPC codeword for
+#     `src/coding/deinterleave.jl`) over a 1200-symbol rate-½ LDPC codeword for
 #     subframe 2 (600 info bits) followed by a 548-symbol rate-½ LDPC
 #     codeword for subframe 3 (274 info bits).
 #
@@ -59,25 +59,8 @@ const L1C_D_SF3_INFO_BITS = 274
 # belongs to a signal file): `get_bits(word, 274, …)` addresses the 274 logical
 # bits regardless of the wider storage as long as they are right-aligned.
 
-# Semi-major axis reference (IS-GPS-800J Table 3.5-1 footnote, meters).
-const L1C_D_A_REF = 26_559_710.0
-# Rate-of-right-ascension reference (IS-GPS-800J Table 3.5-1, semi-circles/sec).
-const L1C_D_OMEGA_DOT_REF = -2.6e-9
-
 # Subframe-3 page numbers (IS-GPS-800J §3.5.4, figure-by-figure). The 6-bit
 # page-number field lives in bits 9-14 of every SF3 page (bits 1-8 are PRN).
-# The one assigned GGTO ID in subframe 3 page 2 (IS-GPS-800J §3.5.4.2.1, bits
-# 15-17): 000 = no data available, 001 = Galileo, 010 = GLONASS, 011-111
-# reserved and to be read as presently unusable. Stated here rather than shared
-# with CNAV's identical `CNAV_GGTO_ID_GALILEO` because GPS has no
-# constellation-shared file, and an include-order dependency between two signal
-# decoders costs more than one line does.
-const L1C_D_GGTO_ID_GALILEO = 1
-
-# `WN_GGTO` is 13 bits, the same width as the CNAV-2 week number, so resolving
-# it changes nothing except across a rollover. See `resolve_reference_week`.
-const L1C_D_GGTO_WN_MODULUS = 8192
-
 const L1C_D_SF3_PAGE_UTC_IONO = 1   # Figure 3.5-2: UTC + Klobuchar iono + ISC
 const L1C_D_SF3_PAGE_GGTO_EOP = 2   # Figure 3.5-3: GGTO + Earth orientation
 const L1C_D_SF3_PAGE_REDUCED_ALMANAC = 3  # Figure 3.5-4: 6 reduced-almanac packets
@@ -127,11 +110,11 @@ Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     """
     WGS 84 Earth gravitational parameter (m³/s²)
     """
-    μ::Float64 = 3.986005e14
+    μ::Float64 = GPS_μ
     """
     Relativistic correction constant (s/√m)
     """
-    F::Float64 = -4.442807633e-10
+    F::Float64 = GPS_F
 end
 
 """
@@ -766,27 +749,10 @@ broadcasting one for `target`.
 
 `GGTO_ID` names the system the single broadcast set refers to — 0 none,
 1 Galileo, 2 GLONASS, 3-7 reserved (IS-GPS-800J §3.5.4.2.1) — the same table
-CNAV carries in message type 35, and with the same single reachable target:
-GLONASS has no `TimeSystem` to ask for. See [`get_time_offset`](@ref).
+CNAV carries in message type 35; see `gps_ggto_offset`.
 """
-function get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem)
-    data = state.data
-    # 001 is the only assigned target; 000 is "no data available" and 011-111
-    # are reserved, which §3.5.4.2.1 directs be read as unusable.
-    (data.GGTO_ID == L1C_D_GGTO_ID_GALILEO && target === GST()) || return nothing
-    isnothing(data.A_0GGTO) && return nothing
-    broadcast_time_offset(
-        state,
-        target,
-        data.A_0GGTO,
-        data.A_1GGTO,
-        data.A_2GGTO;
-        t_0 = data.t_GGTO,
-        WN_0 = data.WN_GGTO,
-        WN = data.WN,
-        WN_0_modulus = L1C_D_GGTO_WN_MODULUS,
-    )
-end
+get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem) =
+    gps_ggto_offset(state, target, state.data.GGTO_ID)
 
 function is_decoding_completed_for_positioning(data::GPSL1C_DData)
     !isnothing(data.toi) && is_subframe2_decoded(data)
@@ -798,7 +764,7 @@ $(TYPEDSIGNATURES)
 Create a decoder state for GPS L1C-D (CNAV-2) navigation messages.
 
 Wires up a [`GNSSDecoderState`](@ref) with a 1852-symbol soft-symbol buffer,
-the 400-entry BCH(51,8) TOI codeword table (`src/bch_toi.jl`), and two Aff3ct
+the 400-entry BCH(51,8) TOI codeword table (`src/coding/bch_toi.jl`), and two Aff3ct
 LDPC belief-propagation decoders loaded lazily from the committed `.alist`
 parity matrices in `data/`.
 
@@ -887,7 +853,7 @@ end
 # Override the generic packed-buffer sync. L1C-D sync runs the BCH(51,8) TOI
 # match directly on the soft-symbol deque: the first 52 symbols must equal the
 # codeword for some `toi`, and the last 52 the codeword for `(toi+1) mod 400`,
-# in either polarity. `sync_bch_toi` (src/bch_toi.jl) implements exactly this.
+# in either polarity. `sync_bch_toi` (src/coding/bch_toi.jl) implements exactly this.
 
 """
     try_sync(state::GNSSDecoderState{<:GPSL1C_DData}) -> Union{Nothing,BCHToiSync}
@@ -1054,9 +1020,8 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     ISC_L1CP = get_twos_complement_num(word, word_length, 540, 13) * 2.0^-35
     ISC_L1CD = get_twos_complement_num(word, word_length, 553, 13) * 2.0^-35
     # Bits 566 and 567-574 close subframe 2 before its 2 reserved bits and the
-    # CRC (Figure 3.5-1). Figure 3.5-1 drops `ISF - 1 BIT` and `RESERVED - 2
-    # BITS` onto a second label row below the main one, which is how they came
-    # to be skipped when this parser was first transcribed from the figure.
+    # CRC. Easy to miss: Figure 3.5-1 drops `ISF - 1 BIT` and `RESERVED - 2
+    # BITS` onto a second label row below the main one.
     integrity_status_flag = get_bit(word, word_length, 566)
     WN_op = Int(get_bits(word, word_length, 567, 8))
 

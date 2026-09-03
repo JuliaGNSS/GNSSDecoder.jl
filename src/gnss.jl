@@ -87,9 +87,7 @@ const GNSS_PI = 3.1415926535898
 const SPEED_OF_LIGHT = 2.99792458e8        # m/s
 const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and GTRF agree)
 
-# Every constellation here counts time as a week number plus a time of week,
-# so the week length is shared rather than owned by whichever signal happened
-# to need it first.
+# Every constellation here counts time as a week number plus a time of week.
 const SECONDS_PER_WEEK = 604_800
 
 """
@@ -399,11 +397,10 @@ end
 Orbit class of a navigation satellite: [`get_orbit_class`](@ref) reports it.
 
 The three classes the ICDs of the constellations decoded here distinguish. The
-values are deliberately *not* exported, for the reason the health enums are not
-(see the export list in `GNSSDecoder.jl`): `medium_earth_orbit` is exactly the
-name a receiver or orbit-propagation package alongside this one may define, and
-consumers compare against them rarely enough that `GNSSDecoder.geostationary_orbit`
-costs nothing.
+values are deliberately *not* exported, like the health enums' values:
+`medium_earth_orbit` is exactly the name a receiver or orbit-propagation
+package alongside this one may define, and consumers compare against them
+rarely enough that `GNSSDecoder.geostationary_orbit` costs nothing.
 
 # Values
 
@@ -1169,15 +1166,10 @@ end
 
 # ---- Shared decoder primitives ----------------------------------------------
 #
-# Signal-agnostic primitives used by more than one signal decoder. They live
-# here (a shared file included before every signal) rather than in a per-signal
-# file so that no signal decoder has to be included after another just to borrow
-# them.
+# Signal-agnostic primitives used by more than one signal decoder.
 
-# Packed-word integer types shared across signal decoders. `BitIntegers` widths
-# are global once defined, so the ones more than one constellation reaches for
-# are stated here rather than in whichever signal file happened to need them
-# first — otherwise the include order silently becomes load-bearing.
+# Packed-word integer types used by more than one signal decoder (`BitIntegers`
+# widths are global once defined, so each is defined exactly once, here).
 #
 #   - `UInt288`: the 220 bits a Galileo I/NAV page pair runs the CRC-24Q over,
 #     the 274-bit GPS L1C-D subframe 3 and the 264-bit BeiDou B1C subframe 3.
@@ -1202,9 +1194,7 @@ Raise a broadcast-repetition vote by one, saturating at `max_vote`.
 
 Two decoders promote `raw_data` to `data` by repetition voting rather than by an
 issue-of-data match — GPS L1 C/A and the BeiDou D1/D2 legacy message, which has
-no IODs at all — and both count with this. It lives here rather than in whichever
-of them was written first, so that neither has to be included after the other
-just to borrow it (see the note on the packed-word widths below).
+no IODs at all — and both count with this.
 """
 increment_voting(old_vote, max_vote) = min(max_vote, old_vote + 1)
 

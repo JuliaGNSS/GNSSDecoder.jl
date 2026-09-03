@@ -62,17 +62,11 @@ function LDPCScratch(path::AbstractString; num_iterations::Integer = 50)
     )
 end
 
-# Run an Aff3ct LDPC BP decode, CRC-check the info block, and pack it MSB-first
-# into a wide word for the shared `get_bits` helpers. CRC failure ⇒ `nothing`
-# (the caller silently drops the subframe). `T` is the packed-word type holding
-# the info block (e.g. `UInt600` for a GPS L1C-D subframe 2).
 """
-Decode, CRC-check, and pack one LDPC info block into a `T`-typed word; `nothing` on CRC failure.
+Decode, CRC-check, and pack one LDPC info block MSB-first into a `T`-typed word
+(e.g. `UInt600` for a GPS L1C-D subframe 2); `nothing` on CRC failure.
 
-Every buffer comes from `scratch`, so a decode allocates nothing. The belief
-propagation itself dominates by orders of magnitude — 630 µs against a few
-kilobytes of garbage for a B2b frame — so this is consistency with the Galileo
-FEC path rather than a throughput win.
+Every buffer comes from `scratch`, so a decode allocates nothing.
 """
 function ldpc_decode_word(scratch::LDPCScratch, symbols, ::Type{T}) where {T}
     # AFF3CT LLR convention matches ours: positive ⇒ bit 0, negative ⇒ bit 1.
@@ -103,13 +97,8 @@ end
 
 Absolute path of a committed `.alist` parity-check matrix in `data/`, resolved
 relative to this file so it works from any working directory.
-
-Every consumer of a committed matrix is an LDPC cache — GPS L1C-D's two, BeiDou
-B1C's two, B2a's and B2b's — so the path lives here with the decoder they feed
-rather than being restated once per signal file, which is how it came to exist
-in four identical copies at two different directory depths.
 """
-alist_path(name) = joinpath(@__DIR__, "..", "data", name)
+alist_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
 """
     load_ldpc_decoder(path; num_iterations = 50) -> LDPCBPDecoder

@@ -70,7 +70,7 @@ code; this file is for naming and meaning only.
   GF(256) ("HPVRS"), and different encoded pages are handed to different
   satellites — a receiver reassembles a message from any k pages with the same
   Message ID by inverting the k×k generator submatrix their Page IDs select
-  (`src/reed_solomon.jl`). E6-C is the dataless pilot, so only
+  (`src/coding/reed_solomon.jl`). E6-C is the dataless pilot, so only
   `GNSSDecoderState(::GalileoE6B, prn)` exists;
   `GalileoE6BDecoderState(prn)` is the equivalent direct constructor.
 - **BeiDou B1I / B3I** (`BeiDouB1I` / `BeiDouB3I`) — the legacy BDS message,

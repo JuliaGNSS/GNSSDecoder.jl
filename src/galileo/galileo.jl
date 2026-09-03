@@ -351,7 +351,7 @@ codeword length. `scratch` is the caller's long-lived
 The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in order:
 
  1. **Block deinterleave** of the LLRs (`deinterleave!` from
-    `src/deinterleave.jl`, into `scratch.deinterleaved`). The ICD's interleaver
+    `src/coding/deinterleave.jl`, into `scratch.deinterleaved`). The ICD's interleaver
     is 8 rows by
     `interleaver_columns` columns; undoing it means filling the *transposed*
     matrix — `interleaver_columns × 8`, written by column and read by row — so

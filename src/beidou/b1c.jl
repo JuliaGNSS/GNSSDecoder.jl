@@ -35,7 +35,7 @@
 # = 72; transmitted PRN-codeword first, matching the subframe-1 MSB-first
 # layout of Figure 6-5 — cross-checked against PocketSDR's `sync_BCNV1_frame`).
 #
-# Both codewords come from `bch_lfsr_codeword` (`src/bch_toi.jl`), the same
+# Both codewords come from `bch_lfsr_codeword` (`src/coding/bch_toi.jl`), the same
 # Fibonacci-LFSR construction the GPS L1C-D TOI table uses — only the symbol
 # count, register width and tap mask differ.
 #
@@ -47,7 +47,7 @@
 # *bit-reversed* info value and emitting the register LSB makes the code
 # systematic — the first k emitted symbols spell the info value MSB-first —
 # which is the same construction (and the same verified convention) as the
-# GPS L1C-D TOI table in `src/bch_toi.jl`, and matches PocketSDR's
+# GPS L1C-D TOI table in `src/coding/bch_toi.jl`, and matches PocketSDR's
 # `LFSR(n, rev_reg(v, k), taps, k)`. The tap masks below are the
 # non-leading coefficients of the ICD polynomials, which is what
 # `bch_lfsr_codeword` takes.
@@ -125,15 +125,6 @@ const B1C_SF3_INFO_BITS = 264
 # order, subframe 3 = rows {3k+3 : k=0..10}.
 const B1C_SF2_ROW_ORDER = (vcat([[3k + 1, 3k + 2] for k = 0:10]...)..., 34, 35, 36)
 const B1C_SF3_ROW_ORDER = ntuple(k -> 3k, 11)
-
-# ---- Physical constants and orbit references (ICD §7.7) ---------------------
-
-# Semi-major axis reference values (ICD Table 7-8 footnote ***, meters).
-const B1C_A_REF_MEO = 27_906_100.0
-const B1C_A_REF_IGSO_GEO = 42_162_200.0
-
-# Reduced-almanac reference values (ICD Table 7-16 footnote ****): e = 0,
-# δi = 0 relative to i = 55° (MEO/IGSO) or i = 0° (GEO).
 
 """
     BeiDouB1CConstants
@@ -671,45 +662,6 @@ function is_subframe2_decoded(data::BeiDouB1CData)
         !isnothing(data.a_f1)
 end
 
-# Positioning readiness: a validated SOH (time), the subframe-2 ephemeris +
-# clock set, and the subframe-3 health status `HS` — so `is_sat_healthy` is
-# guaranteed decodable whenever this is `true` (see
-# `is_decoding_completed_for_positioning` in src/gnss.jl).
-#
-# There is no cross-subframe IOD *stitching* to do — IODE and IODC both live
-# in the CRC-protected subframe 2 — but they must still be a matched pair.
-# ICD §7.4.3: "The IODE value received by the user may be different from the
-# 8 LSBs of IODC during the update of the ephemeris and clock correction
-# data … the user shall use the preceding matched pair … until the updated
-# IODE and the 8 LSBs of IODC are the same." So the ephemeris and the clock
-# set can disagree inside one valid block, and the same gate `b2a.jl` applies
-# is applied here.
-#
-# THE GROUP DELAYS ARE REQUIRED HERE, unlike on every other signal in this
-# package. `is_decoding_completed_for_positioning` (src/gnss.jl) excludes group
-# delays *that would mean waiting for a message the ICD does not schedule*; the
-# single-band correction is included wherever it rides in the required set
-# already. On B1C it does: `T_GD_B1Cp` and `ISC_B1Cd` sit at bits 558-569 and
-# 546-557 of the same 600-bit, CRC-24Q-protected subframe 2 as the ephemeris and
-# the clock, decoded by the same constructor call, and subframe 2 is in every
-# 18-second B-CNAV1 frame. Requiring them therefore costs a B1C receiver exactly
-# zero extra time to first fix.
-#
-# And they are genuinely required, not a refinement. ICD §7.6: the clock
-# parameter a0 carries "the equipment group delay of the B3I signal … the
-# reference equipment group delay for the B1C signal". A B1C receiver is not
-# using B3I, so it must add `T_GD_B1Cp` (B1C pilot vs B3I) and then `ISC_B1Cd`
-# (B1C data vs B1C pilot) to reach its own component. Leaving them out is a
-# metre-scale bias, not a refinement, and a consumer that treats `nothing` as
-# zero — which is what the general policy tells it to do — would silently eat it.
-#
-# `T_GD_B2ap` is deliberately *not* required: it is the B2a pilot's delta and
-# means nothing to a B1C-only user. Same rule, other side of it.
-# Orbit class from the satellite's own broadcast `sat_type` (Ephemeris I,
-# subframe 2); `nothing` until subframe 2 is decoded, and for the reserved code.
-get_orbit_class(state::GNSSDecoderState{<:BeiDouB1CData}) =
-    beidou_orbit_class(state.data.sat_type)
-
 """
 $(TYPEDSIGNATURES)
 
@@ -764,6 +716,21 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouB1CData}, target::TimeS
     return nothing
 end
 
+# Positioning readiness: a validated SOH (time), the subframe-2 ephemeris +
+# clock set, and the subframe-3 health status `HS`.
+#
+# IODE and IODC both live in the CRC-protected subframe 2, but must still be a
+# matched pair: during an update the two can disagree inside one valid block,
+# and ICD §7.4.3 directs the user to keep the preceding matched pair until
+# IODE equals the 8 LSBs of IODC again (same gate as `b2a.jl`).
+#
+# The group delays are required here, unlike on most signals (see the policy on
+# `is_decoding_completed_for_positioning` in src/gnss.jl): ICD §7.6 references
+# the clock parameter a0 to the B3I signal, so a B1C receiver must add
+# `T_GD_B1Cp` and `ISC_B1Cd` to reach its own component — a metre-scale bias —
+# and both ride in the same CRC-protected subframe 2 as the ephemeris and
+# clock, so requiring them costs no extra time to first fix. `T_GD_B2ap` is the
+# B2a pilot's delta and is deliberately not required.
 function is_decoding_completed_for_positioning(data::BeiDouB1CData)
     !isnothing(data.soh) &&
         !isnothing(data.HS) &&

@@ -272,6 +272,13 @@ beidou_orbit_class(sat_type) =
     sat_type == 2 ? inclined_geosynchronous_orbit :
     sat_type == 3 ? medium_earth_orbit : nothing
 
+# Orbit class from the satellite's own broadcast `sat_type` (its Ephemeris I
+# block); `nothing` until that block is decoded, and for the reserved code.
+# B1I/B3I broadcast no `sat_type` and override this with the GEO PRN partition
+# (see `beidou/dnav.jl`).
+get_orbit_class(state::GNSSDecoderState{<:AbstractBeiDouData}) =
+    beidou_orbit_class(state.data.sat_type)
+
 # `WN_0BGTO` is 13 bits, the same width as the BDT week number it is subtracted
 # from, so resolving it changes nothing except across a week-number rollover —
 # which is exactly when it matters. See `resolve_reference_week`.
