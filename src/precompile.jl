@@ -6,8 +6,8 @@
 # receiver on any signal finds it compiled: real captured streams where the
 # test suite has them (GPS L1 C/A and Galileo E1B as hex — the latter also
 # drives E5b, whose I/NAV pages are the same; GPS L2C and L5I CNAV messages and
-# Galileo E5a F/NAV pages from `precompile_data/`, encoded to symbols the way
-# the transmitter would), structurally valid pages for Galileo E6-B, and random
+# Galileo E5a F/NAV pages from the test suite's own `test/data/`, encoded to
+# symbols the way the transmitter would), structurally valid pages for Galileo E6-B, and random
 # symbols for the decoders without a capture (GPS L1C-D, BeiDou
 # B1I/B1C/B2a/B2b/B3I), which
 # still compiles their sync search, FEC and CRC paths, just not the field
@@ -134,21 +134,39 @@ function _precompile_e5a_pages(path)
     end
 end
 
+# The captured fixtures are the ones the test suite already ships in
+# `test/data/`, read from there rather than copied into `src/`: a package
+# tarball carries both directories, and one copy cannot drift from the other.
+# A tree without them still precompiles — `_precompile_fixture_symbols` falls
+# back to random symbols, which compiles the affected decoder's sync search,
+# FEC and CRC paths, just not its field parsing.
+_precompile_fixture(name) = joinpath(@__DIR__, "..", "test", "data", name)
+
+function _precompile_fixture_symbols(build, name, fallback)
+    path = _precompile_fixture(name)
+    isfile(path) ? build(path) : fallback
+end
+
 @setup_workload begin
-    data_dir = joinpath(@__DIR__, "precompile_data")
+    random_symbols = Float32[rand(Bool) ? 1.0f0 : -1.0f0 for _ = 1:8000]
     gps_l1ca = _precompile_soft_symbols(_PRECOMPILE_GPS_L1CA_SYMBOLS)
     galileo_e1b = _precompile_soft_symbols(_PRECOMPILE_GALILEO_E1B_SYMBOLS)
-    gps_l2c = _precompile_cnav_symbols(
-        _precompile_cnav_messages(joinpath(data_dir, "gps_l2c_prn25_nav_bits.bin")),
-    )
-    gps_l5i = _precompile_cnav_symbols(
-        _precompile_cnav_messages(joinpath(data_dir, "gps_l5i_prn25_nav_bits.bin")),
-    )
-    galileo_e5a = _precompile_galileo_stream(
-        _precompile_e5a_pages(joinpath(data_dir, "galileo_e5a_fnav_pages.bin")),
-        (1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0),
-        61,
-    )
+    gps_l2c =
+        _precompile_fixture_symbols("gps_l2c_prn25_nav_bits.bin", random_symbols) do path
+            _precompile_cnav_symbols(_precompile_cnav_messages(path))
+        end
+    gps_l5i =
+        _precompile_fixture_symbols("gps_l5i_prn25_nav_bits.bin", random_symbols) do path
+            _precompile_cnav_symbols(_precompile_cnav_messages(path))
+        end
+    galileo_e5a =
+        _precompile_fixture_symbols("galileo_e5a_fnav_pages.bin", random_symbols) do path
+            _precompile_galileo_stream(
+                _precompile_e5a_pages(path),
+                (1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0),
+                61,
+            )
+        end
     # E6-B C/NAV: 486 information bits per page. The HAS payload the pages carry
     # is not reproduced here — a structurally valid page (right sync, FEC and
     # interleaving) already compiles the sync search, deinterleaver, Viterbi and
@@ -158,7 +176,6 @@ end
         (1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0),
         123,
     )
-    random_symbols = Float32[rand(Bool) ? 1.0f0 : -1.0f0 for _ = 1:8000]
     @compile_workload begin
         for (system, prn, symbols) in (
             (GPSL1CA(), 25, gps_l1ca),
