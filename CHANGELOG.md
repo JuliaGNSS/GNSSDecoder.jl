@@ -1,5 +1,12 @@
 # Changelog
 
+# [4.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.0.0...v4.1.0) (2026-09-03)
+
+
+### Features
+
+* precompile every decoder ([fe5a514](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/fe5a5144acb4d926dc494bb75143e963e7832c7f)), closes [GNSSReceiver.jl#107](https://github.com/GNSSReceiver.jl/issues/107)
+
 # [4.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.14.0...v4.0.0) (2026-09-03)
 
 
