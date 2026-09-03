@@ -1,5 +1,75 @@
 # Changelog
 
+# [4.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.14.0...v4.0.0) (2026-09-03)
+
+
+* feat(beidou)!: gate positioning on exactly what it needs ([6d9ce8b](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/6d9ce8bbbea18ddabab0fa86a2486d020b59428d))
+* refactor!: one name per quantity, raw broadcast values, corrected docs ([cd2b9c5](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/cd2b9c53999cad9b9ba594707eaef1cc7df49350)), closes [#37](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/37)
+
+
+### Bug Fixes
+
+* **beidou:** a t_op is seconds on every signal that carries one ([bdd32ae](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/bdd32aea2bb8d45c0cacb2af3ffb1bce9243549a))
+* **beidou:** anchor the B2a/B2b symbol counter to the promoted frame ([57cf047](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/57cf047a888bad918d8cc39ea7e80c486afcb992))
+* **beidou:** carry B1C's hour across the SOH wrap, and forget it on reset ([fa32580](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/fa325807188a4de2d999b71b03122ad030d1b21a))
+* **beidou:** keep the D1/D2 SOW screen armed across vote-round clears ([d78cd1b](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/d78cd1b5c31e82b2a8d1a22835537240344507ae))
+* correct four pre-existing decode defects ([985c57a](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/985c57a54f183f7804ee0672d530ec9f4db08028))
+* **gpsl1c:** stamp TOI 0 on the next interval, and break the BCH tie in-band ([07461ac](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/07461ac1c5e5f7e89a8f3032319446326648db98))
+* **gps:** no GPS signal broadcasts a BeiDou GGTO ([946fc4d](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/946fc4d344388b1f06b2b0a17616087c69e44d2a))
+* include the defined scale offset in a broadcast time offset ([7104470](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/7104470f300af3d0bae434efef6fcee5b94bbde5))
+* resolve the truncated reference week of a broadcast time offset ([78dcd78](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/78dcd78e3bf8afd73936293868e99ab7f8ad8aba))
+
+
+### Features
+
+* answer orbit class, time of week and inter-system offset per signal ([46e471d](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/46e471d840d7b69e7ae8a518c0b7def5caf3938e))
+* **beidou:** decode B1C's subframe-1 BCH fields instead of matching them ([9ea8df4](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/9ea8df49c9dd9f910ae6741b9bee722800fcd3d8))
+* forward the TAI epoch onto decoder states ([d24b432](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/d24b432c6ccf4397c91e8b0e6ea23aa13e4b13ee)), closes [JuliaGNSS/GNSSSignals.jl#157](https://github.com/JuliaGNSS/GNSSSignals.jl/issues/157)
+* **gpsl1c:** parse the subframe-2 integrity status flag and WN_op ([78112c9](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/78112c961dc063c596686178b40dd5a67f7e3d02))
+
+
+### Performance Improvements
+
+* decode FEC blocks without allocating ([949b1c7](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/949b1c754ae7ee0cfbbb6e2875f81ed67a1ac960))
+
+
+### BREAKING CHANGES
+
+* unexports `crc24q`, `BCH_TOI_CODEWORDS`, `BCHToiSync`,
+`sync_bch_toi`, `pack_hard_codeword`, `soft_to_hard_codeword`, `deinterleave!`
+and `interleave!` — still reachable and documented as `GNSSDecoder.crc24q` etc.,
+or via `using GNSSDecoder: crc24q`. Adds `GalileoReducedCED` to the export list,
+and renames public fields on GPSL1CAData, GPSL1CAAlmanac,
+GPSCNAVData, GPSL1C_DData, GalileoINAVData, GalileoE5aData, GalileoAlmanac,
+GalileoE6BData and its HAS correction blocks, BeiDouDNAVData, BeiDouDNAVAlmanac,
+BeiDouB1CData, BeiDouB1CBGTO, BeiDouB2aData and BeiDouB2bData; the mapping is
+listed above. `GPSL1CAData.ura` and `BeiDouDNAVData.ura` are removed in favour
+of the raw `URA_index` / `URAI`, so a consumer wanting metres must apply
+IS-GPS-200N Table 20-I or BDS-SIS-ICD-B1I-3.0 Table 5-4 itself.
+`GPSL1CAData.IODC`, `.IODE_Sub_2`, `.IODE_Sub_3`, `.sv_health`,
+`GPSL1CAAlmanac.sv_health` and the two `sv_health_*_25` lists change from
+`String`/`Vector{String}` holding binary literals to `Int64`/`Vector{Int64}`
+holding the raw broadcast words — code comparing them against a string literal
+compiles and silently evaluates false.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+* `is_decoding_completed_for_positioning` now additionally
+requires `T_GD_B1Cp` and `ISC_B1Cd` on BeiDou B1C and `T_GD_B2bI` on BeiDou
+B2b, and no longer requires `T_GD2` on BeiDou B1I/B3I (a relaxation: the flag
+can only turn `true` earlier than before, and in practice at the same subframe). No decode timing changes — on both signals those fields are decoded by the
+same constructor call as the clock the gate already required — but code that
+constructs a `BeiDouB1CData` or `BeiDouB2bData` by hand must now populate them
+for the flag to read `true`.
+* `is_decoding_completed_for_positioning` now reads `false` on
+BeiDou B1C, B2a and B2b while the broadcast `sat_type` is the reserved value 0,
+where B1C and B2a previously ignored the field and B2b only required it to be
+present. A satellite transmitting a reserved orbit type is no longer offered for
+positioning; live satellites transmit 1, 2 or 3, so this changes nothing against
+real signals, but code that constructs one of the three data containers by hand
+must set `sat_type` to an orbit class for the flag to read `true`.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
 # [3.14.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v3.13.0...v3.14.0) (2026-08-21)
 
 
