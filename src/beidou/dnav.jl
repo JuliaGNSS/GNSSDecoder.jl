@@ -1,9 +1,7 @@
 # Shared BeiDou legacy navigation message core (D1 NAV and D2 NAV), broadcast
 # identically on B1I (BDS-SIS-ICD-B1I-3.0 §5) and B3I (BDS-SIS-ICD-B3I-1.0 §5).
 # The signal layers in `b1i.jl` / `b3i.jl` are thin wrappers over this file,
-# mirroring how `gps/cnav.jl` is shared by GPS L5I and L2CM. `is_beidou_geo`,
-# which picks D1 or D2 from the PRN, lives here for the same reason: it is a
-# property of this message pair rather than of the constellation.
+# mirroring how `gps/cnav.jl` is shared by GPS L5I and L2CM.
 #
 # Message formats (BDS-SIS-ICD-B1I-3.0 §5.1.1):
 #   - MEO/IGSO satellites (PRN 6-58) broadcast **D1** at 50 bps: five 300-bit
@@ -844,15 +842,11 @@ This is the D1/D2 selector, and nothing else: MEO/IGSO satellites broadcast the
 D1 message (50 bps, under the NH20 secondary code), GEO satellites the D2
 message (500 bps, no secondary code) — BDS-SIS-ICD-B1I-3.0 §5.1.1 / Table 4-1.
 
-It lives here rather than in `beidou.jl` because it is a property of the legacy
-message format, not of the constellation. B1C is "transmitted by the Medium
-Earth Orbit (MEO) satellites and the Inclined GeoSynchronous Orbit (IGSO)
-satellites of BDS-3 … and shall not be transmitted by the Geostationary Earth
-Orbit (GEO) satellites" (BDS-SIS-ICD-B1C-1.0 §1), so on a B-CNAV signal this
-predicate could only ever answer `false` for a satellite being tracked. Where
-the B-CNAV messages do need the orbit class — of *other* satellites, in the
-reduced and midi almanacs — they carry it as broadcast data (`sat_type`,
-1 GEO / 2 IGSO / 3 MEO) instead of deriving it from the PRN.
+The B-CNAV signals never need it for the tracked satellite — GEO satellites do
+not transmit them (e.g. BDS-SIS-ICD-B1C-1.0 §1) — and where they need another
+satellite's orbit class (the reduced and midi almanacs) they carry it as
+broadcast data (`sat_type`, 1 GEO / 2 IGSO / 3 MEO) instead of deriving it from
+the PRN.
 """
 is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63
 

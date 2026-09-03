@@ -1,5 +1,5 @@
 # Reed-Solomon over GF(2^8) — the primitives behind Galileo HAS's HPVRS outer
-# layer (`src/reed_solomon.jl`).
+# layer (`src/coding/reed_solomon.jl`).
 #
 # Ground truth is the Galileo HAS SIS ICD itself: Table 42 for the generator
 # polynomial and the Annex B attachment for the 255 x 32 systematic generator

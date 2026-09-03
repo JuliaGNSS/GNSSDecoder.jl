@@ -32,7 +32,7 @@
 # from one satellite over k seconds, or from several satellites at once — and
 # recovers the message by inverting the k x k submatrix of the generator matrix
 # selected by the received Page IDs (ICD §6.4). That inversion, the field
-# arithmetic, and the generator matrix live in `src/reed_solomon.jl`.
+# arithmetic, and the generator matrix live in `src/coding/reed_solomon.jl`.
 #
 # Consequently a *single-satellite* decoder state accumulates pages across time
 # and only occasionally completes a message; a receiver tracking several E6-B

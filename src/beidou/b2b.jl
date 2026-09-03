@@ -73,11 +73,6 @@ Offset of the first encoded symbol inside the frame (after Pre + PRN + Rev).
 """
 const B2B_ENCODED_OFFSET = B2B_PREAMBLE_SYMBOLS + B2B_PRN_SYMBOLS + B2B_REV_SYMBOLS  # 28
 
-# Semi-major axis reference values for the ephemeris ΔA and the reduced
-# almanac δA (ICD Table 7-6 / Table 7-14 footnotes, meters).
-const B2B_A_REF_MEO = 27_906_100.0
-const B2B_A_REF_IGSO_GEO = 42_162_200.0
-
 """
 $(TYPEDEF)
 
@@ -121,8 +116,6 @@ Base.@kwdef struct BeiDouB2bConstants <: AbstractGNSSConstants
     """
     F::Float64 = -4.442807309e-10
 end
-
-# ---- Almanac records (ICD §7.8 / §7.9) --------------------------------------
 
 # ---- Decoded data container --------------------------------------------------
 
@@ -776,11 +769,6 @@ function is_clock_correction_decoded(data::BeiDouB2bData)
         !isnothing(data.a_f2) &&
         !isnothing(data.T_GD_B2bI)
 end
-
-# Orbit class from the satellite's own broadcast `sat_type` (Ephemeris I, MT10);
-# `nothing` until MT10 is decoded, and for the reserved code.
-get_orbit_class(state::GNSSDecoderState{<:BeiDouB2bData}) =
-    beidou_orbit_class(state.data.sat_type)
 
 # B-CNAV3 broadcasts the seconds of week as a 20-bit count with LSB 1 s (see
 # `decode_syncro_sequence` on why the English Table 7-2 scale of 3 is a misprint).

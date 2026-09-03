@@ -13,7 +13,7 @@
 # CRC-24Q(24); everything but the CRC participates in the CRC (ICD §6.2.1,
 # §6.1.2). The LDPC code is decoded through its exact binary image
 # (`data/bcnv2.alist`, see `scripts/generate_beidou_alist.jl`) with the shared
-# `load_ldpc_decoder` / `ldpc_decode_word` pipeline from `src/ldpc.jl`, so the
+# `load_ldpc_decoder` / `ldpc_decode_word` pipeline from `src/coding/ldpc.jl`, so the
 # per-frame flow is: preamble sync (both ends of the 600-symbol window, either
 # polarity) → LDPC BP decode → CRC-24Q gate → PRN check → per-message-type
 # field extraction (ICD §6.2.3 Figures 6-3..6-20 and the §7 parameter tables).
@@ -45,10 +45,6 @@ const B2A_MESSAGE_BITS = 288
 B-CNAV2 preamble `0xE24DE8` = `111000100100110111101000`, MSB transmitted first (ICD §6.2.1).
 """
 const B2A_PREAMBLE = UInt64(0xE24DE8)
-
-# Semi-major axis reference values (ICD Table 7-8 note ***, meters).
-const B2A_A_REF_MEO = 27_906_100.0
-const B2A_A_REF_IGSO_GEO = 42_162_200.0
 
 """
 $(TYPEDEF)
@@ -832,11 +828,6 @@ function is_clock_correction_decoded(data::BeiDouB2aData)
         !isnothing(data.a_f1) &&
         !isnothing(data.a_f2)
 end
-
-# Orbit class from the satellite's own broadcast `sat_type` (Ephemeris I, MT10);
-# `nothing` until MT10 is decoded, and for the reserved code.
-get_orbit_class(state::GNSSDecoderState{<:BeiDouB2aData}) =
-    beidou_orbit_class(state.data.sat_type)
 
 # B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
 # scaled at parse (§7.3, Table 7-2).
