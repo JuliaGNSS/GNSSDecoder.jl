@@ -274,9 +274,10 @@ beidou_orbit_class(sat_type) =
 
 # Orbit class from the satellite's own broadcast `sat_type` (its Ephemeris I
 # block); `nothing` until that block is decoded, and for the reserved code.
-# B1I/B3I broadcast no `sat_type` and override this with the GEO PRN partition
-# (see `beidou/dnav.jl`).
-get_orbit_class(state::GNSSDecoderState{<:AbstractBeiDouData}) =
+# Dispatched on the B-CNAV family type rather than `AbstractBeiDouData` because
+# only the B-CNAV messages carry a `sat_type` field — B1I/B3I answer from the
+# GEO PRN partition instead (see `beidou/dnav.jl`).
+get_orbit_class(state::GNSSDecoderState{<:AbstractBeiDouCNAVData}) =
     beidou_orbit_class(state.data.sat_type)
 
 # `WN_0BGTO` is 13 bits, the same width as the BDT week number it is subtracted

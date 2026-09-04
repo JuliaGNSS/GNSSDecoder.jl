@@ -115,7 +115,7 @@ observable on the air interface.
 
 $(TYPEDFIELDS)
 """
-Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouData
+Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouCNAVData
     """
     Message type of the most recently decoded frame (0 = none yet)
     """

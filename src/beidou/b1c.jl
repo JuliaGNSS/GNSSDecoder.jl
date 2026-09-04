@@ -334,7 +334,7 @@ Present on every defined page type, refreshed whenever any page decodes:
 
 BDS-SIS-ICD-B1C-1.0, Figures 6-5 .. 6-21 and Tables 7-2 .. 7-23.
 """
-Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouData
+Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouCNAVData
     soh::Union{Nothing,Int} = nothing
     HOW::Union{Nothing,Int64} = nothing
     WN::Union{Nothing,Int64} = nothing

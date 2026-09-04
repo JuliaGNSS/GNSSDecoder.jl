@@ -120,7 +120,7 @@ end
 # ---- Decoded data container --------------------------------------------------
 
 """
-    BeiDouB2bData <: AbstractBeiDouData
+    BeiDouB2bData <: AbstractBeiDouCNAVData
 
 Decoded BeiDou B-CNAV3 navigation data (BDS-SIS-ICD-B2b-1.0 §6.2.3 / §7).
 
@@ -187,7 +187,7 @@ each CRC-gated message is atomic.
 
 BDS-SIS-ICD-B2b-1.0, Figures 6-3 through 6-15 and Tables 7-1 through 7-21.
 """
-Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouData
+Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouCNAVData
     last_message_type::Int = 0
     SOW::Union{Nothing,Int64} = nothing
 
