@@ -184,16 +184,20 @@ GNSSDecoder.rs_erasure_decode
 Every concrete per-signal data type subtypes the abstract supertype of its
 constellation, which in turn subtypes `AbstractGNSSData`. The supertypes carry
 the facts every signal of a constellation shares, stated once via subtype
-dispatch. Galileo has one further level, because not every Galileo signal
-broadcasts an ephemeris: the ephemeris/clock completeness checks are dispatched
-on `AbstractGalileoEphemerisData`, which E6-B's corrections-only data type does
-not subtype.
+dispatch. Three intermediate levels name families within a constellation:
+`AbstractGalileoEphemerisData` separates the ephemeris-bearing Galileo messages
+from E6-B's corrections-only data, and `AbstractGPSCNAVData` /
+`AbstractBeiDouCNAVData` name the modern civil message families (CNAV/CNAV-2
+and B-CNAV1/2/3), whose shared quasi-Keplerian ephemeris a consumer's
+propagator dispatches on.
 
 ```@docs
 GNSSDecoder.AbstractGPSData
+GNSSDecoder.AbstractGPSCNAVData
 GNSSDecoder.AbstractGalileoData
 GNSSDecoder.AbstractGalileoEphemerisData
 GNSSDecoder.AbstractBeiDouData
+GNSSDecoder.AbstractBeiDouCNAVData
 ```
 
 ### GPS L1 C/A

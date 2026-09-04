@@ -19,6 +19,21 @@ selection in `is_sat_healthy`) stay defined on the concrete data types.
 abstract type AbstractGPSData <: AbstractGNSSData end
 
 """
+    AbstractGPSCNAVData <: AbstractGPSData
+
+Abstract supertype for the modern GPS civil navigation messages: CNAV
+(`GPSCNAVData`, on L2C and L5) and CNAV-2 (`GPSL1C_DData`, on L1C).
+
+What the two messages share — and legacy LNAV (`GPSL1CAData`) does not — is a
+full-width 13-bit week number and the quasi-Keplerian ephemeris broadcast as
+deltas off the fixed reference values `A_REF` and `Ω̇_REF` (IS-GPS-200N
+§30.3.3.1.1, IS-GPS-800J §3.5.3), so a consumer's propagator and week handling
+dispatch on this type rather than enumerating the two messages. The GPS
+counterpart of [`AbstractBeiDouCNAVData`](@ref).
+"""
+abstract type AbstractGPSCNAVData <: AbstractGPSData end
+
+"""
     AbstractGalileoData <: AbstractGNSSData
 
 Abstract supertype for the decoded navigation data of a signal transmitted by
@@ -70,6 +85,22 @@ health-flag selection in `is_sat_healthy`) stay defined on the concrete data
 types.
 """
 abstract type AbstractBeiDouData <: AbstractGNSSData end
+
+"""
+    AbstractBeiDouCNAVData <: AbstractBeiDouData
+
+Abstract supertype for the BDS-3 B-CNAV navigation messages: B-CNAV1
+(`BeiDouB1CData`, on B1C), B-CNAV2 (`BeiDouB2aData`, on B2a) and B-CNAV3
+(`BeiDouB2bData`, on B2b).
+
+What the three messages share — and the legacy D1/D2 message (`BeiDouDNAVData`,
+on B1I/B3I) does not — is the quasi-Keplerian ephemeris broadcast as `ΔA` off a
+`sat_type`-selected reference semi-major axis with an outright `Ω̇`, the
+broadcast `sat_type` orbit class itself ([`get_orbit_class`](@ref) dispatches on
+this type), and the BDGIM ionospheric coefficient set. The BeiDou counterpart
+of [`AbstractGPSCNAVData`](@ref).
+"""
+abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
 
 # Physical constants common to every GNSS handled here. Each per-signal
 # `*Constants` struct exposes these as fields (so the orbit/clock math reads

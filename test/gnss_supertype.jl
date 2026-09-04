@@ -78,6 +78,22 @@
     @test GalileoE6BData <: GNSSDecoder.AbstractGalileoData
     @test !(GalileoE6BData <: GNSSDecoder.AbstractGPSData)
     @test !(GalileoE6BData <: GNSSDecoder.AbstractGalileoEphemerisData)
+
+    # The modern civil message families are named one level down as well: CNAV
+    # and CNAV-2 share the quasi-Keplerian ephemeris and full-width week that
+    # legacy LNAV lacks, and the three B-CNAV messages share the same plus the
+    # broadcast `sat_type` and the BDGIM set, which D1/D2 lacks — so a
+    # consumer's propagator dispatches on the family type instead of
+    # enumerating messages.
+    @test GNSSDecoder.AbstractGPSCNAVData <: GNSSDecoder.AbstractGPSData
+    @test GNSSDecoder.AbstractBeiDouCNAVData <: GNSSDecoder.AbstractBeiDouData
+    @test GNSSDecoder.GPSCNAVData <: GNSSDecoder.AbstractGPSCNAVData
+    @test GNSSDecoder.GPSL1C_DData <: GNSSDecoder.AbstractGPSCNAVData
+    @test !(GNSSDecoder.GPSL1CAData <: GNSSDecoder.AbstractGPSCNAVData)
+    @test BeiDouB1CData <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test BeiDouB2aData <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test BeiDouB2bData <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test !(BeiDouDNAVData <: GNSSDecoder.AbstractBeiDouCNAVData)
     @test !hasmethod(GNSSDecoder.is_ephemeris_decoded, (GalileoE6BData,))
     @test !hasmethod(GNSSDecoder.is_clock_correction_decoded, (GalileoE6BData,))
     @test !is_decoding_completed_for_positioning(GalileoE6BData())
