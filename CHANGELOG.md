@@ -1,5 +1,12 @@
 # Changelog
 
+# [4.2.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.1.0...v4.2.0) (2026-09-04)
+
+
+### Features
+
+* name the modern civil message families as abstract types ([862d5db](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/862d5db8032f5424064ad908e965f526349918ed))
+
 # [4.1.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.0.0...v4.1.0) (2026-09-03)
 
 
