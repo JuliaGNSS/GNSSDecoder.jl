@@ -843,9 +843,13 @@ function read_tlm_and_how_words(state, buffer)
     # would shift the reported transmit time by a multiple of 6 s. Clear it
     # (and its anchor) up front; a HOW that passes parity and the plausibility
     # screen writes them back.
-    prev_TOW = state.raw_data.TOW
-    prev_TOW_anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW
-    num_bits = state.num_bits_after_valid_syncro_sequence
+    # Capture the concrete decoder state rather than three optional scalars.
+    # Capturing those scalars creates a different closure type for each
+    # Int/Nothing combination. A missing HOW after the symbol counter starts
+    # then compiles a new can_decode_word specialization during live tracking
+    # (292 ms on an Orin, GNSSReceiver.jl#107). The state type is unchanged
+    # through cold start, valid HOWs, rejection, and recovery.
+    previous_state = state
     state = GNSSDecoderState(
         state;
         raw_data = GPSL1CAData(
@@ -859,14 +863,20 @@ function read_tlm_and_how_words(state, buffer)
         alert_flag = get_bit(how_word, 30, 18)
         anti_spoof_flag = get_bit(how_word, 30, 19)
         last_subframe_id = get_bits(how_word, 30, 20, 3)
-        is_plausible = is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits)
+        is_plausible = is_plausible_TOW(
+            TOW_count,
+            previous_state.raw_data.TOW,
+            previous_state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
+            previous_state.num_bits_after_valid_syncro_sequence,
+        )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
         GPSL1CAData(
             state.raw_data;
             last_subframe_id,
             TOW,
             num_bits_after_valid_syncro_sequence_after_last_TOW = is_plausible ?
-                                                                  num_bits : nothing,
+                                                                  previous_state.num_bits_after_valid_syncro_sequence :
+                                                                  nothing,
             alert_flag,
             anti_spoof_flag,
         )
