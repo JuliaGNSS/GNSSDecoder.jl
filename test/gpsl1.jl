@@ -667,6 +667,25 @@ end
     concealed = with_TOW(fresh, 43333 * 6; anchor = 8, num_bits = 8 + 86400 * 50)
     state = GNSSDecoder.read_tlm_and_how_words(concealed, make_buffer(43333 + 14400))
     @test state.raw_data.TOW == (43333 + 14400) * 6
+
+    # After a rejected HOW the symbol counter keeps running while both HOW
+    # history fields are empty. Recover against that empty history and anchor
+    # the accepted TOW to the current counter, not the rejected word's epoch.
+    for bad_how in (make_buffer(43334; break_parity = true), make_buffer(43335))
+        rejected = GNSSDecoder.read_tlm_and_how_words(anchored, bad_how)
+        @test isnothing(rejected.raw_data.TOW)
+        @test isnothing(
+            rejected.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
+        )
+        recovery = GNSSDecoder.GNSSDecoderState(
+            rejected;
+            num_bits_after_valid_syncro_sequence = 608,
+        )
+        recovered = GNSSDecoder.read_tlm_and_how_words(recovery, make_buffer(43335))
+        @test recovered.raw_data.TOW == 43335 * 6
+        @test recovered.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW == 608
+        @test recovered.num_bits_after_valid_syncro_sequence == 608
+    end
 end
 
 @testset "GPS L1 C/A reset_decoder_state" begin
