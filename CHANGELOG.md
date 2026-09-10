@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.2.0...v4.2.1) (2026-09-10)
+
+
+### Performance Improvements
+
+* **gps-l1ca:** avoid late recovery specialization ([e9420c2](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/e9420c2af2ba654abc010fd9cfbe7a362c46c8b5)), closes [JuliaGNSS/GNSSReceiver.jl#107](https://github.com/JuliaGNSS/GNSSReceiver.jl/issues/107)
+
 # [4.2.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.1.0...v4.2.0) (2026-09-04)
 
 
