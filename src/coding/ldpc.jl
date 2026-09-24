@@ -100,6 +100,47 @@ relative to this file so it works from any working directory.
 """
 alist_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
+# Every committed `.alist`, read into the package image at precompile time. A
+# binary built with `juliac` (or a relocated sysimage) runs without the source
+# tree, so `data/` may not exist at run time; `committed_ldpc_scratch` then falls
+# back to these copies.
+const EMBEDDED_ALISTS = let dir = alist_path("")
+    Dict{String,String}(
+        name => (
+            include_dependency(joinpath(dir, name));
+            read(joinpath(dir, name), String)
+        ) for name in readdir(dir) if endswith(name, ".alist")
+    )
+end
+
+"""
+    committed_ldpc_scratch(name; num_iterations = 50) -> LDPCScratch
+
+[`LDPCScratch`](@ref) for the committed `.alist` matrix `name` (e.g.
+`"cnv2_sf2.alist"`). Loads `data/name` when the source tree is present, and
+otherwise the copy embedded at precompile time (`EMBEDDED_ALISTS`), staged
+through a temporary file because AFF3CT only loads matrices from a path.
+"""
+function committed_ldpc_scratch(name::String; num_iterations::Integer = 50)
+    path = alist_path(name)
+    isfile(path) ? LDPCScratch(path; num_iterations) :
+    embedded_ldpc_scratch(name; num_iterations)
+end
+
+# The `committed_ldpc_scratch` fallback, split out so the test suite can
+# exercise it with `data/` present.
+function embedded_ldpc_scratch(name::String; num_iterations::Integer = 50)
+    tmp, io = mktemp()
+    try
+        write(io, EMBEDDED_ALISTS[name])
+        close(io)
+        return LDPCScratch(tmp; num_iterations)
+    finally
+        close(io)
+        rm(tmp; force = true)
+    end
+end
+
 """
     load_ldpc_decoder(path; num_iterations = 50) -> LDPCBPDecoder
 

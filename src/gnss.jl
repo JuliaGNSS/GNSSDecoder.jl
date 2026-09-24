@@ -231,11 +231,17 @@ equality for any field of mutable type — a `Vector`, a `Dictionary`, a
 `CircularDeque`. Every container in this package that holds one therefore has to
 define `==` explicitly, and this is that definition, written once.
 """
-function fields_equal(a::T, b::T) where {T}
-    for f in fieldnames(T)
-        getfield(a, f) == getfield(b, f) || return false
+@generated function fields_equal(a::T, b::T) where {T}
+    # Unrolled at compile time: a runtime loop over `fieldnames(T)` reads each
+    # field through a non-constant name, so every `==` would dispatch
+    # dynamically on the union of all field types — which `juliac --trim`
+    # rejects.
+    comparisons =
+        [:(getfield(a, $i) == getfield(b, $i) || return false) for i = 1:fieldcount(T)]
+    return quote
+        $(comparisons...)
+        return true
     end
-    return true
 end
 
 """
@@ -1228,6 +1234,15 @@ issue-of-data match — GPS L1 C/A and the BeiDou D1/D2 legacy message, which ha
 no IODs at all — and both count with this.
 """
 increment_voting(old_vote, max_vote) = min(max_vote, old_vote + 1)
+
+"""
+    elapsed_symbols(anchor, now) -> Union{Nothing,Int64}
+
+Symbols counted between the decoder's symbol-counter reading `anchor` and its
+current reading `now` (both `num_bits_after_valid_syncro_sequence` values), or
+`nothing` if either reading is missing.
+"""
+elapsed_symbols(anchor, now) = isnothing(anchor) || isnothing(now) ? nothing : now - anchor
 
 """
 Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.

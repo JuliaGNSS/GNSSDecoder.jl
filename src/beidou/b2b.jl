@@ -455,7 +455,7 @@ end
 BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
-    LDPCScratch(alist_path("bcnv3.alist")),
+    committed_ldpc_scratch("bcnv3.alist"),
 )
 
 # The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
