@@ -661,7 +661,7 @@ end
 function BeiDouB2aCache()
     BeiDouB2aCache(
         CircularDeque{Float32}(B2A_WINDOW_SYMBOLS),
-        LDPCScratch(alist_path("bcnv2.alist")),
+        committed_ldpc_scratch("bcnv2.alist"),
         Vector{Float32}(undef, B2A_ENCODED_SYMBOLS),
     )
 end
@@ -1188,15 +1188,19 @@ function parse_b2a_mt33(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     WN_a = Int(get_bits(word, word_length, 228, 13))
     t_0a = Int(get_bits(word, word_length, 241, 8)) * 2^12
     packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a, PI)
-    almanacs =
-        isnothing(packet) ? raw.reduced_almanacs :
-        _merge_keyed(raw.reduced_almanacs, packet.PRN_a, packet)
-    BeiDouB2aData(
+    raw = BeiDouB2aData(
         raw;
         # BGTO block, bits 112-179 (Figure 6-19, Table 7-21).
         beidou_bgto_block(word, word_length, 112)...,
-        reduced_almanacs = almanacs,
         IODC = Int64(get_bits(word, word_length, 218, 10)),
+    )
+    # Merged in a second step: splatting the BGTO block alongside a
+    # `Union{Nothing,Dictionary}` keyword builds an abstractly typed
+    # `NamedTuple`, which `juliac --trim` cannot resolve.
+    isnothing(packet) && return raw
+    BeiDouB2aData(
+        raw;
+        reduced_almanacs = _merge_keyed(raw.reduced_almanacs, packet.PRN_a, packet),
     )
 end
 
