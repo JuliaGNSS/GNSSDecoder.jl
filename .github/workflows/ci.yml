@@ -55,8 +55,10 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v3
+      # `Pkg.Apps.add`, unlike `Pkg.add`, does not install the General registry
+      # into a fresh depot, so add it first.
       - name: Install JuliaC
-        run: julia --color=yes -e 'using Pkg; Pkg.Apps.add("JuliaC")'
+        run: julia --color=yes -e 'using Pkg; Pkg.Registry.add("General"); Pkg.Apps.add("JuliaC")'
       - name: Instantiate the trim project
         run: julia --color=yes --project=test/trim -e 'using Pkg; Pkg.instantiate()'
       - name: Build trimmed executable
