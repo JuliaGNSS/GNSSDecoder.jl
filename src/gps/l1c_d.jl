@@ -681,8 +681,8 @@ function GPSL1C_DCache()
     # Verified against a Spirent GSS post-FEC L1C recording.
     GPSL1C_DCache(
         CircularDeque{Float32}(L1C_D_WINDOW_LENGTH),
-        LDPCScratch(alist_path("cnv2_sf2.alist")),
-        LDPCScratch(alist_path("cnv2_sf3.alist")),
+        committed_ldpc_scratch("cnv2_sf2.alist"),
+        committed_ldpc_scratch("cnv2_sf3.alist"),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
     )

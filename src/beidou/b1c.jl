@@ -630,8 +630,8 @@ end
 function BeiDouB1CCache(prn::Int)
     BeiDouB1CCache(
         CircularDeque{Float32}(B1C_WINDOW_LENGTH),
-        LDPCScratch(alist_path("bcnv1_sf2.alist")),
-        LDPCScratch(alist_path("bcnv1_sf3.alist")),
+        committed_ldpc_scratch("bcnv1_sf2.alist"),
+        committed_ldpc_scratch("bcnv1_sf3.alist"),
         b1c_prn_codeword(prn),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),

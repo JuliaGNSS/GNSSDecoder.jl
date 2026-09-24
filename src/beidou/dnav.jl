@@ -813,17 +813,14 @@ end
 
 const DNAV_MAX_SOW_GAP = 600
 
-function is_plausible_dnav_SOW(
-    SOW_count,
-    prev_SOW,
-    prev_SOW_anchor,
-    num_bits_after_valid_syncro_sequence,
-    symbols_per_second,
-)
+# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_after_valid_syncro_sequence)`,
+# folded by the caller so the call carries two `Union{Nothing,Int64}` arguments
+# rather than three — within inference's union-split limit, so the call resolves
+# statically (see `is_plausible_TOW`).
+function is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, symbols_per_second)
     SOW_count < SECONDS_PER_WEEK || return false
     isnothing(prev_SOW) && return true
-    if !isnothing(prev_SOW_anchor) && !isnothing(num_bits_after_valid_syncro_sequence)
-        elapsed = num_bits_after_valid_syncro_sequence - prev_SOW_anchor
+    if !isnothing(elapsed)
         (elapsed > 0 && elapsed % 300 == 0 && elapsed % symbols_per_second == 0) ||
             return false
         return Int64(SOW_count) ==
@@ -888,13 +885,15 @@ GNSSSignals.get_data_frequency(state::GNSSDecoderState{<:BeiDouDNAVData}) =
 function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     SOW_count = Int64(dnav_bits(content, 19, 20))
     prev_SOW = state.raw_data.SOW
-    prev_anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW
     num_bits = state.num_bits_after_valid_syncro_sequence
+    elapsed = elapsed_symbols(
+        state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW,
+        num_bits,
+    )
     is_plausible = is_plausible_dnav_SOW(
         SOW_count,
         prev_SOW,
-        prev_anchor,
-        num_bits,
+        elapsed,
         dnav_symbols_per_second(state.prn),
     )
     is_plausible || return state
@@ -1467,7 +1466,14 @@ function dnav_confirm_data(state, max_vote = 20)
 
     curr_score = old_data[matching_idx].vote
     new_vote = increment_voting(curr_score, max_vote)
-    best_score = maximum(e.vote for e in old_data if dnav_dataset_key(e.data) == key)
+    # An explicit loop rather than `maximum(... for e in old_data if ...)`: the
+    # filter closure captures `key`, whose `Union{Nothing,Int64}` fields leave
+    # the closure type abstract, and `juliac --trim` rejects the dynamic call.
+    # The matching entry is itself in `old_data`, so `curr_score` is a floor.
+    best_score = curr_score
+    for e in old_data
+        dnav_dataset_key(e.data) == key && (best_score = max(best_score, e.vote))
+    end
 
     if best_score > curr_score
         new_old_data = copy(old_data)

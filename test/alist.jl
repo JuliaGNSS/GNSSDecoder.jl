@@ -84,3 +84,23 @@ using GNSSDecoder
         @test V_K == U_K
     end
 end
+
+# A trimmed or relocated binary runs without `data/`; the decoders then load
+# the copies embedded at precompile time, which must match the committed files
+# and build the same decoder.
+@testset "Embedded LDPC alist copies" begin
+    data_dir = normpath(joinpath(@__DIR__, "..", "data"))
+    committed = filter(endswith(".alist"), readdir(data_dir))
+    @test sort(collect(keys(GNSSDecoder.EMBEDDED_ALISTS))) == sort(committed)
+    for name in committed
+        @test GNSSDecoder.EMBEDDED_ALISTS[name] == read(joinpath(data_dir, name), String)
+        from_file = GNSSDecoder.committed_ldpc_scratch(name)
+        embedded = GNSSDecoder.embedded_ldpc_scratch(name)
+        @test (embedded.decoder.N, embedded.decoder.K) ==
+              (from_file.decoder.N, from_file.decoder.K)
+        # The all-zero codeword (every LLR positive) decodes identically.
+        llr = fill(1.0f0, from_file.decoder.N)
+        @test Aff3ct.decode!(embedded.info, embedded.decoder, llr) ==
+              Aff3ct.decode!(from_file.info, from_file.decoder, llr)
+    end
+end

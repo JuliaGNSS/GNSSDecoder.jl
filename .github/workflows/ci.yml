@@ -42,6 +42,34 @@ jobs:
           disable_search: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  trim:
+    # Compiles test/trim/main.jl — every decoder — with `juliac --trim=safe`,
+    # which fails the build on any call it cannot resolve statically, then runs
+    # the binary from outside the source tree to check the trimmed image
+    # decodes without `data/` (the LDPC matrices are embedded).
+    name: Trim (juliac --trim=safe)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # `Pkg.Apps.add`, unlike `Pkg.add`, does not install the General registry
+      # into a fresh depot, so add it first.
+      - name: Install JuliaC
+        run: julia --color=yes -e 'using Pkg; Pkg.Registry.add("General"); Pkg.Apps.add("JuliaC")'
+      - name: Instantiate the trim project
+        run: julia --color=yes --project=test/trim -e 'using Pkg; Pkg.instantiate()'
+      - name: Build trimmed executable
+        run: >
+          ~/.julia/bin/juliac --output-exe gnssdecoder_trim
+          --bundle "$RUNNER_TEMP/trim" --trim=safe --experimental
+          --project test/trim test/trim/main.jl
+      - name: Run trimmed executable without the source tree
+        run: |
+          mv data data.hidden
+          "$RUNNER_TEMP/trim/bin/gnssdecoder_trim"
   integration:
     # Real-data decode of the Fraunhofer Flexiband III-7a capture
     # (test/flexiband_iii7a.jl) — the same real-sky recording Tracking.jl uses.

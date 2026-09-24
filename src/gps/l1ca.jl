@@ -814,16 +814,25 @@ parity (issue #82). The screens, strongest available first:
   - Before the counter runs there is no elapsed-time reference, so fall back
     to a bounded forward step of at most `LNAV_MAX_TOW_GAP` seconds.
 """
-function is_plausible_TOW(
+is_plausible_TOW(
     TOW_count,
     prev_TOW,
     prev_TOW_anchor,
     num_bits_after_valid_syncro_sequence,
+) = is_plausible_TOW(
+    TOW_count,
+    prev_TOW,
+    elapsed_symbols(prev_TOW_anchor, num_bits_after_valid_syncro_sequence),
 )
+
+# The decoder calls this form: three `Union{Nothing,Int64}` arguments are eight
+# union-split combinations, past inference's limit, so the four-argument call
+# would dispatch dynamically — which `juliac --trim` rejects. Folding the two
+# counter readings into `elapsed` first leaves four.
+function is_plausible_TOW(TOW_count, prev_TOW, elapsed)
     TOW_count <= LNAV_MAX_TOW_COUNT || return false
     isnothing(prev_TOW) && return true
-    if !isnothing(prev_TOW_anchor) && !isnothing(num_bits_after_valid_syncro_sequence)
-        elapsed = num_bits_after_valid_syncro_sequence - prev_TOW_anchor
+    if !isnothing(elapsed)
         (elapsed > 0 && elapsed % LNAV_SYMBOLS_PER_SUBFRAME == 0) || return false
         return Int64(TOW_count) * 6 ==
                mod(prev_TOW + 6 * (elapsed ÷ LNAV_SYMBOLS_PER_SUBFRAME), SECONDS_PER_WEEK)
@@ -866,8 +875,10 @@ function read_tlm_and_how_words(state, buffer)
         is_plausible = is_plausible_TOW(
             TOW_count,
             previous_state.raw_data.TOW,
-            previous_state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-            previous_state.num_bits_after_valid_syncro_sequence,
+            elapsed_symbols(
+                previous_state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
+                previous_state.num_bits_after_valid_syncro_sequence,
+            ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
         GPSL1CAData(
@@ -1078,10 +1089,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             GPSL1CAData(state.raw_data; IODE_Sub_3, i_dot)
         end
     elseif subframe_id == 4
-        # Get page ID (SV ID) from word 3 bits 3-8
+        # Get page ID (SV ID) from word 3 bits 3-8. The closure's local must not
+        # share a name with `sv_page_id` below: a captured, reassigned variable
+        # is boxed as `Any`, which `juliac --trim` rejects.
         state = can_decode_word(state, buffer, 3) do word3, state
-            sv_page_id = get_bits(word3, 30, 3, 6)
-            GPSL1CAData(state.raw_data; last_subframe_id = 4 + sv_page_id * 100) # encode page in subframe_id temporarily
+            page_id = get_bits(word3, 30, 3, 6)
+            GPSL1CAData(state.raw_data; last_subframe_id = 4 + page_id * 100) # encode page in subframe_id temporarily
         end
         sv_page_id = (state.raw_data.last_subframe_id - 4) ÷ 100
         state = GNSSDecoderState(
@@ -1097,10 +1110,10 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             state = decode_almanac_page(state, buffer, sv_page_id)
         end
     elseif subframe_id == 5
-        # Get SV ID from word 3 bits 3-8
+        # Get SV ID from word 3 bits 3-8 (named apart from `sv_id`, as above)
         state = can_decode_word(state, buffer, 3) do word3, state
-            sv_id = get_bits(word3, 30, 3, 6)
-            GPSL1CAData(state.raw_data; last_subframe_id = 5 + sv_id * 100) # encode SV ID temporarily
+            word3_sv_id = get_bits(word3, 30, 3, 6)
+            GPSL1CAData(state.raw_data; last_subframe_id = 5 + word3_sv_id * 100) # encode SV ID temporarily
         end
         sv_id = (state.raw_data.last_subframe_id - 5) ÷ 100
         state = GNSSDecoderState(
