@@ -215,7 +215,14 @@ The returned container is **overwritten**: the caller mutates it and stores it
 back into `raw_data`. Any earlier state still referencing it sees the change,
 which is the documented contract of [`decode!`](@ref).
 """
-writable_container(current, spare) = isnothing(current) ? clear!(spare) : current
+function writable_container(current, spare)
+    current === nothing || return current
+    # `spare` is read from a `DataStorage` field, typed `Union{Nothing,C}` like
+    # the data field it backs; it is never `nothing`, and saying so keeps the
+    # `clear!` below statically dispatched (Julia 1.10 would not infer it).
+    spare === nothing && throw(ArgumentError("preallocated storage is missing"))
+    return clear!(spare)
+end
 
 clear!(dict::SlotDictionary) = empty!(dict)
 clear!(vector::Vector{T}) where {T} = fill!(vector, zero(T))
@@ -248,7 +255,11 @@ Overwrite the preallocated validated container `dst` with the raw container
 `src`, returning `dst` — or `nothing` when `src` is `nothing` (the field was
 never decoded). The value to store in the promoted `data`.
 """
-publish!(dst, src) = isnothing(src) ? nothing : overwrite!(dst, src)
+function publish!(dst, src)
+    src === nothing && return nothing
+    dst === nothing && throw(ArgumentError("preallocated storage is missing"))
+    return overwrite!(dst, src)
+end
 
 
 # Types whose instances are immutable values or are shared rather than copied.
@@ -426,6 +437,31 @@ container with `raw`.
         end
     end
     return Expr(:new, D, fields...)
+end
+
+"""
+    @split_nothing (a, b, ...) expr
+
+Evaluate `expr` with each of the local variables `a`, `b`, ... known to be
+either `nothing` or not: the expression is duplicated under
+`a === nothing ? expr : expr`, so the compiler sees a concrete type for `a` in
+each copy.
+
+This is for keyword calls that rebuild a data container from an optional
+(`Union{Nothing,T}`) value, e.g. `GPSL1CAData(raw_data; TOW)` with a `TOW` that
+may be `nothing`. On Julia 1.10 the keyword `NamedTuple` of such a call has a
+non-concrete type, and the keyword sorter then takes its generic, allocating
+path; splitting the union at the call site keeps every copy concrete. `n`
+variables produce `2^n` copies, so keep the list short.
+"""
+macro split_nothing(vars, ex)
+    names = vars isa Symbol ? [vars] : vars.args
+    body = esc(ex)
+    for name in reverse(names)
+        var = esc(name)
+        body = :($var === nothing ? $body : $body)
+    end
+    return body
 end
 
 """

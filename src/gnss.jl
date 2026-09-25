@@ -1248,12 +1248,12 @@ function decode!(
     for i = 1:num_symbols
         sym = soft_symbols[i]
         state = push_soft_symbol!(state, sym)
-        if !isnothing(state.num_bits_after_valid_syncro_sequence)
-            state = GNSSDecoderState(
-                state;
-                num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence +
-                                                       1,
-            )
+        # Read into a local first: Julia 1.10 does not narrow a field access
+        # through `isnothing`, so `+ 1` on the field would dispatch dynamically.
+        num_bits = state.num_bits_after_valid_syncro_sequence
+        if num_bits !== nothing
+            state =
+                GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = num_bits + 1)
         end
 
         if is_enough_buffered_bits_to_decode(state)
@@ -1335,12 +1335,3 @@ current reading `now` (both `num_bits_after_valid_syncro_sequence` values), or
 `nothing` if either reading is missing.
 """
 elapsed_symbols(anchor, now) = isnothing(anchor) || isnothing(now) ? nothing : now - anchor
-
-"""
-Insert/overwrite `value` keyed by `key` in a (possibly `nothing`) `Dictionary`, returning the updated copy.
-"""
-function _merge_keyed(dict::Union{Nothing,Dictionary{Int,V}}, key::Int, value::V) where {V}
-    out = isnothing(dict) ? Dictionary{Int,V}() : copy(dict)
-    set!(out, key, value)
-    return out
-end

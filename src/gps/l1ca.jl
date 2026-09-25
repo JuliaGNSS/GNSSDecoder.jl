@@ -888,13 +888,12 @@ function read_tlm_and_how_words(state, buffer)
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        GPSL1CAData(
+        TOW_anchor = is_plausible ? previous_state.num_bits_after_valid_syncro_sequence : nothing
+        @split_nothing (TOW, TOW_anchor) GPSL1CAData(
             state.raw_data;
             last_subframe_id,
             TOW,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = is_plausible ?
-                                                                  previous_state.num_bits_after_valid_syncro_sequence :
-                                                                  nothing,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
             alert_flag,
             anti_spoof_flag,
         )
@@ -1586,8 +1585,10 @@ function confirm_data(state, max_vote = 20)
 end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1CAData})
+    IODC = state.raw_data.IODC
     if is_decoding_completed_for_positioning(state.raw_data) &&
-       state.raw_data.IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
+       IODC !== nothing &&
+       IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
         state = confirm_data(state)
     end
     return state
