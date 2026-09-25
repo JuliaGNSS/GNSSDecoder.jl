@@ -62,6 +62,7 @@ include("allocation_utils.jl")
     include("beidou_b2b.jl")
 
     # v2 shared-utility deep-module tests (issue #36)
+    include("storage.jl")
     include("crc.jl")
     include("reed_solomon.jl")
     include("bch_toi.jl")
