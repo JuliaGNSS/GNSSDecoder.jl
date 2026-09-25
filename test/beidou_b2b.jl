@@ -492,3 +492,26 @@ end
         @test state.prn == prn
     end
 end
+
+@testset "BeiDou B2b decode! is allocation-free" begin
+    # MT10 + MT30 + MT40: ephemeris, clock, BGTO, midi and reduced almanacs,
+    # and promotion to `data`.
+    prn = 26
+    frames = [
+        b2b_frame_symbols(b2b_mt10_message(); prn),
+        b2b_frame_symbols(b2b_mt30_message(); prn),
+        b2b_frame_symbols(b2b_mt40_message(); prn),
+    ]
+    tail = b2b_frame_symbols(b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE + 3); prn)
+    symbols = vcat(frames..., tail[1:16])
+    allocations = decode_allocations(() -> BeiDouB2bDecoderState(prn), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    state = allocations.state
+    @test is_decoding_completed_for_positioning(state)
+    @test length(state.data.reduced_almanacs) == 2
+    @test haskey(state.data.midi_almanacs, 30)
+    # Promotion copies the stores: `data` never shares them with `raw_data`.
+    @test state.data.midi_almanacs !== state.raw_data.midi_almanacs
+end
