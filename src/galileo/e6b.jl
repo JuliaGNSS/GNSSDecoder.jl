@@ -564,7 +564,7 @@ Base.@kwdef struct GalileoE6BData <: AbstractGalileoData
     phase_biases::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASPhaseBias}} = nothing
 end
 
-function GalileoE6BData(
+@inline function GalileoE6BData(
     data::GalileoE6BData;
     HAS_status = data.HAS_status,
     message = data.message,

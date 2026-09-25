@@ -485,7 +485,7 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     num_sf3_pages_received::Int = 0
 end
 
-function GPSL1C_DData(
+@inline function GPSL1C_DData(
     data::GPSL1C_DData;
     toi = data.toi,
     ITOW = data.ITOW,

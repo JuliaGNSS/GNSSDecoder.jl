@@ -435,7 +435,7 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     DN::Union{Nothing,Int64} = nothing
 end
 
-function BeiDouDNAVData(
+@inline function BeiDouDNAVData(
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
     SOW = data.SOW,

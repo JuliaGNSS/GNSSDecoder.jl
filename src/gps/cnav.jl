@@ -545,7 +545,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
 end
 
-function GPSCNAVData(
+@inline function GPSCNAVData(
     data::GPSCNAVData;
     last_message_type = data.last_message_type,
     TOW = data.TOW,

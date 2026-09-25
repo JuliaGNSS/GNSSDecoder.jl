@@ -196,7 +196,7 @@ Base.@kwdef struct GNSSDecoderState{
     is_shifted_by_180_degrees::Bool = false
 end
 
-function GNSSDecoderState(
+@inline function GNSSDecoderState(
     state::GNSSDecoderState;
     raw_data = state.raw_data,
     data = state.data,

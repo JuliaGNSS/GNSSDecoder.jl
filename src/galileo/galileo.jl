@@ -128,7 +128,7 @@ Base.@kwdef struct GalileoAlmanac
     t_0a::Union{Nothing,Int} = nothing
 end
 
-function GalileoAlmanac(
+@inline function GalileoAlmanac(
     a::GalileoAlmanac;
     SVID = a.SVID,
     Δsqrt_A = a.Δsqrt_A,

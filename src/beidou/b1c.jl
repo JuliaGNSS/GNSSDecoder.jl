@@ -424,7 +424,7 @@ Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouCNAVData
     num_sf3_pages_received::Int = 0
 end
 
-function BeiDouB1CData(
+@inline function BeiDouB1CData(
     data::BeiDouB1CData;
     soh = data.soh,
     HOW = data.HOW,
