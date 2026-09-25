@@ -5,6 +5,9 @@ using GNSSSignals: Hz, s, ustrip
 import Aff3ct
 
 export decode,
+    decode!,
+    SlotDictionary,
+    FixedText,
     GPSL1CADecoderState,
     GPSL1CAData,
     GPSL1CAAlmanac,
@@ -63,11 +66,13 @@ export decode,
     GNSSTimeOffset,
     get_time_offset,
     GNSSDecoderState,
-    reset_decoder_state
+    reset_decoder_state,
+    reset_decoder_state!
 
 # Shared decode framework and cross-signal accessors, then the generic
 # bit-extraction helpers.
 include("gnss.jl")
+include("storage.jl")
 include("bit_fiddling.jl")
 
 # Signal-independent channel-coding primitives: CRC-24Q, the BCH(51,8) TOI

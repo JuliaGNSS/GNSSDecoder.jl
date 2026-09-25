@@ -903,7 +903,7 @@ types. Mirrors the semantics of the GPS CNAV implementation.
   - [`BeiDouB2aDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:BeiDouB2aData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;

@@ -837,7 +837,7 @@ implementations.
   - [`GPSL1C_DDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GPSL1C_DData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
@@ -914,7 +914,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
             toi += TOI_COMPLEMENT_OFFSET
             flipped = !flipped
         elseif expected != toi
-            return reset_decoder_state(state)
+            return reset_decoder_state!(state)
         end
     end
     state = GNSSDecoderState(

@@ -827,7 +827,7 @@ re-decoding all of subframe 2. Mirrors the GPS L1C-D implementation.
   - [`BeiDouB1CDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:BeiDouB1CData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
@@ -958,7 +958,7 @@ fields into `raw_data`.
 function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
     prev_soh = state.raw_data.soh
     if !isnothing(prev_soh) && (prev_soh + 1) % B1C_SOH_RANGE != sync.soh
-        return reset_decoder_state(state)
+        return reset_decoder_state!(state)
     end
     # `soh` advances with every locked frame, but `HOW` only refreshes when a
     # subframe 2 clears LDPC+CRC — so carry the hour across the SOH wrap here,
