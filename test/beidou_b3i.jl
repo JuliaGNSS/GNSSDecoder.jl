@@ -88,5 +88,24 @@
         # (one subframe + the trailing preamble) past the last SOW.
         @test state.num_bits_after_valid_syncro_sequence == 311
         @test state.data.SOW == SOW0 + 30
+
+        @testset "D1 decode! is allocation-free (PRN 25)" begin
+            # Four broadcast cycles: staged, promoted, then upvoted twice. The
+            # page parsers and D2 are exercised through the shared core in
+            # `beidou_b1i.jl`.
+            symbols = dnav_test_soft_symbols(
+                cycle(0)...,
+                cycle(18)...,
+                cycle(36)...,
+                cycle(54)...,
+            )
+            allocations = decode_allocations(() -> BeiDouB3IDecoderState(25), symbols)
+            @test allocations.fresh == 0
+            @test allocations.warm == 0
+            @test allocations.reset == 0
+            @test is_decoding_completed_for_positioning(allocations.state)
+            @test allocations.state.data.SOW == SOW0 + 66
+            @test allocations.state.data.ω == -6789 * PI / 2.0^31
+        end
     end
 end

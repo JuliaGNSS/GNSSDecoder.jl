@@ -617,6 +617,50 @@ using GNSSSignals: Hz
         @test data.Ω_0 == -1234567890 * PI / 2.0^31
         @test data.ω == 987654321 * PI / 2.0^31
         @test data.i_dot == -99 * PI / 2.0^43
+
+        @testset "D2 decode! is allocation-free (GEO PRN 4)" begin
+            # Three contiguous 30 s broadcast cycles of pages 1-10, each page
+            # in its own frame with subframes 2-5 as filler: the page store is
+            # filled, then every slot is overwritten, and the dataset is staged,
+            # then promoted and upvoted.
+            function d2_cycle_subframes(Δ)
+                subframes = UInt320[]
+                for (page, tail) in enumerate(tails)
+                    sow = SOW_D2 + Δ + 3 * (page - 1)
+                    push!(
+                        subframes,
+                        dnav_test_encode_subframe(
+                            dnav_test_d2_page_content(page, tail; SOW = sow),
+                        ),
+                    )
+                    for fra_id = 2:5
+                        filler = dnav_test_content(
+                            (DNAV_TEST_PREAMBLE, 11),
+                            (0, 4),
+                            (fra_id, 3),
+                            (sow, 20),
+                            (0, 186),
+                        )
+                        push!(subframes, dnav_test_encode_subframe(filler))
+                    end
+                end
+                subframes
+            end
+            symbols = dnav_test_soft_symbols(
+                d2_cycle_subframes(0)...,
+                d2_cycle_subframes(D2_CYCLE_SPAN)...,
+                d2_cycle_subframes(2 * D2_CYCLE_SPAN)...,
+            )
+            allocations = decode_allocations(() -> BeiDouB1IDecoderState(4), symbols)
+            @test allocations.fresh == 0
+            @test allocations.warm == 0
+            @test allocations.reset == 0
+            d2_state = allocations.state
+            @test is_decoding_completed_for_positioning(d2_state)
+            @test d2_state.data.SOW == SOW_D2 + 2 * D2_CYCLE_SPAN + 27
+            @test d2_state.data.ω == data.ω
+            @test length(d2_state.cache.d2_pages) == 10
+        end
     end
 
     @testset "Signal metadata and constructors" begin
@@ -673,6 +717,159 @@ using GNSSSignals: Hz
         state = decode(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test state.data.WN == 810
+    end
+
+    @testset "D1 decode! is allocation-free (PRN 20)" begin
+        # One contiguous stream through every D1 parser: the fundamental set,
+        # then the subframe 4/5 pages (almanac of SV 1-30, health pages 7/8,
+        # time offsets 9/10, expanded almanac and health for SV 31-63), then
+        # the fundamental set again. Repeated five times with a clock update
+        # in between, so the stream stages, upvotes, re-stages and promotes
+        # datasets (including the almanac and health stores) and overwrites
+        # every almanac/health slot it wrote before. (The `warm` replay is
+        # stale to the SOW screen and decodes nothing; the `reset` replay, with
+        # the screen disarmed, decodes it all again over the populated stores.)
+        alm = (
+            sqrt_A_raw = 10_460_000,
+            a_1_raw = -12,
+            a_0_raw = 345,
+            Ω_0_raw = -4_000_000,
+            e_raw = 6789,
+            δi_raw = -321,
+            t_0a_raw = 147,
+            Ω_dot_raw = -654,
+            ω_raw = 2_222_222,
+            M_0_raw = -3_333_333,
+        )
+        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_0c = 46800 s
+        fundamental(sf1_fields, Δ) = (
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe1_content(; merge(sf1_fields, (SOW = SOW0 + Δ,))...),
+            ),
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe2_content(; merge(d1_sf2, (SOW = SOW0 + Δ + 6,))...),
+            ),
+            dnav_test_encode_subframe(
+                dnav_test_d1_subframe3_content(; merge(d1_sf3, (SOW = SOW0 + Δ + 12,))...),
+            ),
+        )
+        # Health pages (Figure 5-11-2 / Table 5-17): nine-bit words from ICD
+        # bit 51 on, the third one flagging its SV unhealthy. Page 24 carries
+        # 13 words followed by its AmID (ICD bits 216-217).
+        health_page(pnum, sow, num_words, tail) = dnav_test_encode_subframe(
+            dnav_test_content(
+                (DNAV_TEST_PREAMBLE, 11),
+                (0, 4),
+                (5, 3),
+                (sow, 20),
+                (0, 1),
+                (pnum, 7),
+                ntuple(i -> (i == 3 ? 0x100 : 0x000, 9), num_words)...,
+                tail...,
+            ),
+        )
+        page7(sow) = health_page(7, sow, 19, ((0, 7),))
+        page24(sow, am_id) = health_page(24, sow, 13, ((am_id, 2), (0, 59)))
+        function pages(Δ)
+            sow(k) = SOW0 + Δ + 18 + 6 * (k - 1)
+            (
+                # Subframe 4 page 1 → SV 1; AmEpID = 11 enables the expanded pages.
+                dnav_test_encode_subframe(
+                    dnav_test_d1_almanac_page_content(;
+                        FraID = 4,
+                        SOW = sow(1),
+                        Pnum = 1,
+                        am_field = 0b11,
+                        alm...,
+                    ),
+                ),
+                # Subframe 5 page 6 → SV 30.
+                dnav_test_encode_subframe(
+                    dnav_test_d1_almanac_page_content(;
+                        FraID = 5,
+                        SOW = sow(2),
+                        Pnum = 6,
+                        am_field = 0b11,
+                        alm...,
+                    ),
+                ),
+                page7(sow(3)),
+                dnav_test_encode_subframe(
+                    dnav_test_d1_subframe5_page8_content(;
+                        SOW = sow(4),
+                        health_codes = UInt16[k == 3 ? 0x100 : 0x000 for k = 1:11],
+                        WN_a = 55,
+                        t_0a_raw = 147,
+                    ),
+                ),
+                dnav_test_encode_subframe(
+                    dnav_test_d1_subframe5_page9_content(;
+                        SOW = sow(5),
+                        A_0GPS_raw = -15,
+                        A_1GPS_raw = 25,
+                        A_0Gal_raw = -35,
+                        A_1Gal_raw = 45,
+                        A_0GLO_raw = -55,
+                        A_1GLO_raw = 65,
+                    ),
+                ),
+                dnav_test_encode_subframe(
+                    dnav_test_d1_subframe5_page10_content(;
+                        SOW = sow(6),
+                        Δt_LS_raw = 4,
+                        Δt_LSF_raw = 5,
+                        WN_LSF = 123,
+                        A_0UTC_raw = -777777,
+                        A_1UTC_raw = 8888,
+                        DN = 6,
+                    ),
+                ),
+                # Subframe 5 page 17 with AmID = 11 → expanded almanac of SV 63.
+                dnav_test_encode_subframe(
+                    dnav_test_d1_almanac_page_content(;
+                        FraID = 5,
+                        SOW = sow(7),
+                        Pnum = 17,
+                        am_field = 0b11,
+                        alm...,
+                    ),
+                ),
+                # Subframe 5 page 24 with AmID = 11 → health of SV 57-63.
+                page24(sow(8), 0b11),
+            )
+        end
+        # One segment: the fundamental set, 8 pages, 11 subframes = 66 s.
+        segment(sf1_fields, Δ) = (fundamental(sf1_fields, Δ)..., pages(Δ)...)
+        symbols = dnav_test_soft_symbols(
+            segment(d1_sf1, 0)...,
+            segment(d1_sf1, 66)...,
+            segment(d1_sf1B, 132)...,
+            segment(d1_sf1B, 198)...,
+            segment(d1_sf1, 264)...,
+            fundamental(d1_sf1, 330)...,
+        )
+        allocations = decode_allocations(() -> BeiDouB1IDecoderState(20), symbols)
+        @test allocations.fresh == 0
+        @test allocations.warm == 0
+        @test allocations.reset == 0
+        state = allocations.state
+        @test is_decoding_completed_for_positioning(state)
+        check_d1_fundamental(state.data; SOW = SOW0 + 342)
+        @test sort(collect(keys(state.data.almanacs))) == [1, 30, 63]
+        @test state.data.almanacs[63].sqrt_A == 10_460_000 / 2.0^11
+        @test state.data.health[3] == 0x100      # page 7, third word
+        @test state.data.health[22] == 0x100     # page 8, third word
+        @test state.data.health[59] == 0x100     # page 24 (AmID 11), third word
+        @test length(state.data.health) == 30 + 7
+        @test state.data.DN == 6
+        # `data` owns its containers: they are not `raw_data`'s.
+        @test state.data.almanacs !== state.raw_data.almanacs
+
+        # `decode` keeps value semantics on top of it: the input state is untouched.
+        fresh = BeiDouB1IDecoderState(20)
+        decoded = decode(fresh, symbols, length(symbols))
+        @test decoded.data == state.data
+        @test fresh == BeiDouB1IDecoderState(20)
     end
 end
 
