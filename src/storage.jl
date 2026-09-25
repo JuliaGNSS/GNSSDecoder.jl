@@ -368,15 +368,17 @@ Each per-signal cache holds one, built by `preallocated_data(D)`.
 
 $(TYPEDFIELDS)
 """
-struct DataStorage{D}
+mutable struct DataStorage{D}
+    # Mutable only so the cache holds it by reference: the two data containers
+    # inline would be copied along with the decoder state on every symbol.
     """
     Containers `raw_data` is decoded into
     """
-    raw::D
+    const raw::D
     """
     Containers `data` is published into
     """
-    validated::D
+    const validated::D
 end
 
 DataStorage{D}() where {D} = DataStorage{D}(preallocated_data(D), preallocated_data(D))
