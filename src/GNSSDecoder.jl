@@ -1,13 +1,13 @@
 module GNSSDecoder
 
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
+using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: Hz, s, ustrip
 import Aff3ct
 
 export decode,
     decode!,
     SlotDictionary,
-    FixedText,
     GPSL1CADecoderState,
     GPSL1CAData,
     GPSL1CAAlmanac,

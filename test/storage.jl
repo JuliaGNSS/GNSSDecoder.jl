@@ -62,22 +62,24 @@ using GNSSDecoder:
         @test @allocated(fill_slots!(d)) == 0 skip = !CHECK_ALLOCATIONS
     end
 
-    @testset "FixedText" begin
-        text = FixedText{8}("abc")
+    @testset "broadcast text (CStaticString)" begin
+        # What the text fields rely on: built from a NUL-padded byte tuple, the
+        # text ends at the first NUL, compares equal to a `String`, converts from
+        # one (so data can be constructed from `String`s) and is inline.
+        CStaticString = GNSSDecoder.CStaticString
+        text = CStaticString((0x61, 0x62, 0x63, 0x00, 0x00))
         @test text == "abc"
         @test "abc" == text
         @test length(text) == 3
-        @test ncodeunits(text) == 3
         @test String(text) == "abc"
         @test sprint(print, text) == "abc"
-        @test collect(text) == ['a', 'b', 'c']
-        @test codeunit(text) == UInt8 && codeunit(text, 2) == UInt8('b')
-        @test isvalid(text, 3) && !isvalid(text, 4)
-        @test convert(FixedText{8}, "xy") == "xy"
-        @test convert(FixedText{8}, text) === text
         @test isbits(text)
-        @test_throws ArgumentError FixedText{2}("abc")
-        @test_throws ArgumentError FixedText{8}("é")
+        @test convert(CStaticString{5}, "xy") == "xy"
+        @test convert(CStaticString{5}, "xy") isa CStaticString{5}
+        @test_throws InexactError convert(CStaticString{2}, "abc")
+        build(units) = CStaticString(units)
+        build((0x61, 0x00))
+        @test @allocated(build((0x61, 0x00))) == 0 skip = !CHECK_ALLOCATIONS
     end
 
     @testset "writable_container, overwrite! and publish!" begin
