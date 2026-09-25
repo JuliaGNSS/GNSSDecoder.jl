@@ -194,9 +194,9 @@ end
     symbols =
         reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GALILEO_E1B_DATA))
     allocations = decode_allocations(() -> GalileoE1BDecoderState(21), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     @test is_decoding_completed_for_positioning(allocations.state)
     @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
     @test !isnothing(allocations.state.data.reduced_ced.ΔA_red)

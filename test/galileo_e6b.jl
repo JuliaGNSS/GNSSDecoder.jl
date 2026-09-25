@@ -926,9 +926,9 @@ end
     symbols = e6b_symbol_stream(pages)
 
     allocations = decode_allocations(() -> GalileoE6BDecoderState(1), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     # The stream really decoded every content block and both masks.
     data = allocations.state.data
     @test data.message.message_id == 21

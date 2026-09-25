@@ -505,9 +505,9 @@ end
     tail = b2b_frame_symbols(b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE + 3); prn)
     symbols = vcat(frames..., tail[1:16])
     allocations = decode_allocations(() -> BeiDouB2bDecoderState(prn), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
     @test is_decoding_completed_for_positioning(state)
     @test length(state.data.reduced_almanacs) == 2

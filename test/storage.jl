@@ -54,10 +54,9 @@ using GNSSDecoder:
         # Writes into a preallocated dictionary allocate nothing.
         fill_slots!(d) = (for k = 0:7
             set!(d, k, Float64(k))
-        end;
-        d)
+        end; d)
         fill_slots!(d)
-        @test @allocated(fill_slots!(d)) == 0
+        @test @allocated(fill_slots!(d)) == 0 skip = !CHECK_ALLOCATIONS
     end
 
     @testset "FixedText" begin

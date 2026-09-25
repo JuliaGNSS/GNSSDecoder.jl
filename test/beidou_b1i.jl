@@ -652,9 +652,9 @@ using GNSSSignals: Hz
                 d2_cycle_subframes(2 * D2_CYCLE_SPAN)...,
             )
             allocations = decode_allocations(() -> BeiDouB1IDecoderState(4), symbols)
-            @test allocations.fresh == 0
-            @test allocations.warm == 0
-            @test allocations.reset == 0
+            @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+            @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+            @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
             d2_state = allocations.state
             @test is_decoding_completed_for_positioning(d2_state)
             @test d2_state.data.SOW == SOW_D2 + 2 * D2_CYCLE_SPAN + 27
@@ -849,9 +849,9 @@ using GNSSSignals: Hz
             fundamental(d1_sf1, 330)...,
         )
         allocations = decode_allocations(() -> BeiDouB1IDecoderState(20), symbols)
-        @test allocations.fresh == 0
-        @test allocations.warm == 0
-        @test allocations.reset == 0
+        @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+        @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+        @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
         state = allocations.state
         @test is_decoding_completed_for_positioning(state)
         check_d1_fundamental(state.data; SOW = SOW0 + 342)

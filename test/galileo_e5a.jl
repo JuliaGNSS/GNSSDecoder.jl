@@ -343,9 +343,9 @@ end
     # promotions to validated `data`.
     symbols = e5a_symbol_stream(pages)
     allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     @test is_decoding_completed_for_positioning(allocations.state)
     @test !isempty(allocations.state.data.almanacs)
     @test allocations.state.data.almanacs[21].WN_a == 2
@@ -354,9 +354,9 @@ end
     # in-place epoch back-patch.
     symbols = e5a_symbol_stream(vcat(pages[1:24], pages[30], pages[25]))
     allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.state.raw_data.almanacs[21].t_0a == 259200
 
     # `decode` keeps value semantics on top of it: the input state is untouched.

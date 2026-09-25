@@ -261,7 +261,6 @@ function publish!(dst, src)
     return overwrite!(dst, src)
 end
 
-
 # Types whose instances are immutable values or are shared rather than copied.
 is_shared_leaf(T) =
     isbitstype(T) ||
@@ -282,9 +281,11 @@ function duplicate_expr(T, ex, depth::Int)
         branches = foldr(Base.uniontypes(T); init = :(error("unreachable"))) do U, rest
             :($value isa $U ? $(duplicate_expr(U, value, depth + 1)) : $rest)
         end
-        return :(let $value = $ex
-            $branches
-        end)
+        return :(
+            let $value = $ex
+                $branches
+            end
+        )
     end
     isconcretetype(T) || return :(duplicate($ex))
     is_shared_leaf(T) && return ex
@@ -299,52 +300,63 @@ function duplicate_expr(T, ex, depth::Int)
         copy_elements = if isbitstype(E)
             :(copyto!($dst, $src))
         else
-            :(for $i in eachindex($src, $dst)
-                $dst[$i] = $(duplicate_expr(E, :($src[$i]), depth + 1))
-            end)
+            :(
+                for $i in eachindex($src, $dst)
+                    $dst[$i] = $(duplicate_expr(E, :($src[$i]), depth + 1))
+                end
+            )
         end
         keep_capacity = T <: Vector ? :(sizehint!($dst, vector_capacity($src))) : nothing
-        return :(let $src = $ex
-            $dst = similar($src)
-            $copy_elements
-            $keep_capacity
-            $dst
-        end)
+        return :(
+            let $src = $ex
+                $dst = similar($src)
+                $copy_elements
+                $keep_capacity
+                $dst
+            end
+        )
     end
     if T <: CircularDeque
         src, dst, v = gensym(:src), gensym(:dst), gensym(:v)
-        return :(let $src = $ex
-            $dst = $T(capacity($src))
-            for $v in $src
-                push!($dst, $v)
+        return :(
+            let $src = $ex
+                $dst = $T(capacity($src))
+                for $v in $src
+                    push!($dst, $v)
+                end
+                $dst
             end
-            $dst
-        end)
+        )
     end
     if T <: Dictionary
         V = T.parameters[2]
         src, dst, k, v = gensym(:src), gensym(:dst), gensym(:k), gensym(:v)
-        return :(let $src = $ex
-            $dst = $T()
-            for ($k, $v) in pairs($src)
-                insert!($dst, $k, $(duplicate_expr(V, v, depth + 1)))
+        return :(
+            let $src = $ex
+                $dst = $T()
+                for ($k, $v) in pairs($src)
+                    insert!($dst, $k, $(duplicate_expr(V, v, depth + 1)))
+                end
+                $dst
             end
-            $dst
-        end)
+        )
     end
     # A mutable struct from another package may own memory outside Julia (the
     # AFF3CT handles do); copying its fields would alias that memory, so each
     # such type must be handled above explicitly.
-    ismutabletype(T) && parentmodule(T) !== @__MODULE__() &&
+    ismutabletype(T) &&
+        parentmodule(T) !== @__MODULE__() &&
         return :(throw(ArgumentError($(string("no `duplicate` rule for ", T)))))
     value = gensym(:value)
     fields = [
         duplicate_expr(fieldtype(T, i), :(getfield($value, $i)), depth + 1) for
         i = 1:fieldcount(T)
     ]
-    return :(let $value = $ex
-        $(Expr(:new, T, fields...))
-    end)
+    return :(
+        let $value = $ex
+            $(Expr(:new, T, fields...))
+        end
+    )
 end
 
 """

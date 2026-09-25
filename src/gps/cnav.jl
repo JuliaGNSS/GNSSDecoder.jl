@@ -1613,7 +1613,8 @@ function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::
     cdc = _cnav_cdc_packet(word, 151, t_op_D, t_OD, dc_data_type)
     edc = _cnav_edc_packet(word, 185, t_op_D, t_OD, dc_data_type, PI)
     if !isnothing(cdc)
-        clock_corrections = writable_container(raw.clock_corrections, storage.clock_corrections)
+        clock_corrections =
+            writable_container(raw.clock_corrections, storage.clock_corrections)
         set!(clock_corrections, cdc.PRN_a, cdc)
         raw = GPSCNAVData(raw; clock_corrections)
     end

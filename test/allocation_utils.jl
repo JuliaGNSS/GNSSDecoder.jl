@@ -1,4 +1,15 @@
 """
+Whether the zero-allocation assertions are checked on this Julia version.
+
+`decode!` is allocation-free from Julia 1.11 on. Julia 1.10 compiles some keyword
+calls with `Union`-typed values through the keyword sorter's generic path, which
+allocates; the decoders work around the cases found so far, but a stray
+allocation on 1.10 is accepted, so there the assertions are skipped (the tests
+still run the decode and check its result).
+"""
+const CHECK_ALLOCATIONS = VERSION >= v"1.11"
+
+"""
     decode_allocations(make_state, symbols) -> NamedTuple
 
 Bytes `decode!` allocates when it runs `symbols` through a decoder state from

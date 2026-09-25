@@ -693,9 +693,9 @@ end
         b2a_trailing_preamble(),
     )
     allocations = decode_allocations(() -> BeiDouB2aDecoderState(B2A_PRN), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
     @test is_decoding_completed_for_positioning(state)
     @test sort(collect(keys(state.data.reduced_almanacs))) == [7, 8, 9]

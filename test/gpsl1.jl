@@ -754,12 +754,13 @@ end
     # and page-25 health pages that write the preallocated stores.
     symbols = reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GPSL1DATA))
     allocations = decode_allocations(() -> GPSL1CADecoderState(25), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     @test is_decoding_completed_for_positioning(allocations.state)
     @test !isnothing(allocations.state.data.almanacs)
-    @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0
+    @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0 skip =
+        !CHECK_ALLOCATIONS
 
     # `decode` keeps value semantics on top of it: the input state is untouched.
     state = GPSL1CADecoderState(25)

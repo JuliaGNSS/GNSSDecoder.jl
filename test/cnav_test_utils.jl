@@ -151,9 +151,9 @@ and that the stream really exercised every store.
 function test_cnav_decode_allocation_free(make_state, messages)
     stream = cnav_allocation_stream(messages)
     allocations = decode_allocations(make_state, stream)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
     @test is_decoding_completed_for_positioning(state)
     d = state.data
@@ -169,9 +169,9 @@ function test_cnav_decode_allocation_free(make_state, messages)
     # The polarity-inverted stream (message complemented after the Viterbi)
     # is allocation-free as well.
     inverted = decode_allocations(make_state, -stream)
-    @test inverted.fresh == 0
-    @test inverted.warm == 0
-    @test inverted.reset == 0
+    @test inverted.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test inverted.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test inverted.reset == 0 skip = !CHECK_ALLOCATIONS
     @test inverted.state.is_shifted_by_180_degrees
     @test inverted.state.data == d
 

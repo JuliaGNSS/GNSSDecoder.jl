@@ -100,9 +100,9 @@
                 cycle(54)...,
             )
             allocations = decode_allocations(() -> BeiDouB3IDecoderState(25), symbols)
-            @test allocations.fresh == 0
-            @test allocations.warm == 0
-            @test allocations.reset == 0
+            @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+            @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+            @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
             @test is_decoding_completed_for_positioning(allocations.state)
             @test allocations.state.data.SOW == SOW0 + 66
             @test allocations.state.data.ω == -6789 * PI / 2.0^31
