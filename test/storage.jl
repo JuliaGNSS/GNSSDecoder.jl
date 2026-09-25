@@ -20,6 +20,9 @@ using GNSSDecoder:
         @test collect(values(d)) == [2.5, 1.5]
         @test d[5] == 1.5
         @test haskey(d, 2) && !haskey(d, 3) && !haskey(d, 42) && !haskey(d, -1)
+        @test !haskey(d, "2") && !(2.5 in keys(d))
+        @test isassigned(d, 2) && !isassigned(d, 3)
+        @test Dictionaries.issettable(d) && Dictionaries.isinsertable(d)
         @test get(d, 3, 0.0) == 0.0
         d[5] = 3.5
         @test d[5] == 3.5
@@ -68,6 +71,8 @@ using GNSSDecoder:
         @test String(text) == "abc"
         @test sprint(print, text) == "abc"
         @test collect(text) == ['a', 'b', 'c']
+        @test codeunit(text) == UInt8 && codeunit(text, 2) == UInt8('b')
+        @test isvalid(text, 3) && !isvalid(text, 4)
         @test convert(FixedText{8}, "xy") == "xy"
         @test convert(FixedText{8}, text) === text
         @test isbits(text)
