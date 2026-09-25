@@ -360,22 +360,29 @@ function rs_erasure_decode!(
     received::AbstractMatrix{UInt8},
     k::Int,
 )
-    length(received_rows) == k ||
-        throw(DimensionMismatch("expected $k row indices, got $(length(received_rows))"))
-    size(received, 1) >= k ||
-        throw(DimensionMismatch("expected $k received rows, got $(size(received, 1))"))
-    k <= size(G, 2) || throw(ArgumentError("k=$k exceeds the code dimension $(size(G, 2))"))
-    k <= size(scratch.decoding, 1) ||
-        throw(ArgumentError("k=$k exceeds the scratch size $(size(scratch.decoding, 1))"))
-    for r in received_rows
-        1 <= r <= size(G, 1) ||
-            throw(ArgumentError("row index out of range 1:$(size(G, 1))"))
-    end
-    J = size(received, 2)
-    length(out) >= k * J ||
-        throw(DimensionMismatch("output holds $(length(out)) symbols, need $(k * J)"))
-    # D = G[received_rows, 1:k] — the ICD's decoding matrix (§6.4).
+    # The sizes are bound before the checks: Julia 1.10 leaves the throwing
+    # branches uninferred, so a call inside an error message dispatches dynamically.
+    num_rows = length(received_rows)
+    num_received = size(received, 1)
+    code_length, code_dimension = size(G)
     D = scratch.decoding
+    scratch_size = size(D, 1)
+    J = size(received, 2)
+    num_symbols = k * J
+    num_out = length(out)
+    num_rows == k || throw(DimensionMismatch("expected $k row indices, got $num_rows"))
+    num_received >= k ||
+        throw(DimensionMismatch("expected $k received rows, got $num_received"))
+    k <= code_dimension ||
+        throw(ArgumentError("k=$k exceeds the code dimension $code_dimension"))
+    k <= scratch_size || throw(ArgumentError("k=$k exceeds the scratch size $scratch_size"))
+    for r in received_rows
+        1 <= r <= code_length ||
+            throw(ArgumentError("row index out of range 1:$code_length"))
+    end
+    num_out >= num_symbols ||
+        throw(DimensionMismatch("output holds $num_out symbols, need $num_symbols"))
+    # D = G[received_rows, 1:k] — the ICD's decoding matrix (§6.4).
     @inbounds for c = 1:k, r = 1:k
         D[r, c] = G[received_rows[r], c]
     end

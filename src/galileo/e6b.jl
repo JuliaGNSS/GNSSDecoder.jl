@@ -821,12 +821,21 @@ copies of `src`'s, so `dst` never references a block `src` owns.
 function e6b_overwrite_message!(
     dst::GalileoHASMessage,
     src::GalileoHASMessage,
-    orbit,
-    clock,
-    clock_subset,
-    code,
-    phase,
+    @nospecialize(
+        orbit::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASOrbitCorrection}}
+    ),
+    @nospecialize(
+        clock::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASClockCorrection}}
+    ),
+    @nospecialize(
+        clock_subset::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASClockCorrection}}
+    ),
+    @nospecialize(code::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASCodeBias}}),
+    @nospecialize(phase::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASPhaseBias}}),
 )
+    # The blocks are declared with their field types and not specialized on:
+    # callers pass five `Union{Nothing,…}` values, too many for Julia 1.10 to
+    # union-split, and a single unspecialized method keeps that call static.
     dst.message_id = src.message_id
     dst.message_type = src.message_type
     dst.message_size = src.message_size
@@ -1160,16 +1169,33 @@ mutable struct GalileoHASPendingMessage
     """
     opened_at::Int
     """
-    The reassembled message octets, awaiting a mask (capacity 32 × 53)
+    Number of leading octets of `octets` that make up the held message
+    """
+    num_octets::Int
+    """
+    The reassembled message octets, awaiting a mask: a fixed 32 × 53 buffer whose
+    first `num_octets` are the message (fixed-length rather than resized, so a
+    copy needs no spare capacity, which Julia 1.10 cannot copy)
     """
     const octets::Vector{UInt8}
 end
 
 GalileoHASPendingMessage() =
-    GalileoHASPendingMessage(0, 0, 0, 0, sizehint!(UInt8[], E6B_MAX_MESSAGE_OCTETS))
+    GalileoHASPendingMessage(0, 0, 0, 0, 0, zeros(UInt8, E6B_MAX_MESSAGE_OCTETS))
 
-# `octets` is a Vector, so the default struct `==` would be reference equality.
-Base.:(==)(a::GalileoHASPendingMessage, b::GalileoHASPendingMessage) = fields_equal(a, b)
+# Mutable, so the default struct `==` would be reference equality; only the
+# message's own octets count, the rest of the buffer is leftover.
+function Base.:(==)(a::GalileoHASPendingMessage, b::GalileoHASPendingMessage)
+    a.message_id == b.message_id &&
+    a.message_type == b.message_type &&
+    a.message_size == b.message_size &&
+    a.opened_at == b.opened_at &&
+    a.num_octets == b.num_octets || return false
+    for i = 1:a.num_octets
+        a.octets[i] == b.octets[i] || return false
+    end
+    return true
+end
 
 # ---- HAS message bit reader --------------------------------------------------
 #
@@ -1287,7 +1313,9 @@ struct GalileoHASParser
     """
     reader::HASBitReader
     """
-    Per-constellation masks of the Mask block being parsed (capacity 15)
+    Per-constellation masks of the Mask block being parsed: a fixed buffer of 15
+    (the most `Nsys` allows), filled from the front (fixed-length rather than
+    pushed to, so a copy needs no spare capacity, which Julia 1.10 cannot copy)
     """
     satellite_masks::Vector{GalileoHASSatelliteMask}
     """
@@ -1302,7 +1330,7 @@ end
 
 GalileoHASParser() = GalileoHASParser(
     HASBitReader(UInt8[]),
-    sizehint!(GalileoHASSatelliteMask[], E6B_MAX_SYSTEMS),
+    fill(E6B_EMPTY_SATELLITE_MASK, E6B_MAX_SYSTEMS),
     GalileoHASBlockBuffers(),
     preallocated_message(),
 )
@@ -1516,12 +1544,13 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
     empty!(state.cache.soft_buffer)
     empty!(state.cache.page_groups)
     state.cache.pending_message[] = nothing
+    HAS_status = state.raw_data.HAS_status
+    masks = state.raw_data.masks
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    raw_data = @split_nothing (HAS_status, masks) GalileoE6BData(; HAS_status, masks)
     GNSSDecoderState(
         state;
-        raw_data = GalileoE6BData(;
-            HAS_status = state.raw_data.HAS_status,
-            masks = state.raw_data.masks,
-        ),
+        raw_data,
         data = GalileoE6BData(),
         num_bits_after_valid_syncro_sequence = nothing,
     )
@@ -1715,8 +1744,8 @@ function parse_has_mask_block!(parser::GalileoHASParser, mask_id::Int)
     # `Mask Flag = 0` messages, so they would parse to empty correction blocks
     # instead of being held until the genuine mask arrives.
     num_systems == 0 && return nothing
-    masks = empty!(parser.satellite_masks)
-    for _ = 1:num_systems
+    masks = parser.satellite_masks
+    for system = 1:num_systems
         bits_remaining(reader) >= 4 + 40 + 16 + 1 || return nothing
         GNSS_ID = Int(read_bits!(reader, 4))
         # A reserved GNSS ID makes the Reference IOD width, and therefore every
@@ -1745,23 +1774,20 @@ function parse_has_mask_block!(parser::GalileoHASParser, mask_id::Int)
         end
         bits_remaining(reader) >= 3 || return nothing
         nav_message_index = Int(read_bits!(reader, 3))
-        push!(
-            masks,
-            GalileoHASSatelliteMask(
-                GNSS_ID,
-                satellite_mask,
-                signal_mask,
-                cell_mask,
-                nav_message_index,
-                SVIDs,
-                signal_indices,
-            ),
+        masks[system] = GalileoHASSatelliteMask(
+            GNSS_ID,
+            satellite_mask,
+            signal_mask,
+            cell_mask,
+            nav_message_index,
+            SVIDs,
+            signal_indices,
         )
     end
     # 6 reserved bits close the Mask block (ICD Table 15).
     bits_remaining(reader) >= 6 || return nothing
     read_bits!(reader, 6)
-    return GalileoHASMask(mask_id, GalileoHASSatelliteMaskList(masks))
+    return GalileoHASMask(mask_id, GalileoHASSatelliteMaskList(view(masks, 1:num_systems)))
 end
 
 """
@@ -2277,15 +2303,29 @@ function e6b_reassemble_message(group::GalileoHASPageGroup)
 end
 
 """
-    e6b_merge_block!(current, spare, new) -> Union{Nothing,GalileoHASCorrectionBlock}
+    e6b_merge_block!(data, storage, message, Val(field)) -> Union{Nothing,GalileoHASCorrectionBlock}
 
-The latest block of one kind after a message: `current` unchanged when the
-message did not carry one (`new === nothing`), otherwise `new` copied into —
-**overwriting** — `current`, or the preallocated `spare` when there is no
-current block yet.
+The latest block of kind `field` after a message: `data`'s block unchanged
+when the message did not carry one, otherwise the message's block copied into —
+**overwriting** — `data`'s, or the preallocated one in `storage` when there is
+no current block yet.
 """
-e6b_merge_block!(current, spare, new) =
-    isnothing(new) ? current : overwrite!(something(current, spare), new)
+function e6b_merge_block!(
+    data::GalileoE6BData,
+    storage::GalileoE6BData,
+    message::GalileoHASMessage,
+    ::Val{field},
+) where {field}
+    # The blocks are read here, from concretely typed containers, rather than
+    # passed in: three `Union{Nothing,…}` arguments exceed Julia 1.10's union
+    # splitting, which then dispatches the call dynamically.
+    new = getfield(message, field)
+    current = getfield(data, field)
+    new === nothing && return current
+    target = current === nothing ? getfield(storage, field) : current
+    target === nothing && throw(ArgumentError("preallocated storage is missing"))
+    return overwrite!(target, new)
+end
 
 """
     e6b_merge_message!(data, storage, message) -> GalileoE6BData
@@ -2308,32 +2348,16 @@ function e6b_merge_message!(
         masks = writable_container(data.masks, storage.masks)
         set!(masks, mask.mask_id, mask)
     end
-    orbit = e6b_merge_block!(
-        data.orbit_corrections,
-        storage.orbit_corrections,
-        message.orbit_corrections,
-    )
-    clock = e6b_merge_block!(
-        data.clock_corrections,
-        storage.clock_corrections,
-        message.clock_corrections,
-    )
-    clock_subset = e6b_merge_block!(
-        data.clock_subset_corrections,
-        storage.clock_subset_corrections,
-        message.clock_subset_corrections,
-    )
-    code = e6b_merge_block!(data.code_biases, storage.code_biases, message.code_biases)
-    phase = e6b_merge_block!(data.phase_biases, storage.phase_biases, message.phase_biases)
-    latest = e6b_overwrite_message!(
-        something(data.message, storage.message),
-        message,
-        orbit,
-        clock,
-        clock_subset,
-        code,
-        phase,
-    )
+    orbit = e6b_merge_block!(data, storage, message, Val(:orbit_corrections))
+    clock = e6b_merge_block!(data, storage, message, Val(:clock_corrections))
+    clock_subset = e6b_merge_block!(data, storage, message, Val(:clock_subset_corrections))
+    code = e6b_merge_block!(data, storage, message, Val(:code_biases))
+    phase = e6b_merge_block!(data, storage, message, Val(:phase_biases))
+    current = data.message
+    target = current === nothing ? storage.message : current
+    target === nothing && throw(ArgumentError("preallocated storage is missing"))
+    latest =
+        e6b_overwrite_message!(target, message, orbit, clock, clock_subset, code, phase)
     GalileoE6BData(data.HAS_status, latest, masks, orbit, clock, clock_subset, code, phase)
 end
 
@@ -2521,7 +2545,7 @@ function e6b_hold_message!(
     held.message_type = message_type
     held.message_size = message_size
     held.opened_at = cache.page_counter[]
-    resize!(held.octets, num_octets)
+    held.num_octets = num_octets
     copyto!(held.octets, 1, cache.message_octets, 1, num_octets)
     cache.pending_message[] = held
     return cache
@@ -2582,7 +2606,7 @@ function e6b_apply_message(
         retried = parse_has_message!(
             parser,
             held.octets,
-            length(held.octets),
+            held.num_octets,
             held.message_id,
             held.message_type,
             held.message_size,
@@ -2635,11 +2659,15 @@ function validate_data(state::GNSSDecoderState{<:GalileoE6BData})
         publish!(validated.clock_subset_corrections, raw.clock_subset_corrections)
     code = publish!(validated.code_biases, raw.code_biases)
     phase = publish!(validated.phase_biases, raw.phase_biases)
+    raw_message = raw.message
+    validated_message = validated.message
     message =
-        isnothing(raw.message) ? nothing :
+        raw_message === nothing ? nothing :
+        validated_message === nothing ?
+        throw(ArgumentError("preallocated storage is missing")) :
         e6b_overwrite_message!(
-            validated.message,
-            raw.message,
+            validated_message,
+            raw_message,
             orbit,
             clock,
             clock_subset,
