@@ -1,4 +1,4 @@
-# Precompile workload (PrecompileTools). The first `decode` of a real navigation
+# Precompile workload (PrecompileTools). The first `decode!` of a real navigation
 # stream costs 12.5 s of compilation on a workstation and three to four times
 # that on an embedded ARM host — paid by a live receiver at the moment its first
 # satellite has bit sync, tens of seconds into a run, while every tracking loop
@@ -195,7 +195,7 @@ end
             (BeiDouB2bI(), 7, random_symbols),
             (BeiDouB3I(), 7, random_symbols),
         )
-            state = decode(GNSSDecoderState(system, prn), symbols, length(symbols))
+            state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
             is_sat_healthy(state)
             is_decoding_completed_for_positioning(state)
         end

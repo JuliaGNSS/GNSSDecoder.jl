@@ -180,7 +180,7 @@ function b2b_decode_frames(state, frames::Vector{Vector{Float32}}; invert::Bool 
     tail_message = b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE + 3)
     tail = b2b_frame_symbols(tail_message; prn = state.prn, invert)[1:16]
     stream = vcat(frames..., tail)
-    decode(state, stream, length(stream))
+    decode!(state, stream, length(stream))
 end
 
 @testset "BeiDou B2b (B-CNAV3)" begin
@@ -477,7 +477,7 @@ end
         ]
         state = b2b_decode_frames(state, frames)
         @test is_decoding_completed_for_positioning(state)
-        state = reset_decoder_state(state)
+        state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)

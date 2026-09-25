@@ -59,7 +59,7 @@ CNAV container).
 
 ```julia
 state = GPSL2CMDecoderState(1)           # PRN 1
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -69,8 +69,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`GPSL5IDecoderState`](@ref): The GPS L5I decoder sharing this CNAV core
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function GPSL2CMDecoderState(prn)

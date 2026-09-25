@@ -74,7 +74,7 @@
         )
         state = BeiDouB3IDecoderState(25)
         symbols = dnav_test_soft_symbols(cycle(0)..., cycle(18)...)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test is_sat_healthy(state)
         @test state.data.WN == 900
