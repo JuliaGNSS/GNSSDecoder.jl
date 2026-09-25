@@ -752,10 +752,7 @@ end
 @testset "GPS L1 C/A decode! is allocation-free" begin
     # The full test capture: every subframe, including the subframe 4/5 almanac
     # and page-25 health pages that write the preallocated stores.
-    symbols = reduce(
-        vcat,
-        (to_soft_symbols(data, sizeof(data) * 8) for data in GPSL1DATA),
-    )
+    symbols = reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GPSL1DATA))
     allocations = decode_allocations(() -> GPSL1CADecoderState(25), symbols)
     @test allocations.fresh == 0
     @test allocations.warm == 0
