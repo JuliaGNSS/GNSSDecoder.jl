@@ -29,10 +29,11 @@ function deinterleave!(
     cols::Int,
 ) where {T}
     n = rows * cols
-    length(src) == n ||
-        throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
-    length(dst) == n ||
-        throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
+    # Lengths bound before the checks: Julia 1.10 leaves a throwing branch
+    # uninferred, so a `length` call inside the message would dispatch dynamically.
+    num_src, num_dst = length(src), length(dst)
+    num_src == n || throw(DimensionMismatch("src has $num_src elements, expected $n"))
+    num_dst == n || throw(DimensionMismatch("dst has $num_dst elements, expected $n"))
     # Column-major write, row-major read: src[r + (c-1)*rows] -> dst[c + (r-1)*cols].
     @inbounds for r = 1:rows
         for c = 1:cols
@@ -66,10 +67,11 @@ function interleave!(
     cols::Int,
 ) where {T}
     n = rows * cols
-    length(src) == n ||
-        throw(DimensionMismatch("src has $(length(src)) elements, expected $n"))
-    length(dst) == n ||
-        throw(DimensionMismatch("dst has $(length(dst)) elements, expected $n"))
+    # Lengths bound before the checks: Julia 1.10 leaves a throwing branch
+    # uninferred, so a `length` call inside the message would dispatch dynamically.
+    num_src, num_dst = length(src), length(dst)
+    num_src == n || throw(DimensionMismatch("src has $num_src elements, expected $n"))
+    num_dst == n || throw(DimensionMismatch("dst has $num_dst elements, expected $n"))
     @inbounds for r = 1:rows
         for c = 1:cols
             dst[r+(c-1)*rows] = src[c+(r-1)*cols]
