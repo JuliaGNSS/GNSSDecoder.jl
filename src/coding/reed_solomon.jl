@@ -188,15 +188,38 @@ end
     gf_invert(field, A) -> Union{Nothing,Matrix{UInt8}}
 
 Matrix inverse over GF(256) by Gauss-Jordan elimination. Returns `nothing` if
-`A` is singular. `A` is not modified.
+`A` is singular. `A` is not modified. Allocates its result and a working copy
+of `A`; [`gf_invert!`](@ref) is the in-place form.
 """
 function gf_invert(field::GaloisField256, A::AbstractMatrix{UInt8})
     n = size(A, 1)
     size(A, 2) == n || throw(DimensionMismatch("matrix must be square"))
-    M = Matrix{UInt8}(A)
-    inverse = zeros(UInt8, n, n)
-    @inbounds for i = 1:n
-        inverse[i, i] = 0x01
+    return gf_invert!(zeros(UInt8, n, n), Matrix{UInt8}(A), field, n)
+end
+
+"""
+    gf_invert!(inverse, M, field, n) -> Union{Nothing,typeof(inverse)}
+
+In-place [`gf_invert`](@ref) of the leading `n × n` block of `M`: **overwrites**
+the leading `n × n` block of `inverse` with the inverse and returns `inverse`,
+or returns `nothing` if that block is singular. The leading `n × n` block of `M`
+is **overwritten** too (it is eliminated to the identity), so pass a working
+copy. Entries outside the leading blocks are neither read nor written, which is
+what lets one pair of preallocated buffers serve every size up to theirs.
+Allocates nothing.
+"""
+function gf_invert!(
+    inverse::AbstractMatrix{UInt8},
+    M::AbstractMatrix{UInt8},
+    field::GaloisField256,
+    n::Int,
+)
+    (size(M, 1) >= n && size(M, 2) >= n) ||
+        throw(DimensionMismatch("working matrix smaller than $n × $n"))
+    (size(inverse, 1) >= n && size(inverse, 2) >= n) ||
+        throw(DimensionMismatch("inverse buffer smaller than $n × $n"))
+    @inbounds for j = 1:n, i = 1:n
+        inverse[i, j] = i == j ? 0x01 : 0x00
     end
     @inbounds for col = 1:n
         pivot = 0
@@ -233,6 +256,31 @@ function gf_invert(field::GaloisField256, A::AbstractMatrix{UInt8})
 end
 
 """
+$(TYPEDEF)
+
+Preallocated working matrices for [`rs_erasure_decode!`](@ref): the decoding
+matrix and its inverse, sized once for the largest information length that
+will be decoded (the code dimension). Both are **overwritten** by every decode.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct RSErasureScratch
+    """
+    `D = G[received_rows, 1:k]` in its leading `k × k` block, eliminated in place
+    """
+    decoding::Matrix{UInt8}
+    """
+    `D⁻¹` in its leading `k × k` block
+    """
+    inverse::Matrix{UInt8}
+end
+
+RSErasureScratch(dimension::Int) =
+    RSErasureScratch(zeros(UInt8, dimension, dimension), zeros(UInt8, dimension, dimension))
+
+"""
     rs_erasure_decode(field, G, received_rows, received::AbstractMatrix{UInt8}, k)
         -> Union{Nothing,Matrix{UInt8}}
 
@@ -251,7 +299,8 @@ code symbols per column — the Galileo HAS HPVRS decode (HAS SIS ICD, Issue 1.0
 
 Returns a `k × J` matrix whose row `i` is information symbol block `i` (HAS
 non-encoded page `M_i`), or `nothing` if the chosen rows are linearly dependent
-(the `k × k` submatrix is singular).
+(the `k × k` submatrix is singular). Allocates its result and working
+matrices; [`rs_erasure_decode!`](@ref) is the in-place form the decoder uses.
 
 !!! warning "Rows k+1 … (code dimension) carry nothing"
 
@@ -272,23 +321,67 @@ function rs_erasure_decode(
     received::AbstractMatrix{UInt8},
     k::Int,
 )
-    length(received_rows) == k ||
-        throw(DimensionMismatch("expected $k row indices, got $(length(received_rows))"))
     size(received, 1) == k ||
         throw(DimensionMismatch("expected $k received rows, got $(size(received, 1))"))
+    J = size(received, 2)
+    out = Vector{UInt8}(undef, k * J)
+    decoded = rs_erasure_decode!(
+        out,
+        RSErasureScratch(max(k, 0)),
+        field,
+        G,
+        received_rows,
+        received,
+        k,
+    )
+    isnothing(decoded) && return nothing
+    # `out` holds the k × J result row by row.
+    return permutedims(reshape(out, J, k))
+end
+
+"""
+    rs_erasure_decode!(out, scratch::RSErasureScratch, field, G, received_rows, received, k)
+        -> Union{Nothing,typeof(out)}
+
+In-place [`rs_erasure_decode`](@ref): the same decode from the first `k` rows
+of `received` (which may have more rows — a preallocated page store), writing
+the `k × J` information symbols into `out` **row by row** — information block
+`i`, symbol `j` at `out[(i - 1) * J + j]` — which for HAS is exactly the
+reassembled message octets in page order. Only `out[1:k*J]` is **overwritten**,
+and the working matrices in `scratch` are overwritten too. Returns `out`, or
+`nothing` if the decoding matrix is singular. Allocates nothing.
+"""
+function rs_erasure_decode!(
+    out::AbstractVector{UInt8},
+    scratch::RSErasureScratch,
+    field::GaloisField256,
+    G::AbstractMatrix{UInt8},
+    received_rows::AbstractVector{Int},
+    received::AbstractMatrix{UInt8},
+    k::Int,
+)
+    length(received_rows) == k ||
+        throw(DimensionMismatch("expected $k row indices, got $(length(received_rows))"))
+    size(received, 1) >= k ||
+        throw(DimensionMismatch("expected $k received rows, got $(size(received, 1))"))
     k <= size(G, 2) || throw(ArgumentError("k=$k exceeds the code dimension $(size(G, 2))"))
-    all(r -> 1 <= r <= size(G, 1), received_rows) ||
-        throw(ArgumentError("row index out of range 1:$(size(G, 1))"))
+    k <= size(scratch.decoding, 1) ||
+        throw(ArgumentError("k=$k exceeds the scratch size $(size(scratch.decoding, 1))"))
+    for r in received_rows
+        1 <= r <= size(G, 1) ||
+            throw(ArgumentError("row index out of range 1:$(size(G, 1))"))
+    end
+    J = size(received, 2)
+    length(out) >= k * J ||
+        throw(DimensionMismatch("output holds $(length(out)) symbols, need $(k * J)"))
     # D = G[received_rows, 1:k] — the ICD's decoding matrix (§6.4).
-    D = Matrix{UInt8}(undef, k, k)
-    @inbounds for r = 1:k, c = 1:k
+    D = scratch.decoding
+    @inbounds for c = 1:k, r = 1:k
         D[r, c] = G[received_rows[r], c]
     end
-    Dinv = gf_invert(field, D)
+    Dinv = gf_invert!(scratch.inverse, D, field, k)
     isnothing(Dinv) && return nothing
     # One inversion serves every column: m_j = D^-1 · w'_j.
-    J = size(received, 2)
-    out = zeros(UInt8, k, J)
     @inbounds for j = 1:J
         for i = 1:k
             accumulator = 0x00
@@ -296,7 +389,7 @@ function rs_erasure_decode(
                 accumulator =
                     gf_add(accumulator, gf_multiply(field, Dinv[i, r], received[r, j]))
             end
-            out[i, j] = accumulator
+            out[(i-1)*J+j] = accumulator
         end
     end
     return out
