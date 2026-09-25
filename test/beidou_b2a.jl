@@ -673,3 +673,33 @@ end
         @test !is_sat_healthy(state)
     end
 end
+
+@testset "BeiDou B2a decode! is allocation-free" begin
+    # The full broadcast cycle: every message type, including the reduced (MT31,
+    # MT33) and midi (MT40) almanacs, and promotion to `data`.
+    t0 = 302400
+    messages = [
+        build_b2a_mt10(; sow = t0),
+        build_b2a_mt11(; sow = t0 + 3),
+        build_b2a_mt30(; sow = t0 + 6),
+        build_b2a_mt31(; sow = t0 + 9),
+        build_b2a_mt32(; sow = t0 + 12),
+        build_b2a_mt33(; sow = t0 + 15),
+        build_b2a_mt34(; sow = t0 + 18),
+        build_b2a_mt40(; sow = t0 + 21),
+    ]
+    symbols = vcat(
+        reduce(vcat, [b2a_frame_symbols(m) for m in messages]),
+        b2a_trailing_preamble(),
+    )
+    allocations = decode_allocations(() -> BeiDouB2aDecoderState(B2A_PRN), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    state = allocations.state
+    @test is_decoding_completed_for_positioning(state)
+    @test sort(collect(keys(state.data.reduced_almanacs))) == [7, 8, 9]
+    @test collect(keys(state.data.midi_almanacs)) == [23]
+    # Promotion copies the stores: `data` never shares them with `raw_data`.
+    @test state.data.reduced_almanacs !== state.raw_data.reduced_almanacs
+end
