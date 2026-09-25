@@ -110,7 +110,7 @@ end
 """
 Drive `decode` over a whole symbol stream in one call.
 """
-e6b_decode_stream(state, stream) = decode(state, stream, length(stream))
+e6b_decode_stream(state, stream) = decode!(state, stream, length(stream))
 
 @testset "Galileo E6-B constructor" begin
     decoder = GalileoE6BDecoderState(1)
@@ -844,7 +844,7 @@ end
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream([partial]))
     @test haskey(decoder.cache.page_groups, 9)
 
-    decoder = reset_decoder_state(decoder)
+    decoder = reset_decoder_state!(decoder)
     # In-flight pages go: their 150 s timeout is counted in received pages, so
     # they would otherwise look fresh forever across an outage.
     @test isempty(decoder.cache.page_groups)
@@ -949,13 +949,13 @@ end
     @test data.orbit_corrections !== raw.orbit_corrections
     @test data.orbit_corrections.corrections !== raw.orbit_corrections.corrections
 
-    # `decode` keeps value semantics on top of it: the input state is untouched.
+    # A `copy` is independent: decoding into it leaves the original untouched.
     state = GalileoE6BDecoderState(1)
-    decoded = decode(state, symbols, length(symbols))
+    decoded = decode!(copy(state), symbols, length(symbols))
     @test decoded.data == data
     @test state == GalileoE6BDecoderState(1)
     @test isempty(state.cache.page_groups)
-    # ...and so does `copy`, down to the page store's groups.
+    # The copy goes down to the page store's groups.
     first_pages = e6b_symbol_stream(example_1[1:3])
     partial = decode!(GalileoE6BDecoderState(1), first_pages, length(first_pages))
     snapshot = copy(partial)

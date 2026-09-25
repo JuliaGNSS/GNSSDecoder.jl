@@ -326,7 +326,7 @@ end
     # boundary. Each chunk is 4000 bits = 500 bytes.
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )
@@ -340,7 +340,7 @@ end
     decoder2 = GPSL1CADecoderState(25)
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder2,
     )
@@ -378,7 +378,7 @@ end
     decoder = GPSL1CADecoderState(1)
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )
@@ -692,13 +692,13 @@ end
     decoder = GPSL1CADecoderState(1)
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GPSL1DATA;
         init = decoder,
     )
 
     # test reset_decoder_state
-    state = reset_decoder_state(state)
+    state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
@@ -762,9 +762,9 @@ end
     @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0 skip =
         !CHECK_ALLOCATIONS
 
-    # `decode` keeps value semantics on top of it: the input state is untouched.
+    # A `copy` is independent: decoding into it leaves the original untouched.
     state = GPSL1CADecoderState(25)
-    decoded = decode(state, symbols, length(symbols))
+    decoded = decode!(copy(state), symbols, length(symbols))
     @test is_decoding_completed_for_positioning(decoded)
     @test state == GPSL1CADecoderState(25)
     @test GNSSDecoder.num_bits_buffered(state) == 0

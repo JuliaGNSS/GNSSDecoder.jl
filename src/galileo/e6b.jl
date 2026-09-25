@@ -667,7 +667,7 @@ and the broadcast-ephemeris issue the corrections apply to (ICD §7.6).
     A block is a preallocated, mutable buffer owned by the decoder state:
     [`decode!`](@ref) **overwrites** its fields and the contents of its
     `corrections` vector when a later message carries a block of the same kind.
-    Copy it (`copy(state)`, or [`decode`](@ref)) to keep a snapshot.
+    Take a `copy(state)` to keep a snapshot.
 
 # Fields
 
@@ -1470,7 +1470,7 @@ Message Type 1 content blocks are parsed into a [`GalileoE6BData`](@ref).
 
 ```julia
 state = GalileoE6BDecoderState(1)  # Create decoder for PRN 1
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if !isnothing(state.data.orbit_corrections)
     # Apply HAS corrections to the I/NAV ephemeris of the masked satellites
 end
@@ -1480,8 +1480,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`GalileoE1BDecoderState`](@ref): The I/NAV decoder whose ephemeris HAS corrects
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
 """
 function GalileoE6BDecoderState(prn)
     GNSSDecoderState(
@@ -1538,7 +1538,7 @@ to be overwritten by the next decode. Allocates nothing.
 # See Also
 
   - [`GalileoE6BDecoderState`](@ref): Create a fresh decoder state
-  - [`decode`](@ref): Continue decoding after reset
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
     empty!(state.cache.soft_buffer)

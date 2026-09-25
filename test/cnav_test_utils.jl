@@ -175,9 +175,9 @@ function test_cnav_decode_allocation_free(make_state, messages)
     @test inverted.state.is_shifted_by_180_degrees
     @test inverted.state.data == d
 
-    # `decode` keeps value semantics on top of it: the input state is untouched.
+    # A `copy` is independent: decoding into it leaves the original untouched.
     fresh = make_state()
-    decoded = decode(fresh, stream, length(stream))
+    decoded = decode!(copy(fresh), stream, length(stream))
     @test decoded.data == d
     @test fresh == make_state()
     @test fresh.raw_data == GPSCNAVData()

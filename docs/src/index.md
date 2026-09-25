@@ -48,7 +48,7 @@ GNSSDecoderState{GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CAC
 Process incoming soft symbols and check the decoder state:
 
 ```jldoctest gps_example
-julia> state = decode(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
+julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
 8
@@ -67,7 +67,7 @@ for i in 1:iterations
     soft_symbols = get_soft_bits(track_state, state.prn)
 
     # Decode navigation message
-    state = decode(state, soft_symbols, length(soft_symbols))
+    state = decode!(state, soft_symbols, length(soft_symbols))
 end
 
 # After decoding completes, access the data
@@ -89,7 +89,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B}, GNSSDecoder.GalileoINAVCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -174,7 +174,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -199,7 +199,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -223,7 +223,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -245,7 +245,7 @@ julia> state = BeiDouB1IDecoderState(20);  # PRN 20: MEO/IGSO, D1 NAV
 julia> typeof(state)
 GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GNSSDecoder.BeiDouDNAVCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -260,7 +260,7 @@ of the order of a dB less sensitivity than an FFT-QSPA decoder would give,
 visible as a raised frame-erasure rate at low C/N₀ rather than as bad data (a
 failed decode is dropped by the CRC gate). The belief-propagation stage is also
 scale-sensitive, so feed confidence-weighted soft symbols on a roughly LLR-like
-scale (`≈ 2·r/σ²`) for best sensitivity — see [`decode`](@ref):
+scale (`≈ 2·r/σ²`) for best sensitivity — see [`decode!`](@ref):
 
 ```jldoctest b2a_example
 julia> using GNSSDecoder
@@ -270,7 +270,7 @@ julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
 julia> typeof(state)
 GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
 
-julia> state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -280,7 +280,7 @@ julia> GNSSDecoder.num_bits_buffered(state)
 
 ### Resetting After Signal Loss
 
-If signal tracking is lost and reacquired, use [`reset_decoder_state`](@ref) to clear
+If signal tracking is lost and reacquired, use [`reset_decoder_state!`](@ref) to clear
 buffers while preserving previously decoded ephemeris:
 
 ```jldoctest reset_example
@@ -288,12 +288,12 @@ julia> using GNSSDecoder
 
 julia> state = GPSL1CADecoderState(1);
 
-julia> state = decode(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
+julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
 julia> GNSSDecoder.num_bits_buffered(state)
 8
 
-julia> state = reset_decoder_state(state);  # Reset after signal loss
+julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
 julia> GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
 0

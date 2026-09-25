@@ -397,7 +397,7 @@ end
 
         state = BeiDouB1CDecoderState(prn)
         @test !is_decoding_completed_for_positioning(state)
-        state = decode(state, stream, length(stream))
+        state = decode!(state, stream, length(stream))
 
         d = state.data
         @test is_decoding_completed_for_positioning(state)
@@ -538,7 +538,7 @@ end
             _b1c_frame_symbols(prn, 10, sf2, Bool.(_golden_sf3_page1_bits())),
             _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), -stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn), -stream, length(stream))
         @test state.is_shifted_by_180_degrees
         @test state.data.soh == 10
         @test state.data.WN == 800
@@ -551,7 +551,7 @@ end
             _b1c_frame_symbols(prn, 10, sf2, Bool.(_golden_sf3_page1_bits(HS = 1))),
             _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits(HS = 1)))[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test state.data.HS == 1
         @test is_decoding_completed_for_positioning(state)
         @test !is_sat_healthy(state)
@@ -567,7 +567,7 @@ end
             _b1c_frame_symbols(prn, 10, bad_sf2, Bool.(_golden_sf3_page1_bits())),
             _b1c_frame_symbols(prn, 11, bad_sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test isnothing(state.raw_data.WN)          # SF2 dropped
         @test state.raw_data.soh == 10              # sync still locked
         @test state.raw_data.num_sf3_pages_received == 1   # SF3 decoded
@@ -593,7 +593,7 @@ end
             _b1c_frame_symbols(prn, 52, sf2, sf3),
             _b1c_frame_symbols(prn, 53, sf2, sf3)[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test state.raw_data.soh == 52
         @test is_decoding_completed_for_positioning(state)
     end
@@ -614,7 +614,7 @@ end
             _b1c_frame_symbols(prn, 199, sf2, sf3),
             _b1c_frame_symbols(prn, 0, lost_sf2, sf3)[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), head, length(head))
+        state = decode!(BeiDouB1CDecoderState(prn), head, length(head))
         @test state.data.soh == 199
         @test state.data.HOW == _B1C_G.HOW
         @test get_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18
@@ -626,7 +626,7 @@ end
             _b1c_frame_symbols(prn, 0, lost_sf2, sf3)[73:end],
             _b1c_frame_symbols(prn, 1, sf2, sf3)[1:72],
         )
-        state = decode(state, rest, length(rest))
+        state = decode!(state, rest, length(rest))
         @test state.data.soh == 0
         @test state.data.HOW == _B1C_G.HOW + 1
         # One frame is 18 s: the wrap must step the time forward by 18 s, not
@@ -696,7 +696,7 @@ end
         )
         # Error-free still works, and every count up to the radius does too.
         for (n_prn, n_soh) in ((0, 0), (1, 4), (3, 0), (0, 11), (3, 11))
-            state = decode(
+            state = decode!(
                 BeiDouB1CDecoderState(prn),
                 corrupt_sf1(clean, n_prn, n_soh),
                 length(clean),
@@ -707,7 +707,7 @@ end
         # One past either radius leaves the word closer to no codeword than the
         # radius allows, and sync is refused rather than guessed.
         for (n_prn, n_soh) in ((4, 0), (0, 12))
-            state = decode(
+            state = decode!(
                 BeiDouB1CDecoderState(prn),
                 corrupt_sf1(clean, n_prn, n_soh),
                 length(clean),
@@ -727,11 +727,11 @@ end
                 _b1c_frame_symbols(p, 33, sf2, sf3),
                 _b1c_frame_symbols(p, 34, sf2, sf3)[1:72],
             )
-            state = decode(BeiDouB1CDecoderState(p), stream, length(stream))
+            state = decode!(BeiDouB1CDecoderState(p), stream, length(stream))
             @test state.raw_data.soh == 33
             @test is_decoding_completed_for_positioning(state)
             # And inverted, since polarity is resolved from this PRN's codeword.
-            flipped = decode(BeiDouB1CDecoderState(p), -stream, length(stream))
+            flipped = decode!(BeiDouB1CDecoderState(p), -stream, length(stream))
             @test flipped.raw_data.soh == 33
             @test flipped.is_shifted_by_180_degrees
         end
@@ -744,7 +744,7 @@ end
             _b1c_frame_symbols(prn, 10, sf2, sf3),
             _b1c_frame_symbols(prn, 11, sf2, sf3)[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn + 1), stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn + 1), stream, length(stream))
         @test isnothing(state.raw_data.soh)
         @test state.raw_data.num_sf3_pages_received == 0
         @test !is_decoding_completed_for_positioning(state)
@@ -769,7 +769,7 @@ end
             in_sf1 || (noisy[i] += σ * randn(rng, Float32))
         end
         noisy .*= 2 / σ^2
-        state = decode(BeiDouB1CDecoderState(prn), noisy, length(noisy))
+        state = decode!(BeiDouB1CDecoderState(prn), noisy, length(noisy))
         @test state.data.WN == 800
         @test is_decoding_completed_for_positioning(state)
     end
@@ -786,9 +786,9 @@ end
             _b1c_frame_symbols(prn, 10, sf2, Bool.(_golden_sf3_page1_bits())),
             _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
         )
-        state = decode(BeiDouB1CDecoderState(prn), stream, length(stream))
+        state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test is_decoding_completed_for_positioning(state)
-        state = reset_decoder_state(state)
+        state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.soh)
         # `HOW` is cleared with `soh`: the two only mean a time as a pair, and an
         # outage can span any number of hour boundaries, so a kept `HOW` re-paired

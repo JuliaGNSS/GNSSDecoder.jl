@@ -26,14 +26,12 @@ BeiDouB2bDecoderState
 
 ## Decoding
 
-`decode!` is the streaming entry point: it overwrites the buffers the decoder
-state was constructed with and allocates nothing. `decode` returns a new state
-and leaves its argument untouched, at the price of copying the state on every
-call.
+`decode!` overwrites the buffers the decoder state was constructed with and
+allocates nothing. Continue with the state it returns; take a `copy` first if
+you need a snapshot of the earlier one.
 
 ```@docs
 decode!
-decode
 Base.copy(::GNSSDecoderState)
 ```
 
@@ -52,7 +50,6 @@ SlotDictionary
 
 ```@docs
 reset_decoder_state!
-reset_decoder_state
 ```
 
 ## Health Status

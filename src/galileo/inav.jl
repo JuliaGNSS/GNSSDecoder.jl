@@ -652,15 +652,15 @@ after brief signal outages without requiring a full re-decode of all pages.
 
 ```julia
 # After detecting signal loss
-state = reset_decoder_state(state)
+state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode(state, new_bits, num_bits)
+state = decode!(state, new_bits, num_bits)
 ```
 
 # See Also
 
   - [`GalileoE1BDecoderState`](@ref) / [`GalileoE5bDecoderState`](@ref): Create a fresh decoder state
-  - [`decode`](@ref): Continue decoding after reset
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GalileoINAVData})
     # Reset bit buffers and TOW data field, while keeping the
