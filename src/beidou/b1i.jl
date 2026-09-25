@@ -52,7 +52,7 @@ the PRN. Each 300-bit subframe is synchronized via the 11-bit preamble
 
 ```julia
 state = BeiDouB1IDecoderState(20)         # PRN 20 (MEO/IGSO ⇒ D1)
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -62,8 +62,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`BeiDouB3IDecoderState`](@ref): The B3I decoder sharing this legacy NAV core
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function BeiDouB1IDecoderState(prn)

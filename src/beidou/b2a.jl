@@ -745,7 +745,7 @@ matching this decoder's PRN, and dispatched to per-message-type parsers
 
 ```julia
 state = BeiDouB2aDecoderState(19)         # PRN 19
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -754,8 +754,8 @@ end
 # See Also
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function BeiDouB2aDecoderState(prn)
@@ -920,7 +920,7 @@ types. Mirrors the semantics of the GPS CNAV implementation.
 # See Also
 
   - [`BeiDouB2aDecoderState`](@ref): Create a fresh decoder state
-  - [`decode`](@ref): Continue decoding after reset
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
     empty!(state.cache.soft_buffer)

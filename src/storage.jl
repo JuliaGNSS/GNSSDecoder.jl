@@ -8,8 +8,8 @@
 #   - `SlotDictionary`, a dictionary with one preallocated slot per possible key,
 #     used for every keyed store in the decoded data (almanacs, masks, ...);
 #   - `writable_container` / `overwrite!`, the only two ways decode code touches
-#     such a container, plus `duplicate`, the trim-safe deep copy `decode` makes
-#     so that it can keep value semantics on top of the overwriting `decode!`.
+#     such a container, plus `duplicate`, the trim-safe deep copy behind
+#     `copy(::GNSSDecoderState)` for anyone who needs a snapshot.
 
 """
     SlotIndices
@@ -317,7 +317,7 @@ end
 """
     duplicate(x)
 
-Deep copy of decoder state for [`decode`](@ref), written out per type instead of
+Deep copy of decoder state for `copy(::GNSSDecoderState)`, written out per type instead of
 via `Base.deepcopy` (whose reflection `juliac --trim` rejects).
 
 Every container is copied, keeping its capacity, so the copy decodes through

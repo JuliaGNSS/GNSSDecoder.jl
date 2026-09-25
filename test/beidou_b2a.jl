@@ -273,7 +273,7 @@ function decode_b2a_frames(state, messages; invert = false)
     stream = reduce(vcat, [b2a_frame_symbols(m) for m in messages])
     stream = vcat(stream, b2a_trailing_preamble())
     invert && (stream = -stream)
-    decode(state, stream, length(stream))
+    decode!(state, stream, length(stream))
 end
 
 @testset "BeiDou B2a B-CNAV2" begin
@@ -529,14 +529,14 @@ end
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
-        state = decode(state, head, length(head))
+        state = decode!(state, head, length(head))
         @test state.data.SOW == t0 + 6
         @test state.num_bits_after_valid_syncro_sequence == 624
         t_promoted = b2a_now(state)
 
         # Frame 4 decodes but is not promoted: the new MT10 has no partner yet.
         step = vcat(frames[4][25:600], frames[5][1:24])
-        state = decode(state, step, length(step))
+        state = decode!(state, step, length(step))
         @test state.raw_data.SOW == t0 + 9          # the frame did decode ...
         @test state.raw_data.IODE == new_iode
         @test state.data.SOW == t0 + 6              # ... and nothing was promoted
@@ -546,7 +546,7 @@ end
         # Frame 5 pairs the ephemeris again, but the clock set still carries the
         # old IODC, so promotion is skipped a second time.
         step = vcat(frames[5][25:600], frames[6][1:24])
-        state = decode(state, step, length(step))
+        state = decode!(state, step, length(step))
         @test state.raw_data.SOW == t0 + 12
         @test state.data.SOW == t0 + 6
         @test state.num_bits_after_valid_syncro_sequence == 624 + 1200
@@ -555,7 +555,7 @@ end
         # The matching MT30 promotes: SOW and counter re-anchor together, so the
         # reported time carries on ticking without a step.
         step = vcat(frames[6][25:600], b2a_trailing_preamble())
-        state = decode(state, step, length(step))
+        state = decode!(state, step, length(step))
         @test state.data.SOW == t0 + 15
         @test state.data.IODE == new_iode
         @test state.data.IODC == new_iodc
@@ -601,7 +601,7 @@ end
             ],
         )
         @test is_decoding_completed_for_positioning(state)
-        state = reset_decoder_state(state)
+        state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.IODE == B2A_IODE   # ephemeris survives reset
         @test state.data == BeiDouB2aData()
@@ -624,7 +624,7 @@ end
             build_b2a_mt32(; sow = t0 + 9),
         ]
         stream = vcat(reduce(vcat, b2a_frame_symbols.(messages)), b2a_trailing_preamble())
-        state = decode(state, stream, length(stream); decode_once = true)
+        state = decode!(state, stream, length(stream); decode_once = true)
         @test is_decoding_completed_for_positioning(state)
     end
 

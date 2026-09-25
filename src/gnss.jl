@@ -137,9 +137,8 @@ tables, ...) that `raw_data` and `data` reference, preallocated in the cache's
 
 Those buffers are **overwritten** by [`decode!`](@ref), which is what makes it
 allocation-free: the state it returns shares them with the state passed in, so
-treat the returned value as *the* live state and do not use the earlier one.
-[`decode`](@ref) instead works on a [`copy`](@ref Base.copy(::GNSSDecoderState)),
-leaving its argument untouched. The transient packed-bit buffer used for
+treat the returned value as *the* live state and do not use the earlier one;
+take a [`copy`](@ref Base.copy(::GNSSDecoderState)) if a snapshot is needed. The transient packed-bit buffer used for
 preamble matching is **not** stored here; it is computed as a local value at
 sync time and threaded through the sync path (see `pack_buffer` / `try_sync`).
 
@@ -158,8 +157,7 @@ $(TYPEDFIELDS)
   - [`GPSL1CADecoderState`](@ref): Constructor for GPS L1 C/A decoder state
   - [`GalileoE1BDecoderState`](@ref): Constructor for Galileo E1B decoder state
   - [`decode!`](@ref): Decode soft symbols into this state's buffers, allocation-free
-  - [`decode`](@ref): Decode soft symbols into a copy of this state
-  - [`reset_decoder_state`](@ref): Reset decoder state after signal loss
+  - [`reset_decoder_state!`](@ref): Reset decoder state after signal loss
 """
 Base.@kwdef struct GNSSDecoderState{
     D<:AbstractGNSSData,
@@ -967,8 +965,20 @@ Per-signal overrides (e.g. GPS L1C-D's TOI BCH match in a later slice)
 override this method.
 """
 function try_sync(state::GNSSDecoderState)
-    buffer = pack_buffer(state)
-    find_preamble(buffer, state.constants) ? buffer : nothing
+    # Match the preamble on the few symbols at either end first, and pack the
+    # whole window only on a match: packing it (hundreds of symbols) for every
+    # incoming symbol is otherwise most of the per-symbol cost. The match is
+    # `find_preamble`'s, so the packed buffer then always passes it.
+    constants = state.constants
+    isnothing(
+        find_preamble_in_deque(
+            soft_buffer(state),
+            constants.preamble,
+            constants.preamble_length,
+            constants.syncro_sequence_length,
+        ),
+    ) && return nothing
+    return pack_buffer(state)
 end
 
 """
@@ -1109,14 +1119,30 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Decode GNSS navigation message soft symbols and return the updated decoder state,
-leaving `state` untouched.
+Decode GNSS navigation message soft symbols, **overwriting** the storage `state`
+holds, and return the updated state. Allocates nothing.
 
-`decode` has value semantics: it decodes into a [`copy`](@ref Base.copy(::GNSSDecoderState))
-of `state`, so `state` and every container it references stay as they were.
-That copy is an allocation proportional to the decoder's storage on every call;
-a streaming receiver should call [`decode!`](@ref) instead, which overwrites
-`state`'s storage in place and allocates nothing.
+`decode!` writes straight into the buffers that `state` was constructed with —
+the soft-symbol buffer, the FEC scratch, the voting tallies in `state.cache`,
+and every container referenced from `state.raw_data` and `state.data` (almanac
+stores, health tables, HAS masks, ...). Those are all sized once, when the
+decoder state is constructed, so a streaming receiver pays no allocation per
+symbol:
+
+```julia
+state = GPSL1CADecoderState(25)
+for chunk in soft_symbol_chunks
+    state = decode!(state, chunk, length(chunk))
+end
+```
+
+!!! warning "Earlier states are overwritten"
+
+    The returned state shares its storage with `state`, and later calls keep
+    overwriting it. Treat the return value as *the* live decoder and do not use
+    `state` (or anything read out of its containers, such as `state.data.almanacs`)
+    after the call. Take a [`copy`](@ref Base.copy(::GNSSDecoderState)) first if
+    a snapshot is needed.
 
 Processes incoming soft symbols from a GNSS signal, detecting preambles and
 decoding synchronization sequences to extract navigation data. The function
@@ -1163,29 +1189,83 @@ glossary.
 
 # Returns
 
-  - `GNSSDecoderState`: Updated decoder state with newly decoded data
-
-# Example
-
-```julia
-state = GPSL1CADecoderState(1)            # PRN 1
-state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1], 8)
-```
+  - `GNSSDecoderState`: Updated decoder state with newly decoded data, sharing
+    (and having overwritten) `state`'s storage
 
 # See Also
 
-  - [`decode!`](@ref): The allocation-free, overwriting form
   - [`GNSSDecoderState`](@ref): The state structure being updated
+  - [`reset_decoder_state!`](@ref): Reset the decoder after a signal loss
   - [`is_sat_healthy`](@ref): Check satellite health after decoding
 """
-function decode(
+function decode!(
     state::GNSSDecoderState,
     soft_symbols::AbstractVector{<:Real},
     num_symbols::Int;
     decode_once::Bool = false,
 )
-    decode!(copy(state), soft_symbols, num_symbols; decode_once)
+    num_symbols <= length(soft_symbols) ||
+        throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
+    num_bits = state.num_bits_after_valid_syncro_sequence
+    next = 1
+    while next <= num_symbols
+        next, buffer, num_bits =
+            push_until_sync!(state, soft_symbols, next, num_symbols, num_bits)
+        isnothing(buffer) && break
+        state = with_symbol_counter(state, num_bits)
+        state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
+        state = decode_syncro_sequence(state, resolved_buffer)
+        if !decode_once || !is_decoding_completed_for_positioning(state.data)
+            state = validate_data(state)
+        end
+        state = drain_after_sync!(state)
+        num_bits = state.num_bits_after_valid_syncro_sequence
+    end
+    return with_symbol_counter(state, num_bits)
 end
+
+"""
+    push_until_sync!(state, soft_symbols, first, last, num_bits)
+        -> (next, buffer, num_bits)
+
+The per-symbol half of [`decode!`](@ref): push `soft_symbols[first:last]` onto
+`state`'s soft-symbol buffer (overwriting its oldest entries) one at a time,
+counting them in `num_bits` (the running `num_bits_after_valid_syncro_sequence`,
+or `nothing` before the first sync), until `try_sync` finds a sync. Returns the
+index of the next unconsumed symbol, the sync buffer (`nothing` if the symbols
+ran out first) and the updated count.
+
+It never rebuilds `state`, which is what keeps it cheap: `state` holds the whole
+decoded data inline, and a loop that reassigns it carries a copy of it through
+every iteration. No `try_sync` hook reads the symbol counter, so it is written
+back into the state only once a sync is to be decoded.
+"""
+function push_until_sync!(
+    state::GNSSDecoderState,
+    soft_symbols::AbstractVector{<:Real},
+    first::Int,
+    last::Int,
+    num_bits::Union{Nothing,Int},
+)
+    for i = first:last
+        push_soft_symbol!(state, soft_symbols[i])
+        if num_bits !== nothing
+            num_bits += 1
+        end
+        if is_enough_buffered_bits_to_decode(state)
+            buffer = try_sync(state)
+            isnothing(buffer) || return (i + 1, buffer, num_bits)
+        end
+    end
+    return (last + 1, nothing, num_bits)
+end
+
+# Split on the counter being set, so each rebuild has a concretely typed keyword
+# (a `Union` keyword value takes the allocating keyword path on Julia 1.10).
+with_symbol_counter(state::GNSSDecoderState, num_bits) =
+    num_bits === nothing ?
+    GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = nothing) :
+    GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = num_bits)
 
 """
     copy(state::GNSSDecoderState) -> GNSSDecoderState
@@ -1207,89 +1287,14 @@ Base.copy(state::GNSSDecoderState) = GNSSDecoderState(
 )
 
 """
-$(TYPEDSIGNATURES)
-
-Decode GNSS navigation message soft symbols, **overwriting** the storage `state`
-holds, and return the updated state. Allocates nothing.
-
-This is the in-place form of [`decode`](@ref): same arguments, same result, but
-instead of copying `state` first it writes straight into the buffers that
-`state` was constructed with — the soft-symbol buffer, the FEC scratch, the
-voting tallies in `state.cache`, and every container referenced from
-`state.raw_data` and `state.data` (almanac stores, health tables, HAS masks,
-...). Those are all sized once, when the decoder state is constructed, so a
-streaming receiver pays no allocation per symbol:
-
-```julia
-state = GPSL1CADecoderState(25)
-for chunk in soft_symbol_chunks
-    state = decode!(state, chunk, length(chunk))
-end
-```
-
-!!! warning "Earlier states are overwritten"
-
-    The returned state shares its storage with `state`, and later calls keep
-    overwriting it. Treat the return value as *the* live decoder and do not use
-    `state` (or anything read out of its containers, such as `state.data.almanacs`)
-    after the call — keep a [`copy`](@ref Base.copy(::GNSSDecoderState)) instead
-    if a snapshot is needed. [`decode`](@ref) does exactly that for you.
-
-See [`decode`](@ref) for the soft-symbol convention and the arguments.
-"""
-function decode!(
-    state::GNSSDecoderState,
-    soft_symbols::AbstractVector{<:Real},
-    num_symbols::Int;
-    decode_once::Bool = false,
-)
-    num_symbols <= length(soft_symbols) ||
-        throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
-    for i = 1:num_symbols
-        sym = soft_symbols[i]
-        state = push_soft_symbol!(state, sym)
-        # Read into a local first: Julia 1.10 does not narrow a field access
-        # through `isnothing`, so `+ 1` on the field would dispatch dynamically.
-        num_bits = state.num_bits_after_valid_syncro_sequence
-        if num_bits !== nothing
-            state =
-                GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = num_bits + 1)
-        end
-
-        if is_enough_buffered_bits_to_decode(state)
-            buffer = try_sync(state)
-            if !isnothing(buffer)
-                state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
-                state = decode_syncro_sequence(state, resolved_buffer)
-                if !decode_once || !is_decoding_completed_for_positioning(state.data)
-                    state = validate_data(state)
-                end
-                state = drain_after_sync!(state)
-            end
-        end
-    end
-    return state
-end
-
-"""
-    reset_decoder_state(state::GNSSDecoderState) -> GNSSDecoderState
-
-Reset a decoder after a signal loss or reacquisition, leaving `state`
-untouched: the reset is applied to a [`copy`](@ref Base.copy(::GNSSDecoderState))
-of it. What is reset (the soft-symbol buffer, the time of week, the validated
-`data`) and what is kept for a fast recovery is per signal, and documented on
-[`reset_decoder_state!`](@ref), the in-place form that overwrites `state`'s
-buffers and allocates nothing.
-"""
-reset_decoder_state(state::GNSSDecoderState) = reset_decoder_state!(copy(state))
-
-"""
     reset_decoder_state!(state::GNSSDecoderState) -> GNSSDecoderState
 
-In-place form of [`reset_decoder_state`](@ref): empties the soft-symbol buffer
-that `state` holds (overwriting it) and returns the reset state. Allocates
-nothing. As with [`decode!`](@ref), treat the return value as the live decoder
-and do not use `state` afterwards.
+Reset a decoder after a signal loss or reacquisition, **overwriting** the
+buffers `state` holds (the soft-symbol buffer is emptied), and return the reset
+state. Allocates nothing. What is reset (the time of week, the validated `data`)
+and what is kept for a fast recovery is per signal, and documented on each
+signal's method. As with [`decode!`](@ref), treat the return value as the live
+decoder and do not use `state` afterwards.
 """
 function reset_decoder_state! end
 
