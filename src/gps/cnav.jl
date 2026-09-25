@@ -839,7 +839,7 @@ Galileo E1B implementations.
   - [`GPSL5IDecoderState`](@ref), [`GPSL2CMDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GPSCNAVData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GPSCNAVData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;

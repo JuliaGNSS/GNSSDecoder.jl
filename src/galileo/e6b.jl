@@ -892,7 +892,7 @@ are not.
   - [`GalileoE6BDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GalileoE6BData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
     empty!(state.cache.soft_buffer)
     empty!(state.cache.page_groups)
     state.cache.pending_message[] = nothing

@@ -128,18 +128,20 @@ Generic decoder state for GNSS signal decoding. This parametric struct holds all
 required for decoding navigation messages from GNSS satellites.
 
 The struct itself is immutable; per-field reconstruction works via the keyword
-constructor, and the per-signal constants and decoded data carry value
-semantics. The one piece of intentionally-mutable state is the soft-symbol
-buffer inside the `cache`: a `CircularDeque{Float32}` of capacity
-`syncro_sequence_length + preamble_length` that accumulates incoming symbols
-across successive [`decode`](@ref) calls. It is a mutable container shared by
-reference between an input state and the state `decode` returns — fully
-immutable threading would copy the whole buffer on every symbol, which is the
-wrong trade for a streaming decoder. Treat the value returned by `decode` as
-*the* live state and do not keep mutating an earlier snapshot in parallel. The
-transient packed-bit buffer used for preamble matching is **not** stored here;
-it is computed as a local value at sync time and threaded through the sync
-path (see `pack_buffer` / `try_sync`).
+constructor. Every buffer a decoder needs is allocated once, by the per-signal
+constructor, and owned by the state: the soft-symbol `CircularDeque{Float32}`
+(capacity `syncro_sequence_length + preamble_length`), the FEC scratch and
+voting tallies in the `cache`, and the containers (almanac stores, health
+tables, ...) that `raw_data` and `data` reference, preallocated in the cache's
+`DataStorage`.
+
+Those buffers are **overwritten** by [`decode!`](@ref), which is what makes it
+allocation-free: the state it returns shares them with the state passed in, so
+treat the returned value as *the* live state and do not use the earlier one.
+[`decode`](@ref) instead works on a [`copy`](@ref Base.copy(::GNSSDecoderState)),
+leaving its argument untouched. The transient packed-bit buffer used for
+preamble matching is **not** stored here; it is computed as a local value at
+sync time and threaded through the sync path (see `pack_buffer` / `try_sync`).
 
 # Type Parameters
 
@@ -155,7 +157,8 @@ $(TYPEDFIELDS)
 
   - [`GPSL1CADecoderState`](@ref): Constructor for GPS L1 C/A decoder state
   - [`GalileoE1BDecoderState`](@ref): Constructor for Galileo E1B decoder state
-  - [`decode`](@ref): Main function to decode soft symbols using this state
+  - [`decode!`](@ref): Decode soft symbols into this state's buffers, allocation-free
+  - [`decode`](@ref): Decode soft symbols into a copy of this state
   - [`reset_decoder_state`](@ref): Reset decoder state after signal loss
 """
 Base.@kwdef struct GNSSDecoderState{
@@ -1106,7 +1109,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Decode GNSS navigation message soft symbols and update the decoder state.
+Decode GNSS navigation message soft symbols and return the updated decoder state,
+leaving `state` untouched.
+
+`decode` has value semantics: it decodes into a [`copy`](@ref Base.copy(::GNSSDecoderState))
+of `state`, so `state` and every container it references stay as they were.
+That copy is an allocation proportional to the decoder's storage on every call;
+a streaming receiver should call [`decode!`](@ref) instead, which overwrites
+`state`'s storage in place and allocates nothing.
 
 Processes incoming soft symbols from a GNSS signal, detecting preambles and
 decoding synchronization sequences to extract navigation data. The function
@@ -1164,10 +1174,70 @@ state = decode(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1], 8)
 
 # See Also
 
+  - [`decode!`](@ref): The allocation-free, overwriting form
   - [`GNSSDecoderState`](@ref): The state structure being updated
   - [`is_sat_healthy`](@ref): Check satellite health after decoding
 """
 function decode(
+    state::GNSSDecoderState,
+    soft_symbols::AbstractVector{<:Real},
+    num_symbols::Int;
+    decode_once::Bool = false,
+)
+    decode!(copy(state), soft_symbols, num_symbols; decode_once)
+end
+
+"""
+    copy(state::GNSSDecoderState) -> GNSSDecoderState
+
+Independent copy of a decoder state: its soft-symbol buffer, cache and every
+container referenced from `raw_data` and `data` are copied (see `duplicate`),
+so [`decode!`](@ref) on the copy overwrites nothing `state` can see, and vice
+versa. The copy keeps every buffer's capacity, so it decodes without allocating
+as well.
+"""
+Base.copy(state::GNSSDecoderState) = GNSSDecoderState(
+    state.prn,
+    duplicate(state.raw_data),
+    duplicate(state.data),
+    state.constants,
+    duplicate(state.cache),
+    state.num_bits_after_valid_syncro_sequence,
+    state.is_shifted_by_180_degrees,
+)
+
+"""
+$(TYPEDSIGNATURES)
+
+Decode GNSS navigation message soft symbols, **overwriting** the storage `state`
+holds, and return the updated state. Allocates nothing.
+
+This is the in-place form of [`decode`](@ref): same arguments, same result, but
+instead of copying `state` first it writes straight into the buffers that
+`state` was constructed with — the soft-symbol buffer, the FEC scratch, the
+voting tallies in `state.cache`, and every container referenced from
+`state.raw_data` and `state.data` (almanac stores, health tables, HAS masks,
+...). Those are all sized once, when the decoder state is constructed, so a
+streaming receiver pays no allocation per symbol:
+
+```julia
+state = GPSL1CADecoderState(25)
+for chunk in soft_symbol_chunks
+    state = decode!(state, chunk, length(chunk))
+end
+```
+
+!!! warning "Earlier states are overwritten"
+
+    The returned state shares its storage with `state`, and later calls keep
+    overwriting it. Treat the return value as *the* live decoder and do not use
+    `state` (or anything read out of its containers, such as `state.data.almanacs`)
+    after the call — keep a [`copy`](@ref Base.copy(::GNSSDecoderState)) instead
+    if a snapshot is needed. [`decode`](@ref) does exactly that for you.
+
+See [`decode`](@ref) for the soft-symbol convention and the arguments.
+"""
+function decode!(
     state::GNSSDecoderState,
     soft_symbols::AbstractVector{<:Real},
     num_symbols::Int;
@@ -1200,6 +1270,28 @@ function decode(
     end
     return state
 end
+
+"""
+    reset_decoder_state(state::GNSSDecoderState) -> GNSSDecoderState
+
+Reset a decoder after a signal loss or reacquisition, leaving `state`
+untouched: the reset is applied to a [`copy`](@ref Base.copy(::GNSSDecoderState))
+of it. What is reset (the soft-symbol buffer, the time of week, the validated
+`data`) and what is kept for a fast recovery is per signal, and documented on
+[`reset_decoder_state!`](@ref), the in-place form that overwrites `state`'s
+buffers and allocates nothing.
+"""
+reset_decoder_state(state::GNSSDecoderState) = reset_decoder_state!(copy(state))
+
+"""
+    reset_decoder_state!(state::GNSSDecoderState) -> GNSSDecoderState
+
+In-place form of [`reset_decoder_state`](@ref): empties the soft-symbol buffer
+that `state` holds (overwriting it) and returns the reset state. Allocates
+nothing. As with [`decode!`](@ref), treat the return value as the live decoder
+and do not use `state` afterwards.
+"""
+function reset_decoder_state! end
 
 # ---- Shared decoder primitives ----------------------------------------------
 #

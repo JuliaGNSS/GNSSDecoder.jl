@@ -556,7 +556,7 @@ other decoded ephemeris and clock data in `raw_data`, mirroring the E1B reset
 semantics. The week number (`WN`) is intentionally not reset (it is broadcast
 less frequently than TOW).
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GalileoE5aData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE5aData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;

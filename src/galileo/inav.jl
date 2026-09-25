@@ -637,7 +637,7 @@ state = decode(state, new_bits, num_bits)
   - [`GalileoE1BDecoderState`](@ref) / [`GalileoE5bDecoderState`](@ref): Create a fresh decoder state
   - [`decode`](@ref): Continue decoding after reset
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GalileoINAVData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GalileoINAVData})
     # Reset bit buffers and TOW data field, while keeping the
     # remaining parameters in raw_data. This allows a GNSSReceiver
     # to use a satellite after a reacquisition without waiting for

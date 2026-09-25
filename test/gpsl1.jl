@@ -748,3 +748,25 @@ end
     # of them, so these two still count as the same candidate.
     @test GNSSDecoder.compare_data(mk(0.1), mk(0.2))
 end
+
+@testset "GPS L1 C/A decode! is allocation-free" begin
+    # The full test capture: every subframe, including the subframe 4/5 almanac
+    # and page-25 health pages that write the preallocated stores.
+    symbols = reduce(
+        vcat,
+        (to_soft_symbols(data, sizeof(data) * 8) for data in GPSL1DATA),
+    )
+    allocations = decode_allocations(() -> GPSL1CADecoderState(25), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test !isnothing(allocations.state.data.almanacs)
+
+    # `decode` keeps value semantics on top of it: the input state is untouched.
+    state = GPSL1CADecoderState(25)
+    decoded = decode(state, symbols, length(symbols))
+    @test is_decoding_completed_for_positioning(decoded)
+    @test state == GPSL1CADecoderState(25)
+    @test GNSSDecoder.num_bits_buffered(state) == 0
+end
