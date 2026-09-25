@@ -888,7 +888,8 @@ function read_tlm_and_how_words(state, buffer)
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        TOW_anchor = is_plausible ? previous_state.num_bits_after_valid_syncro_sequence : nothing
+        TOW_anchor =
+            is_plausible ? previous_state.num_bits_after_valid_syncro_sequence : nothing
         @split_nothing (TOW, TOW_anchor) GPSL1CAData(
             state.raw_data;
             last_subframe_id,

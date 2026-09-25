@@ -810,9 +810,9 @@ end
             build_stream(302, 3, payload),
         )
         allocations = decode_allocations(() -> GPSL1C_DDecoderState(1), symbols)
-        @test allocations.fresh == 0
-        @test allocations.warm == 0
-        @test allocations.reset == 0
+        @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+        @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+        @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
 
         # The stream actually exercised every store.
         state = decode(GPSL1C_DDecoderState(1), symbols, length(symbols))

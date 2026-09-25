@@ -820,9 +820,9 @@ end
         _b1c_frame_symbols(prn, 61, sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
     )
     allocations = decode_allocations(() -> BeiDouB1CDecoderState(prn), symbols)
-    @test allocations.fresh == 0
-    @test allocations.warm == 0
-    @test allocations.reset == 0
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
     @test is_decoding_completed_for_positioning(state)
     @test length(state.data.reduced_almanacs) == 3

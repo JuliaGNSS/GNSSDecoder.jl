@@ -370,5 +370,8 @@ end
     # The full recording (every message type 10-15, 30-37, with the reduced /
     # midi almanacs, differential corrections and text pages that write the
     # preallocated stores) plus a synthetic message type 40.
-    test_cnav_decode_allocation_free(() -> GPSL5IDecoderState(25), load_l5i_fixture_messages())
+    test_cnav_decode_allocation_free(
+        () -> GPSL5IDecoderState(25),
+        load_l5i_fixture_messages(),
+    )
 end
