@@ -816,6 +816,11 @@ function is_ephemeris_decoded(data::BeiDouB2aData)
         _b2a_sow_adjacent(data.SOW_mt10, data.SOW_mt11)
 end
 
+# `nothing` methods: Julia 1.10 does not narrow the field reads above through
+# `isnothing`, so without them the call would dispatch dynamically.
+_b2a_sow_adjacent(::Nothing, ::Union{Nothing,Integer}) = false
+_b2a_sow_adjacent(::Integer, ::Nothing) = false
+
 function _b2a_sow_adjacent(sow_a::Integer, sow_b::Integer)
     Δ = mod(sow_a - sow_b, SECONDS_PER_WEEK)
     min(Δ, SECONDS_PER_WEEK - Δ) == 3
@@ -863,7 +868,7 @@ function is_decoding_completed_for_positioning(data::BeiDouB2aData)
         is_clock_correction_decoded(data) &&
         # Matched ephemeris/clock pair: IODE must equal the 8 LSBs of IODC
         # (BDS-SIS-ICD-B2a-1.0 §7.4.3).
-        data.IODE == data.IODC & 0xff
+        beidou_iode_matches_iodc(data.IODE, data.IODC)
 end
 
 """
@@ -1053,7 +1058,9 @@ Message type 10 — WN, integrity flags, IODE, ephemeris I (ICD Fig 6-3 / 6-11, 
 """
 function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     word_length = B2A_MESSAGE_BITS
-    BeiDouB2aData(
+    SOW = raw.SOW
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    @split_nothing SOW BeiDouB2aData(
         raw;
         WN = Int64(get_bits(word, word_length, 31, 13)),
         DIF_B2a = get_bit(word, word_length, 44),
@@ -1074,7 +1081,7 @@ function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320, PI::Float64)
         M_0 = get_twos_complement_num(word, word_length, 166, 33) * 2.0^-32 * PI,
         e = Int64(get_bits(word, word_length, 199, 33)) * 2.0^-34,
         ω = get_twos_complement_num(word, word_length, 232, 33) * 2.0^-32 * PI,
-        SOW_mt10 = raw.SOW,
+        SOW_mt10 = SOW,
     )
 end
 
@@ -1083,7 +1090,9 @@ Message type 11 — HS, integrity flags, ephemeris II (ICD Fig 6-4 / 6-12, Table
 """
 function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     word_length = B2A_MESSAGE_BITS
-    BeiDouB2aData(
+    SOW = raw.SOW
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    @split_nothing SOW BeiDouB2aData(
         raw;
         HS = Int64(get_bits(word, word_length, 31, 2)),
         DIF_B2a = get_bit(word, word_length, 33),
@@ -1104,7 +1113,7 @@ function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320, PI::Float64)
         C_rc = get_twos_complement_num(word, word_length, 199, 24) * 2.0^-8,
         C_us = get_twos_complement_num(word, word_length, 223, 21) * 2.0^-30,
         C_uc = get_twos_complement_num(word, word_length, 244, 21) * 2.0^-30,
-        SOW_mt11 = raw.SOW,
+        SOW_mt11 = SOW,
     )
 end
 
@@ -1164,7 +1173,12 @@ Message type 31 — clock, IODC, three reduced almanacs (ICD Fig 6-6 / 6-17).
 Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
 while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
+function parse_b2a_mt31!(
+    raw::BeiDouB2aData,
+    word::UInt320,
+    PI::Float64,
+    spare::BeiDouB2aData,
+)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1177,11 +1191,11 @@ function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::
         almanacs = writable_container(almanacs, spare.reduced_almanacs)
         set!(almanacs, packet.PRN_a, packet)
     end
-    BeiDouB2aData(
-        raw;
-        IODC = Int64(get_bits(word, word_length, 112, 10)),
-        reduced_almanacs = almanacs,
-    )
+    IODC = Int64(get_bits(word, word_length, 112, 10))
+    # Only pass a concrete store: a Union keyword value takes the allocating kw
+    # path on Julia 1.10 (and `nothing` would leave the field as is).
+    almanacs === nothing && return BeiDouB2aData(raw; IODC)
+    BeiDouB2aData(raw; IODC, reduced_almanacs = almanacs)
 end
 
 """
@@ -1205,7 +1219,12 @@ Message type 33 — clock, BGTO, one reduced almanac, IODC (ICD Fig 6-8 / 6-17 /
 Overwrites the almanac PRN's slot of `raw.reduced_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt33!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
+function parse_b2a_mt33!(
+    raw::BeiDouB2aData,
+    word::UInt320,
+    PI::Float64,
+    spare::BeiDouB2aData,
+)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1249,7 +1268,12 @@ Message type 40 — SISAIoe, SISAIoc, one midi almanac (ICD Fig 6-10 / 6-14 / 6-
 Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b2a_mt40!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
+function parse_b2a_mt40!(
+    raw::BeiDouB2aData,
+    word::UInt320,
+    PI::Float64,
+    spare::BeiDouB2aData,
+)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = BeiDouB2aData(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
