@@ -709,7 +709,12 @@ Overwrites each broadcast PRN's slot of `raw.midi_almanacs` /
 `raw.reduced_almanacs` in place — or, while a store is still `nothing`, of the
 preallocated one in `spare`.
 """
-function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, PI::Float64, spare::BeiDouB2bData)
+function parse_b2b_mt40!(
+    raw::BeiDouB2bData,
+    word::UInt512,
+    PI::Float64,
+    spare::BeiDouB2bData,
+)
     word_length = B2B_MESSAGE_BITS
     # Almanac reference week/time for the five reduced almanacs (bits 251-271,
     # Table 7-15) — kept on the data container as the raw broadcast and copied
@@ -747,6 +752,9 @@ function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, PI::Float64, spare::
         reduced = writable_container(reduced, spare.reduced_almanacs)
         set!(reduced, packet.PRN_a, packet)
     end
+    # Only rebuild with a concrete store: a Union keyword value takes the
+    # allocating kw path on Julia 1.10 (and `nothing` would leave `raw` as is).
+    reduced === nothing && return raw
     BeiDouB2bData(raw; reduced_almanacs = reduced)
 end
 
