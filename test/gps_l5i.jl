@@ -365,3 +365,10 @@ end
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
 end
+
+@testset "GPS L5I decode! is allocation-free" begin
+    # The full recording (every message type 10-15, 30-37, with the reduced /
+    # midi almanacs, differential corrections and text pages that write the
+    # preallocated stores) plus a synthetic message type 40.
+    test_cnav_decode_allocation_free(() -> GPSL5IDecoderState(25), load_l5i_fixture_messages())
+end
