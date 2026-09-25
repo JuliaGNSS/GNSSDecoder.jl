@@ -24,10 +24,13 @@ function pseudo_random_symbols(n)
 end
 
 function run_decoder(name, system, prn, symbols)
-    # `decode!` on the hot path; `decode` (a copy, then `decode!`) once more so
-    # both entry points are compiled into the trimmed image.
+    # Both entry points go into the trimmed image: the overwriting `decode!` and
+    # `decode`, which decodes into a copy of its argument. Each gets a fresh
+    # state — a replay of the same stream on a decoded state would (rightly)
+    # fail the time-of-week plausibility screens.
     state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
-    state = decode(reset_decoder_state!(state), symbols, length(symbols))
+    copied = decode(GNSSDecoderState(system, prn), symbols, length(symbols))
+    reset_decoder_state!(copied)
     println(
         Core.stdout,
         name,
