@@ -860,3 +860,107 @@ end
         e6b_decode_stream(decoder, e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_2)))
     @test !isnothing(decoder.data.clock_corrections)
 end
+
+@testset "Galileo E6-B decode! is allocation-free" begin
+    octets = hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1])
+    header(; kwargs...) = e6b_header(; has_status = 1, message_type = 1, kwargs...)
+    page(; kwargs...) = e6b_page_bits(header(; kwargs...), octets)
+    dummy = e6b_page_bits(0xAF3BC3, octets)
+    example_1 = e6b_example_pages(HAS_EXAMPLE_1)
+    example_2 = e6b_example_pages(HAS_EXAMPLE_2)
+    # A one-page message (MS = 1, Page ID 1: the systematic row, so the encoded
+    # page is the message itself) defining Mask ID 3 and carrying a Clock Subset
+    # block — the one content block the Annex D examples do not exercise.
+    subset_bits = vcat(
+        e6b_mt1_header_bits(; TOH = 30, mask = true, clock_subset = true, mask_id = 3),
+        galileo_push_field!(Bool[], 1, 4),
+        e6b_system_mask_bits(;
+            GNSS_ID = 0,
+            satellite_mask = UInt64(0b11) << 38,
+            signal_mask = UInt16(1) << 15,
+        ),
+        galileo_push_field!(Bool[], 0, 6),
+        galileo_push_field!(Bool[], 5, 4),      # Validity Interval Index 5 = 60 s
+        galileo_push_field!(Bool[], 1, 4),      # Nsys_sub = 1
+        galileo_push_field!(Bool[], 0, 4),      # GNSS ID 0 = GPS
+        galileo_push_field!(Bool[], 2, 2),      # Delta Clock Multiplier ×3
+        Bool[false, true],                      # submask: PRN 2 only
+        galileo_push_field!(Bool[], 400, 13),
+    )
+    subset_octets = e6b_message_octets(subset_bits)
+    append!(
+        subset_octets,
+        zeros(UInt8, GNSSDecoder.E6B_OCTETS_PER_PAGE - length(subset_octets)),
+    )
+    subset_page = e6b_page_bits(
+        header(; message_id = 21, message_size = 1, page_id = 1),
+        subset_octets,
+    )
+    stop = e6b_page_bits(
+        e6b_header(; has_status = 3, message_id = 3, message_size = 4, page_id = 40),
+        octets,
+    )
+    reserved_status = e6b_page_bits(
+        e6b_header(; has_status = 2, message_id = 3, message_size = 4, page_id = 40),
+        octets,
+    )
+    pages = vcat(
+        example_2,                              # held: its mask is unknown
+        [page(; message_id = 9, message_size = 4, page_id = 77)],
+        fill(dummy, 150),                       # expires the held message and group 9
+        example_2,                              # held again
+        example_1,                              # defines Mask ID 0 and releases it
+        example_2,                              # parses straight on the known mask
+        [subset_page],                          # a second mask and a clock subset
+        [dummy, reserved_status],
+        [page(; message_id = 3, message_size = 4, page_id = 0)],     # reserved Page ID
+        [page(; message_id = 3, message_size = 4, page_id = 30)],    # zero padding
+        [page(; message_id = 3, message_size = 4, page_id = 40)],
+        [page(; message_id = 3, message_size = 4, page_id = 40)],    # duplicate
+        [page(; message_id = 3, message_size = 5, page_id = 41)],    # restarts group
+        [stop],                                 # "do not use": everything goes
+        example_1,
+        example_2,
+        [subset_page],
+    )
+    symbols = e6b_symbol_stream(pages)
+
+    allocations = decode_allocations(() -> GalileoE6BDecoderState(1), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    # The stream really decoded every content block and both masks.
+    data = allocations.state.data
+    @test data.message.message_id == 21
+    @test !isnothing(data.orbit_corrections)
+    @test length(data.clock_corrections.corrections) == 53
+    @test length(data.code_biases.corrections) == 142
+    @test length(data.phase_biases.corrections) == 142
+    @test data.clock_subset_corrections.corrections[1].SVID == 2
+    @test data.clock_subset_corrections.corrections[1].δ_clock ≈ 400 * 0.0025 * 3
+    @test collect(keys(data.masks)) == [0, 3]
+    @test is_sat_healthy(allocations.state)
+
+    # `data` is a copy of `raw_data`, never the same containers.
+    raw = allocations.state.raw_data
+    @test data == raw
+    @test data.message !== raw.message
+    @test data.masks !== raw.masks
+    @test data.orbit_corrections !== raw.orbit_corrections
+    @test data.orbit_corrections.corrections !== raw.orbit_corrections.corrections
+
+    # `decode` keeps value semantics on top of it: the input state is untouched.
+    state = GalileoE6BDecoderState(1)
+    decoded = decode(state, symbols, length(symbols))
+    @test decoded.data == data
+    @test state == GalileoE6BDecoderState(1)
+    @test isempty(state.cache.page_groups)
+    # ...and so does `copy`, down to the page store's groups.
+    first_pages = e6b_symbol_stream(example_1[1:3])
+    partial = decode!(GalileoE6BDecoderState(1), first_pages, length(first_pages))
+    snapshot = copy(partial)
+    next_pages = e6b_symbol_stream(example_1[4:6])
+    partial = decode!(partial, next_pages, length(next_pages))
+    @test length(snapshot.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 3
+    @test length(partial.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 6
+end
