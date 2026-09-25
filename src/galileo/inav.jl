@@ -742,14 +742,14 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
         ),
     )
     if is_even
-        state = GNSSDecoderState(
-            state;
-            cache = GalileoINAVCache(
-                state.cache;
-                even_page_part_bits = is_nominal_page ? bits : nothing,
-            ),
-        )
-        return state
+        # Two calls rather than `is_nominal_page ? bits : nothing`: a Union
+        # keyword value takes the allocating kw path on Julia 1.10.
+        cache = if is_nominal_page
+            GalileoINAVCache(state.cache; even_page_part_bits = bits)
+        else
+            GalileoINAVCache(state.cache; even_page_part_bits = nothing)
+        end
+        return GNSSDecoderState(state; cache)
     end
     even_bits = state.cache.even_page_part_bits
     # `nothing`, not a zero sentinel: a nominal even page part whose 112 content
@@ -764,14 +764,16 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 if get_bits(data, 128, 7, 2) == 2 # '10'
                     WN = get_bits(data, 128, 97, 12)
                     TOW = get_bits(data, 128, 109, 20)
-                    state = GNSSDecoderState(
+                    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+                    TOW_anchor = state.num_bits_after_valid_syncro_sequence
+                    state = @split_nothing TOW_anchor GNSSDecoderState(
                         state;
                         raw_data = GalileoINAVData(
                             state.raw_data;
                             WN,
                             TOW,
                             num_pages_after_last_TOW = 1,
-                            num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
+                            num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
                         ),
                     )
                 end
@@ -893,7 +895,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 E1B_DVS = DataValidityStatus(get_bit(data, 128, 73))
                 WN = get_bits(data, 128, 74, 12)
                 TOW = get_bits(data, 128, 86, 20)
-                state = GNSSDecoderState(
+                # split: a Union keyword value takes the allocating kw path on Julia 1.10
+                TOW_anchor = state.num_bits_after_valid_syncro_sequence
+                state = @split_nothing TOW_anchor GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
                         state.raw_data;
@@ -914,7 +918,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                         WN,
                         TOW,
                         num_pages_after_last_TOW = 1,
-                        num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
+                        num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
                     ),
                 )
             elseif data_type == 6
@@ -927,7 +931,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 DN = Int(get_bits(data, 128, 95, 3))
                 Δt_LSF = Int(get_twos_complement_num(data, 128, 98, 8))
                 TOW = get_bits(data, 128, 106, 20)
-                state = GNSSDecoderState(
+                # split: a Union keyword value takes the allocating kw path on Julia 1.10
+                TOW_anchor = state.num_bits_after_valid_syncro_sequence
+                state = @split_nothing TOW_anchor GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
                         state.raw_data;
@@ -941,7 +947,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                         Δt_LSF,
                         TOW,
                         num_pages_after_last_TOW = 1,
-                        num_bits_after_valid_syncro_sequence_after_last_TOW = state.num_bits_after_valid_syncro_sequence,
+                        num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
                     ),
                 )
             elseif data_type == 7
@@ -1019,15 +1025,20 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     E5b_SHS = signal_health_e5b_pos1,
                     E1B_SHS = signal_health_e1b_pos1,
                 )
-                almanacs = state.raw_data.almanacs
+                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
+                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                raw_data = state.raw_data
                 if completed_pos1.IOD_a == IOD_a && !isnothing(completed_pos1.SVID)
-                    almanacs = flush_almanac!(state, completed_pos1)
+                    raw_data = GalileoINAVData(
+                        raw_data;
+                        almanacs = flush_almanac!(state, completed_pos1),
+                    )
                 end
                 almanac_pos2 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, Ω_0, Ω_dot, IOD_a)
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
-                    raw_data = GalileoINAVData(state.raw_data; almanacs),
+                    raw_data,
                     cache = GalileoINAVCache(
                         state.cache;
                         almanac_chain_pos1 = GalileoAlmanac(),
@@ -1064,15 +1075,20 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     WN_a,
                     t_0a,
                 )
-                almanacs = state.raw_data.almanacs
+                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
+                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                raw_data = state.raw_data
                 if completed_pos2.IOD_a == IOD_a && !isnothing(completed_pos2.SVID)
-                    almanacs = flush_almanac!(state, completed_pos2)
+                    raw_data = GalileoINAVData(
+                        raw_data;
+                        almanacs = flush_almanac!(state, completed_pos2),
+                    )
                 end
                 almanac_pos3 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, IOD_a, WN_a, t_0a)
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
-                    raw_data = GalileoINAVData(state.raw_data; almanacs),
+                    raw_data,
                     cache = GalileoINAVCache(
                         state.cache;
                         almanac_chain_pos1 = valid_SVID ? almanac_pos3 : GalileoAlmanac(),
@@ -1097,7 +1113,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 signal_health_e1b_pos3 = SignalHealth(get_bits(data, 128, 85, 2))
                 # GGTO — all four fields all-ones means "not valid" (ICD
                 # 5.1.8), so they are read raw and scaled by `galileo_ggto`.
-                A_0G, A_1G, t_0G, WN_0G = galileo_ggto(
+                ggto = galileo_ggto(
                     get_bits(data, 128, 87, 16),
                     get_bits(data, 128, 103, 12),
                     get_bits(data, 128, 115, 8),
@@ -1114,20 +1130,18 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                     E5b_SHS = signal_health_e5b_pos3,
                     E1B_SHS = signal_health_e1b_pos3,
                 )
-                almanacs = state.raw_data.almanacs
+                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
+                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                raw_data = state.raw_data
                 if completed_pos3.IOD_a == IOD_a && !isnothing(completed_pos3.SVID)
-                    almanacs = flush_almanac!(state, completed_pos3)
+                    raw_data = GalileoINAVData(
+                        raw_data;
+                        almanacs = flush_almanac!(state, completed_pos3),
+                    )
                 end
                 state = GNSSDecoderState(
                     state;
-                    raw_data = GalileoINAVData(
-                        state.raw_data;
-                        almanacs,
-                        A_0G,
-                        A_1G,
-                        t_0G,
-                        WN_0G,
-                    ),
+                    raw_data = with_ggto(raw_data, ggto),
                     cache = GalileoINAVCache(
                         state.cache;
                         almanac_chain_pos1 = GalileoAlmanac(),
@@ -1175,17 +1189,18 @@ function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
        state.raw_data.IOD_nav2 ==
        state.raw_data.IOD_nav3 ==
        state.raw_data.IOD_nav4
+        # Read the optional counters into locals: Julia 1.10 does not narrow a
+        # field access through `isnothing`, so the arithmetic would dispatch dynamically.
+        now = state.num_bits_after_valid_syncro_sequence
+        TOW_anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW
         num_bits_after_valid_syncro_sequence = 0
         if state.data.TOW == state.raw_data.TOW
+            num_bits_after_valid_syncro_sequence = now
+        elseif TOW_anchor !== nothing
+            # `now` is set whenever a TOW anchor is: both are cleared together on reset.
             num_bits_after_valid_syncro_sequence =
-                state.num_bits_after_valid_syncro_sequence
-        elseif !isnothing(
-            state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-        )
-            num_bits_after_valid_syncro_sequence =
-                state.num_bits_after_valid_syncro_sequence - (
-                    state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW -
-                    2 * state.constants.syncro_sequence_length -
+                (now::Int) - (
+                    TOW_anchor - 2 * state.constants.syncro_sequence_length -
                     state.constants.preamble_length
                 )
         else # first succesful decoding
@@ -1197,9 +1212,11 @@ function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
         # `data` gets its own copy of the almanac store (`publish_data`
         # overwrites the preallocated validated one), so later almanac words
         # written into `raw_data` do not leak into `data` before the next promotion.
-        state = GNSSDecoderState(
+        data = publish_data(state.cache.storage, state.raw_data)
+        # split: a Union keyword value takes the allocating kw path on Julia 1.10
+        state = @split_nothing num_bits_after_valid_syncro_sequence GNSSDecoderState(
             state;
-            data = publish_data(state.cache.storage, state.raw_data),
+            data,
             num_bits_after_valid_syncro_sequence,
         )
     end
