@@ -922,13 +922,15 @@ function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         dnav_symbols_per_second(state.prn),
     )
     is_plausible || return state
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    raw_data = @split_nothing num_bits BeiDouDNAVData(
+        state.raw_data;
+        SOW = SOW_count,
+        num_bits_after_valid_syncro_sequence_after_last_SOW = num_bits,
+    )
     GNSSDecoderState(
         state;
-        raw_data = BeiDouDNAVData(
-            state.raw_data;
-            SOW = SOW_count,
-            num_bits_after_valid_syncro_sequence_after_last_SOW = num_bits,
-        ),
+        raw_data,
         cache = BeiDouDNAVCache(state.cache; sow_is_fresh = true),
     )
 end
@@ -1000,8 +1002,11 @@ end
 # key the voting dataset and pass every other check.
 function with_assembled_t_0e(data::BeiDouDNAVData, prev_subframe_id::Int)
     prev_subframe_id == 2 || return data
-    (isnothing(data.t_0e_msb2) || isnothing(data.t_0e_lsb15)) && return data
-    BeiDouDNAVData(data; t_0e = (data.t_0e_msb2 << 15 | data.t_0e_lsb15) << 3)
+    # Locals: Julia 1.10 does not narrow a field read through `isnothing`.
+    msb2 = data.t_0e_msb2
+    lsb15 = data.t_0e_lsb15
+    (msb2 === nothing || lsb15 === nothing) && return data
+    BeiDouDNAVData(data; t_0e = (msb2 << 15 | lsb15) << 3)
 end
 
 function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
@@ -1058,7 +1063,9 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
     # An all-zero √A marks an empty/dummy almanac slot (no satellite has a
     # zero semi-major axis); skip it rather than store zeros.
     sqrt_A_raw == 0 && return state
-    entry = BeiDouDNAVAlmanac(;
+    WN_a = state.raw_data.WN_a
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    entry = @split_nothing WN_a BeiDouDNAVAlmanac(;
         sqrt_A = sqrt_A_raw / (1 << 11),
         a_f1 = dnav_signed(content, 91, 11) / 2.0^38,
         a_f0 = dnav_signed(content, 102, 11) / (1 << 20),
@@ -1072,7 +1079,7 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
         # Snapshot the reference week in force now: the page carries its own
         # t_0a but no week, and the global `WN_a` moves on at the next
         # almanac changeover.
-        WN_a = state.raw_data.WN_a,
+        WN_a,
     )
     # Overwrites this SV's slot of the preallocated almanac store in place.
     almanacs = writable_container(state.raw_data.almanacs, state.cache.storage.raw.almanacs)
@@ -1479,9 +1486,12 @@ function dnav_confirm_data(state, max_vote = 20)
     # unscreened — and BCH(15,11,1) is a perfect code, so a two-error SOW word
     # mis-corrects silently; one such accepted SOW then fails every honest
     # subframe against the elapsed-symbol prediction until an external reset.
-    cleared = BeiDouDNAVData(;
-        SOW = state.raw_data.SOW,
-        num_bits_after_valid_syncro_sequence_after_last_SOW = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW,
+    SOW = state.raw_data.SOW
+    anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    cleared = @split_nothing (SOW, anchor) BeiDouDNAVData(;
+        SOW,
+        num_bits_after_valid_syncro_sequence_after_last_SOW = anchor,
     )
 
     if isnothing(matching_idx)

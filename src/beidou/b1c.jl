@@ -756,8 +756,7 @@ function is_decoding_completed_for_positioning(data::BeiDouB1CData)
         is_subframe2_decoded(data) &&
         !isnothing(data.T_GD_B1Cp) &&
         !isnothing(data.ISC_B1Cd) &&
-        !isnothing(data.IODC) &&
-        data.IODE == data.IODC & 0xff
+        beidou_iode_matches_iodc(data.IODE, data.IODC)
 end
 
 """
@@ -990,10 +989,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::
     if !isnothing(prev_soh) && sync.soh == 0 && !isnothing(HOW)
         HOW = (HOW + 1) % B1C_HOW_RANGE
     end
-    state = GNSSDecoderState(
-        state;
-        raw_data = BeiDouB1CData(state.raw_data; soh = sync.soh, HOW),
-    )
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    raw_data = @split_nothing HOW BeiDouB1CData(state.raw_data; soh = sync.soh, HOW)
+    state = GNSSDecoderState(state; raw_data)
 
     # Extract the 1728-symbol interleaved SF2+SF3 payload (symbols 73..1800),
     # applying the polarity flip by negating soft symbols up front. All four
@@ -1221,6 +1219,9 @@ function parse_b1c_sf3_page2!(
         almanacs = writable_container(almanacs, spare.reduced_almanacs)
         set!(almanacs, packet.PRN_a, packet)
     end
+    # Only rebuild with a concrete store: a Union keyword value takes the
+    # allocating kw path on Julia 1.10 (and `nothing` would leave `raw` as is).
+    almanacs === nothing && return raw
     BeiDouB1CData(raw; reduced_almanacs = almanacs)
 end
 
