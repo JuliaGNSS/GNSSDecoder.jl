@@ -179,8 +179,10 @@ each CRC-gated message is atomic.
   - `GNSS_ID::Int64`: BGTO GNSS identification (0 = not available, 1 = GPS, 2 = Galileo, 3 = GLONASS; §7.12).
   - `WN_0BGTO::Int64`, `t_0BGTO::Int64`: BGTO reference week / time of week (s, LSB 2⁴).
   - `A_0BGTO,A_1BGTO,A_2BGTO::Float64`: BDT-GNSS time offset polynomial (s, s/s, s/s²; Table 7-19).
-  - `midi_almanacs::Dictionary{Int,BeiDouMidiAlmanac}`: Midi almanacs keyed by `PRN_a` (§7.8).
-  - `reduced_almanacs::Dictionary{Int,BeiDouReducedAlmanac}`: Reduced almanacs keyed by `PRN_a` (§7.9).
+  - `midi_almanacs::SlotDictionary{BeiDouMidiAlmanac,64}`: Midi almanacs keyed by `PRN_a` (1-63, §7.8).
+  - `reduced_almanacs::SlotDictionary{BeiDouReducedAlmanac,64}`: Reduced almanacs keyed by `PRN_a` (1-63, §7.9).
+    Both almanac stores are preallocated in the decoder's cache and overwritten
+    in place by [`decode!`](@ref).
   - `WN_a::Int64`, `t_0a::Int64`: Almanac reference week / time (s, LSB 2¹²) for the reduced almanacs (Table 7-15).
 
 # Reference
@@ -262,15 +264,21 @@ Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouCNAVData
     A_0BGTO::Union{Nothing,Float64} = nothing
     A_1BGTO::Union{Nothing,Float64} = nothing
     A_2BGTO::Union{Nothing,Float64} = nothing
-    midi_almanacs::Union{Nothing,Dictionary{Int,BeiDouMidiAlmanac}} = nothing
-    reduced_almanacs::Union{Nothing,Dictionary{Int,BeiDouReducedAlmanac}} = nothing
+    midi_almanacs::Union{Nothing,SlotDictionary{BeiDouMidiAlmanac,64}} = nothing
+    reduced_almanacs::Union{Nothing,SlotDictionary{BeiDouReducedAlmanac,64}} = nothing
     WN_a::Union{Nothing,Int64} = nothing
     t_0a::Union{Nothing,Int64} = nothing
 end
 
-# Field-by-field equality: the almanac `Dictionary` fields otherwise compare
+# Field-by-field equality: the almanac `SlotDictionary` fields otherwise compare
 # by identity through the default struct `==`.
 Base.:(==)(a::BeiDouB2bData, b::BeiDouB2bData) = fields_equal(a, b)
+
+# Every container field at its ICD size: one almanac slot per PRN (1-63).
+preallocated_data(::Type{BeiDouB2bData}) = BeiDouB2bData(;
+    midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
+    reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
+)
 
 function BeiDouB2bData(
     data::BeiDouB2bData;
@@ -450,12 +458,18 @@ struct BeiDouB2bCache <: AbstractGNSSCache
     LDPC decoder and its scratch buffers for the B-CNAV3 binary image (K=486, N=972)
     """
     ldpc::LDPCScratch
+    """
+    Preallocated almanac stores `raw_data` and `data` are decoded into,
+    overwritten in place by [`decode!`](@ref)
+    """
+    storage::DataStorage{BeiDouB2bData}
 end
 
 BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
     committed_ldpc_scratch("bcnv3.alist"),
+    DataStorage{BeiDouB2bData}(),
 )
 
 # The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
@@ -604,7 +618,7 @@ function decode_syncro_sequence(
     elseif message_type == 30
         parse_b2b_mt30(raw, word, PI)
     elseif message_type == 40
-        parse_b2b_mt40(raw, word, PI)
+        parse_b2b_mt40!(raw, word, PI, state.cache.storage.raw)
     else
         raw  # reserved/invalid message type (Table 7-1): header only
     end
@@ -636,7 +650,9 @@ function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         Δn_0 = get_twos_complement_num(word, word_length, 95, 17) * 2.0^-44 * PI,
         Δn_0_dot = get_twos_complement_num(word, word_length, 112, 23) * 2.0^-57 * PI,
         M_0 = get_twos_complement_num(word, word_length, 135, 33) * 2.0^-32 * PI,
-        e = Float64(get_bits(word, word_length, 168, 33)) * 2.0^-34,
+        # Through `Int64`: converting the `UInt512`-typed field to `Float64`
+        # directly goes through a `BigInt` (an allocation); 33 bits fit exactly.
+        e = Int64(get_bits(word, word_length, 168, 33)) * 2.0^-34,
         ω = get_twos_complement_num(word, word_length, 201, 33) * 2.0^-32 * PI,
         # Ephemeris II (bits 234-455, Figure 6-7):
         Ω_0 = get_twos_complement_num(word, word_length, 234, 33) * 2.0^-32 * PI,
@@ -688,8 +704,12 @@ end
 """
 Message type 40 — BGTO, one midi almanac, five reduced almanacs
 (Figures 6-5, 6-12, 6-14, 6-15).
+
+Overwrites each broadcast PRN's slot of `raw.midi_almanacs` /
+`raw.reduced_almanacs` in place — or, while a store is still `nothing`, of the
+preallocated one in `spare`.
 """
-function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
+function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, PI::Float64, spare::BeiDouB2bData)
     word_length = B2B_MESSAGE_BITS
     # Almanac reference week/time for the five reduced almanacs (bits 251-271,
     # Table 7-15) — kept on the data container as the raw broadcast and copied
@@ -708,10 +728,9 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
     # empty block (no almanac broadcast in this frame).
     alm = beidou_midi_almanac(word, word_length, 95, PI)
     if !isnothing(alm)
-        raw = BeiDouB2bData(
-            raw;
-            midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm),
-        )
+        midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
+        set!(midi_almanacs, alm.PRN_a, alm)
+        raw = BeiDouB2bData(raw; midi_almanacs)
     end
     # Five 38-bit reduced almanacs (bits 272-461, Figure 6-12, Table 7-14).
     reduced = raw.reduced_almanacs
@@ -725,7 +744,8 @@ function parse_b2b_mt40(raw::BeiDouB2bData, word::UInt512, PI::Float64)
             PI,
         )
         isnothing(packet) && continue  # empty block
-        reduced = _merge_keyed(reduced, packet.PRN_a, packet)
+        reduced = writable_container(reduced, spare.reduced_almanacs)
+        set!(reduced, packet.PRN_a, packet)
     end
     BeiDouB2bData(raw; reduced_almanacs = reduced)
 end
@@ -804,6 +824,9 @@ streaming symbol counter: the SOW stamps the *current* frame's leading edge
 (ICD Table 7-2), and by validation time that whole frame (1000 symbols) plus
 the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
 `SOW + num_bits_after_valid_syncro_sequence / 1000 Hz` is the current time.
+
+Promotion overwrites the preallocated validated almanac stores with the raw
+ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     if is_decoding_completed_for_positioning(state.raw_data)
@@ -814,7 +837,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
         # just-decoded frame's.
         return GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
                                                    state.constants.preamble_length,
         )

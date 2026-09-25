@@ -451,13 +451,15 @@ Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouCNAVData
 
     # ---- Almanacs (message types 31/33/40, §7.9 / §7.10) ----
     """
-    Reduced almanacs keyed by PRN (MT31: three per message; MT33: one per message)
+    Reduced almanacs keyed by PRN 1-63 (MT31: three per message; MT33: one per
+    message); preallocated, overwritten in place by [`decode!`](@ref)
     """
-    reduced_almanacs::Union{Nothing,Dictionary{Int,BeiDouReducedAlmanac}} = nothing
+    reduced_almanacs::Union{Nothing,SlotDictionary{BeiDouReducedAlmanac,64}} = nothing
     """
-    Midi almanacs keyed by PRN (MT40: one per message)
+    Midi almanacs keyed by PRN 1-63 (MT40: one per message); preallocated,
+    overwritten in place by [`decode!`](@ref)
     """
-    midi_almanacs::Union{Nothing,Dictionary{Int,BeiDouMidiAlmanac}} = nothing
+    midi_almanacs::Union{Nothing,SlotDictionary{BeiDouMidiAlmanac,64}} = nothing
 end
 
 function BeiDouB2aData(
@@ -625,9 +627,15 @@ function BeiDouB2aData(
     )
 end
 
-# Field-by-field equality: the almanac `Dictionary` fields otherwise compare
+# Field-by-field equality: the almanac `SlotDictionary` fields otherwise compare
 # by identity through the default struct `==`.
 Base.:(==)(a::BeiDouB2aData, b::BeiDouB2aData) = fields_equal(a, b)
+
+# Every container field at its ICD size: one almanac slot per PRN (1-63).
+preallocated_data(::Type{BeiDouB2aData}) = BeiDouB2aData(;
+    reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
+    midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
+)
 
 # ---- Cache --------------------------------------------------------------------
 
@@ -656,6 +664,11 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     576-entry LLR scratch copied out of `soft_buffer` per frame
     """
     llr_scratch::Vector{Float32}
+    """
+    Preallocated almanac stores `raw_data` and `data` are decoded into,
+    overwritten in place by [`decode!`](@ref)
+    """
+    storage::DataStorage{BeiDouB2aData}
 end
 
 function BeiDouB2aCache()
@@ -663,6 +676,7 @@ function BeiDouB2aCache()
         CircularDeque{Float32}(B2A_WINDOW_SYMBOLS),
         committed_ldpc_scratch("bcnv2.alist"),
         Vector{Float32}(undef, B2A_ENCODED_SYMBOLS),
+        DataStorage{BeiDouB2aData}(),
     )
 end
 
@@ -971,15 +985,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     elseif message_id == 30
         parse_b2a_mt30(raw, word)
     elseif message_id == 31
-        parse_b2a_mt31(raw, word, PI)
+        parse_b2a_mt31!(raw, word, PI, state.cache.storage.raw)
     elseif message_id == 32
         parse_b2a_mt32(raw, word)
     elseif message_id == 33
-        parse_b2a_mt33(raw, word, PI)
+        parse_b2a_mt33!(raw, word, PI, state.cache.storage.raw)
     elseif message_id == 34
         parse_b2a_mt34(raw, word)
     elseif message_id == 40
-        parse_b2a_mt40(raw, word, PI)
+        parse_b2a_mt40!(raw, word, PI, state.cache.storage.raw)
     else
         raw  # unknown/reserved message type: header only
     end
@@ -1005,6 +1019,9 @@ Promote `raw_data` to `data` once the minimum positioning set is decoded and
 consistent: the MT10+MT11 ephemeris pair from adjacent frames, a clock set
 from any of MT30-34, and IODE == the 8 LSBs of IODC (the "matched pair" rule
 of BDS-SIS-ICD-B2a-1.0 §7.4.3).
+
+Promotion overwrites the preallocated validated almanac stores with the raw
+ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     if is_decoding_completed_for_positioning(state.raw_data)
@@ -1015,7 +1032,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
         # `decode_syncro_sequence`, so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
                                                    state.constants.preamble_length,
         )
@@ -1143,8 +1160,11 @@ end
 
 """
 Message type 31 — clock, IODC, three reduced almanacs (ICD Fig 6-6 / 6-17).
+
+Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
+while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt31(raw::BeiDouB2aData, word::UInt320, PI::Float64)
+function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1154,7 +1174,8 @@ function parse_b2a_mt31(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     for start in (143, 181, 219)
         packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
         isnothing(packet) && continue
-        almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
+        almanacs = writable_container(almanacs, spare.reduced_almanacs)
+        set!(almanacs, packet.PRN_a, packet)
     end
     BeiDouB2aData(
         raw;
@@ -1180,8 +1201,11 @@ end
 
 """
 Message type 33 — clock, BGTO, one reduced almanac, IODC (ICD Fig 6-8 / 6-17 / 6-19).
+
+Overwrites the almanac PRN's slot of `raw.reduced_almanacs` in place — or, while
+that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt33(raw::BeiDouB2aData, word::UInt320, PI::Float64)
+function parse_b2a_mt33!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1195,13 +1219,12 @@ function parse_b2a_mt33(raw::BeiDouB2aData, word::UInt320, PI::Float64)
         IODC = Int64(get_bits(word, word_length, 218, 10)),
     )
     # Merged in a second step: splatting the BGTO block alongside a
-    # `Union{Nothing,Dictionary}` keyword builds an abstractly typed
+    # `Union{Nothing,SlotDictionary}` keyword builds an abstractly typed
     # `NamedTuple`, which `juliac --trim` cannot resolve.
     isnothing(packet) && return raw
-    BeiDouB2aData(
-        raw;
-        reduced_almanacs = _merge_keyed(raw.reduced_almanacs, packet.PRN_a, packet),
-    )
+    reduced_almanacs = writable_container(raw.reduced_almanacs, spare.reduced_almanacs)
+    set!(reduced_almanacs, packet.PRN_a, packet)
+    BeiDouB2aData(raw; reduced_almanacs)
 end
 
 """
@@ -1222,8 +1245,11 @@ end
 
 """
 Message type 40 — SISAIoe, SISAIoc, one midi almanac (ICD Fig 6-10 / 6-14 / 6-20).
+
+Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
+that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b2a_mt40(raw::BeiDouB2aData, word::UInt320, PI::Float64)
+function parse_b2a_mt40!(raw::BeiDouB2aData, word::UInt320, PI::Float64, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = BeiDouB2aData(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
@@ -1231,5 +1257,7 @@ function parse_b2a_mt40(raw::BeiDouB2aData, word::UInt320, PI::Float64)
     # Midi almanac block, bits 70-225 (Figure 6-20, Table 7-13).
     alm = beidou_midi_almanac(word, word_length, 70, PI)
     isnothing(alm) && return raw
-    BeiDouB2aData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm))
+    midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
+    set!(midi_almanacs, alm.PRN_a, alm)
+    BeiDouB2aData(raw; midi_almanacs)
 end
