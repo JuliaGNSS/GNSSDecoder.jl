@@ -82,14 +82,17 @@ function SlotDictionary{V,N}(dict::Dictionaries.AbstractDictionary) where {V,N}
 end
 
 Base.convert(::Type{SlotDictionary{V,N}}, dict::SlotDictionary{V,N}) where {V,N} = dict
-Base.convert(::Type{SlotDictionary{V,N}}, dict::Dictionaries.AbstractDictionary) where {V,N} =
-    SlotDictionary{V,N}(dict)
+Base.convert(
+    ::Type{SlotDictionary{V,N}},
+    dict::Dictionaries.AbstractDictionary,
+) where {V,N} = SlotDictionary{V,N}(dict)
 
 Base.keys(dict::SlotDictionary) = dict.indices
 Base.isassigned(dict::SlotDictionary, key::Int) = key in dict.indices
 
 function Base.getindex(dict::SlotDictionary, key::Int)
-    key in dict.indices || throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
+    key in dict.indices ||
+        throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
     return @inbounds dict.values[key+1]
 end
 
@@ -97,7 +100,8 @@ Dictionaries.issettable(::SlotDictionary) = true
 Dictionaries.isinsertable(::SlotDictionary) = true
 
 function Base.setindex!(dict::SlotDictionary{V}, value::V, key::Int) where {V}
-    key in dict.indices || throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
+    key in dict.indices ||
+        throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
     @inbounds dict.values[key+1] = value
     return dict
 end
@@ -124,7 +128,8 @@ function Dictionaries.set!(dict::SlotDictionary{V}, key::Int, value::V) where {V
 end
 
 function Base.insert!(dict::SlotDictionary{V}, key::Int, value::V) where {V}
-    key in dict.indices && throw(Dictionaries.IndexError("Dictionary already contains index: $key"))
+    key in dict.indices &&
+        throw(Dictionaries.IndexError("Dictionary already contains index: $key"))
     return Dictionaries.set!(dict, key, value)
 end
 
@@ -138,7 +143,8 @@ function Dictionaries.unset!(dict::SlotDictionary, key::Int)
 end
 
 function Base.delete!(dict::SlotDictionary, key::Int)
-    key in dict.indices || throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
+    key in dict.indices ||
+        throw(Dictionaries.IndexError("Dictionary does not contain index: $key"))
     return Dictionaries.unset!(dict, key)
 end
 
@@ -148,8 +154,10 @@ function Base.empty!(dict::SlotDictionary)
     return dict
 end
 
-Base.copy(dict::SlotDictionary{V,N}) where {V,N} =
-    SlotDictionary{V,N}(copy(dict.values), SlotIndices(copy(dict.indices.occupied), length(dict)))
+Base.copy(dict::SlotDictionary{V,N}) where {V,N} = SlotDictionary{V,N}(
+    copy(dict.values),
+    SlotIndices(copy(dict.indices.occupied), length(dict)),
+)
 
 """
 $(TYPEDEF)
@@ -270,7 +278,8 @@ function duplicate(x::CircularDeque{T}) where {T}
     end
     return y
 end
-duplicate(x::Dictionary) = Dictionary(copy(collect(keys(x))), map(duplicate, collect(values(x))))
+duplicate(x::Dictionary) =
+    Dictionary(copy(collect(keys(x))), map(duplicate, collect(values(x))))
 duplicate(x::Aff3ct.ConvViterbiDecoder) = x
 duplicate(x::Aff3ct.LDPCBPDecoder) = x
 
@@ -279,7 +288,8 @@ duplicate(x::Aff3ct.LDPCBPDecoder) = x
     # A mutable struct from another package may own memory outside Julia (the
     # AFF3CT handles do); copying its fields would alias that memory, so each
     # such type must be listed above explicitly.
-    ismutabletype(T) && parentmodule(T) !== @__MODULE__() &&
+    ismutabletype(T) &&
+        parentmodule(T) !== @__MODULE__() &&
         return :(throw(ArgumentError(string("no `duplicate` method for ", $T))))
     fields = [:(duplicate(getfield(x, $i))) for i = 1:fieldcount(T)]
     return Expr(:new, T, fields...)
