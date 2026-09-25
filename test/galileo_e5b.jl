@@ -298,3 +298,16 @@ end
     # Ephemeris survives the reset, as on E1-B.
     @test !isnothing(state.raw_data.sqrt_A)
 end
+
+@testset "Galileo E5b decode! is allocation-free" begin
+    # The I/NAV golden capture through the E5b decoder: every word type it
+    # carries, the almanac chain and the promotion to validated `data`.
+    symbols =
+        reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GALILEO_E1B_DATA))
+    allocations = decode_allocations(() -> GalileoE5bDecoderState(21), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
+end
