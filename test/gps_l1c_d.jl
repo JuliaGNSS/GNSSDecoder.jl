@@ -780,4 +780,61 @@ end
         @test d2.text_message == d1.text_message
         @test d2.num_sf3_pages_received == 68
     end
+
+    @testset "GPS L1C-D decode! is allocation-free" begin
+        # The PRN 1 recording carries subframe 2 and subframe-3 pages 1, 2, 3
+        # (reduced almanacs), 4 (Midi almanacs) and 6 (text); synthetic frames
+        # add a page 5 (differential correction), a reserved page, a TOI
+        # discontinuity (mid-stream reset), a cold start at TOI ≥ 256 (the BCH
+        # complement retry) and a frame whose subframe 2 fails CRC-24Q under
+        # both branches. Each TOI jump resets the decoder, which drops the
+        # buffered window, so the frame after a jump is lost too.
+        recording =
+            load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn1_symbols.bin"))
+        page5 = build_sf3_page(7, 5) do b
+            _setbits!(b, 15, 11, 12)
+            _setbits!(b, 26, 11, 24)
+            _setbits!(b, 38, 8, 19)
+            _setbits!(b, 46, 13, 100)
+            _setbits!(b, 72, 8, 19)
+            _setbits!(b, 80, 14, 50)
+        end
+        reserved = build_sf3_page(_ -> nothing, 7, 7)
+        undecodable = build_payload(build_sf2_bits(corrupt = true), sf3_info)
+        symbols = vcat(
+            recording,
+            build_stream(120, 4, build_payload(sf2_info, page5)),
+            build_stream(200, 4, build_payload(sf2_info, reserved)),
+            _frame_symbols(300, payload),
+            _frame_symbols(301, undecodable),
+            build_stream(302, 3, payload),
+        )
+        allocations = decode_allocations(() -> GPSL1C_DDecoderState(1), symbols)
+        @test allocations.fresh == 0
+        @test allocations.warm == 0
+        @test allocations.reset == 0
+
+        # The stream actually exercised every store.
+        state = decode(GPSL1C_DDecoderState(1), symbols, length(symbols))
+        @test is_decoding_completed_for_positioning(state)
+        # The cold start at TOI ≥ 256 comes after the reset with subframe 2
+        # unchanged in `raw_data` — the complement retry must still settle it.
+        @test state.data.toi == 303
+        @test !state.is_shifted_by_180_degrees
+        d = state.raw_data
+        @test length(d.reduced_almanacs) == 31
+        @test length(d.midi_almanacs) == 11
+        @test haskey(d.differential_corrections, 19)
+        @test d.text_message == "Test text message for page: 2"
+        @test !isnothing(d.A_0UTC) && !isnothing(d.t_GGTO)
+
+        # `decode` keeps value semantics on top of it: the input state is untouched.
+        fresh = GPSL1C_DDecoderState(1)
+        decode(fresh, symbols, length(symbols))
+        @test fresh == GPSL1C_DDecoderState(1)
+        @test isnothing(fresh.raw_data.reduced_almanacs)
+
+        # `data` never shares a container with `raw_data`.
+        @test state.data.reduced_almanacs !== state.raw_data.reduced_almanacs
+    end
 end
