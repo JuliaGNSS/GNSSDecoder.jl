@@ -35,6 +35,26 @@ julia> ]
 pkg> add GNSSDecoder
 ```
 
+## Usage
+
+```julia
+using GNSSDecoder
+
+state = GPSL1CADecoderState(25)   # every buffer is allocated here, once
+for chunk in soft_symbol_chunks   # e.g. `get_soft_bits` from Tracking.jl
+    state = decode!(state, chunk, length(chunk))
+end
+is_decoding_completed_for_positioning(state) && is_sat_healthy(state)
+```
+
+`decode!` allocates nothing: it **overwrites** the buffers the decoder state
+was constructed with (soft-symbol buffer, FEC scratch, the almanac stores and
+other containers behind `state.raw_data` and `state.data`). Always continue
+with the state it returns and do not keep using the old one — take a
+`copy(state)` if you need a snapshot. `decode(state, chunk, n)` is the
+value-semantics variant: it decodes into a copy and leaves `state` untouched,
+at the cost of that copy on every call.
+
 ## Standalone executables (`juliac --trim`)
 
 On Julia 1.12 and later every decoder compiles under

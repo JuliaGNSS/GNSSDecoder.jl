@@ -24,7 +24,10 @@ function pseudo_random_symbols(n)
 end
 
 function run_decoder(name, system, prn, symbols)
-    state = decode(GNSSDecoderState(system, prn), symbols, length(symbols))
+    # `decode!` on the hot path; `decode` (a copy, then `decode!`) once more so
+    # both entry points are compiled into the trimmed image.
+    state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
+    state = decode(reset_decoder_state!(state), symbols, length(symbols))
     println(
         Core.stdout,
         name,
