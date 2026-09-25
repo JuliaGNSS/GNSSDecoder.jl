@@ -338,7 +338,7 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     reduced_ced::GalileoReducedCED = GalileoReducedCED()
 end
 
-function GalileoINAVData(
+@inline function GalileoINAVData(
     data::GalileoINAVData;
     WN = data.WN,
     TOW = data.TOW,
@@ -547,7 +547,7 @@ GalileoINAVCache() = GalileoINAVCache(
     DataStorage{GalileoINAVData}(),
 )
 
-function GalileoINAVCache(
+@inline function GalileoINAVCache(
     cache::GalileoINAVCache;
     soft_buffer = cache.soft_buffer,
     soft_page = cache.soft_page,

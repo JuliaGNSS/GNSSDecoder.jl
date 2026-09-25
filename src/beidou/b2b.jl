@@ -280,7 +280,7 @@ preallocated_data(::Type{BeiDouB2bData}) = BeiDouB2bData(;
     reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
 )
 
-function BeiDouB2bData(
+@inline function BeiDouB2bData(
     data::BeiDouB2bData;
     last_message_type = data.last_message_type,
     SOW = data.SOW,
