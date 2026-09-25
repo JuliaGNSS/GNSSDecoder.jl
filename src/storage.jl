@@ -3,11 +3,10 @@
 # A decoder that allocates nothing per symbol must never grow a container
 # while decoding: every container a decoder writes into is sized once, when the
 # state is constructed, and later writes *overwrite* it in place. This file
-# holds the three pieces that make that explicit:
+# holds the pieces that make that explicit:
 #
 #   - `SlotDictionary`, a dictionary with one preallocated slot per possible key,
 #     used for every keyed store in the decoded data (almanacs, masks, ...);
-#   - `FixedText`, an inline string for the broadcast text messages;
 #   - `writable_container` / `overwrite!`, the only two ways decode code touches
 #     such a container, plus `duplicate`, the trim-safe deep copy `decode` makes
 #     so that it can keep value semantics on top of the overwriting `decode!`.
@@ -160,50 +159,6 @@ Base.copy(dict::SlotDictionary{V,N}) where {V,N} = SlotDictionary{V,N}(
 )
 
 """
-$(TYPEDEF)
-
-An inline, immutable ASCII string of at most `N` characters: the broadcast
-text messages (GPS CNAV message types 15 and 36, the GPS L1C-D text page),
-whose length the ICD fixes. Unlike a `String` it lives inside the decoded data
-container instead of on the heap, so decoding a text page allocates nothing.
-
-It is an `AbstractString`, so it compares equal to a `String` of the same
-characters and prints as one; `String(text)` converts.
-"""
-struct FixedText{N} <: AbstractString
-    """
-    The characters as ASCII code units, `length` of them meaningful
-    """
-    code_units::NTuple{N,UInt8}
-    """
-    Number of meaningful code units
-    """
-    length::Int
-end
-
-function FixedText{N}(text::AbstractString) where {N}
-    units = codeunits(String(text))
-    length(units) <= N || throw(ArgumentError("text longer than $N code units"))
-    all(<(0x80), units) || throw(ArgumentError("text must be ASCII"))
-    FixedText{N}(ntuple(i -> i <= length(units) ? units[i] : 0x00, Val(N)), length(units))
-end
-
-Base.convert(::Type{FixedText{N}}, text::FixedText{N}) where {N} = text
-Base.convert(::Type{FixedText{N}}, text::AbstractString) where {N} = FixedText{N}(text)
-
-Base.ncodeunits(text::FixedText) = text.length
-Base.codeunit(::FixedText) = UInt8
-Base.codeunit(text::FixedText, i::Integer) = text.code_units[i]
-Base.isvalid(text::FixedText, i::Integer) = 1 <= i <= text.length
-
-function Base.iterate(text::FixedText, i::Int = 1)
-    i > text.length && return nothing
-    return (Char(@inbounds text.code_units[i]), i + 1)
-end
-
-Base.length(text::FixedText) = text.length
-
-"""
     writable_container(current, spare) -> container
 
 The container a decode step writes a keyed or indexed field into, in place:
@@ -264,7 +219,7 @@ end
 # Types whose instances are immutable values or are shared rather than copied.
 is_shared_leaf(T) =
     isbitstype(T) ||
-    T <: Union{Number,Nothing,Symbol,Enum,String,FixedText} ||
+    T <: Union{Number,Nothing,Symbol,Enum,String,AbstractStaticString} ||
     T <: Union{Aff3ct.ConvViterbiDecoder,Aff3ct.LDPCBPDecoder}
 
 """
