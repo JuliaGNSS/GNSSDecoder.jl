@@ -462,7 +462,7 @@ Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouCNAVData
     midi_almanacs::Union{Nothing,SlotDictionary{BeiDouMidiAlmanac,64}} = nothing
 end
 
-function BeiDouB2aData(
+@inline function BeiDouB2aData(
     data::BeiDouB2aData;
     last_message_type = data.last_message_type,
     SOW = data.SOW,

@@ -260,7 +260,7 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     WN_a::Union{Nothing,Int64} = nothing
 end
 
-function GPSL1CAData(
+@inline function GPSL1CAData(
     data::GPSL1CAData;
     last_subframe_id = data.last_subframe_id,
     integrity_status_flag = data.integrity_status_flag,
