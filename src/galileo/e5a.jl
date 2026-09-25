@@ -257,7 +257,7 @@ Base.@kwdef struct GalileoE5aData <: AbstractGalileoEphemerisData
     almanacs::Union{Nothing,SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}} = nothing
 end
 
-function GalileoE5aData(
+@inline function GalileoE5aData(
     data::GalileoE5aData;
     WN = data.WN,
     TOW = data.TOW,
@@ -475,7 +475,7 @@ GalileoE5aCache() = GalileoE5aCache(
     DataStorage{GalileoE5aData}(),
 )
 
-function GalileoE5aCache(
+@inline function GalileoE5aCache(
     cache::GalileoE5aCache;
     soft_buffer = cache.soft_buffer,
     almanac_chain_partial = cache.almanac_chain_partial,
