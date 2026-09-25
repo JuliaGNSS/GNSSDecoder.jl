@@ -402,3 +402,12 @@ function beidou_reduced_almanac(
         health = Int(get_bits(word, word_length, start + 30, 8)),
     )
 end
+
+"""
+True when `IODE` equals the 8 LSBs of `IODC` (the B-CNAV "matched pair" rule),
+`false` while `IODC` is `nothing`.
+"""
+# A function barrier: Julia 1.10 does not narrow a field read through
+# `isnothing`, so `data.IODC & 0xff` would dispatch dynamically.
+beidou_iode_matches_iodc(IODE, IODC::Integer) = IODE == IODC & 0xff
+beidou_iode_matches_iodc(IODE, ::Nothing) = false
