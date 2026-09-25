@@ -964,3 +964,36 @@ end
     @test length(snapshot.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 3
     @test length(partial.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 6
 end
+
+@testset "Galileo HAS inline mask types" begin
+    # 16-bit Signal Mask 0b1010_0000_0000_0001: signals 0, 2 and 15.
+    signals = GNSSDecoder.GalileoHASMaskIndices(UInt64(0xa001), 16, 0)
+    @test length(signals) == 3
+    @test signals == [0, 2, 15]
+    @test signals[2] == 2
+    @test collect(signals) == [0, 2, 15]
+    @test_throws BoundsError signals[4]
+    @test isempty(GNSSDecoder.GalileoHASMaskIndices(UInt64(0), 40, 1))
+
+    cells = Bool[1 0 1; 0 1 1]
+    mask = convert(GNSSDecoder.GalileoHASCellMask, cells)
+    @test mask isa GNSSDecoder.GalileoHASCellMask
+    @test size(mask) == (2, 3)
+    @test mask == cells
+    @test convert(GNSSDecoder.GalileoHASCellMask, mask) === mask
+    @test_throws ArgumentError GNSSDecoder.GalileoHASCellMask(falses(41, 1))
+
+    # A held message compares by its own octets only; the rest of the buffer is
+    # leftover from earlier messages.
+    a = GNSSDecoder.GalileoHASPendingMessage()
+    b = GNSSDecoder.GalileoHASPendingMessage()
+    a.num_octets = b.num_octets = 2
+    a.octets[1:3] .= (1, 2, 3)
+    b.octets[1:3] .= (1, 2, 9)
+    @test a == b
+    b.octets[2] = 7
+    @test a != b
+    b.octets[2] = 2
+    b.message_id = 1
+    @test a != b
+end
