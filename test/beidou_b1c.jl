@@ -800,3 +800,34 @@ end
         @test GNSSDecoder.num_bits_buffered(state) == 0
     end
 end
+
+@testset "BeiDou B1C decode! is allocation-free" begin
+    # Every subframe-3 page type — iono/UTC, reduced almanacs, EOP + BGTO, midi
+    # almanac — around a golden subframe 2, so the keyed stores are written and
+    # the data promoted. The warm pass re-runs the stream on the decoded state,
+    # whose SOH then jumps back: the discontinuity reset is exercised as well.
+    prn = 30
+    sf2 = Bool.(_golden_sf2_bits())
+    pages = (
+        _golden_sf3_page1_bits,
+        _golden_sf3_page2_bits,
+        _golden_sf3_page3_bits,
+        _golden_sf3_page4_bits,
+    )
+    frames = [_b1c_frame_symbols(prn, 56 + i, sf2, Bool.(pages[i]())) for i = 1:4]
+    symbols = vcat(
+        frames...,
+        _b1c_frame_symbols(prn, 61, sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
+    )
+    allocations = decode_allocations(() -> BeiDouB1CDecoderState(prn), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    state = allocations.state
+    @test is_decoding_completed_for_positioning(state)
+    @test length(state.data.reduced_almanacs) == 3
+    @test length(state.data.midi_almanacs) == 1
+    @test length(state.data.bgtos) == 1
+    # Promotion copies the stores: `data` never shares them with `raw_data`.
+    @test state.data.midi_almanacs !== state.raw_data.midi_almanacs
+end
