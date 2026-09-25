@@ -822,7 +822,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     return state
 end
 
-function reset_decoder_state(state::GNSSDecoderState{<:BeiDouB2bData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2bData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
