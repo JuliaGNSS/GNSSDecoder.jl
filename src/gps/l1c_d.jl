@@ -377,7 +377,7 @@ Keyed by the 8-bit `PRN_a` field, one preallocated slot per possible value
 
 ## Page 6 — Text
 
-  - `text_message::FixedText{29}`: up to 29 ASCII characters (control chars
+  - `text_message::CStaticString{29}`: up to 29 ASCII characters (control chars
     stripped), stored inline; compares equal to the matching `String`.
 
 ## Counters
@@ -480,7 +480,7 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     } = nothing
 
     # --- Subframe 3, page 6: text (IS-GPS-800J Fig 3.5-7) ---
-    text_message::Union{Nothing,FixedText{L1C_D_TEXT_LENGTH}} = nothing
+    text_message::Union{Nothing,CStaticString{L1C_D_TEXT_LENGTH}} = nothing
 
     num_sf3_pages_received::Int = 0
 end
@@ -1367,14 +1367,6 @@ end
 _text_char(word::UInt288, k::Int) = UInt8(get_bits(word, L1C_D_SF3_INFO_BITS, 19 + 8k, 8))
 _is_printable(code::UInt8) = code >= 0x20 && code < 0x7f
 
-function _text_printable_char_count(word::UInt288)
-    count = 0
-    for k = 0:(L1C_D_TEXT_LENGTH-1)
-        count += _is_printable(_text_char(word, k))
-    end
-    return count
-end
-
 # The `i`-th printable character of a page-6 text message, or `0x00` past the last.
 function _text_printable_char(word::UInt288, i::Int)
     seen = 0
@@ -1392,12 +1384,12 @@ end
 Subframe 3, page 6 — 29 ASCII characters at bits 19-250 (IS-GPS-800J Fig 3.5-7).
 """
 function parse_sf3_page6(raw::GPSL1C_DData, word::UInt288)
-    # Built inline (a `FixedText`, not a heap `String`), so no allocation.
+    # Built inline (a `CStaticString`, not a heap `String`), so no allocation.
     # Printable ASCII is kept; NUL/control padding is skipped so the message is
     # clean, which moves each kept character to the `i`-th printable position.
+    # The tail past the last one stays NUL, where a `CStaticString` ends.
     units = ntuple(i -> _text_printable_char(word, i), Val(L1C_D_TEXT_LENGTH))
-    count = _text_printable_char_count(word)
-    GPSL1C_DData(raw; text_message = FixedText{L1C_D_TEXT_LENGTH}(units, count))
+    GPSL1C_DData(raw; text_message = CStaticString(units))
 end
 
 """
