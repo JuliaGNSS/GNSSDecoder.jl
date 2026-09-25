@@ -335,3 +335,34 @@ end
     # Ephemeris is retained in raw_data across a reset (fast reacquisition).
     @test decoder.raw_data.sqrt_A == 5440.588203430176
 end
+
+@testset "Galileo E5a decode! is allocation-free" begin
+    pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
+    # All 152 pages of the capture: page types 1-6, so every ephemeris page, the
+    # WT5/WT6 almanac chain writing the preallocated almanac store, and repeated
+    # promotions to validated `data`.
+    symbols = e5a_symbol_stream(pages)
+    allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test !isempty(allocations.state.data.almanacs)
+    @test allocations.state.data.almanacs[21].WN_a == 2
+
+    # A lone WT6 followed by its WT5: the SVID-3 store without an epoch, then the
+    # in-place epoch back-patch.
+    symbols = e5a_symbol_stream(vcat(pages[1:24], pages[30], pages[25]))
+    allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
+    @test allocations.fresh == 0
+    @test allocations.warm == 0
+    @test allocations.reset == 0
+    @test allocations.state.raw_data.almanacs[21].t_0a == 259200
+
+    # `decode` keeps value semantics on top of it: the input state is untouched.
+    state = GalileoE5aDecoderState(21)
+    decoded = decode(state, symbols, length(symbols))
+    @test decoded.raw_data.almanacs[21].t_0a == 259200
+    @test state == GalileoE5aDecoderState(21)
+    @test isnothing(state.raw_data.almanacs)
+end

@@ -144,106 +144,6 @@ Base.@kwdef struct GalileoReducedCED
     a_f1_red::Union{Nothing,Float64} = nothing
 end
 
-# Page is splitted in even and odd parts
-# Cache even part and decode after odd part
-# Page contains 120 bits
-#
-# Almanac chain partials carry across word types 7-10 within one subframe:
-#   WT7  fills SV-position-1 first half
-#   WT8  fills SV-position-1 second half (flush to almanacs[SVID])
-#         and SV-position-2 first half
-#   WT9  fills SV-position-2 second half (flush)
-#         and SV-position-3 first half
-#   WT10 fills SV-position-3 second half (flush)
-"""
-$(TYPEDEF)
-
-Per-decoder cache for Galileo I/NAV (E1-B and E5b-I).
-
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 250 + 10 = 260), the
-scratch buffer the polarity-resolved page part is copied into, the cached
-even-page bits used to stitch two consecutive pages into a word, and the
-two-position almanac-chain state needed to merge word types 7-10. Soft-symbol
-buffering is shared across all signals; the rest is Galileo-specific.
-
-The Galileo decoder consumes *soft symbols* end-to-end: the page-sync hook
-hard-slices only the two 10-bit preamble windows out of the deque, while the K=7
-NSC FEC is undone on the raw `Float32` LLRs via AFF3CT.jl's `ConvViterbiDecoder`
-(issue #37). The deque-backed input boundary is identical to L1 C/A so the public
-API is uniform.
-
-# Fields
-
-$(TYPEDFIELDS)
-"""
-struct GalileoINAVCache <: AbstractGNSSCache
-    """
-    Soft-symbol buffer (260 = 250 syncro + 10 preamble)
-    """
-    soft_buffer::CircularDeque{Float32}
-    """
-    Polarity-resolved 240-symbol FEC window copied out per decoded page part
-    """
-    soft_page::Vector{Float32}
-    """
-    Bits of the even page part of a word, held until its odd partner arrives;
-    `nothing` when no even part is in flight
-    """
-    even_page_part_bits::Union{Nothing,UInt128}
-    """
-    Almanac of chain position 1, part-filled by one word type and completed by
-    the next (word types 7-10 spread three satellites over four words)
-    """
-    almanac_chain_pos1::GalileoAlmanac
-    """
-    Almanac of chain position 2, filled the same way
-    """
-    almanac_chain_pos2::GalileoAlmanac
-    """
-    Viterbi decoder and its scratch buffers, built once and reused across pages
-    (cf. the GPS L1C-D LDPC decoders)
-    """
-    viterbi::GalileoViterbiScratch
-end
-
-GalileoINAVCache() = GalileoINAVCache(
-    CircularDeque{Float32}(GALILEO_INAV_PAGE_PART_SYMBOLS + GALILEO_INAV_SYNC_SYMBOLS),
-    Vector{Float32}(undef, GALILEO_INAV_VITERBI_N),
-    nothing,
-    GalileoAlmanac(),
-    GalileoAlmanac(),
-    GalileoViterbiScratch(GALILEO_INAV_VITERBI_K, GALILEO_INAV_VITERBI_N),
-)
-
-function GalileoINAVCache(
-    cache::GalileoINAVCache;
-    soft_buffer = cache.soft_buffer,
-    soft_page = cache.soft_page,
-    even_page_part_bits = cache.even_page_part_bits,
-    almanac_chain_pos1 = cache.almanac_chain_pos1,
-    almanac_chain_pos2 = cache.almanac_chain_pos2,
-    viterbi = cache.viterbi,
-)
-    GalileoINAVCache(
-        soft_buffer,
-        soft_page,
-        even_page_part_bits,
-        almanac_chain_pos1,
-        almanac_chain_pos2,
-        viterbi,
-    )
-end
-
-# `soft_page` and the Viterbi handle are scratch, not state — both are
-# overwritten from the deque before they are read — so they are excluded, the way
-# `GalileoE6BCache` excludes its `fec_window`.
-function Base.:(==)(a::GalileoINAVCache, b::GalileoINAVCache)
-    deques_equal(a.soft_buffer, b.soft_buffer) &&
-        a.even_page_part_bits == b.even_page_part_bits &&
-        a.almanac_chain_pos1 == b.almanac_chain_pos1 &&
-        a.almanac_chain_pos2 == b.almanac_chain_pos2
-end
-
 """
     GalileoINAVData
 
@@ -348,11 +248,14 @@ OS SIS ICD, Issue 2.2.
 
 # Almanac (Word Types 7-10)
 
-  - `almanacs::Dictionary{Int,GalileoAlmanac}`: Decoded almanacs keyed by SVID.
-    Entries are inserted as Galileo broadcasts the almanac chain across word
-    types 7→10. SVIDs not yet seen are absent from the dictionary. In-flight
+  - `almanacs::SlotDictionary{GalileoAlmanac,64}`: Decoded almanacs keyed by
+    SVID. Entries are inserted as Galileo broadcasts the almanac chain across
+    word types 7→10. SVIDs not yet seen are absent from the dictionary. In-flight
     chain partials live in the decoder cache and are flushed here only once a
-    full almanac for an SVID has been assembled with a consistent IODa.
+    full almanac for an SVID has been assembled with a consistent IODa. The
+    store is preallocated with one slot per value of the 6-bit SVID field
+    (0-63) and each flush **overwrites** that SVID's slot in place (see
+    [`decode!`](@ref)).
 
 # Reduced Clock and Ephemeris Data (Word Type 16)
 
@@ -430,7 +333,7 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     t_0G::Union{Nothing,Int} = nothing
     WN_0G::Union{Nothing,Int} = nothing
 
-    almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}} = nothing
+    almanacs::Union{Nothing,SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}} = nothing
 
     reduced_ced::GalileoReducedCED = GalileoReducedCED()
 end
@@ -559,9 +462,131 @@ function GalileoINAVData(
 end
 
 # The default `==` for structs falls back to `===`, which is reference equality
-# and so fails for the mutable `almanacs::Dictionary{...}` field even when the
+# and so fails for the mutable `almanacs::SlotDictionary{...}` field even when the
 # contents match. Compare field-by-field.
 Base.:(==)(a::GalileoINAVData, b::GalileoINAVData) = fields_equal(a, b)
+
+# The one container field, at its ICD size: an almanac slot per 6-bit SVID.
+preallocated_data(::Type{GalileoINAVData}) =
+    GalileoINAVData(; almanacs = SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}())
+
+# Page is splitted in even and odd parts
+# Cache even part and decode after odd part
+# Page contains 120 bits
+#
+# Almanac chain partials carry across word types 7-10 within one subframe:
+#   WT7  fills SV-position-1 first half
+#   WT8  fills SV-position-1 second half (flush to almanacs[SVID])
+#         and SV-position-2 first half
+#   WT9  fills SV-position-2 second half (flush)
+#         and SV-position-3 first half
+#   WT10 fills SV-position-3 second half (flush)
+"""
+$(TYPEDEF)
+
+Per-decoder cache for Galileo I/NAV (E1-B and E5b-I).
+
+Holds the soft-symbol `CircularDeque{Float32}` (capacity = 250 + 10 = 260), the
+scratch buffer the polarity-resolved page part is copied into, the cached
+even-page bits used to stitch two consecutive pages into a word, and the
+two-position almanac-chain state needed to merge word types 7-10. Soft-symbol
+buffering is shared across all signals; the rest is Galileo-specific.
+
+The Galileo decoder consumes *soft symbols* end-to-end: the page-sync hook
+hard-slices only the two 10-bit preamble windows out of the deque, while the K=7
+NSC FEC is undone on the raw `Float32` LLRs via AFF3CT.jl's `ConvViterbiDecoder`
+(issue #37). The deque-backed input boundary is identical to L1 C/A so the public
+API is uniform.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoINAVCache <: AbstractGNSSCache
+    """
+    Soft-symbol buffer (260 = 250 syncro + 10 preamble)
+    """
+    soft_buffer::CircularDeque{Float32}
+    """
+    Polarity-resolved 240-symbol FEC window copied out per decoded page part
+    """
+    soft_page::Vector{Float32}
+    """
+    Bits of the even page part of a word, held until its odd partner arrives;
+    `nothing` when no even part is in flight
+    """
+    even_page_part_bits::Union{Nothing,UInt128}
+    """
+    Almanac of chain position 1, part-filled by one word type and completed by
+    the next (word types 7-10 spread three satellites over four words)
+    """
+    almanac_chain_pos1::GalileoAlmanac
+    """
+    Almanac of chain position 2, filled the same way
+    """
+    almanac_chain_pos2::GalileoAlmanac
+    """
+    Viterbi decoder and its scratch buffers, built once and reused across pages
+    (cf. the GPS L1C-D LDPC decoders)
+    """
+    viterbi::GalileoViterbiScratch
+    """
+    Preallocated containers `raw_data` and `data` are decoded into (the almanac
+    store); overwritten in place by `decode!`
+    """
+    storage::DataStorage{GalileoINAVData}
+end
+
+GalileoINAVCache() = GalileoINAVCache(
+    CircularDeque{Float32}(GALILEO_INAV_PAGE_PART_SYMBOLS + GALILEO_INAV_SYNC_SYMBOLS),
+    Vector{Float32}(undef, GALILEO_INAV_VITERBI_N),
+    nothing,
+    GalileoAlmanac(),
+    GalileoAlmanac(),
+    GalileoViterbiScratch(GALILEO_INAV_VITERBI_K, GALILEO_INAV_VITERBI_N),
+    DataStorage{GalileoINAVData}(),
+)
+
+function GalileoINAVCache(
+    cache::GalileoINAVCache;
+    soft_buffer = cache.soft_buffer,
+    soft_page = cache.soft_page,
+    even_page_part_bits = cache.even_page_part_bits,
+    almanac_chain_pos1 = cache.almanac_chain_pos1,
+    almanac_chain_pos2 = cache.almanac_chain_pos2,
+    viterbi = cache.viterbi,
+    storage = cache.storage,
+)
+    GalileoINAVCache(
+        soft_buffer,
+        soft_page,
+        even_page_part_bits,
+        almanac_chain_pos1,
+        almanac_chain_pos2,
+        viterbi,
+        storage,
+    )
+end
+
+# `soft_page` and the Viterbi handle are scratch, not state — both are
+# overwritten from the deque before they are read — so they are excluded, the way
+# `GalileoE6BCache` excludes its `fec_window`. `storage` only backs the
+# containers `raw_data` and `data` reference, which the state compares itself.
+function Base.:(==)(a::GalileoINAVCache, b::GalileoINAVCache)
+    deques_equal(a.soft_buffer, b.soft_buffer) &&
+        a.even_page_part_bits == b.even_page_part_bits &&
+        a.almanac_chain_pos1 == b.almanac_chain_pos1 &&
+        a.almanac_chain_pos2 == b.almanac_chain_pos2
+end
+
+# Flush a completed almanac-chain position into the raw almanac store,
+# **overwriting** its SVID's slot in place, and return the store to put back
+# into `raw_data`.
+function flush_almanac!(state::GNSSDecoderState{<:GalileoINAVData}, almanac::GalileoAlmanac)
+    almanacs = writable_container(state.raw_data.almanacs, state.cache.storage.raw.almanacs)
+    set!(almanacs, something(almanac.SVID), almanac)
+    return almanacs
+end
 
 # `is_ephemeris_decoded` and `is_clock_correction_decoded` are per-constellation
 # facts (identical fields for I/NAV and F/NAV), defined once on
@@ -996,7 +1021,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 )
                 almanacs = state.raw_data.almanacs
                 if completed_pos1.IOD_a == IOD_a && !isnothing(completed_pos1.SVID)
-                    almanacs = _merge_keyed(almanacs, completed_pos1.SVID, completed_pos1)
+                    almanacs = flush_almanac!(state, completed_pos1)
                 end
                 almanac_pos2 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, Ω_0, Ω_dot, IOD_a)
                 valid_SVID = SVID >= 1
@@ -1041,7 +1066,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 )
                 almanacs = state.raw_data.almanacs
                 if completed_pos2.IOD_a == IOD_a && !isnothing(completed_pos2.SVID)
-                    almanacs = _merge_keyed(almanacs, completed_pos2.SVID, completed_pos2)
+                    almanacs = flush_almanac!(state, completed_pos2)
                 end
                 almanac_pos3 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, IOD_a, WN_a, t_0a)
                 valid_SVID = SVID >= 1
@@ -1091,7 +1116,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoINAVData}, ::Bo
                 )
                 almanacs = state.raw_data.almanacs
                 if completed_pos3.IOD_a == IOD_a && !isnothing(completed_pos3.SVID)
-                    almanacs = _merge_keyed(almanacs, completed_pos3.SVID, completed_pos3)
+                    almanacs = flush_almanac!(state, completed_pos3)
                 end
                 state = GNSSDecoderState(
                     state;
@@ -1169,9 +1194,12 @@ function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
                 (state.raw_data.num_pages_after_last_TOW + 1) *
                 state.constants.syncro_sequence_length
         end
+        # `data` gets its own copy of the almanac store (`publish_data`
+        # overwrites the preallocated validated one), so later almanac words
+        # written into `raw_data` do not leak into `data` before the next promotion.
         state = GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence,
         )
     end
