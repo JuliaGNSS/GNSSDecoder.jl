@@ -26,3 +26,18 @@ function decode_allocations(make_state, symbols::Vector{Float32})
     reset = @allocated(state = decode!(reset_decoder_state!(state), symbols, n))
     return (; fresh, warm, reset, state)
 end
+
+"""
+    copy_decode_allocations(make_state, symbols) -> Int
+
+Bytes `decode!` allocates on a `copy` of a state that has already decoded
+`symbols` once: `copy` must keep every buffer's capacity (the voting tallies
+grow within it), so the copy stays allocation-free too.
+"""
+function copy_decode_allocations(make_state, symbols::Vector{Float32})
+    n = length(symbols)
+    state = decode!(make_state(), symbols, n)
+    decode!(reset_decoder_state!(copy(state)), symbols, n)
+    copied = reset_decoder_state!(copy(state))
+    return @allocated decode!(copied, symbols, n)
+end

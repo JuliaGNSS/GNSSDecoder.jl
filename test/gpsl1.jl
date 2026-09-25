@@ -759,6 +759,7 @@ end
     @test allocations.reset == 0
     @test is_decoding_completed_for_positioning(allocations.state)
     @test !isnothing(allocations.state.data.almanacs)
+    @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0
 
     # `decode` keeps value semantics on top of it: the input state is untouched.
     state = GPSL1CADecoderState(25)

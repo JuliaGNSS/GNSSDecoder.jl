@@ -369,10 +369,16 @@ which `juliac --trim` then reports as an unresolved call.
 # already exist when the generated function is defined.
 @generated duplicate(x::T) where {T} = duplicate_expr(T, :x, 0)
 
+# The number of elements `x` can hold before `push!` reallocates, so `duplicate`
+# can give the copy the same headroom (the voting tallies rely on it).
 @static if VERSION >= v"1.11"
     vector_capacity(x::Vector) = length(x.ref.mem)
 else
-    vector_capacity(x::Vector) = length(x)
+    # Julia 1.10 has no `Memory`; the capacity is the `maxsize` field of the C
+    # `jl_array_t` header (data, length, flags/elsize/offset, nrows, maxsize).
+    vector_capacity(x::Vector) = GC.@preserve x Int(
+        unsafe_load(Ptr{Csize_t}(pointer_from_objref(x) + 4 * sizeof(Ptr{Cvoid}))),
+    )
 end
 
 """
