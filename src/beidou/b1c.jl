@@ -319,12 +319,17 @@ Present on every defined page type, refreshed whenever any page decodes:
   - `t_EOP::Int64`: EOP reference time of week (s).
   - `PM_X,PM_X_dot,PM_Y,PM_Y_dot::Float64`: polar motion (arc-seconds, arc-seconds/day).
   - `ΔUT1::Float64`, `ΔUT1_dot::Float64`: UT1-UTC difference (s) and rate (s/day).
-  - `bgtos::Dictionary{Int,BeiDouB1CBGTO}`: BDT-GNSS time offsets keyed by GNSS ID.
+  - `bgtos::SlotDictionary{BeiDouB1CBGTO,8}`: BDT-GNSS time offsets keyed by the
+    3-bit GNSS ID (1-7). Overwritten in place by [`decode!`](@ref).
 
 # Subframe 3, page types 2/4 — keyed almanac dictionaries
 
-  - `reduced_almanacs::Dictionary{Int,BeiDouReducedAlmanac}` (page type 2).
-  - `midi_almanacs::Dictionary{Int,BeiDouMidiAlmanac}` (page type 4).
+  - `reduced_almanacs::SlotDictionary{BeiDouReducedAlmanac,64}` (page type 2).
+  - `midi_almanacs::SlotDictionary{BeiDouMidiAlmanac,64}` (page type 4).
+
+Both are keyed by `PRN_a` (1-63) and, like `bgtos`, preallocated in the
+decoder's cache and overwritten in place by [`decode!`](@ref): one slot per
+key, so a newer almanac for a PRN overwrites the older one.
 
 # Counters
 
@@ -410,11 +415,11 @@ Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouCNAVData
     PM_Y_dot::Union{Nothing,Float64} = nothing
     ΔUT1::Union{Nothing,Float64} = nothing
     ΔUT1_dot::Union{Nothing,Float64} = nothing
-    bgtos::Union{Nothing,Dictionary{Int,BeiDouB1CBGTO}} = nothing
+    bgtos::Union{Nothing,SlotDictionary{BeiDouB1CBGTO,8}} = nothing
 
     # --- Subframe 3, page types 2/4: per-SV keyed dictionaries ---
-    reduced_almanacs::Union{Nothing,Dictionary{Int,BeiDouReducedAlmanac}} = nothing
-    midi_almanacs::Union{Nothing,Dictionary{Int,BeiDouMidiAlmanac}} = nothing
+    reduced_almanacs::Union{Nothing,SlotDictionary{BeiDouReducedAlmanac,64}} = nothing
+    midi_almanacs::Union{Nothing,SlotDictionary{BeiDouMidiAlmanac,64}} = nothing
 
     num_sf3_pages_received::Int = 0
 end
@@ -566,9 +571,17 @@ function BeiDouB1CData(
     )
 end
 
-# The default struct `==` falls back to `===` for the mutable `Dictionary`
+# The default struct `==` falls back to `===` for the mutable `SlotDictionary`
 # fields; compare field-by-field (mirrors `GPSL1C_DData`).
 Base.:(==)(a::BeiDouB1CData, b::BeiDouB1CData) = fields_equal(a, b)
+
+# Every container field at its ICD size: one BGTO slot per 3-bit GNSS ID and
+# one almanac slot per PRN (1-63).
+preallocated_data(::Type{BeiDouB1CData}) = BeiDouB1CData(;
+    bgtos = SlotDictionary{BeiDouB1CBGTO,8}(),
+    reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
+    midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
+)
 
 """
 $(TYPEDEF)
@@ -625,6 +638,11 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     The subframe-3 rows of `array_rows`, concatenated into its 528-symbol codeword
     """
     sf3_symbols::Vector{Float32}
+    """
+    Preallocated containers `raw_data` and `data` are decoded into (almanac and
+    BGTO stores), overwritten in place by [`decode!`](@ref)
+    """
+    storage::DataStorage{BeiDouB1CData}
 end
 
 function BeiDouB1CCache(prn::Int)
@@ -637,6 +655,7 @@ function BeiDouB1CCache(prn::Int)
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_SF2_SYMBOLS),
         Vector{Float32}(undef, B1C_SF3_SYMBOLS),
+        DataStorage{BeiDouB1CData}(),
     )
 end
 
@@ -1114,7 +1133,9 @@ end
 # SISMAI(4) at bits 7-15, page-specific fields, and a trailing CRC-24Q. After
 # the CRC passes the 264 bits are packed MSB-first into a `UInt288`
 # (`get_bits(word, 264, …)` addresses the right-aligned logical bits); we
-# dispatch on the PageID and merge parsed fields into `raw_data` immutably.
+# dispatch on the PageID and merge parsed fields into `raw_data`. The keyed
+# stores (almanacs, BGTOs) are overwritten in place: their preallocated spares
+# come from `state.cache.storage.raw` (see `writable_container`).
 
 function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symbols)
     word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
@@ -1142,11 +1163,11 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
     raw = if page == 1
         parse_b1c_sf3_page1(raw, word)
     elseif page == 2
-        parse_b1c_sf3_page2(raw, word, state.constants.PI)
+        parse_b1c_sf3_page2!(raw, word, state.constants.PI, state.cache.storage.raw)
     elseif page == 3
-        parse_b1c_sf3_page3(raw, word)
+        parse_b1c_sf3_page3!(raw, word, state.cache.storage.raw)
     elseif page == 4
-        parse_b1c_sf3_page4(raw, word, state.constants.PI)
+        parse_b1c_sf3_page4!(raw, word, state.constants.PI, state.cache.storage.raw)
     else
         raw  # invalid/reserved page: counted, ignored
     end
@@ -1178,8 +1199,16 @@ end
 
 """
 Subframe 3, page type 2 — SISAI + four reduced almanacs (ICD Figures 6-9, 6-18).
+
+Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
+while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b1c_sf3_page2(raw::BeiDouB1CData, word::UInt288, PI::Float64)
+function parse_b1c_sf3_page2!(
+    raw::BeiDouB1CData,
+    word::UInt288,
+    PI::Float64,
+    spare::BeiDouB1CData,
+)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     WN_a = Int(get_bits(word, word_length, 38, 13))
@@ -1189,15 +1218,19 @@ function parse_b1c_sf3_page2(raw::BeiDouB1CData, word::UInt288, PI::Float64)
     for start in (59, 97, 135, 173)
         packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
         isnothing(packet) && continue
-        almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
+        almanacs = writable_container(almanacs, spare.reduced_almanacs)
+        set!(almanacs, packet.PRN_a, packet)
     end
     BeiDouB1CData(raw; reduced_almanacs = almanacs)
 end
 
 """
 Subframe 3, page type 3 — SISAI + EOP + BGTO (ICD Figures 6-10, 6-19, 6-20).
+
+Overwrites the broadcast GNSS ID's slot of `raw.bgtos` in place — or, while that
+is still `nothing`, of the preallocated `spare.bgtos`.
 """
-function parse_b1c_sf3_page3(raw::BeiDouB1CData, word::UInt288)
+function parse_b1c_sf3_page3!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
     word_length = B1C_SF3_INFO_BITS
     raw = BeiDouB1CData(
         raw;
@@ -1210,19 +1243,31 @@ function parse_b1c_sf3_page3(raw::BeiDouB1CData, word::UInt288)
     GNSS_ID = Int(get_bits(word, word_length, 159, 3))
     GNSS_ID == 0 && return raw
     bgto = BeiDouB1CBGTO(; beidou_bgto_block(word, word_length, 159)...)
-    BeiDouB1CData(raw; bgtos = _merge_keyed(raw.bgtos, GNSS_ID, bgto))
+    bgtos = writable_container(raw.bgtos, spare.bgtos)
+    set!(bgtos, GNSS_ID, bgto)
+    BeiDouB1CData(raw; bgtos)
 end
 
 """
 Subframe 3, page type 4 — SISAI + one midi almanac (ICD Figures 6-11, 6-21, Table 7-13).
+
+Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
+that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b1c_sf3_page4(raw::BeiDouB1CData, word::UInt288, PI::Float64)
+function parse_b1c_sf3_page4!(
+    raw::BeiDouB1CData,
+    word::UInt288,
+    PI::Float64,
+    spare::BeiDouB1CData,
+)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     # Midi almanac (Figure 6-21), bits 38-193.
     alm = beidou_midi_almanac(word, word_length, 38, PI)
     isnothing(alm) && return raw  # empty almanac slot
-    BeiDouB1CData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, alm.PRN_a, alm))
+    midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
+    set!(midi_almanacs, alm.PRN_a, alm)
+    BeiDouB1CData(raw; midi_almanacs)
 end
 
 """
@@ -1233,6 +1278,10 @@ subframe 2, and the subframe-3 health status) and the ephemeris and clock sets
 are a matched pair. The per-frame BCH re-check and monotonic-SOH enforcement
 are performed inline by [`decode_syncro_sequence`](@ref); this hook publishes
 validated data and arms the streaming counter.
+
+Promotion overwrites the preallocated validated containers with the raw ones
+(`publish_data`), so `data` never shares an almanac or BGTO store with
+`raw_data`, which later frames keep writing into.
 
 Sharing one CRC-protected block does not make IODE and IODC a matched pair —
 see [`is_decoding_completed_for_positioning`](@ref), which carries that gate.
@@ -1248,7 +1297,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB1CData})
     if is_decoding_completed_for_positioning(state.raw_data)
         return GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
                                                    state.constants.preamble_length,
         )
