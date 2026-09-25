@@ -334,11 +334,13 @@ D2 page 3 is the clock page; the ephemeris starts on page 4 with `Δn` and
 
 # D1 Subframes 4-5 - Almanac, Health, Time Offsets
 
-  - `almanacs::Dictionary{Int,BeiDouDNAVAlmanac}`: Per-SVID almanacs (SV 1-30,
-    plus SV 31-63 when the expanded almanac is broadcast)
+  - `almanacs::SlotDictionary{BeiDouDNAVAlmanac,64}`: Per-SVID almanacs (SV 1-30,
+    plus SV 31-63 when the expanded almanac is broadcast). One preallocated
+    slot per SV ID; a decoded page overwrites its SV's slot in place.
 
-  - `health::Dictionary{Int,UInt16}`: Per-SVID 9-bit satellite health
-    information words (Table 5-16; 0 = fully healthy)
+  - `health::SlotDictionary{UInt16,64}`: Per-SVID 9-bit satellite health
+    information words (Table 5-16; 0 = fully healthy). One preallocated slot
+    per SV ID; a decoded health page overwrites its SVs' slots in place.
 
   - `AmEpID::Int64`: Identification of expanded almanacs (§5.2.4.14)
 
@@ -414,8 +416,8 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     C_is::Union{Nothing,Float64} = nothing
 
     # D1 subframes 4/5: almanac, health, time offsets
-    almanacs::Union{Nothing,Dictionary{Int,BeiDouDNAVAlmanac}} = nothing
-    health::Union{Nothing,Dictionary{Int,UInt16}} = nothing
+    almanacs::Union{Nothing,SlotDictionary{BeiDouDNAVAlmanac,64}} = nothing
+    health::Union{Nothing,SlotDictionary{UInt16,64}} = nothing
     AmEpID::Union{Nothing,Int64} = nothing
     WN_a::Union{Nothing,Int64} = nothing
     t_0a::Union{Nothing,Int64} = nothing
@@ -433,7 +435,7 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     DN::Union{Nothing,Int64} = nothing
 end
 
-function BeiDouDNAVData(
+@inline function BeiDouDNAVData(
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
     SOW = data.SOW,
@@ -555,7 +557,7 @@ function BeiDouDNAVData(
 end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
-# for the mutable `almanacs` and `health` `Dictionary` fields even when their
+# for the mutable `almanacs` and `health` `SlotDictionary` fields even when their
 # contents match. Compare field-by-field (mirrors `GPSL1CAData`, the LNAV
 # decoder this one is modelled on).
 #
@@ -594,9 +596,13 @@ the data-voting tally used by `confirm_data` (mirroring GPS L1 C/A), and —
 for GEO satellites — the D2 subframe-1 page collection: the fundamental
 navigation data of D2 is spread over pages 1-10 (one page per 3 s frame,
 BDS-SIS-ICD-B1I-3.0 §5.3.2), so decoded pages are staged here until all ten
-are present with a consistent SOW chain. Following the framework convention,
-only the soft buffer is mutated in place; tally and pages are rebuilt
-immutably and threaded through a new cache.
+are present with a consistent SOW chain.
+
+Every container here is preallocated at construction and **overwritten in
+place** by [`decode!`](@ref): the soft buffer, the voting tally (capped at
+`DNAV_MAX_VOTE_CANDIDATES` entries), the D2 page store (one slot per Pnum1)
+and the `storage` behind `raw_data` / `data`. Only `sow_is_fresh` is threaded
+through a rebuilt cache.
 
 # Fields
 
@@ -608,38 +614,57 @@ struct BeiDouDNAVCache <: AbstractGNSSCache
     """
     soft_buffer::CircularDeque{Float32}
     """
-    Voting tally used by `confirm_data` for subframe-level data validation
+    Voting tally used by `confirm_data` for subframe-level data validation,
+    overwritten in place and capped at `DNAV_MAX_VOTE_CANDIDATES` entries
     """
     old_data::Vector{VotedBeiDouDNAVData}
     """
-    D2 only: subframe-1 pages collected so far, keyed by Pnum1 (1-10)
+    D2 only: subframe-1 pages collected so far, keyed by Pnum1 (1-10); a
+    decoded page overwrites its slot in place
     """
-    d2_pages::Dictionary{Int,BeiDouD2Page}
+    d2_pages::SlotDictionary{BeiDouD2Page,11}
     """
     Whether the subframe just decoded delivered a SOW that passed the screen
     (see `is_dnav_SOW_from_this_subframe`)
     """
     sow_is_fresh::Bool
+    """
+    Preallocated containers `raw_data` and `data` are decoded into
+    """
+    storage::DataStorage{BeiDouDNAVData}
 end
+
+# Distinct datasets the voting tally keeps at once. The broadcast only changes
+# at an upload, so more than two live candidates means mis-corrected words;
+# eight leaves ample room before the weakest is evicted (as for GPS L1 C/A).
+const DNAV_MAX_VOTE_CANDIDATES = 8
 
 function BeiDouDNAVCache()
     BeiDouDNAVCache(
         CircularDeque{Float32}(DNAV_WINDOW_BITS),
-        Vector{VotedBeiDouDNAVData}(),
-        Dictionary{Int,BeiDouD2Page}(),
+        sizehint!(Vector{VotedBeiDouDNAVData}(), DNAV_MAX_VOTE_CANDIDATES),
+        SlotDictionary{BeiDouD2Page,11}(),
         false,
+        DataStorage{BeiDouDNAVData}(),
     )
 end
 
-function BeiDouDNAVCache(
-    cache::BeiDouDNAVCache;
-    soft_buffer = cache.soft_buffer,
-    old_data = cache.old_data,
-    d2_pages = cache.d2_pages,
-    sow_is_fresh = cache.sow_is_fresh,
-)
-    BeiDouDNAVCache(soft_buffer, old_data, d2_pages, sow_is_fresh)
+function BeiDouDNAVCache(cache::BeiDouDNAVCache; sow_is_fresh = cache.sow_is_fresh)
+    BeiDouDNAVCache(
+        cache.soft_buffer,
+        cache.old_data,
+        cache.d2_pages,
+        sow_is_fresh,
+        cache.storage,
+    )
 end
+
+# Every container field at its ICD size: one almanac and one health slot per
+# SV ID (1-63).
+preallocated_data(::Type{BeiDouDNAVData}) = BeiDouDNAVData(;
+    almanacs = SlotDictionary{BeiDouDNAVAlmanac,64}(),
+    health = SlotDictionary{UInt16,64}(),
+)
 
 function Base.:(==)(a::BeiDouDNAVCache, b::BeiDouDNAVCache)
     deques_equal(a.soft_buffer, b.soft_buffer) &&
@@ -897,13 +922,15 @@ function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         dnav_symbols_per_second(state.prn),
     )
     is_plausible || return state
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    raw_data = @split_nothing num_bits BeiDouDNAVData(
+        state.raw_data;
+        SOW = SOW_count,
+        num_bits_after_valid_syncro_sequence_after_last_SOW = num_bits,
+    )
     GNSSDecoderState(
         state;
-        raw_data = BeiDouDNAVData(
-            state.raw_data;
-            SOW = SOW_count,
-            num_bits_after_valid_syncro_sequence_after_last_SOW = num_bits,
-        ),
+        raw_data,
         cache = BeiDouDNAVCache(state.cache; sow_is_fresh = true),
     )
 end
@@ -975,8 +1002,11 @@ end
 # key the voting dataset and pass every other check.
 function with_assembled_t_0e(data::BeiDouDNAVData, prev_subframe_id::Int)
     prev_subframe_id == 2 || return data
-    (isnothing(data.t_0e_msb2) || isnothing(data.t_0e_lsb15)) && return data
-    BeiDouDNAVData(data; t_0e = (data.t_0e_msb2 << 15 | data.t_0e_lsb15) << 3)
+    # Locals: Julia 1.10 does not narrow a field read through `isnothing`.
+    msb2 = data.t_0e_msb2
+    lsb15 = data.t_0e_lsb15
+    (msb2 === nothing || lsb15 === nothing) && return data
+    BeiDouDNAVData(data; t_0e = (msb2 << 15 | lsb15) << 3)
 end
 
 function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
@@ -1033,7 +1063,9 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
     # An all-zero √A marks an empty/dummy almanac slot (no satellite has a
     # zero semi-major axis); skip it rather than store zeros.
     sqrt_A_raw == 0 && return state
-    entry = BeiDouDNAVAlmanac(;
+    WN_a = state.raw_data.WN_a
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    entry = @split_nothing WN_a BeiDouDNAVAlmanac(;
         sqrt_A = sqrt_A_raw / (1 << 11),
         a_f1 = dnav_signed(content, 91, 11) / 2.0^38,
         a_f0 = dnav_signed(content, 102, 11) / (1 << 20),
@@ -1047,23 +1079,24 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
         # Snapshot the reference week in force now: the page carries its own
         # t_0a but no week, and the global `WN_a` moves on at the next
         # almanac changeover.
-        WN_a = state.raw_data.WN_a,
+        WN_a,
     )
-    almanacs = _merge_keyed(state.raw_data.almanacs, Int(sv_id), entry)
+    # Overwrites this SV's slot of the preallocated almanac store in place.
+    almanacs = writable_container(state.raw_data.almanacs, state.cache.storage.raw.almanacs)
+    set!(almanacs, Int(sv_id), entry)
     GNSSDecoderState(state; raw_data = BeiDouDNAVData(state.raw_data; almanacs))
 end
 
 # Store `count` consecutive 9-bit health words (Table 5-16) starting at the
-# content position of ICD bit 51, for SV IDs `first_sv_id .. first_sv_id+count-1`.
+# content position of ICD bit 51, for SV IDs `first_sv_id .. first_sv_id+count-1`,
+# overwriting those SVs' slots of the preallocated health store in place.
 function decode_d1_health_page(
     state::GNSSDecoderState{<:BeiDouDNAVData},
     content,
     first_sv_id::Int,
     count::Int,
 )
-    health =
-        isnothing(state.raw_data.health) ? Dictionary{Int,UInt16}() :
-        copy(state.raw_data.health)
+    health = writable_container(state.raw_data.health, state.cache.storage.raw.health)
     start = dnav_content_position(51)
     for k = 0:(count-1)
         code = UInt16(get_bits(content, DNAV_CONTENT_BITS, start + 9k, 9))
@@ -1259,8 +1292,11 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
             32,
         ) * PI / 2.0^31,
         C_us = sext(C_us_raw, 18) / 2.0^31,
-        e = Float64(e_raw) / 2.0^33,
-        sqrt_A = Float64(sqrt_A_raw) / 2.0^19,
+        # Through `Int64` (exact for these 32-bit fields), as the D1 parser
+        # does: `Float64(::UInt320)` goes through BitIntegers' generic
+        # conversion, which allocates.
+        e = Int64(e_raw) / 2.0^33,
+        sqrt_A = Int64(sqrt_A_raw) / 2.0^19,
         C_ic = sext(C_ic_raw, 18) / 2.0^31,
         C_is = dnav_signed(c(7), 63, 18) / 2.0^31,
         t_0e = Int64(t_0e_raw) << 3,
@@ -1284,15 +1320,18 @@ function decode_d2_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     isnothing(sow) && return state
     pnum1 = Int(dnav_bits(content, 43, 4))
     pnum1 in 1:10 || return state
-    pages = copy(state.cache.d2_pages)
+    # Overwrites this page's slot of the cache's page store in place.
+    pages = state.cache.d2_pages
     set!(pages, pnum1, BeiDouD2Page(sow, content))
-    state = GNSSDecoderState(state; cache = BeiDouDNAVCache(state.cache; d2_pages = pages))
     # Parse only when all ten pages of one 30-second broadcast cycle are
     # present: page p must carry SOW(page 1) + 3(p-1) (one page per 3 s frame).
-    all(p -> haskey(pages, p), 1:10) || return state
+    for p = 1:10
+        haskey(pages, p) || return state
+    end
     sow1 = pages[1].sow
-    all(p -> pages[p].sow == mod(sow1 + 3 * (p - 1), SECONDS_PER_WEEK), 1:10) ||
-        return state
+    for p = 2:10
+        pages[p].sow == mod(sow1 + 3 * (p - 1), SECONDS_PER_WEEK) || return state
+    end
     parse_d2_pages(state, pages)
 end
 
@@ -1391,14 +1430,6 @@ end
 
 dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 
-# Thread an updated voting tally through a new cache (see GPS L1 C/A's
-# `with_old_data`).
-dnav_with_old_data(state, new_old_data; kwargs...) = GNSSDecoderState(
-    state;
-    cache = BeiDouDNAVCache(state.cache; old_data = new_old_data),
-    kwargs...,
-)
-
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
 # the epoch the SOW stamps, so that a consumer reads the current time as
 # `SOW + num_bits_after_valid_syncro_sequence / get_data_frequency(state)`.
@@ -1417,27 +1448,36 @@ dnav_with_old_data(state, new_old_data; kwargs...) = GNSSDecoderState(
 # happens with a SOW decoded in this very subframe (`validate_data` enforces
 # that via `is_dnav_SOW_from_this_subframe`), so the anchor being rebased
 # equals the counter being replaced.
-function dnav_promote_data(state, new_old_data)
+#
+# `data` gets its own copy of every container (`publish_data` overwrites the
+# preallocated validated ones), so later pages written into `raw_data`'s
+# containers do not leak into `data` before they are voted on.
+function dnav_promote_data(state)
     anchor = state.constants.syncro_sequence_length + state.constants.preamble_length
     promoted = BeiDouDNAVData(
         state.raw_data;
         num_bits_after_valid_syncro_sequence_after_last_SOW = anchor,
     )
-    dnav_with_old_data(
-        state,
-        new_old_data;
+    GNSSDecoderState(
+        state;
         raw_data = promoted,
-        data = promoted,
+        data = publish_data(state.cache.storage, promoted),
         num_bits_after_valid_syncro_sequence = anchor,
     )
 end
 
+# The voting tally `state.cache.old_data` is overwritten in place throughout.
 function dnav_confirm_data(state, max_vote = 20)
     old_data = state.cache.old_data
     key = dnav_dataset_key(state.raw_data)
 
-    matching_idx = findfirst(old_data) do entry
-        dnav_dataset_key(entry.data) == key && dnav_compare_data(entry.data, state.raw_data)
+    matching_idx = nothing
+    for (i, entry) in enumerate(old_data)
+        if dnav_dataset_key(entry.data) == key &&
+           dnav_compare_data(entry.data, state.raw_data)
+            matching_idx = i
+            break
+        end
     end
 
     # The non-promoting branches clear `raw_data` for the next vote round, but
@@ -1446,9 +1486,12 @@ function dnav_confirm_data(state, max_vote = 20)
     # unscreened — and BCH(15,11,1) is a perfect code, so a two-error SOW word
     # mis-corrects silently; one such accepted SOW then fails every honest
     # subframe against the elapsed-symbol prediction until an external reset.
-    cleared = BeiDouDNAVData(;
-        SOW = state.raw_data.SOW,
-        num_bits_after_valid_syncro_sequence_after_last_SOW = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW,
+    SOW = state.raw_data.SOW
+    anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    cleared = @split_nothing (SOW, anchor) BeiDouDNAVData(;
+        SOW,
+        num_bits_after_valid_syncro_sequence_after_last_SOW = anchor,
     )
 
     if isnothing(matching_idx)
@@ -1460,8 +1503,12 @@ function dnav_confirm_data(state, max_vote = 20)
         # only thing standing between a mis-correction and `state.data`, so
         # first-fix promotion would walk straight past it. The cost is one
         # extra broadcast cycle before the first fix.
-        new_old_data = push!(copy(old_data), VotedBeiDouDNAVData(0, state.raw_data))
-        return dnav_with_old_data(state, new_old_data; raw_data = cleared)
+        push_vote_candidate!(
+            old_data,
+            VotedBeiDouDNAVData(0, state.raw_data),
+            DNAV_MAX_VOTE_CANDIDATES,
+        )
+        return GNSSDecoderState(state; raw_data = cleared)
     end
 
     curr_score = old_data[matching_idx].vote
@@ -1476,26 +1523,24 @@ function dnav_confirm_data(state, max_vote = 20)
     end
 
     if best_score > curr_score
-        new_old_data = copy(old_data)
-        new_old_data[matching_idx] = VotedBeiDouDNAVData(new_vote, state.raw_data)
-        return dnav_with_old_data(state, new_old_data; raw_data = cleared)
+        old_data[matching_idx] = VotedBeiDouDNAVData(new_vote, state.raw_data)
+        return GNSSDecoderState(state; raw_data = cleared)
     end
 
-    new_old_data = if new_vote == max_vote && length(old_data) > 1
-        [VotedBeiDouDNAVData(new_vote, state.raw_data)]
+    if new_vote == max_vote && length(old_data) > 1
+        # Max votes reached - keep only this entry
+        replace_vote_candidates!(old_data, VotedBeiDouDNAVData(new_vote, state.raw_data))
     else
-        updated = copy(old_data)
-        updated[matching_idx] = VotedBeiDouDNAVData(new_vote, state.raw_data)
-        updated
+        old_data[matching_idx] = VotedBeiDouDNAVData(new_vote, state.raw_data)
     end
 
-    dnav_promote_data(state, new_old_data)
+    dnav_promote_data(state)
 end
 
 function validate_data(state::GNSSDecoderState{<:BeiDouDNAVData})
     # Promotion re-anchors the symbol counter to this subframe's SOW epoch, so
     # it may only run for a SOW decoded from the subframe that just synced.
-    # `decode` calls this hook after *every* sync, including the D2 subframes
+    # `decode!` calls this hook after *every* sync, including the D2 subframes
     # 2-5 that carry no SOW at all.
     is_dnav_SOW_from_this_subframe(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)
@@ -1509,8 +1554,9 @@ $(TYPEDSIGNATURES)
 
 Reset a BeiDou B1I/B3I decoder state after a signal loss or reacquisition.
 
-Clears the soft-symbol buffer, the seconds-of-week field (and its
-symbol-counter anchor), and the staged D2 pages, while preserving the other
+Clears the soft-symbol buffer and the staged D2 pages (both emptied in
+place, overwriting `state`'s buffers), the seconds-of-week field (and its
+symbol-counter anchor), and the validated `data`, while preserving the other
 decoded parameters in `raw_data`. This allows faster recovery after brief
 signal outages without a full re-decode of all subframes.
 
@@ -1520,8 +1566,11 @@ signal outages without a full re-decode of all subframes.
     broadcast only in subframe 1 (D1) / page 1 (D2); a week rollover during
     the outage yields a briefly stale week number.
 """
-function reset_decoder_state(state::GNSSDecoderState{<:BeiDouDNAVData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouDNAVData})
+    # Overwrites the soft buffer and the staged D2 pages: both are emptied in
+    # place.
     empty!(state.cache.soft_buffer)
+    empty!(state.cache.d2_pages)
     GNSSDecoderState(
         state;
         raw_data = BeiDouDNAVData(
@@ -1530,11 +1579,7 @@ function reset_decoder_state(state::GNSSDecoderState{<:BeiDouDNAVData})
             num_bits_after_valid_syncro_sequence_after_last_SOW = nothing,
         ),
         data = BeiDouDNAVData(),
-        cache = BeiDouDNAVCache(
-            state.cache;
-            d2_pages = Dictionary{Int,BeiDouD2Page}(),
-            sow_is_fresh = false,
-        ),
+        cache = BeiDouDNAVCache(state.cache; sow_is_fresh = false),
         num_bits_after_valid_syncro_sequence = nothing,
     )
 end

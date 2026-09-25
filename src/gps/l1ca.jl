@@ -171,7 +171,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
 
 # Subframe 5 Pages 1-24 - Almanac
 
-  - `almanacs::Dictionary{Int64,GPSL1CAAlmanac}`: Per-SV almanacs, keyed by SV ID
+  - `almanacs::SlotDictionary{GPSL1CAAlmanac,33}`: Per-SV almanacs, keyed by SV ID
   - `t_0a::Int64`: Almanac reference time of week (s; the ICD writes `toa`)
   - `WN_a::Int64`: Almanac reference week number (modulo 256)
 
@@ -250,7 +250,7 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     sv_health_sf4_25::Union{Nothing,Vector{Int64}} = nothing
 
     # Subframe 5 pages 1-24: Almanac data (stored per SV ID)
-    almanacs::Union{Nothing,Dictionary{Int64,GPSL1CAAlmanac}} = nothing
+    almanacs::Union{Nothing,SlotDictionary{GPSL1CAAlmanac,33}} = nothing
 
     # Subframe 5 page 25: SV health for SV 1-24 (6-bit health words)
     sv_health_sf5_25::Union{Nothing,Vector{Int64}} = nothing
@@ -260,7 +260,7 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     WN_a::Union{Nothing,Int64} = nothing
 end
 
-function GPSL1CAData(
+@inline function GPSL1CAData(
     data::GPSL1CAData;
     last_subframe_id = data.last_subframe_id,
     integrity_status_flag = data.integrity_status_flag,
@@ -431,32 +431,39 @@ struct GPSL1CACache <: AbstractGNSSCache
     """
     soft_buffer::CircularDeque{Float32}
     """
-    Voting tally used by `confirm_data` for subframe-level data validation
+    Voting tally used by `confirm_data` for subframe-level data validation,
+    overwritten in place and capped at `GPSL1CA_MAX_VOTE_CANDIDATES` entries
     """
     old_data::Vector{VotedGPSL1CAData}
+    """
+    Preallocated containers `raw_data` and `data` are decoded into
+    """
+    storage::DataStorage{GPSL1CAData}
 end
 
-function GPSL1CACache()
-    GPSL1CACache(CircularDeque{Float32}(308), Vector{VotedGPSL1CAData}())
+# Distinct IODC candidates the voting tally keeps at once. Broadcast data only
+# changes at an upload, so more than two live candidates means bit errors that
+# slipped past parity; eight leaves ample room before the weakest is evicted.
+const GPSL1CA_MAX_VOTE_CANDIDATES = 8
+
+function GPSL1CACache(old_data::Vector{VotedGPSL1CAData} = VotedGPSL1CAData[])
+    # Seeding `old_data` is how the tests start from a known tally (fresh, empty
+    # soft buffer).
+    GPSL1CACache(
+        CircularDeque{Float32}(308),
+        sizehint!(copy(old_data), GPSL1CA_MAX_VOTE_CANDIDATES),
+        DataStorage{GPSL1CAData}(),
+    )
 end
 
-function GPSL1CACache(old_data::Vector{VotedGPSL1CAData})
-    # Convenience constructor used by the tests to seed the voting cache with a
-    # known tally (fresh, empty soft buffer).
-    GPSL1CACache(CircularDeque{Float32}(308), old_data)
-end
-
-# Keyword "rebuild" constructor, mirroring `GalileoINAVCache`. Reuses the shared
-# soft-symbol buffer by reference and swaps in a freshly-built `old_data`
-# tally, so `confirm_data` can thread a new cache through `GNSSDecoderState`
-# instead of mutating the voting vector in place.
-function GPSL1CACache(
-    cache::GPSL1CACache;
-    soft_buffer = cache.soft_buffer,
-    old_data = cache.old_data,
+# Every container field at its ICD size: 32 SV configurations, 8 + 24 SV
+# health words and one almanac slot per SV ID (1-32).
+preallocated_data(::Type{GPSL1CAData}) = GPSL1CAData(;
+    sv_config = zeros(Int64, 32),
+    sv_health_sf4_25 = zeros(Int64, 8),
+    almanacs = SlotDictionary{GPSL1CAAlmanac,33}(),
+    sv_health_sf5_25 = zeros(Int64, 24),
 )
-    GPSL1CACache(soft_buffer, old_data)
-end
 
 function Base.:(==)(a::GPSL1CACache, b::GPSL1CACache)
     deques_equal(a.soft_buffer, b.soft_buffer) && a.old_data == b.old_data
@@ -572,7 +579,7 @@ clock correction, and health data from the 50 bps LNAV data stream.
 
 ```julia
 state = GPSL1CADecoderState(1)  # Create decoder for PRN 1
-state = decode(state, bits, num_bits)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -581,8 +588,8 @@ end
 # See Also
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
-  - [`decode`](@ref): Decode bits using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode bits using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function GPSL1CADecoderState(prn)
@@ -636,9 +643,9 @@ after brief signal outages without requiring a full re-decode of all subframes.
 
 ```julia
 # After detecting signal loss
-state = reset_decoder_state(state)
+state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode(state, new_bits, num_bits)
+state = decode!(state, new_bits, num_bits)
 ```
 
 # See Also
@@ -646,9 +653,9 @@ state = decode(state, new_bits, num_bits)
     # Reset bit buffers and TOW data field, while keeping the
 
   - [`GPSL1CADecoderState`](@ref): Create a fresh decoder state    # remaining parameters in raw_data. This allows a GNSSReceiver
-  - [`decode`](@ref): Continue decoding after reset    # to use a satellite after a reacquisition without waiting for
+  - [`decode!`](@ref): Continue decoding after reset    # to use a satellite after a reacquisition without waiting for
 """
-function reset_decoder_state(state::GNSSDecoderState{<:GPSL1CAData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1CAData})
     # Reset bit buffers and TOW data field, while keeping the
     # remaining parameters in raw_data. This allows a GNSSReceiver
     # to use a satellite after a reacquisition without waiting for
@@ -881,13 +888,13 @@ function read_tlm_and_how_words(state, buffer)
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        GPSL1CAData(
+        TOW_anchor =
+            is_plausible ? previous_state.num_bits_after_valid_syncro_sequence : nothing
+        @split_nothing (TOW, TOW_anchor) GPSL1CAData(
             state.raw_data;
             last_subframe_id,
             TOW,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = is_plausible ?
-                                                                  previous_state.num_bits_after_valid_syncro_sequence :
-                                                                  nothing,
+            num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
             alert_flag,
             anti_spoof_flag,
         )
@@ -1204,8 +1211,12 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     # Word 9: bits 1-24 = SV26-29 health (6 bits each)
     # Word 10: bits 1-18 = SV30-32 health (6 bits each)
 
-    # Decode SV configurations (32 x 4-bit values)
-    sv_config = Vector{Int64}(undef, 32)
+    # Decode SV configurations (32 x 4-bit values) and SV 25-32 health into the
+    # preallocated tables, overwriting what an earlier page 25 left there.
+    storage = state.cache.storage.raw
+    sv_config = writable_container(state.raw_data.sv_config, storage.sv_config)
+    sv_health_sf4_25 =
+        writable_container(state.raw_data.sv_health_sf4_25, storage.sv_health_sf4_25)
 
     state = can_decode_word(state, buffer, 3) do word3, state
         for i = 1:4
@@ -1215,62 +1226,54 @@ function decode_subframe4_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     end
 
     state = can_decode_word(state, buffer, 4) do word4, state
-        cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i = 1:6
-            cfg[4+i] = get_bits(word4, 30, 1 + (i - 1) * 4, 4)
+            sv_config[4+i] = get_bits(word4, 30, 1 + (i - 1) * 4, 4)
         end
-        GPSL1CAData(state.raw_data; sv_config = cfg)
+        GPSL1CAData(state.raw_data; sv_config)
     end
 
     state = can_decode_word(state, buffer, 5) do word5, state
-        cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i = 1:6
-            cfg[10+i] = get_bits(word5, 30, 1 + (i - 1) * 4, 4)
+            sv_config[10+i] = get_bits(word5, 30, 1 + (i - 1) * 4, 4)
         end
-        GPSL1CAData(state.raw_data; sv_config = cfg)
+        GPSL1CAData(state.raw_data; sv_config)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i = 1:6
-            cfg[16+i] = get_bits(word6, 30, 1 + (i - 1) * 4, 4)
+            sv_config[16+i] = get_bits(word6, 30, 1 + (i - 1) * 4, 4)
         end
-        GPSL1CAData(state.raw_data; sv_config = cfg)
+        GPSL1CAData(state.raw_data; sv_config)
     end
 
     state = can_decode_word(state, buffer, 7) do word7, state
-        cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i = 1:6
-            cfg[22+i] = get_bits(word7, 30, 1 + (i - 1) * 4, 4)
+            sv_config[22+i] = get_bits(word7, 30, 1 + (i - 1) * 4, 4)
         end
-        GPSL1CAData(state.raw_data; sv_config = cfg)
+        GPSL1CAData(state.raw_data; sv_config)
     end
 
     state = can_decode_word(state, buffer, 8) do word8, state
-        cfg = something(state.raw_data.sv_config, Vector{Int64}(undef, 32))
         for i = 1:4
-            cfg[28+i] = get_bits(word8, 30, 1 + (i - 1) * 4, 4)
+            sv_config[28+i] = get_bits(word8, 30, 1 + (i - 1) * 4, 4)
         end
         # SV 25 health (6 bits) at bits 19-24
-        sv_health_sf4_25 = Vector{Int64}(undef, 8)
         sv_health_sf4_25[1] = Int64(get_bits(word8, 30, 19, 6))
-        GPSL1CAData(state.raw_data; sv_config = cfg, sv_health_sf4_25)
+        GPSL1CAData(state.raw_data; sv_config, sv_health_sf4_25)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
-        health = something(state.raw_data.sv_health_sf4_25, Vector{Int64}(undef, 8))
         for i = 1:4
-            health[1+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf4_25[1+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf4_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf4_25)
     end
 
     state = can_decode_word(state, buffer, 10) do word10, state
-        health = something(state.raw_data.sv_health_sf4_25, Vector{Int64}(undef, 8))
         for i = 1:3
-            health[5+i] = Int64(get_bits(word10, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf4_25[5+i] = Int64(get_bits(word10, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf4_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf4_25)
     end
 
     return state
@@ -1289,7 +1292,10 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
         GPSL1CAData(state.raw_data; t_0a, WN_a)
     end
 
-    sv_health_sf5_25 = Vector{Int64}(undef, 24)
+    sv_health_sf5_25 = writable_container(
+        state.raw_data.sv_health_sf5_25,
+        state.cache.storage.raw.sv_health_sf5_25,
+    )
 
     state = can_decode_word(state, buffer, 4) do word4, state
         for i = 1:4
@@ -1299,43 +1305,38 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     end
 
     state = can_decode_word(state, buffer, 5) do word5, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[4+i] = Int64(get_bits(word5, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf5_25[4+i] = Int64(get_bits(word5, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[8+i] = Int64(get_bits(word6, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf5_25[8+i] = Int64(get_bits(word6, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     state = can_decode_word(state, buffer, 7) do word7, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[12+i] = Int64(get_bits(word7, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf5_25[12+i] = Int64(get_bits(word7, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     state = can_decode_word(state, buffer, 8) do word8, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[16+i] = Int64(get_bits(word8, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf5_25[16+i] = Int64(get_bits(word8, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
-        health = something(state.raw_data.sv_health_sf5_25, Vector{Int64}(undef, 24))
         for i = 1:4
-            health[20+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
+            sv_health_sf5_25[20+i] = Int64(get_bits(word9, 30, 1 + (i - 1) * 6, 6))
         end
-        GPSL1CAData(state.raw_data; sv_health_sf5_25 = health)
+        GPSL1CAData(state.raw_data; sv_health_sf5_25)
     end
 
     return state
@@ -1465,7 +1466,8 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
         a_f1 = alm_af1,
     )
 
-    almanacs = something(state.raw_data.almanacs, Dictionary{Int64,GPSL1CAAlmanac}())
+    # Overwrites this SV's slot of the preallocated almanac store in place.
+    almanacs = writable_container(state.raw_data.almanacs, state.cache.storage.raw.almanacs)
     set!(almanacs, sv_id, almanac_entry)
     state = GNSSDecoderState(state; raw_data = GPSL1CAData(state.raw_data; almanacs))
 
@@ -1504,35 +1506,29 @@ function compare_data(data::GPSL1CAData, new_data::GPSL1CAData)
         data.i_dot == new_data.i_dot
 end
 
-# Thread an updated voting tally through a new cache, reusing the shared
-# soft-symbol buffer by reference. Keeps `confirm_data` free of in-place
-# mutation of `cache.old_data`, matching the Galileo E1B / GPS L1C-D caches and
-# the framework's immutable-threading convention (`gnss.jl`).
-with_old_data(state, new_old_data; kwargs...) = GNSSDecoderState(
-    state;
-    cache = GPSL1CACache(state.cache; old_data = new_old_data),
-    kwargs...,
-)
-
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
 # the current subframe (`preamble_length` symbols past its boundary). The TOW
 # anchor must be rebased into the same counting frame: promotion only happens
 # with a TOW decoded in this very subframe (`read_tlm_and_how_words` clears
 # stale ones), so the anchor being rebased equals the counter being replaced.
-function promote_data(state, new_old_data)
+#
+# `data` gets its own copy of every container (`publish_data` overwrites the
+# preallocated validated ones), so later subframes written into `raw_data`'s
+# containers do not leak into `data` before they are voted on.
+function promote_data(state)
     promoted = GPSL1CAData(
         state.raw_data;
         num_bits_after_valid_syncro_sequence_after_last_TOW = state.constants.preamble_length,
     )
-    with_old_data(
-        state,
-        new_old_data;
+    GNSSDecoderState(
+        state;
         raw_data = promoted,
-        data = promoted,
+        data = publish_data(state.cache.storage, promoted),
         num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
     )
 end
 
+# The voting tally `state.cache.old_data` is overwritten in place throughout.
 function confirm_data(state, max_vote = 20)
     old_data = state.cache.old_data
 
@@ -1545,20 +1541,19 @@ function confirm_data(state, max_vote = 20)
     end
 
     if isnothing(matching_idx)
-        if has_same_iodc
-            # Same IODC exists but data differs - add as new entry, don't use data yet
-            new_old_data = push!(copy(old_data), VotedGPSL1CAData(0, state.raw_data))
-            return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
-        else
-            # New IODC entirely
-            if state.data == GPSL1CAData() # no data yet - add to cache and use data
-                new_old_data = [VotedGPSL1CAData(0, state.raw_data)]
-                return promote_data(state, new_old_data)
-            else # add as new entry, don't use data yet
-                new_old_data = push!(copy(old_data), VotedGPSL1CAData(0, state.raw_data))
-                return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
-            end
+        if !has_same_iodc && state.data == GPSL1CAData()
+            # New IODC and no data yet - add to cache and use data
+            replace_vote_candidates!(old_data, VotedGPSL1CAData(0, state.raw_data))
+            return promote_data(state)
         end
+        # Same IODC with differing data, or a new IODC while data is already in
+        # use - add as new entry, don't use data yet
+        push_vote_candidate!(
+            old_data,
+            VotedGPSL1CAData(0, state.raw_data),
+            GPSL1CA_MAX_VOTE_CANDIDATES,
+        )
+        return GNSSDecoderState(state; raw_data = GPSL1CAData())
     end
 
     # Found matching entry - upvote it
@@ -1566,31 +1561,35 @@ function confirm_data(state, max_vote = 20)
     new_vote = increment_voting(curr_score, max_vote)
 
     # Find best score among entries with same IODC
-    best_score = maximum(e.vote for e in old_data if e.data.IODC == state.raw_data.IODC)
+    best_score = 0
+    for entry in old_data
+        if entry.data.IODC == state.raw_data.IODC
+            best_score = max(best_score, entry.vote)
+        end
+    end
 
     if best_score > curr_score
         # Another entry has higher score - reject this data
-        new_old_data = copy(old_data)
-        new_old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
-        return with_old_data(state, new_old_data; raw_data = GPSL1CAData())
+        old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
+        return GNSSDecoderState(state; raw_data = GPSL1CAData())
     end
 
     # This entry has the best (or tied best) score - use the data
-    new_old_data = if new_vote == max_vote && length(old_data) > 1
+    if new_vote == max_vote && length(old_data) > 1
         # Max votes reached - keep only this entry
-        [VotedGPSL1CAData(new_vote, state.raw_data)]
+        replace_vote_candidates!(old_data, VotedGPSL1CAData(new_vote, state.raw_data))
     else
-        updated = copy(old_data)
-        updated[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
-        updated
+        old_data[matching_idx] = VotedGPSL1CAData(new_vote, state.raw_data)
     end
 
-    promote_data(state, new_old_data)
+    promote_data(state)
 end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1CAData})
+    IODC = state.raw_data.IODC
     if is_decoding_completed_for_positioning(state.raw_data) &&
-       state.raw_data.IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
+       IODC !== nothing &&
+       IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
         state = confirm_data(state)
     end
     return state
@@ -1621,7 +1620,7 @@ is considered healthy only if all health bits are zero (`"000000"`).
 
 ```julia
 state = GPSL1CADecoderState(1)
-state = decode(state, bits, num_bits)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end
@@ -1630,7 +1629,7 @@ end
 # See Also
 
   - [`GPSL1CADecoderState`](@ref): Create decoder state
-  - [`decode`](@ref): Decode navigation data
+  - [`decode!`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GPSL1CAData})
     state.data.sv_health == 0

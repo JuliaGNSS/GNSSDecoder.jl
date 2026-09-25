@@ -24,6 +24,8 @@ function to_soft_symbols(bits::T, num_bits::Int) where {T<:Unsigned}
     out
 end
 
+include("allocation_utils.jl")
+
 @testset "GNSSDecoder.jl" begin
     @testset "Aqua" begin
         # Aff3ct is referenced from `src/` (Galileo E1B's K=7 NSC Viterbi,
@@ -60,6 +62,7 @@ end
     include("beidou_b2b.jl")
 
     # v2 shared-utility deep-module tests (issue #36)
+    include("storage.jl")
     include("crc.jl")
     include("reed_solomon.jl")
     include("bch_toi.jl")

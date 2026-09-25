@@ -180,7 +180,7 @@ function b2b_decode_frames(state, frames::Vector{Vector{Float32}}; invert::Bool 
     tail_message = b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE + 3)
     tail = b2b_frame_symbols(tail_message; prn = state.prn, invert)[1:16]
     stream = vcat(frames..., tail)
-    decode(state, stream, length(stream))
+    decode!(state, stream, length(stream))
 end
 
 @testset "BeiDou B2b (B-CNAV3)" begin
@@ -477,7 +477,7 @@ end
         ]
         state = b2b_decode_frames(state, frames)
         @test is_decoding_completed_for_positioning(state)
-        state = reset_decoder_state(state)
+        state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)
@@ -491,4 +491,27 @@ end
         @test state isa GNSSDecoderState{BeiDouB2bData}
         @test state.prn == prn
     end
+end
+
+@testset "BeiDou B2b decode! is allocation-free" begin
+    # MT10 + MT30 + MT40: ephemeris, clock, BGTO, midi and reduced almanacs,
+    # and promotion to `data`.
+    prn = 26
+    frames = [
+        b2b_frame_symbols(b2b_mt10_message(); prn),
+        b2b_frame_symbols(b2b_mt30_message(); prn),
+        b2b_frame_symbols(b2b_mt40_message(); prn),
+    ]
+    tail = b2b_frame_symbols(b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE + 3); prn)
+    symbols = vcat(frames..., tail[1:16])
+    allocations = decode_allocations(() -> BeiDouB2bDecoderState(prn), symbols)
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
+    state = allocations.state
+    @test is_decoding_completed_for_positioning(state)
+    @test length(state.data.reduced_almanacs) == 2
+    @test haskey(state.data.midi_almanacs, 30)
+    # Promotion copies the stores: `data` never shares them with `raw_data`.
+    @test state.data.midi_almanacs !== state.raw_data.midi_almanacs
 end

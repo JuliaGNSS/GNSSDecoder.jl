@@ -158,7 +158,7 @@ end
     # decode path (AFF3CT Viterbi, issue #37).
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = decoder,
     )
@@ -170,7 +170,7 @@ end
     decoder2 = GalileoE1BDecoderState(21)
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(~data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = decoder2,
     )
@@ -179,10 +179,33 @@ end
     @test state.num_bits_after_valid_syncro_sequence == 3500
     @test is_sat_healthy(state) == true
 
-    state = reset_decoder_state(state)
+    state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
     @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
+end
+
+@testset "Galileo E1B decode! is allocation-free" begin
+    # The full golden capture: every I/NAV word type it carries, including the
+    # 7-10 almanac chain that writes the preallocated almanac store, the Reduced
+    # CED word, and the promotion to validated `data`.
+    symbols =
+        reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GALILEO_E1B_DATA))
+    allocations = decode_allocations(() -> GalileoE1BDecoderState(21), symbols)
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
+    @test !isnothing(allocations.state.data.reduced_ced.ΔA_red)
+
+    # A `copy` is independent: decoding into it leaves the original untouched.
+    state = GalileoE1BDecoderState(21)
+    decoded = decode!(copy(state), symbols, length(symbols))
+    @test is_decoding_completed_for_positioning(decoded)
+    @test state == GalileoE1BDecoderState(21)
+    @test isnothing(state.raw_data.almanacs)
+    @test GNSSDecoder.num_bits_buffered(state) == 0
 end

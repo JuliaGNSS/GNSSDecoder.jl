@@ -24,7 +24,12 @@ function pseudo_random_symbols(n)
 end
 
 function run_decoder(name, system, prn, symbols)
-    state = decode(GNSSDecoderState(system, prn), symbols, length(symbols))
+    # `copy` and `reset_decoder_state!` go into the trimmed image as well: the
+    # copy of a decoded state is reset, then decodes the stream afresh (a
+    # replay without the reset would, rightly, fail the time-of-week
+    # plausibility screens).
+    state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
+    decode!(reset_decoder_state!(copy(state)), symbols, length(symbols))
     println(
         Core.stdout,
         name,

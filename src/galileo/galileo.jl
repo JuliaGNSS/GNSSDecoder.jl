@@ -128,7 +128,7 @@ Base.@kwdef struct GalileoAlmanac
     t_0a::Union{Nothing,Int} = nothing
 end
 
-function GalileoAlmanac(
+@inline function GalileoAlmanac(
     a::GalileoAlmanac;
     SVID = a.SVID,
     Δsqrt_A = a.Δsqrt_A,
@@ -166,6 +166,15 @@ function GalileoAlmanac(
         t_0a,
     )
 end
+
+# Slots of the per-SVID almanac store that I/NAV (`GalileoINAVData.almanacs`)
+# and F/NAV (`GalileoE5aData.almanacs`) decode into, a
+# `SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}`. Nominal SVIDs are
+# 1-36, but the almanac SVID field is 6 bits wide (OS SIS ICD Tables 51-54 and
+# 34-35), so a CRC-valid page can carry any key 1-63. One slot per 6-bit value
+# keeps every decodable almanac — as the `Dictionary` this replaces did — instead
+# of throwing on a key past 36, for 27 extra preallocated slots.
+const GALILEO_ALMANAC_SLOTS = 64
 
 # Ephemeris/clock completeness are per-message facts: I/NAV (E1-B, E5b-I) and
 # F/NAV (E5a-I) broadcast the same orbital and clock parameters, so the "all
@@ -339,6 +348,20 @@ function galileo_ggto(
 end
 
 """
+    with_ggto(data, ggto) -> typeof(data)
+
+Rebuild the I/NAV or F/NAV `data` with the four GGTO fields of `ggto`, the
+result of [`galileo_ggto`](@ref).
+
+A function barrier: `galileo_ggto` returns one of two `NamedTuple` types, and a
+call on that union is split into one concrete method instance per type, where
+destructuring it into keywords would leave four `Union{Nothing,…}` keyword
+values — which Julia 1.10 compiles through the allocating generic kw path.
+"""
+@inline with_ggto(data::D, ggto::NamedTuple) where {D<:AbstractGalileoEphemerisData} =
+    D(data; ggto.A_0G, ggto.A_1G, ggto.t_0G, ggto.WN_0G)
+
+"""
     galileo_viterbi(scratch, soft_page, interleaver_columns, ::Type{T}) -> T
 
 Recover one Galileo page's information bits from `soft_page` — the
@@ -375,9 +398,11 @@ The allocating `deinterleave` and `Aff3ct.decode` cost 1.6 kB per I/NAV page
 part, 3.2 kB per F/NAV page and 6.2 kB per C/NAV page — once per second per
 tracked satellite on E1-B, E5b and E6-B — which is the same garbage the caller's
 `copy_soft_window!` into a cached buffer exists to avoid one line earlier.
-`deinterleave!` and `Aff3ct.decode!` each measure exactly zero; what is left is
-under 100 B per page of wide-integer temporaries in the packing loop, which no
-cache field can remove.
+`deinterleave!`, `Aff3ct.decode!` and the packing loop each measure exactly
+zero, for all three widths, so a call allocates nothing. Callers must keep
+their own arithmetic off the wide result, though: BitIntegers converts a
+`UInt256` or `UInt512` to `Float64` through a `BigInt`, so a field is narrowed
+to `UInt64` before it is scaled (see `fnav_field` in `e5a.jl`).
 """
 function galileo_viterbi(
     scratch::GalileoViterbiScratch,

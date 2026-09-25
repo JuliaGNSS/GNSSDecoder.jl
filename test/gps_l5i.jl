@@ -83,7 +83,7 @@ end
         prefix = fec_encode_soft(enc, falses(40))[1:79]  # odd-length prefix
         stream = vcat(prefix, fec_encode_soft(enc, [mt10; build_mt10(; tow_count = 1235)]))
 
-        state = decode(GPSL5IDecoderState(9), stream, length(stream))
+        state = decode!(GPSL5IDecoderState(9), stream, length(stream))
         d = state.raw_data
         @test d.last_message_type == 10
         # Only the first message completes (the second one's sync window
@@ -115,7 +115,7 @@ end
         enc = CNAVTestEncoder()
         stream =
             fec_encode_soft(enc, [falses(20); build_mt10(); build_mt10(; tow_count = 1235)])
-        state = decode(GPSL5IDecoderState(9), -stream, length(stream))
+        state = decode!(GPSL5IDecoderState(9), -stream, length(stream))
         @test state.is_shifted_by_180_degrees
         @test state.raw_data.last_message_type == 10
         @test state.raw_data.WN == 2345
@@ -124,10 +124,10 @@ end
     @testset "reset_decoder_state clears in-flight state, keeps decoded data" begin
         enc = CNAVTestEncoder()
         stream = fec_encode_soft(enc, [build_mt10(); build_mt10(; tow_count = 1235)])
-        state = decode(GPSL5IDecoderState(9), stream, length(stream))
+        state = decode!(GPSL5IDecoderState(9), stream, length(stream))
         @test state.raw_data.WN == 2345
 
-        state = reset_decoder_state(state)
+        state = reset_decoder_state!(state)
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.data.TOW)
@@ -324,13 +324,13 @@ end
 
         # Of the 26 encoded messages the last cannot complete (its sync
         # window needs the next message's first 16 symbols), so 25 decode.
-        state = decode(GPSL5IDecoderState(25), stream, length(stream))
+        state = decode!(GPSL5IDecoderState(25), stream, length(stream))
         @test !state.is_shifted_by_180_degrees
         assert_spirent_golden(state)
 
         # Polarity-inverted stream must decode identically with the
         # 180°-flip flag set.
-        state_inv = decode(GPSL5IDecoderState(25), -stream, length(stream))
+        state_inv = decode!(GPSL5IDecoderState(25), -stream, length(stream))
         @test state_inv.is_shifted_by_180_degrees
         @test state_inv.data == state.data
 
@@ -339,20 +339,20 @@ end
         # remaining messages, losing only the partially received first one.
         offset = 351
         state_mid =
-            decode(GPSL5IDecoderState(25), stream[(offset+1):end], length(stream) - offset)
+            decode!(GPSL5IDecoderState(25), stream[(offset+1):end], length(stream) - offset)
         assert_spirent_golden(state_mid)
 
         # Noisy soft symbols: moderate Gaussian noise on the ±1 LLRs must
         # not cost any message at this SNR.
         noisy = stream .+ 0.4f0 .* randn(MersenneTwister(7), Float32, length(stream))
-        state_noisy = decode(GPSL5IDecoderState(25), noisy, length(noisy))
+        state_noisy = decode!(GPSL5IDecoderState(25), noisy, length(noisy))
         assert_spirent_golden(state_noisy)
     end
 
     @testset "decode_once stops at the first complete positioning set" begin
         messages = load_l5i_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode(GPSL5IDecoderState(25), stream, length(stream); decode_once = true)
+        state = decode!(GPSL5IDecoderState(25), stream, length(stream); decode_once = true)
         # Message types 10, 11, 30 are the first three of the recording; the
         # positioning set is complete after message 3 and decoding stops
         # there (message 4 is type 15 — its text must not have been parsed).
@@ -364,4 +364,14 @@ end
         @test isnothing(state.data.text_mt15)
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
+end
+
+@testset "GPS L5I decode! is allocation-free" begin
+    # The full recording (every message type 10-15, 30-37, with the reduced /
+    # midi almanacs, differential corrections and text pages that write the
+    # preallocated stores) plus a synthetic message type 40.
+    test_cnav_decode_allocation_free(
+        () -> GPSL5IDecoderState(25),
+        load_l5i_fixture_messages(),
+    )
 end

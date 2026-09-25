@@ -145,13 +145,13 @@ end
     # here would mean the signal layer had leaked into the message decoding.
     e1b = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = GalileoE1BDecoderState(21),
     )
     e5b = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = GalileoE5bDecoderState(21),
     )
@@ -189,7 +189,7 @@ end
     even, odd = inav_page_pair(word; reserved_1, reserved_2)
 
     decoder = GalileoE5bDecoderState(21)
-    decoder = decode(
+    decoder = decode!(
         decoder,
         inav_symbol_stream([even, odd]),
         length(inav_symbol_stream([even, odd])),
@@ -212,7 +212,7 @@ end
         tampered[107] = !tampered[107]
         state = GalileoE5bDecoderState(21)
         stream = inav_symbol_stream([even, tampered])
-        state = decode(state, stream, length(stream))
+        state = decode!(state, stream, length(stream))
         @test state.raw_data.TOW == 345_600
     end
 
@@ -223,7 +223,7 @@ end
         tampered[20] = !tampered[20]
         state = GalileoE5bDecoderState(21)
         stream = inav_symbol_stream([even, tampered])
-        state = decode(state, stream, length(stream))
+        state = decode!(state, stream, length(stream))
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.raw_data.WN)
     end
@@ -234,7 +234,7 @@ end
         # CRC-protected prefix is 82 bits either way.
         state = GalileoE1BDecoderState(21)
         stream = inav_symbol_stream([even, odd])
-        state = decode(state, stream, length(stream))
+        state = decode!(state, stream, length(stream))
         @test state.raw_data.TOW == 345_600
         @test state.raw_data.WN == 1234
     end
@@ -255,8 +255,8 @@ end
     )
     even, odd = inav_page_pair(word; reserved_1, reserved_2)
     stream = inav_symbol_stream([even, odd])
-    e5b = decode(GalileoE5bDecoderState(21), stream, length(stream))
-    e1b = decode(GalileoE1BDecoderState(21), stream, length(stream))
+    e5b = decode!(GalileoE5bDecoderState(21), stream, length(stream))
+    e1b = decode!(GalileoE1BDecoderState(21), stream, length(stream))
     # `is_sat_healthy` reads the *validated* data, which needs a full positioning
     # set, so drive it directly off a state whose `data` is this word.
     e5b = GNSSDecoder.GNSSDecoderState(e5b; data = e5b.raw_data)
@@ -273,8 +273,8 @@ end
     )
     even, odd = inav_page_pair(word; reserved_1, reserved_2)
     stream = inav_symbol_stream([even, odd])
-    e5b = decode(GalileoE5bDecoderState(21), stream, length(stream))
-    e1b = decode(GalileoE1BDecoderState(21), stream, length(stream))
+    e5b = decode!(GalileoE5bDecoderState(21), stream, length(stream))
+    e1b = decode!(GalileoE1BDecoderState(21), stream, length(stream))
     e5b = GNSSDecoder.GNSSDecoderState(e5b; data = e5b.raw_data)
     e1b = GNSSDecoder.GNSSDecoderState(e1b; data = e1b.raw_data)
     @test !is_sat_healthy(e5b)
@@ -285,16 +285,29 @@ end
 @testset "Galileo E5b reset_decoder_state" begin
     state = reduce(
         (dec, data) ->
-            decode(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
+            decode!(dec, to_soft_symbols(data, sizeof(data) * 8), sizeof(data) * 8),
         GALILEO_E1B_DATA;
         init = GalileoE5bDecoderState(21),
     )
     @test !isnothing(state.data.TOW)
-    state = reset_decoder_state(state)
+    state = reset_decoder_state!(state)
     @test GNSSDecoder.num_bits_buffered(state) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
     @test isnothing(state.num_bits_after_valid_syncro_sequence)
     # Ephemeris survives the reset, as on E1-B.
     @test !isnothing(state.raw_data.sqrt_A)
+end
+
+@testset "Galileo E5b decode! is allocation-free" begin
+    # The I/NAV golden capture through the E5b decoder: every word type it
+    # carries, the almanac chain and the promotion to validated `data`.
+    symbols =
+        reduce(vcat, (to_soft_symbols(data, sizeof(data) * 8) for data in GALILEO_E1B_DATA))
+    allocations = decode_allocations(() -> GalileoE5bDecoderState(21), symbols)
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
 end

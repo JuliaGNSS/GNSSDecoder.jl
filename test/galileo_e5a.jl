@@ -181,7 +181,7 @@ end
     # ephemeris/clock set and triggers validation.
     stream = e5a_symbol_stream(pages[1:5])
     decoder = GalileoE5aDecoderState(21)
-    decoder = decode(decoder, stream, length(stream))
+    decoder = decode!(decoder, stream, length(stream))
 
     @test decoder.data == expected
     @test decoder.is_shifted_by_180_degrees == false
@@ -194,7 +194,7 @@ end
     # Inverting the whole stream (180° Costas ambiguity) decodes identically but
     # flags the polarity flip.
     decoder_inv = GalileoE5aDecoderState(21)
-    decoder_inv = decode(decoder_inv, -stream, length(stream))
+    decoder_inv = decode!(decoder_inv, -stream, length(stream))
     @test decoder_inv.data == expected
     @test decoder_inv.is_shifted_by_180_degrees == true
     @test is_sat_healthy(decoder_inv) == true
@@ -210,7 +210,7 @@ end
     # WT5 and shared by all three almanacs, including SVID-21 from WT6.
     stream = e5a_symbol_stream(pages[1:31])
     decoder = GalileoE5aDecoderState(21)
-    decoder = decode(decoder, stream, length(stream))
+    decoder = decode!(decoder, stream, length(stream))
     almanacs = decoder.data.almanacs
     @test !isnothing(almanacs)
 
@@ -282,7 +282,7 @@ end
     # one almanac.)
     partial_stream = e5a_symbol_stream(vcat(pages[1:24], pages[30]))
     decoder = GalileoE5aDecoderState(21)
-    decoder = decode(decoder, partial_stream, length(partial_stream))
+    decoder = decode!(decoder, partial_stream, length(partial_stream))
     almanacs = decoder.raw_data.almanacs
     @test !isnothing(almanacs)
     partial = only(almanacs)
@@ -293,7 +293,7 @@ end
     # The full run (WT5 then WT6, pages 1-31) instead yields the epoch too.
     full_stream = e5a_symbol_stream(pages[1:31])
     full_decoder = GalileoE5aDecoderState(21)
-    full_decoder = decode(full_decoder, full_stream, length(full_stream))
+    full_decoder = decode!(full_decoder, full_stream, length(full_stream))
     full = full_decoder.data.almanacs[21]
     @test full.WN_a == 2
     @test full.t_0a == 259200
@@ -310,7 +310,7 @@ end
     # discarded that WT6 and could never reassemble SVID-21 from the WT5 alone.
     stream = e5a_symbol_stream(vcat(pages[1:24], pages[30], pages[25]))
     decoder = GalileoE5aDecoderState(21)
-    decoder = decode(decoder, stream, length(stream))
+    decoder = decode!(decoder, stream, length(stream))
     almanacs = decoder.raw_data.almanacs
     @test !isnothing(almanacs)
     @test haskey(almanacs, 21)
@@ -324,14 +324,45 @@ end
     pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
     stream = e5a_symbol_stream(pages[1:5])
     decoder = GalileoE5aDecoderState(21)
-    decoder = decode(decoder, stream, length(stream))
+    decoder = decode!(decoder, stream, length(stream))
     @test !isnothing(decoder.data.TOW)
 
-    decoder = reset_decoder_state(decoder)
+    decoder = reset_decoder_state!(decoder)
     @test GNSSDecoder.num_bits_buffered(decoder) == 0
     @test isnothing(decoder.raw_data.TOW)
     @test isnothing(decoder.data.TOW)
     @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
     # Ephemeris is retained in raw_data across a reset (fast reacquisition).
     @test decoder.raw_data.sqrt_A == 5440.588203430176
+end
+
+@testset "Galileo E5a decode! is allocation-free" begin
+    pages = read_e5a_fnav_pages(GALILEO_E5A_FNAV_PAGES_PATH)
+    # All 152 pages of the capture: page types 1-6, so every ephemeris page, the
+    # WT5/WT6 almanac chain writing the preallocated almanac store, and repeated
+    # promotions to validated `data`.
+    symbols = e5a_symbol_stream(pages)
+    allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
+    @test is_decoding_completed_for_positioning(allocations.state)
+    @test !isempty(allocations.state.data.almanacs)
+    @test allocations.state.data.almanacs[21].WN_a == 2
+
+    # A lone WT6 followed by its WT5: the SVID-3 store without an epoch, then the
+    # in-place epoch back-patch.
+    symbols = e5a_symbol_stream(vcat(pages[1:24], pages[30], pages[25]))
+    allocations = decode_allocations(() -> GalileoE5aDecoderState(21), symbols)
+    @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
+    @test allocations.state.raw_data.almanacs[21].t_0a == 259200
+
+    # A `copy` is independent: decoding into it leaves the original untouched.
+    state = GalileoE5aDecoderState(21)
+    decoded = decode!(copy(state), symbols, length(symbols))
+    @test decoded.raw_data.almanacs[21].t_0a == 259200
+    @test state == GalileoE5aDecoderState(21)
+    @test isnothing(state.raw_data.almanacs)
 end

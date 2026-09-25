@@ -42,7 +42,7 @@ parsers (message types 10-15, 30-37, and 40, IS-GPS-705J §20.3.3).
 
 ```julia
 state = GPSL5IDecoderState(1)            # PRN 1
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -52,8 +52,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`GPSL2CMDecoderState`](@ref): The GPS L2C decoder sharing this CNAV core
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function GPSL5IDecoderState(prn)

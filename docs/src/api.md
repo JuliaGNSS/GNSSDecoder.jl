@@ -26,14 +26,30 @@ BeiDouB2bDecoderState
 
 ## Decoding
 
+`decode!` overwrites the buffers the decoder state was constructed with and
+allocates nothing. Continue with the state it returns; take a `copy` first if
+you need a snapshot of the earlier one.
+
 ```@docs
-decode
+decode!
+Base.copy(::GNSSDecoderState)
+```
+
+## Preallocated Storage
+
+The keyed stores in the decoded data are sized once, when the decoder state is
+constructed, so that `decode!` can overwrite them instead of allocating. The
+broadcast text messages are inline `CStaticString`s from StaticStrings.jl for
+the same reason.
+
+```@docs
+SlotDictionary
 ```
 
 ## State Management
 
 ```@docs
-reset_decoder_state
+reset_decoder_state!
 ```
 
 ## Health Status
@@ -177,6 +193,8 @@ GNSSDecoder.GALILEO_HAS_GF256
 GNSSDecoder.rs_generator_polynomial
 GNSSDecoder.rs_systematic_generator_matrix
 GNSSDecoder.rs_erasure_decode
+GNSSDecoder.rs_erasure_decode!
+GNSSDecoder.RSErasureScratch
 ```
 
 ## Data Types
@@ -255,6 +273,9 @@ GalileoE6BData
 GalileoHASMessage
 GalileoHASMask
 GalileoHASSatelliteMask
+GNSSDecoder.GalileoHASSatelliteMaskList
+GNSSDecoder.GalileoHASMaskIndices
+GNSSDecoder.GalileoHASCellMask
 GalileoHASCorrectionBlock
 GalileoHASOrbitCorrection
 GalileoHASClockCorrection
