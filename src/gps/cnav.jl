@@ -300,6 +300,19 @@ Base.@kwdef struct GPSCNAVIntegritySupportMessage
     mask::UInt64
 end
 
+# Slots of the keyed stores in `GPSCNAVData`, one per value the ICD key field
+# can take. Almanac packets (message types 12, 31, 37) carry a 6-bit PRN_a
+# (1-63, 0 = empty packet); differential-correction packets (message types 13,
+# 14, 34) an 8-bit PRN ID (0-254, all-ones = empty packet), IS-GPS-705J
+# Figures 20-10 / 20-16 / 20-17.
+const CNAV_ALMANAC_SLOTS = 64
+const CNAV_DC_SLOTS = 256
+
+# Characters in one text page: message type 15 (bits 39-270) and 36 (bits
+# 128-271), IS-GPS-705J Figures 20-9 / 20-14.
+const CNAV_MT15_TEXT_CHARS = 29
+const CNAV_MT36_TEXT_CHARS = 18
+
 """
     GPSCNAVData
 
@@ -400,18 +413,28 @@ code that applies these corrections must handle `nothing` (treat as 0).
     decode: IS-GPS-200N §30.3.3.8.1 and IS-GPS-705J §20.3.3.8.1 both stop at
     GLONASS.
 
-# Almanacs / corrections / text — keyed dictionaries (`nothing` until first decoded)
+# Almanacs / corrections / text — keyed stores (`nothing` until first decoded)
 
-  - `reduced_almanacs::Dictionary{Int,GPSCNAVReducedAlmanac}` (message types 12, 31).
-  - `midi_almanacs::Dictionary{Int,GPSCNAVMidiAlmanac}` (message type 37).
-  - `clock_corrections::Dictionary{Int,GPSCNAVClockDifferentialCorrection}`
-    (message types 13, 34).
-  - `ephemeris_corrections::Dictionary{Int,GPSCNAVEphemerisDifferentialCorrection}`
-    (message types 14, 34).
-  - `text_mt15::String`, `text_page_mt15::Int64`: message type 15 text page
-    (29 ASCII characters, control chars stripped).
-  - `text_mt36::String`, `text_page_mt36::Int64`: message type 36 text page
-    (18 ASCII characters).
+The keyed stores are [`SlotDictionary`](@ref)s with
+one preallocated slot per key the ICD field can hold, iterated in ascending
+`PRN_a` order. The decoder **overwrites** them in place (see
+[`decode!`](@ref)): each packet overwrites its PRN's slot of the store in
+`raw_data`, and each promotion to `data` overwrites the separate validated
+stores with the raw ones.
+
+  - `reduced_almanacs::SlotDictionary{GPSCNAVReducedAlmanac,64}` (message types
+    12, 31; 6-bit `PRN_a`, 1-63).
+  - `midi_almanacs::SlotDictionary{GPSCNAVMidiAlmanac,64}` (message type 37;
+    6-bit `PRN_a`, 1-63).
+  - `clock_corrections::SlotDictionary{GPSCNAVClockDifferentialCorrection,256}`
+    (message types 13, 34; 8-bit `PRN ID`, 0-254 — all-ones marks an empty
+    packet).
+  - `ephemeris_corrections::SlotDictionary{GPSCNAVEphemerisDifferentialCorrection,256}`
+    (message types 14, 34; 8-bit `PRN ID`).
+  - `text_mt15::FixedText{29}`, `text_page_mt15::Int64`: message type 15 text
+    page (29 ASCII characters, control chars stripped).
+  - `text_mt36::FixedText{18}`, `text_page_mt36::Int64`: message type 36 text
+    page (18 ASCII characters, control chars stripped).
   - `ism::GPSCNAVIntegritySupportMessage`: message type 40 Integrity Support Message.
 
 # Reference
@@ -499,18 +522,24 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     WN_GGTO::Union{Nothing,Int64} = nothing
     GNSS_ID::Union{Nothing,Int64} = nothing
 
-    reduced_almanacs::Union{Nothing,Dictionary{Int,GPSCNAVReducedAlmanac}} = nothing
-    midi_almanacs::Union{Nothing,Dictionary{Int,GPSCNAVMidiAlmanac}} = nothing
-    clock_corrections::Union{Nothing,Dictionary{Int,GPSCNAVClockDifferentialCorrection}} =
+    reduced_almanacs::Union{
+        Nothing,
+        SlotDictionary{GPSCNAVReducedAlmanac,CNAV_ALMANAC_SLOTS},
+    } = nothing
+    midi_almanacs::Union{Nothing,SlotDictionary{GPSCNAVMidiAlmanac,CNAV_ALMANAC_SLOTS}} =
         nothing
+    clock_corrections::Union{
+        Nothing,
+        SlotDictionary{GPSCNAVClockDifferentialCorrection,CNAV_DC_SLOTS},
+    } = nothing
     ephemeris_corrections::Union{
         Nothing,
-        Dictionary{Int,GPSCNAVEphemerisDifferentialCorrection},
+        SlotDictionary{GPSCNAVEphemerisDifferentialCorrection,CNAV_DC_SLOTS},
     } = nothing
 
-    text_mt15::Union{Nothing,String} = nothing
+    text_mt15::Union{Nothing,FixedText{CNAV_MT15_TEXT_CHARS}} = nothing
     text_page_mt15::Union{Nothing,Int64} = nothing
-    text_mt36::Union{Nothing,String} = nothing
+    text_mt36::Union{Nothing,FixedText{CNAV_MT36_TEXT_CHARS}} = nothing
     text_page_mt36::Union{Nothing,Int64} = nothing
 
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
@@ -686,7 +715,7 @@ function GPSCNAVData(
 end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
-# for the mutable `Dictionary` fields even when their contents match. Compare
+# for the mutable `SlotDictionary` fields even when their contents match. Compare
 # field-by-field (mirrors `GPSL1C_DData`).
 Base.:(==)(a::GPSCNAVData, b::GPSCNAVData) = fields_equal(a, b)
 
@@ -701,6 +730,9 @@ window-decoding Viterbi that undoes the K=7 NSC FEC in `try_sync`. Because
 `try_sync` runs a full 616-symbol decode on *every* incoming symbol until it
 locks, the window copy and the Viterbi metric/decision/output buffers are
 preallocated here and reused rather than reallocated (~20 KB) per symbol.
+
+The Viterbi buffers and the `storage` containers are **overwritten** in place
+by [`decode!`](@ref); nothing on the decode path allocates.
 
 # Fields
 
@@ -731,6 +763,10 @@ struct GPSCNAVCache <: AbstractGNSSCache
     Decoded 308-bit window the traceback writes into
     """
     viterbi_bits::Vector{Bool}
+    """
+    Preallocated containers `raw_data` and `data` are decoded into
+    """
+    storage::DataStorage{GPSCNAVData}
 end
 
 GPSCNAVCache() = GPSCNAVCache(
@@ -740,6 +776,18 @@ GPSCNAVCache() = GPSCNAVCache(
     Vector{Float32}(undef, CNAV_VITERBI_NUM_STATES),
     Matrix{Bool}(undef, CNAV_VITERBI_NUM_STATES, CNAV_WINDOW_BITS),
     Vector{Bool}(undef, CNAV_WINDOW_BITS),
+    DataStorage{GPSCNAVData}(),
+)
+
+# Every keyed store at its ICD size (see `CNAV_ALMANAC_SLOTS` / `CNAV_DC_SLOTS`).
+preallocated_data(::Type{GPSCNAVData}) = GPSCNAVData(;
+    reduced_almanacs = SlotDictionary{GPSCNAVReducedAlmanac,CNAV_ALMANAC_SLOTS}(),
+    midi_almanacs = SlotDictionary{GPSCNAVMidiAlmanac,CNAV_ALMANAC_SLOTS}(),
+    clock_corrections = SlotDictionary{GPSCNAVClockDifferentialCorrection,CNAV_DC_SLOTS}(),
+    ephemeris_corrections = SlotDictionary{
+        GPSCNAVEphemerisDifferentialCorrection,
+        CNAV_DC_SLOTS,
+    }(),
 )
 
 function Base.:(==)(a::GPSCNAVCache, b::GPSCNAVCache)
@@ -909,10 +957,10 @@ state (the CNAV FEC runs continuously across message boundaries, so the
 window's initial state is the tail of the previous message) and traces back
 from the best final state.
 
-The metric/decision/output buffers default to fresh allocations but may be
-supplied (sized for the window) so a hot caller like `try_sync` can reuse a
-single preallocated set across calls; the decoded bits are written into
-`bits`, which is also returned.
+The metric/decision/output buffers default to fresh allocations; supplying
+them (sized for the window) makes this the overwriting
+[`gps_cnav_viterbi!`](@ref GNSSDecoder.gps_cnav_viterbi!), whose output `bits`
+is also returned.
 """
 function gps_cnav_viterbi(
     soft_window::AbstractVector{Float32};
@@ -924,6 +972,25 @@ function gps_cnav_viterbi(
         length(soft_window) ÷ 2,
     ),
     bits::Vector{Bool} = Vector{Bool}(undef, length(soft_window) ÷ 2),
+)
+    gps_cnav_viterbi!(bits, metrics, next_metrics, decisions, soft_window)
+end
+
+"""
+    gps_cnav_viterbi!(bits, metrics, next_metrics, decisions, soft_window) -> bits
+
+In-place form of [`gps_cnav_viterbi`](@ref GNSSDecoder.gps_cnav_viterbi):
+**overwrites** `bits` (length `length(soft_window) ÷ 2`) with the decoded bits
+and uses `metrics` / `next_metrics` (one entry per trellis state) and
+`decisions` (`[state, step]`) as scratch, overwriting them too. Allocates
+nothing; `try_sync` passes the buffers preallocated in `GPSCNAVCache`.
+"""
+function gps_cnav_viterbi!(
+    bits::Vector{Bool},
+    metrics::Vector{Float32},
+    next_metrics::Vector{Float32},
+    decisions::Matrix{Bool},
+    soft_window::AbstractVector{Float32},
 )
     num_steps = length(soft_window) ÷ 2
     # Unknown initial encoder state ⇒ every path metric starts equal.
@@ -1015,18 +1082,20 @@ message. Returns the [`GPSCNAVSync`](@ref) on a match (carrying the message
 bits and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSCNAVData})
+    # Overwrites the window copy and the Viterbi buffers in `state.cache`.
     cache = state.cache
     deque = cache.soft_buffer
     window = cache.viterbi_window
     @inbounds for i = 1:CNAV_WINDOW_SYMBOLS
         window[i] = deque[i]
     end
-    bits = gps_cnav_viterbi(
-        window;
-        metrics = cache.viterbi_metrics,
-        next_metrics = cache.viterbi_next_metrics,
-        decisions = cache.viterbi_decisions,
-        bits = cache.viterbi_bits,
+    # Overwrites the cache's Viterbi scratch and decoded-bit buffers.
+    bits = gps_cnav_viterbi!(
+        cache.viterbi_bits,
+        cache.viterbi_metrics,
+        cache.viterbi_next_metrics,
+        cache.viterbi_decisions,
+        window,
     )
     leading = _pack_preamble(bits, 1)
     trailing = _pack_preamble(bits, CNAV_MESSAGE_BITS + 1)
@@ -1089,35 +1158,37 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSCNAVData}, sync::GP
     TOW = Int64(get_bits(word, word_length, 21, 17)) * 6
     alert_flag = get_bit(word, word_length, 38)
     raw = GPSCNAVData(state.raw_data; last_message_type = message_id, TOW, alert_flag)
+    # The keyed stores the `parse_mt*!` parsers overwrite in place.
+    storage = state.cache.storage.raw
 
     raw = if message_id == 10
         parse_mt10(raw, word, PI)
     elseif message_id == 11
         parse_mt11(raw, word, PI)
     elseif message_id == 12
-        parse_mt12(raw, word, PI)
+        parse_mt12!(storage, raw, word, PI)
     elseif message_id == 13
-        parse_mt13(raw, word)
+        parse_mt13!(storage, raw, word)
     elseif message_id == 14
-        parse_mt14(raw, word, PI)
+        parse_mt14!(storage, raw, word, PI)
     elseif message_id == 15
         parse_mt15(raw, word)
     elseif message_id == 30
         parse_mt30(raw, word)
     elseif message_id == 31
-        parse_mt31(raw, word, PI)
+        parse_mt31!(storage, raw, word, PI)
     elseif message_id == 32
         parse_mt32(raw, word)
     elseif message_id == 33
         parse_mt33(raw, word)
     elseif message_id == 34
-        parse_mt34(raw, word, PI)
+        parse_mt34!(storage, raw, word, PI)
     elseif message_id == 35
         parse_mt35(raw, word)
     elseif message_id == 36
         parse_mt36(raw, word)
     elseif message_id == 37
-        parse_mt37(raw, word, PI)
+        parse_mt37!(storage, raw, word, PI)
     elseif message_id == 40
         parse_mt40(raw, word)
     else
@@ -1252,38 +1323,67 @@ function _cnav_reduced_almanac_packet(
 end
 
 """
+    parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+
 Message type 12 — seven reduced-almanac packets (IS-GPS-705J Fig 20-11).
+Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` (or, on the
+first almanac, of the preallocated `storage.reduced_almanacs`).
 """
-function parse_mt12(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
     word_length = CNAV_MESSAGE_BITS
     WN_a = Int(get_bits(word, word_length, 39, 13))
     t_0a = Int(get_bits(word, word_length, 52, 8)) * 2^12
-    almanacs = raw.reduced_almanacs
     # Seven 31-bit packets at bits 60, 91, 122, 153, 184, 215, 246.
-    for start in (60, 91, 122, 153, 184, 215, 246)
+    _cnav_reduced_almanac_packets!(
+        storage,
+        raw,
+        word,
+        (60, 91, 122, 153, 184, 215, 246),
+        WN_a,
+        t_0a,
+        PI,
+    )
+end
+
+"""
+Overwrite the reduced-almanac store with the packets starting at `starts`,
+stopping at the first empty packet; returns `raw` holding the store.
+"""
+function _cnav_reduced_almanac_packets!(
+    storage::GPSCNAVData,
+    raw::GPSCNAVData,
+    word::UInt320,
+    starts::Tuple,
+    WN_a::Int,
+    t_0a::Int,
+    PI::Float64,
+)
+    first_packet = _cnav_reduced_almanac_packet(word, first(starts), WN_a, t_0a, PI)
+    # No packet at all: leave the store (and `nothing` before the first one) as is.
+    isnothing(first_packet) && return raw
+    almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
+    for start in starts
         packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_0a, PI)
         isnothing(packet) && break  # PRN_a==0 ⇒ remaining packets are filler
-        almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
+        set!(almanacs, packet.PRN_a, packet)
     end
     GPSCNAVData(raw; reduced_almanacs = almanacs)
 end
 
 """
+    parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+
 Message type 31 — clock & four reduced-almanac packets (IS-GPS-705J Fig 20-4).
+Each packet **overwrites** its PRN's slot of the reduced-almanac store, as in
+[`parse_mt12!`](@ref GNSSDecoder.parse_mt12!).
 """
-function parse_mt31(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     WN_a = Int(get_bits(word, word_length, 128, 13))
     t_0a = Int(get_bits(word, word_length, 141, 8)) * 2^12
-    almanacs = raw.reduced_almanacs
     # Four 31-bit packets at bits 149, 180, 211, 242.
-    for start in (149, 180, 211, 242)
-        packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_0a, PI)
-        isnothing(packet) && break  # PRN_a==0 ⇒ remaining packets are filler
-        almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
-    end
-    GPSCNAVData(raw; reduced_almanacs = almanacs)
+    _cnav_reduced_almanac_packets!(storage, raw, word, (149, 180, 211, 242), WN_a, t_0a, PI)
 end
 
 """
@@ -1342,9 +1442,13 @@ function parse_mt35(raw::GPSCNAVData, word::UInt320)
 end
 
 """
+    parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+
 Message type 37 — clock & one Midi almanac (IS-GPS-705J Fig 20-10, Table 20-V).
+The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` (or, on the
+first one, of the preallocated `storage.midi_almanacs`).
 """
-function parse_mt37(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     PRN_a = Int(get_bits(word, word_length, 149, 6))
@@ -1366,7 +1470,9 @@ function parse_mt37(raw::GPSCNAVData, word::UInt320, PI::Float64)
         a_f0 = get_twos_complement_num(word, word_length, 256, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, 267, 10) * 2.0^-37,
     )
-    GPSCNAVData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
+    midi_almanacs = writable_container(raw.midi_almanacs, storage.midi_almanacs)
+    set!(midi_almanacs, PRN_a, alm)
+    GPSCNAVData(raw; midi_almanacs)
 end
 
 # All-ones PRN ID in a CDC/EDC packet ⇒ no DC data in the remainder of the
@@ -1427,13 +1533,19 @@ function _cnav_edc_packet(
 end
 
 """
+    parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
+
 Message type 13 — clock differential correction (IS-GPS-705J Fig 20-12).
+Each CDC packet **overwrites** its PRN's slot of `raw.clock_corrections` (or,
+on the first one, of the preallocated `storage.clock_corrections`).
 """
-function parse_mt13(raw::GPSCNAVData, word::UInt320)
+function parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     t_op_D = Int(get_bits(word, word_length, 39, 11)) * 300
     t_OD = Int(get_bits(word, word_length, 50, 11)) * 300
-    corrections = raw.clock_corrections
+    # An all-ones first PRN: no packet at all, leave the store as is.
+    Int(get_bits(word, word_length, 62, 8)) == CNAV_DC_EMPTY_PRN && return raw
+    corrections = writable_container(raw.clock_corrections, storage.clock_corrections)
     # Six 35-bit packets (1 DC data type bit + 34-bit CDC) at bits 61, 96,
     # 131, 166, 201, 236.
     for start in (61, 96, 131, 166, 201, 236)
@@ -1447,19 +1559,26 @@ function parse_mt13(raw::GPSCNAVData, word::UInt320)
         # correction for a satellite that does not exist. Same rule as
         # `parse_mt12` / `parse_mt31` above.
         isnothing(packet) && break
-        corrections = _merge_keyed(corrections, packet.PRN_a, packet)
+        set!(corrections, packet.PRN_a, packet)
     end
     GPSCNAVData(raw; clock_corrections = corrections)
 end
 
 """
+    parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+
 Message type 14 — ephemeris differential correction (IS-GPS-705J Fig 20-13).
+Each EDC packet **overwrites** its PRN's slot of `raw.ephemeris_corrections`
+(or, on the first one, of the preallocated `storage.ephemeris_corrections`).
 """
-function parse_mt14(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
     word_length = CNAV_MESSAGE_BITS
     t_op_D = Int(get_bits(word, word_length, 39, 11)) * 300
     t_OD = Int(get_bits(word, word_length, 50, 11)) * 300
-    corrections = raw.ephemeris_corrections
+    # An all-ones first PRN: no packet at all, leave the store as is.
+    Int(get_bits(word, word_length, 62, 8)) == CNAV_DC_EMPTY_PRN && return raw
+    corrections =
+        writable_container(raw.ephemeris_corrections, storage.ephemeris_corrections)
     # Two 93-bit packets (1 DC data type bit + 92-bit EDC) at bits 61, 154.
     for start in (61, 154)
         dc_data_type = get_bit(word, word_length, start)
@@ -1472,15 +1591,20 @@ function parse_mt14(raw::GPSCNAVData, word::UInt320, PI::Float64)
         # correction for a satellite that does not exist. Same rule as
         # `parse_mt12` / `parse_mt31` above.
         isnothing(packet) && break
-        corrections = _merge_keyed(corrections, packet.PRN_a, packet)
+        set!(corrections, packet.PRN_a, packet)
     end
     GPSCNAVData(raw; ephemeris_corrections = corrections)
 end
 
 """
-Message type 34 — clock & one CDC+EDC pair (IS-GPS-705J Fig 20-7).
+    parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+
+Message type 34 — clock & one CDC+EDC pair (IS-GPS-705J Fig 20-7). Each
+non-empty packet **overwrites** its PRN's slot of the clock / ephemeris
+correction store, as in [`parse_mt13!`](@ref GNSSDecoder.parse_mt13!) /
+[`parse_mt14!`](@ref GNSSDecoder.parse_mt14!).
 """
-function parse_mt34(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     t_op_D = Int(get_bits(word, word_length, 128, 11)) * 300
@@ -1488,27 +1612,37 @@ function parse_mt34(raw::GPSCNAVData, word::UInt320, PI::Float64)
     dc_data_type = get_bit(word, word_length, 150)
     cdc = _cnav_cdc_packet(word, 151, t_op_D, t_OD, dc_data_type)
     edc = _cnav_edc_packet(word, 185, t_op_D, t_OD, dc_data_type, PI)
-    clock_corrections =
-        isnothing(cdc) ? raw.clock_corrections :
-        _merge_keyed(raw.clock_corrections, cdc.PRN_a, cdc)
-    ephemeris_corrections =
-        isnothing(edc) ? raw.ephemeris_corrections :
-        _merge_keyed(raw.ephemeris_corrections, edc.PRN_a, edc)
-    GPSCNAVData(raw; clock_corrections, ephemeris_corrections)
+    if !isnothing(cdc)
+        clock_corrections = writable_container(raw.clock_corrections, storage.clock_corrections)
+        set!(clock_corrections, cdc.PRN_a, cdc)
+        raw = GPSCNAVData(raw; clock_corrections)
+    end
+    if !isnothing(edc)
+        ephemeris_corrections =
+            writable_container(raw.ephemeris_corrections, storage.ephemeris_corrections)
+        set!(ephemeris_corrections, edc.PRN_a, edc)
+        raw = GPSCNAVData(raw; ephemeris_corrections)
+    end
+    return raw
 end
 
 """
-Decode `num_chars` 8-bit ASCII characters starting at 1-based bit `start`, stripping control chars.
+Decode `N` 8-bit ASCII characters starting at 1-based bit `start` into an
+inline `FixedText{N}`, stripping control chars (so the text may be shorter).
 """
-function _cnav_text(word::UInt320, start::Int, num_chars::Int)
+function _cnav_text(word::UInt320, start::Int, ::Val{N}) where {N}
     word_length = CNAV_MESSAGE_BITS
-    chars = Char[]
-    for k = 0:(num_chars-1)
-        code = Int(get_bits(word, word_length, start + 8k, 8))
+    units = ntuple(_ -> 0x00, Val(N))
+    len = 0
+    for k = 0:(N-1)
+        code = UInt8(get_bits(word, word_length, start + 8k, 8))
         # Keep printable ASCII; skip NUL/control padding so the message is clean.
-        (code >= 0x20 && code < 0x7f) && push!(chars, Char(code))
+        if code >= 0x20 && code < 0x7f
+            len += 1
+            units = Base.setindex(units, code, len)
+        end
     end
-    return String(chars)
+    return FixedText{N}(units, len)
 end
 
 """
@@ -1518,7 +1652,7 @@ function parse_mt15(raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     GPSCNAVData(
         raw;
-        text_mt15 = _cnav_text(word, 39, 29),
+        text_mt15 = _cnav_text(word, 39, Val(CNAV_MT15_TEXT_CHARS)),
         text_page_mt15 = Int64(get_bits(word, word_length, 271, 4)),
     )
 end
@@ -1531,7 +1665,7 @@ function parse_mt36(raw::GPSCNAVData, word::UInt320)
     raw = parse_clock_block(raw, word)
     GPSCNAVData(
         raw;
-        text_mt36 = _cnav_text(word, 128, 18),
+        text_mt36 = _cnav_text(word, 128, Val(CNAV_MT36_TEXT_CHARS)),
         text_page_mt36 = Int64(get_bits(word, word_length, 272, 4)),
     )
 end
@@ -1568,12 +1702,16 @@ Promote `raw_data` to `data` once the minimum positioning set (message types
 decoded. Every CNAV message carries its own TOW, so each validated message
 re-arms the streaming counter: the TOW refers to the start of the *next*
 message, whose first `preamble_length` symbols are already buffered.
+
+Promotion **overwrites** the preallocated validated stores in
+`state.cache.storage` with the raw ones (`publish_data`), so `data` never
+shares a container with `raw_data`, which later messages keep writing into.
 """
 function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
     if is_decoding_completed_for_positioning(state.raw_data)
         return GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
         )
     end
