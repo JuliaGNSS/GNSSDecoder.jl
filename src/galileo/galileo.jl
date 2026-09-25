@@ -348,6 +348,20 @@ function galileo_ggto(
 end
 
 """
+    with_ggto(data, ggto) -> typeof(data)
+
+Rebuild the I/NAV or F/NAV `data` with the four GGTO fields of `ggto`, the
+result of [`galileo_ggto`](@ref).
+
+A function barrier: `galileo_ggto` returns one of two `NamedTuple` types, and a
+call on that union is split into one concrete method instance per type, where
+destructuring it into keywords would leave four `Union{Nothing,…}` keyword
+values — which Julia 1.10 compiles through the allocating generic kw path.
+"""
+@inline with_ggto(data::D, ggto::NamedTuple) where {D<:AbstractGalileoEphemerisData} =
+    D(data; ggto.A_0G, ggto.A_1G, ggto.t_0G, ggto.WN_0G)
+
+"""
     galileo_viterbi(scratch, soft_page, interleaver_columns, ::Type{T}) -> T
 
 Recover one Galileo page's information bits from `soft_page` — the
