@@ -68,6 +68,14 @@ const L1C_D_SF3_PAGE_MIDI_ALMANAC = 4     # Figure 3.5-5: one Midi almanac
 const L1C_D_SF3_PAGE_DIFF_CORRECTION = 5  # Figure 3.5-6: clock+ephemeris DC
 const L1C_D_SF3_PAGE_TEXT = 6             # Figure 3.5-7: 29 ASCII characters
 
+# Characters in a page-6 text message (IS-GPS-800J Figure 3.5-7).
+const L1C_D_TEXT_LENGTH = 29
+
+# Slots of the PRN-keyed subframe-3 stores (reduced/Midi almanacs, differential
+# corrections): the `PRN_a` fields are 8 bits wide, so one slot per value 0..255
+# means no broadcast PRN can fall outside the preallocated store.
+const L1C_D_PRN_SLOTS = 256
+
 """
     GPSL1C_DConstants
 
@@ -129,7 +137,7 @@ page-level almanac reference week/time. A reduced almanac is *complete in a
 single page* — there is no IOD-driven multi-page chaining like Galileo's word
 types 7-10 — so `GPSL1C_DData.reduced_almanacs` entries are inserted
 whole, keyed by `PRN_a`. Reduced and Midi almanacs use *separate* structs (their
-field sets barely overlap); they share the `Dictionary` pattern.
+field sets barely overlap); they share the keyed `SlotDictionary` pattern.
 
 Reference values to apply (Table 3.5-6 footnotes): `e = 0`,
 `δi = +0.0056 semi-circles` (so `i₀ = 0.30 sc = 54°` and `i₀ + δi = 55°`),
@@ -359,13 +367,18 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
 
 ## Pages 3/4/5 — keyed dictionaries (`nothing` until first decoded)
 
-  - `reduced_almanacs::Dictionary{Int,GPSL1C_DReducedAlmanac}` (page 3).
-  - `midi_almanacs::Dictionary{Int,GPSL1C_DMidiAlmanac}` (page 4).
-  - `differential_corrections::Dictionary{Int,GPSL1C_DDifferentialCorrection}` (page 5).
+Keyed by the 8-bit `PRN_a` field, one preallocated slot per possible value
+([`SlotDictionary`](@ref), iterated in ascending PRN order). A decoded packet
+**overwrites** its PRN's slot in place (see [`decode!`](@ref)).
+
+  - `reduced_almanacs::SlotDictionary{GPSL1C_DReducedAlmanac,256}` (page 3).
+  - `midi_almanacs::SlotDictionary{GPSL1C_DMidiAlmanac,256}` (page 4).
+  - `differential_corrections::SlotDictionary{GPSL1C_DDifferentialCorrection,256}` (page 5).
 
 ## Page 6 — Text
 
-  - `text_message::String`: 29 ASCII characters (control chars stripped).
+  - `text_message::FixedText{29}`: up to 29 ASCII characters (control chars
+    stripped), stored inline; compares equal to the matching `String`.
 
 ## Counters
 
@@ -455,15 +468,19 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     ΔUT_GPS_dot::Union{Nothing,Float64} = nothing
 
     # --- Subframe 3, pages 3/4/5: per-SV keyed dictionaries ---
-    reduced_almanacs::Union{Nothing,Dictionary{Int,GPSL1C_DReducedAlmanac}} = nothing
-    midi_almanacs::Union{Nothing,Dictionary{Int,GPSL1C_DMidiAlmanac}} = nothing
+    reduced_almanacs::Union{
+        Nothing,
+        SlotDictionary{GPSL1C_DReducedAlmanac,L1C_D_PRN_SLOTS},
+    } = nothing
+    midi_almanacs::Union{Nothing,SlotDictionary{GPSL1C_DMidiAlmanac,L1C_D_PRN_SLOTS}} =
+        nothing
     differential_corrections::Union{
         Nothing,
-        Dictionary{Int,GPSL1C_DDifferentialCorrection},
+        SlotDictionary{GPSL1C_DDifferentialCorrection,L1C_D_PRN_SLOTS},
     } = nothing
 
     # --- Subframe 3, page 6: text (IS-GPS-800J Fig 3.5-7) ---
-    text_message::Union{Nothing,String} = nothing
+    text_message::Union{Nothing,FixedText{L1C_D_TEXT_LENGTH}} = nothing
 
     num_sf3_pages_received::Int = 0
 end
@@ -626,7 +643,7 @@ function GPSL1C_DData(
 end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
-# for the mutable `Dictionary` fields even when their contents match. Compare
+# for the mutable `SlotDictionary` fields even when their contents match. Compare
 # field-by-field (mirrors `GalileoINAVData`).
 Base.:(==)(a::GPSL1C_DData, b::GPSL1C_DData) = fields_equal(a, b)
 
@@ -672,6 +689,11 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     The same payload deinterleaved: subframe 2 then subframe 3
     """
     deinterleaved::Vector{Float32}
+    """
+    Preallocated containers `raw_data` and `data` are decoded into (the
+    PRN-keyed subframe-3 stores), overwritten in place
+    """
+    storage::DataStorage{GPSL1C_DData}
 end
 
 function GPSL1C_DCache()
@@ -685,8 +707,19 @@ function GPSL1C_DCache()
         committed_ldpc_scratch("cnv2_sf3.alist"),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
+        DataStorage{GPSL1C_DData}(),
     )
 end
+
+# Every container field at its ICD size: one slot per 8-bit `PRN_a` value.
+preallocated_data(::Type{GPSL1C_DData}) = GPSL1C_DData(;
+    reduced_almanacs = SlotDictionary{GPSL1C_DReducedAlmanac,L1C_D_PRN_SLOTS}(),
+    midi_almanacs = SlotDictionary{GPSL1C_DMidiAlmanac,L1C_D_PRN_SLOTS}(),
+    differential_corrections = SlotDictionary{
+        GPSL1C_DDifferentialCorrection,
+        L1C_D_PRN_SLOTS,
+    }(),
+)
 
 # The LDPC decoder handles are stateless w.r.t. equality (they are runtime
 # Aff3ct objects); two L1C-D caches are equal when their soft buffers match.
@@ -818,8 +851,8 @@ $(TYPEDSIGNATURES)
 
 Reset the GPS L1C-D decoder state after a signal loss or reacquisition.
 
-Clears the in-flight sync state (soft-symbol buffer and TOI) and the validated
-data, while preserving the long-lived CED/clock fields in `raw_data` so a
+Clears the in-flight sync state (the soft-symbol buffer is emptied in place,
+the TOI dropped) and the validated data, while preserving the long-lived CED/clock fields in `raw_data` so a
 [`GNSSReceiver`] can re-use the satellite after reacquisition without re-decoding
 all of subframe 2. Mirrors the semantics of the GPS L1 C/A and Galileo E1B
 implementations.
@@ -941,11 +974,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     sf2_symbols = @view deinterleaved[1:L1C_D_SF2_SYMBOLS]
     sf3_symbols = @view deinterleaved[(L1C_D_SF2_SYMBOLS+1):L1C_D_PAYLOAD_SYMBOLS]
 
-    decoded = decode_subframe2(state, sf2_symbols)
+    # The explicit success flag matters: `GNSSDecoderState` is immutable, so
+    # `decoded === state` would also hold when subframe 2 *did* decode but
+    # repeated exactly what `raw_data` already held (e.g. reacquiring after a
+    # reset), wrongly sending the frame down the complement retry.
+    decoded, sf2_ok = decode_subframe2(state, sf2_symbols)
     complement =
         toi < TOI_COMPLEMENT_OFFSET ? toi + TOI_COMPLEMENT_OFFSET :
         toi - TOI_COMPLEMENT_OFFSET
-    if decoded === state && complement < TOI_RANGE
+    if !sf2_ok && complement < TOI_RANGE
         # Subframe 2 failed under this branch of the ambiguity. Its CRC is the
         # only in-band oracle for the pair, so try the complement branch —
         # negating the payload is exactly the 180° flip, and LLR negation
@@ -959,8 +996,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
             is_shifted_by_180_degrees = !flipped,
             raw_data = GPSL1C_DData(state.raw_data; toi = complement),
         )
-        alt_decoded = decode_subframe2(alt_state, sf2_symbols)
-        if alt_decoded !== alt_state
+        alt_decoded, alt_ok = decode_subframe2(alt_state, sf2_symbols)
+        if alt_ok
             return decode_subframe3(alt_decoded, sf3_symbols)
         end
         # Both branches failed — genuine noise. Restore the payload polarity and
@@ -978,9 +1015,10 @@ end
 # (bit 1 = MSB). Fields are read by 1-based start bit and length through the
 # shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers.
 
+# Returns `(state, decoded::Bool)`; `decoded` is `false` on a CRC failure.
 function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
-    isnothing(word) && return state  # silently drop on CRC failure
+    isnothing(word) && return state, false  # silently drop on CRC failure
     word_length = L1C_D_SF2_INFO_BITS
 
     PI = state.constants.PI
@@ -1063,7 +1101,7 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
         ISC_L1CP,
         ISC_L1CD,
     )
-    GNSSDecoderState(state; raw_data = raw)
+    GNSSDecoderState(state; raw_data = raw), true
 end
 
 # ---- Subframe 3 page parsing (IS-GPS-800J §3.5.4) --------------------------
@@ -1073,7 +1111,8 @@ end
 # 24 bits a CRC-24Q. After the CRC passes the 274 bits are packed MSB-first into
 # a `UInt288` (`get_bits(word, 274, …)` addresses the right-aligned 274 logical
 # bits); we dispatch on the page number and merge the parsed fields into
-# `raw_data` immutably (same style as SF2). Layouts follow IS-GPS-800J as
+# `raw_data` (same style as SF2), except for the PRN-keyed pages 3/4/5, whose
+# packets overwrite their slot of a preallocated store in place. Layouts follow IS-GPS-800J as
 # amended by IRN-IS-800J-003 — which for page 1 only restores Greek letters the
 # base PDF rendered as question marks; the four ISC fields at bits 177/190/203/216
 # are in base Rev J already (Figure 3.5-2, Table 6.2-18).
@@ -1095,11 +1134,11 @@ function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
     elseif page == L1C_D_SF3_PAGE_GGTO_EOP
         parse_sf3_page2(raw, word, state.constants.PI)
     elseif page == L1C_D_SF3_PAGE_REDUCED_ALMANAC
-        parse_sf3_page3(raw, word, state.constants.PI)
+        parse_sf3_page3(raw, state.cache.storage.raw, word, state.constants.PI)
     elseif page == L1C_D_SF3_PAGE_MIDI_ALMANAC
-        parse_sf3_page4(raw, word, state.constants.PI)
+        parse_sf3_page4(raw, state.cache.storage.raw, word, state.constants.PI)
     elseif page == L1C_D_SF3_PAGE_DIFF_CORRECTION
-        parse_sf3_page5(raw, word, state.constants.PI)
+        parse_sf3_page5(raw, state.cache.storage.raw, word, state.constants.PI)
     elseif page == L1C_D_SF3_PAGE_TEXT
         parse_sf3_page6(raw, word)
     else
@@ -1203,25 +1242,43 @@ end
 
 """
 Subframe 3, page 3 — six reduced-almanac packets (IS-GPS-800J Fig 3.5-4).
+
+Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` in place,
+or — on the first page 3 — of the preallocated `storage.reduced_almanacs`.
 """
-function parse_sf3_page3(raw::GPSL1C_DData, word::UInt288, PI::Float64)
+function parse_sf3_page3(
+    raw::GPSL1C_DData,
+    storage::GPSL1C_DData,
+    word::UInt288,
+    PI::Float64,
+)
+    almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
     word_length = L1C_D_SF3_INFO_BITS
     WN_a = Int(get_bits(word, word_length, 15, 13))
     t_0a = Int(get_bits(word, word_length, 28, 8)) * 2^12
-    almanacs = raw.reduced_almanacs
     # Six 33-bit packets at bits 36, 69, 102, 135, 168, 201.
     for start in (36, 69, 102, 135, 168, 201)
         packet = _reduced_almanac_packet(word, start, WN_a, t_0a, PI)
         isnothing(packet) && break  # PRNa==0 ⇒ rest of page is filler (§3.5.4.3.5.1.1)
-        almanacs = _merge_keyed(almanacs, packet.PRN_a, packet)
+        # Overwrites this PRN's slot of the preallocated store in place.
+        set!(almanacs, packet.PRN_a, packet)
+        raw = GPSL1C_DData(raw; reduced_almanacs = almanacs)
     end
-    GPSL1C_DData(raw; reduced_almanacs = almanacs)
+    return raw
 end
 
 """
 Subframe 3, page 4 — one Midi almanac (IS-GPS-800J Fig 3.5-5, Table 3.5-7).
+
+The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` in place, or —
+on the first page 4 — of the preallocated `storage.midi_almanacs`.
 """
-function parse_sf3_page4(raw::GPSL1C_DData, word::UInt288, PI::Float64)
+function parse_sf3_page4(
+    raw::GPSL1C_DData,
+    storage::GPSL1C_DData,
+    word::UInt288,
+    PI::Float64,
+)
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, 36, 8))
     PRN_a == 0 && return raw  # empty almanac
@@ -1242,13 +1299,24 @@ function parse_sf3_page4(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         a_f0 = get_twos_complement_num(word, word_length, 145, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, 156, 10) * 2.0^-37,
     )
-    GPSL1C_DData(raw; midi_almanacs = _merge_keyed(raw.midi_almanacs, PRN_a, alm))
+    midi_almanacs = writable_container(raw.midi_almanacs, storage.midi_almanacs)
+    set!(midi_almanacs, PRN_a, alm)
+    GPSL1C_DData(raw; midi_almanacs)
 end
 
 """
 Subframe 3, page 5 — one differential-correction packet (IS-GPS-800J Fig 3.5-6/3.5-10, Table 3.5-8).
+
+The packet **overwrites** its PRN's slot of `raw.differential_corrections` in
+place, or — on the first page 5 — of the preallocated
+`storage.differential_corrections`.
 """
-function parse_sf3_page5(raw::GPSL1C_DData, word::UInt288, PI::Float64)
+function parse_sf3_page5(
+    raw::GPSL1C_DData,
+    storage::GPSL1C_DData,
+    word::UInt288,
+    PI::Float64,
+)
     word_length = L1C_D_SF3_INFO_BITS
     # Page-level fields precede the 126-bit CDC+EDC packet. Layout (Fig 3.5-6):
     # bit 15 t_op-D (11, scale 300), bit 26 t_OD (11, scale 300),
@@ -1289,28 +1357,47 @@ function parse_sf3_page5(raw::GPSL1C_DData, word::UInt288, PI::Float64)
         ΔΩ,
         ΔA,
     )
-    GPSL1C_DData(
-        raw;
-        differential_corrections = _merge_keyed(
-            raw.differential_corrections,
-            PRN_a,
-            differential_correction,
-        ),
-    )
+    differential_corrections =
+        writable_container(raw.differential_corrections, storage.differential_corrections)
+    set!(differential_corrections, PRN_a, differential_correction)
+    GPSL1C_DData(raw; differential_corrections)
+end
+
+# Character `k` (0-based) of a page-6 text message, and whether it is printable.
+_text_char(word::UInt288, k::Int) = UInt8(get_bits(word, L1C_D_SF3_INFO_BITS, 19 + 8k, 8))
+_is_printable(code::UInt8) = code >= 0x20 && code < 0x7f
+
+function _text_printable_char_count(word::UInt288)
+    count = 0
+    for k = 0:(L1C_D_TEXT_LENGTH-1)
+        count += _is_printable(_text_char(word, k))
+    end
+    return count
+end
+
+# The `i`-th printable character of a page-6 text message, or `0x00` past the last.
+function _text_printable_char(word::UInt288, i::Int)
+    seen = 0
+    for k = 0:(L1C_D_TEXT_LENGTH-1)
+        code = _text_char(word, k)
+        if _is_printable(code)
+            seen += 1
+            seen == i && return code
+        end
+    end
+    return 0x00
 end
 
 """
 Subframe 3, page 6 — 29 ASCII characters at bits 19-250 (IS-GPS-800J Fig 3.5-7).
 """
 function parse_sf3_page6(raw::GPSL1C_DData, word::UInt288)
-    word_length = L1C_D_SF3_INFO_BITS
-    chars = Char[]
-    for k = 0:28
-        code = Int(get_bits(word, word_length, 19 + 8k, 8))
-        # Keep printable ASCII; skip NUL/control padding so the message is clean.
-        (code >= 0x20 && code < 0x7f) && push!(chars, Char(code))
-    end
-    GPSL1C_DData(raw; text_message = String(chars))
+    # Built inline (a `FixedText`, not a heap `String`), so no allocation.
+    # Printable ASCII is kept; NUL/control padding is skipped so the message is
+    # clean, which moves each kept character to the `i`-th printable position.
+    units = ntuple(i -> _text_printable_char(word, i), Val(L1C_D_TEXT_LENGTH))
+    count = _text_printable_char_count(word)
+    GPSL1C_DData(raw; text_message = FixedText{L1C_D_TEXT_LENGTH}(units, count))
 end
 
 """
@@ -1323,9 +1410,12 @@ arms the streaming counter.
 """
 function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
     if is_decoding_completed_for_positioning(state.raw_data)
+        # `data` gets its own copy of every container: `publish_data` overwrites
+        # the preallocated validated stores rather than sharing `raw_data`'s,
+        # which later pages keep writing into.
         return GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
         )
     end
