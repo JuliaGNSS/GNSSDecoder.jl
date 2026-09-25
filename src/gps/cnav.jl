@@ -431,9 +431,9 @@ stores with the raw ones.
     packet).
   - `ephemeris_corrections::SlotDictionary{GPSCNAVEphemerisDifferentialCorrection,256}`
     (message types 14, 34; 8-bit `PRN ID`).
-  - `text_mt15::FixedText{29}`, `text_page_mt15::Int64`: message type 15 text
+  - `text_mt15::CStaticString{29}`, `text_page_mt15::Int64`: message type 15 text
     page (29 ASCII characters, control chars stripped).
-  - `text_mt36::FixedText{18}`, `text_page_mt36::Int64`: message type 36 text
+  - `text_mt36::CStaticString{18}`, `text_page_mt36::Int64`: message type 36 text
     page (18 ASCII characters, control chars stripped).
   - `ism::GPSCNAVIntegritySupportMessage`: message type 40 Integrity Support Message.
 
@@ -537,9 +537,9 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
         SlotDictionary{GPSCNAVEphemerisDifferentialCorrection,CNAV_DC_SLOTS},
     } = nothing
 
-    text_mt15::Union{Nothing,FixedText{CNAV_MT15_TEXT_CHARS}} = nothing
+    text_mt15::Union{Nothing,CStaticString{CNAV_MT15_TEXT_CHARS}} = nothing
     text_page_mt15::Union{Nothing,Int64} = nothing
-    text_mt36::Union{Nothing,FixedText{CNAV_MT36_TEXT_CHARS}} = nothing
+    text_mt36::Union{Nothing,CStaticString{CNAV_MT36_TEXT_CHARS}} = nothing
     text_page_mt36::Union{Nothing,Int64} = nothing
 
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
@@ -1629,7 +1629,8 @@ end
 
 """
 Decode `N` 8-bit ASCII characters starting at 1-based bit `start` into an
-inline `FixedText{N}`, stripping control chars (so the text may be shorter).
+inline `CStaticString{N}`, stripping control chars (so the text may be shorter:
+the unused tail stays NUL, where a `CStaticString` ends).
 """
 function _cnav_text(word::UInt320, start::Int, ::Val{N}) where {N}
     word_length = CNAV_MESSAGE_BITS
@@ -1643,7 +1644,7 @@ function _cnav_text(word::UInt320, start::Int, ::Val{N}) where {N}
             units = Base.setindex(units, code, len)
         end
     end
-    return FixedText{N}(units, len)
+    return CStaticString(units)
 end
 
 """

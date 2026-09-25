@@ -39,13 +39,13 @@ Base.copy(::GNSSDecoderState)
 
 ## Preallocated Storage
 
-The keyed stores and broadcast texts in the decoded data are sized once, when
-the decoder state is constructed, so that `decode!` can overwrite them instead
-of allocating.
+The keyed stores in the decoded data are sized once, when the decoder state is
+constructed, so that `decode!` can overwrite them instead of allocating. The
+broadcast text messages are inline `CStaticString`s from StaticStrings.jl for
+the same reason.
 
 ```@docs
 SlotDictionary
-FixedText
 ```
 
 ## State Management
