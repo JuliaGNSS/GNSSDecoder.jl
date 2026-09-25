@@ -238,7 +238,170 @@ Base.@kwdef struct GalileoE6BConstants <: AbstractGNSSConstants
     preamble_length::Int = E6B_SYNC_SYMBOLS
 end
 
+# ---- Storage bounds (HAS SIS ICD, Issue 1.0) ----------------------------------
+#
+# `decode!` allocates nothing, so every variable-length HAS structure is backed
+# by a buffer sized once, at construction, to the largest value the ICD's field
+# widths allow, and overwritten in place afterwards. These are those maxima.
+
+"""
+Most non-encoded pages in one HAS message — `MS` is a 5-bit "size - 1" field
+(ICD Table 8), and equals the RS code dimension.
+"""
+const E6B_MAX_MESSAGE_PAGES = 32
+"""
+Most octets in one reassembled HAS message: 32 pages × 53 octets.
+"""
+const E6B_MAX_MESSAGE_OCTETS = E6B_MAX_MESSAGE_PAGES * 53
+"""
+Most bits in one reassembled HAS message (32 × 424) — the budget every
+variable-length block is bounded by.
+"""
+const E6B_MAX_MESSAGE_BITS = 8 * E6B_MAX_MESSAGE_OCTETS
+"""
+Number of Message IDs (5-bit MID, ICD Table 8), i.e. of concurrent page groups.
+"""
+const E6B_NUM_MESSAGE_IDS = 32
+"""
+Number of Mask IDs (5-bit field, ICD Table 12).
+"""
+const E6B_NUM_MASK_IDS = 32
+"""
+Most constellations in one mask — `Nsys` is a 4-bit field (ICD Table 15).
+"""
+const E6B_MAX_SYSTEMS = 15
+"""
+Width of the Satellite Mask, i.e. most satellites per constellation (ICD Table 19).
+"""
+const E6B_MAX_SATELLITES = 40
+"""
+Width of the Signal Mask, i.e. most signals per constellation (ICD Table 20).
+"""
+const E6B_MAX_SIGNALS = 16
+
 # ---- Decoded HAS records (ICD §5) -------------------------------------------
+#
+# A mask is small and bounded (at most 15 constellations of at most 40
+# satellites and 16 signals), so it is an immutable, pointer-free *value*: its
+# index lists and Cell Mask are stored inline rather than in heap vectors. That
+# is what lets masks be copied into the preallocated Mask ID store, into a
+# message and into the validated `data` without allocating, and without any two
+# of them sharing a container.
+
+"""
+$(TYPEDEF)
+
+The indices named by the set bits of a HAS bit mask (MSB = index 0), counting
+from `first_index`: an immutable `AbstractVector{Int}` computed from the mask
+itself, so it stores no list and never allocates.
+
+It is what [`GalileoHASSatelliteMask`](@ref)'s `SVIDs` (40-bit Satellite Mask,
+`first_index = 1`: Galileo SVID / GPS PRN) and `signal_indices` (16-bit Signal
+Mask, `first_index = 0`) are. It compares equal to a `Vector` of the same
+indices.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoHASMaskIndices <: AbstractVector{Int}
+    """
+    The raw mask, right-aligned in `width` bits
+    """
+    mask::UInt64
+    """
+    Width of the mask in bits (40 or 16)
+    """
+    width::Int
+    """
+    Index named by the mask's most significant bit
+    """
+    first_index::Int
+end
+
+Base.size(indices::GalileoHASMaskIndices) = (count_ones(indices.mask),)
+Base.IndexStyle(::Type{GalileoHASMaskIndices}) = IndexLinear()
+
+# The bit position (0 = MSB) of the next set bit at or after `index`, or `width`.
+@inline function _next_set_index(indices::GalileoHASMaskIndices, index::Int)
+    while index < indices.width
+        (indices.mask >> (indices.width - 1 - index)) & 0x1 == 0x1 && return index
+        index += 1
+    end
+    return index
+end
+
+function Base.getindex(indices::GalileoHASMaskIndices, i::Int)
+    @boundscheck checkbounds(indices, i)
+    index = _next_set_index(indices, 0)
+    for _ = 2:i
+        index = _next_set_index(indices, index + 1)
+    end
+    return index + indices.first_index
+end
+
+function Base.iterate(indices::GalileoHASMaskIndices, index::Int = 0)
+    index = _next_set_index(indices, index)
+    index >= indices.width && return nothing
+    return (index + indices.first_index, index + 1)
+end
+
+"""
+$(TYPEDEF)
+
+An `Nsat × Nsig` HAS Cell Mask (ICD §5.2.1.5) as an immutable, inline
+`AbstractMatrix{Bool}`: one row of up to 16 bits per satellite, stored in a
+fixed 40-row tuple so it never allocates. It compares equal to a
+`Matrix{Bool}` with the same cells, and any `AbstractMatrix{Bool}` of at most
+40 × 16 converts to it.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoHASCellMask <: AbstractMatrix{Bool}
+    """
+    Row `r` holds satellite `r`'s cells as broadcast, `num_signals` bits
+    right-aligned with signal 1 in the most significant of them; rows past
+    `num_satellites` are zero
+    """
+    rows::NTuple{E6B_MAX_SATELLITES,UInt16}
+    """
+    Number of rows (`Nsat`)
+    """
+    num_satellites::Int
+    """
+    Number of columns (`Nsig`)
+    """
+    num_signals::Int
+end
+
+Base.size(cells::GalileoHASCellMask) = (cells.num_satellites, cells.num_signals)
+
+function Base.getindex(cells::GalileoHASCellMask, row::Int, column::Int)
+    @boundscheck checkbounds(cells, row, column)
+    return (cells.rows[row] >> (cells.num_signals - column)) & 0x1 == 0x1
+end
+
+function GalileoHASCellMask(cells::AbstractMatrix{Bool})
+    num_satellites, num_signals = size(cells)
+    (num_satellites <= E6B_MAX_SATELLITES && num_signals <= E6B_MAX_SIGNALS) ||
+        throw(ArgumentError("a HAS Cell Mask is at most 40 × 16"))
+    rows = ntuple(Val(E6B_MAX_SATELLITES)) do row
+        value = 0x0000
+        if row <= num_satellites
+            for column = 1:num_signals
+                value = (value << 1) | UInt16(cells[row, column])
+            end
+        end
+        value
+    end
+    GalileoHASCellMask(rows, num_satellites, num_signals)
+end
+
+Base.convert(::Type{GalileoHASCellMask}, cells::GalileoHASCellMask) = cells
+Base.convert(::Type{GalileoHASCellMask}, cells::AbstractMatrix{Bool}) =
+    GalileoHASCellMask(cells)
 
 """
     GalileoHASSatelliteMask
@@ -248,17 +411,19 @@ signals carry biases, and which broadcast navigation message the orbit and clock
 corrections refer to.
 
 The raw ICD bit fields are kept alongside the expanded lists, since the raw
-masks are what later blocks' lengths are computed from.
+masks are what later blocks' lengths are computed from. An immutable,
+pointer-free value: the expanded lists are views computed from the raw masks
+(see [`GalileoHASMaskIndices`](@ref)), and the Cell Mask is stored inline.
 
 # Fields
 
   - `GNSS_ID::Int`: GNSS index — 0 = GPS, 2 = Galileo (Table 18)
   - `satellite_mask::UInt64`: 40-bit Satellite Mask, MSB = satellite index 0 (Table 19)
   - `signal_mask::UInt16`: 16-bit Signal Mask, MSB = signal index 0 (Table 20)
-  - `cell_mask::Union{Nothing,Matrix{Bool}}`: `Nsat × Nsig` Cell Mask, or `nothing` when the Cell Mask Availability Flag is 0 (biases then cover every masked satellite/signal pair)
+  - `cell_mask::Union{Nothing,GalileoHASCellMask}`: `Nsat × Nsig` Cell Mask (an `AbstractMatrix{Bool}`), or `nothing` when the Cell Mask Availability Flag is 0 (biases then cover every masked satellite/signal pair)
   - `nav_message_index::Int`: Navigation Message Index — 0 = I/NAV (Galileo) / LNAV (GPS) (Table 21)
-  - `SVIDs::Vector{Int}`: Satellite IDs of the masked satellites (satellite index + 1, i.e. Galileo SVID / GPS PRN)
-  - `signal_indices::Vector{Int}`: Signal indices of the masked signals (0-based, per Table 20)
+  - `SVIDs::GalileoHASMaskIndices`: Satellite IDs of the masked satellites (satellite index + 1, i.e. Galileo SVID / GPS PRN), an `AbstractVector{Int}` derived from `satellite_mask`
+  - `signal_indices::GalileoHASMaskIndices`: Signal indices of the masked signals (0-based, per Table 20), an `AbstractVector{Int}` derived from `signal_mask`
 
 # Reference
 
@@ -268,24 +433,80 @@ Base.@kwdef struct GalileoHASSatelliteMask
     GNSS_ID::Int
     satellite_mask::UInt64
     signal_mask::UInt16
-    cell_mask::Union{Nothing,Matrix{Bool}} = nothing
+    cell_mask::Union{Nothing,GalileoHASCellMask} = nothing
     nav_message_index::Int
-    SVIDs::Vector{Int}
-    signal_indices::Vector{Int}
+    SVIDs::GalileoHASMaskIndices = GalileoHASMaskIndices(satellite_mask, 40, 1)
+    signal_indices::GalileoHASMaskIndices = GalileoHASMaskIndices(signal_mask, 16, 0)
 end
 
 Base.:(==)(a::GalileoHASSatelliteMask, b::GalileoHASSatelliteMask) = fields_equal(a, b)
 
 """
+Placeholder filling the unused slots of a [`GalileoHASSatelliteMaskList`](@ref).
+"""
+const E6B_EMPTY_SATELLITE_MASK = GalileoHASSatelliteMask(;
+    GNSS_ID = 0,
+    satellite_mask = UInt64(0),
+    signal_mask = UInt16(0),
+    nav_message_index = 0,
+)
+
+"""
+$(TYPEDEF)
+
+The per-constellation masks of one HAS Mask block, as an immutable, inline
+`AbstractVector{GalileoHASSatelliteMask}` of at most 15 entries (the ICD's
+4-bit `Nsys`). Compares equal to a `Vector` of the same masks.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoHASSatelliteMaskList <: AbstractVector{GalileoHASSatelliteMask}
+    """
+    The masks in broadcast order; slots past `length` hold a placeholder
+    """
+    items::NTuple{E6B_MAX_SYSTEMS,GalileoHASSatelliteMask}
+    """
+    Number of masks (`Nsys`)
+    """
+    length::Int
+end
+
+function GalileoHASSatelliteMaskList(masks::AbstractVector{GalileoHASSatelliteMask})
+    length(masks) <= E6B_MAX_SYSTEMS ||
+        throw(ArgumentError("a HAS mask covers at most $E6B_MAX_SYSTEMS constellations"))
+    items = ntuple(
+        i -> i <= length(masks) ? masks[i] : E6B_EMPTY_SATELLITE_MASK,
+        Val(E6B_MAX_SYSTEMS),
+    )
+    GalileoHASSatelliteMaskList(items, length(masks))
+end
+
+Base.size(list::GalileoHASSatelliteMaskList) = (list.length,)
+Base.IndexStyle(::Type{GalileoHASSatelliteMaskList}) = IndexLinear()
+function Base.getindex(list::GalileoHASSatelliteMaskList, i::Int)
+    @boundscheck checkbounds(list, i)
+    return @inbounds list.items[i]
+end
+
+Base.convert(::Type{GalileoHASSatelliteMaskList}, list::GalileoHASSatelliteMaskList) = list
+Base.convert(
+    ::Type{GalileoHASSatelliteMaskList},
+    masks::AbstractVector{GalileoHASSatelliteMask},
+) = GalileoHASSatelliteMaskList(masks)
+
+"""
     GalileoHASMask
 
 One complete HAS Mask block: the per-constellation masks it defines, under the
-Mask ID that later messages reference.
+Mask ID that later messages reference. An immutable, pointer-free value, so
+storing it (in the Mask ID store, a message, the validated `data`) copies it.
 
 # Fields
 
   - `mask_id::Int`: Mask ID this mask defines (0-31)
-  - `satellite_masks::Vector{GalileoHASSatelliteMask}`: one entry per corrected constellation, in broadcast order
+  - `satellite_masks::GalileoHASSatelliteMaskList`: one entry per corrected constellation, in broadcast order (an `AbstractVector{GalileoHASSatelliteMask}`)
 
 # Reference
 
@@ -293,7 +514,7 @@ Galileo HAS SIS ICD, Issue 1.0, Table 15
 """
 Base.@kwdef struct GalileoHASMask
     mask_id::Int
-    satellite_masks::Vector{GalileoHASSatelliteMask}
+    satellite_masks::GalileoHASSatelliteMaskList
 end
 
 Base.:(==)(a::GalileoHASMask, b::GalileoHASMask) = fields_equal(a, b)
@@ -417,6 +638,20 @@ Base.@kwdef struct GalileoHASPhaseBias
 end
 
 """
+    e6b_block_capacity(T) -> Int
+
+Most entries of type `T` one content block can carry. Every entry consumes at
+least a fixed number of bits of the message — 45 for an orbit correction (an
+8-bit GPS IOD plus 37 correction bits), 13 for a clock correction and for a
+phase bias (11 + 2), 11 for a code bias — so the 13568-bit message budget bounds
+the count, whatever the mask says.
+"""
+e6b_block_capacity(::Type{GalileoHASOrbitCorrection}) = cld(E6B_MAX_MESSAGE_BITS, 45)
+e6b_block_capacity(::Type{GalileoHASClockCorrection}) = cld(E6B_MAX_MESSAGE_BITS, 13)
+e6b_block_capacity(::Type{GalileoHASCodeBias}) = cld(E6B_MAX_MESSAGE_BITS, 11)
+e6b_block_capacity(::Type{GalileoHASPhaseBias}) = cld(E6B_MAX_MESSAGE_BITS, 13)
+
+"""
     GalileoHASCorrectionBlock{T}
 
 One HAS MT1 content block: a validity interval, the message header context it
@@ -427,28 +662,81 @@ the message's Time Of Hour, so blocks of one message can — and routinely do �
 expire at different times. `mask_id` and `IOD_set_id` identify the satellite set
 and the broadcast-ephemeris issue the corrections apply to (ICD §7.6).
 
+!!! warning "Overwritten in place"
+
+    A block is a preallocated, mutable buffer owned by the decoder state:
+    [`decode!`](@ref) **overwrites** its fields and the contents of its
+    `corrections` vector when a later message carries a block of the same kind.
+    Copy it (`copy(state)`, or [`decode`](@ref)) to keep a snapshot.
+
 # Fields
 
   - `TOH::Int`: Time Of Hour of the message that carried this block (seconds into the GST hour, 0-3599)
   - `mask_id::Int`: Mask ID the corrections are keyed to
   - `IOD_set_id::Int`: IOD Set ID the corrections are keyed to
   - `validity_interval::Union{Nothing,Int}`: Validity interval in seconds from `TOH` (`nothing` for the reserved index 15)
-  - `corrections::Vector{T}`: the block's entries, in broadcast order
+  - `corrections::Vector{T}`: the block's entries, in broadcast order — a buffer preallocated to the most entries a message can carry, resized within that capacity
 
 # Reference
 
 Galileo HAS SIS ICD, Issue 1.0, Tables 22, 27, 32, 35, 38
 """
-Base.@kwdef struct GalileoHASCorrectionBlock{T}
+mutable struct GalileoHASCorrectionBlock{T}
     TOH::Int
     mask_id::Int
     IOD_set_id::Int
     validity_interval::Union{Nothing,Int}
-    corrections::Vector{T}
+    const corrections::Vector{T}
 end
 
-# The `corrections` vector makes the default `===` too strict; see `fields_equal`.
+function GalileoHASCorrectionBlock{T}(;
+    TOH::Integer,
+    mask_id::Integer,
+    IOD_set_id::Integer,
+    validity_interval::Union{Nothing,Integer},
+    corrections::AbstractVector,
+) where {T}
+    buffer = sizehint!(T[], max(e6b_block_capacity(T), length(corrections)))
+    append!(buffer, corrections)
+    GalileoHASCorrectionBlock{T}(TOH, mask_id, IOD_set_id, validity_interval, buffer)
+end
+
+"""
+An empty correction block of entry type `T` whose `corrections` buffer holds the
+most entries one message can carry — the preallocated storage the decoder
+overwrites.
+"""
+preallocated_block(::Type{T}) where {T} = GalileoHASCorrectionBlock{T}(;
+    TOH = 0,
+    mask_id = 0,
+    IOD_set_id = 0,
+    validity_interval = nothing,
+    corrections = T[],
+)
+
+# The `corrections` vector (and mutability) make the default `===` too strict;
+# see `fields_equal`.
 Base.:(==)(a::GalileoHASCorrectionBlock, b::GalileoHASCorrectionBlock) = fields_equal(a, b)
+
+"""
+    overwrite!(dst::GalileoHASCorrectionBlock, src::GalileoHASCorrectionBlock) -> dst
+
+Make `dst` an exact copy of `src` by **overwriting** its fields and the
+contents of its `corrections` buffer (resized within its capacity).
+"""
+function overwrite!(
+    dst::GalileoHASCorrectionBlock{T},
+    src::GalileoHASCorrectionBlock{T},
+) where {T}
+    dst === src && return dst
+    dst.TOH = src.TOH
+    dst.mask_id = src.mask_id
+    dst.IOD_set_id = src.IOD_set_id
+    dst.validity_interval = src.validity_interval
+    resize!(dst.corrections, length(src.corrections))
+    copyto!(dst.corrections, src.corrections)
+    return dst
+end
 
 """
     GalileoHASMessage
@@ -459,6 +747,14 @@ defines, reassembled from `MS` HAS Encoded Pages by the RS erasure decoder.
 Only Message Type 1 is specified (ICD Table 10), so in practice
 `message_type == 1` and the six block fields are populated according to the
 flags of the MT1 header; a flag that was 0 leaves its field `nothing`.
+
+!!! warning "Overwritten in place"
+
+    A message is a preallocated, mutable record owned by the decoder state:
+    [`decode!`](@ref) **overwrites** it with the next completed message. In
+    `state.data` its block fields are the very blocks `state.data` publishes as
+    the latest of each kind (`data.message.clock_corrections === data.clock_corrections` when the message carried one). Copy the state to
+    keep a snapshot.
 
 # Fields
 
@@ -479,7 +775,7 @@ flags of the MT1 header; a flag that was 0 leaves its field `nothing`.
 
 Galileo HAS SIS ICD, Issue 1.0, Tables 11-14
 """
-Base.@kwdef struct GalileoHASMessage
+Base.@kwdef mutable struct GalileoHASMessage
     message_id::Int
     message_type::Int
     message_size::Int
@@ -499,9 +795,79 @@ Base.@kwdef struct GalileoHASMessage
     phase_biases::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASPhaseBias}} = nothing
 end
 
-# Same reason as `GalileoHASCorrectionBlock` above: the nested blocks and the
-# mask carry vectors.
+"""
+An empty message record, the preallocated storage the decoder overwrites.
+"""
+preallocated_message() = GalileoHASMessage(;
+    message_id = 0,
+    message_type = 0,
+    message_size = 0,
+    TOH = 0,
+    mask_id = 0,
+    IOD_set_id = 0,
+)
+
+# Mutable, and the nested blocks carry vectors: compare by value.
 Base.:(==)(a::GalileoHASMessage, b::GalileoHASMessage) = fields_equal(a, b)
+
+"""
+    e6b_overwrite_message!(dst, src, orbit, clock, clock_subset, code, phase) -> dst
+
+**Overwrite** message record `dst` with `src`'s header and mask, pointing each
+block field at the given block where `src` carried that kind of block and at
+`nothing` where it did not. The blocks are the caller's (already overwritten)
+copies of `src`'s, so `dst` never references a block `src` owns.
+"""
+function e6b_overwrite_message!(
+    dst::GalileoHASMessage,
+    src::GalileoHASMessage,
+    orbit,
+    clock,
+    clock_subset,
+    code,
+    phase,
+)
+    dst.message_id = src.message_id
+    dst.message_type = src.message_type
+    dst.message_size = src.message_size
+    dst.TOH = src.TOH
+    dst.mask_id = src.mask_id
+    dst.IOD_set_id = src.IOD_set_id
+    dst.mask = src.mask
+    dst.orbit_corrections = isnothing(src.orbit_corrections) ? nothing : orbit
+    dst.clock_corrections = isnothing(src.clock_corrections) ? nothing : clock
+    dst.clock_subset_corrections =
+        isnothing(src.clock_subset_corrections) ? nothing : clock_subset
+    dst.code_biases = isnothing(src.code_biases) ? nothing : code
+    dst.phase_biases = isnothing(src.phase_biases) ? nothing : phase
+    return dst
+end
+
+"""
+$(TYPEDEF)
+
+One preallocated block of each MT1 content kind — the buffers a message's
+blocks are parsed into before they are copied out.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoHASBlockBuffers
+    orbit_corrections::GalileoHASCorrectionBlock{GalileoHASOrbitCorrection}
+    clock_corrections::GalileoHASCorrectionBlock{GalileoHASClockCorrection}
+    clock_subset_corrections::GalileoHASCorrectionBlock{GalileoHASClockCorrection}
+    code_biases::GalileoHASCorrectionBlock{GalileoHASCodeBias}
+    phase_biases::GalileoHASCorrectionBlock{GalileoHASPhaseBias}
+end
+
+GalileoHASBlockBuffers() = GalileoHASBlockBuffers(
+    preallocated_block(GalileoHASOrbitCorrection),
+    preallocated_block(GalileoHASClockCorrection),
+    preallocated_block(GalileoHASClockCorrection),
+    preallocated_block(GalileoHASCodeBias),
+    preallocated_block(GalileoHASPhaseBias),
+)
 
 # ---- Decoded data container --------------------------------------------------
 
@@ -524,6 +890,14 @@ Every field here has passed the per-page CRC-24Q and the RS erasure decode, so
 `raw_data` and `data` track each other (there is no cross-message issue-of-data
 vote to run — see `validate_data`).
 
+# Storage
+
+Every container here — the message record, the Mask ID store and the five
+correction blocks — is preallocated by the decoder state (to the ICD's
+maxima) and **overwritten in place** by [`decode!`](@ref); `data` has its own
+set, which `validate_data` overwrites with a copy of `raw_data`'s, so the two
+never share a container.
+
 # Service status
 
   - `HAS_status::HASStatus`: HAS status from the most recent valid page (Table 9)
@@ -537,7 +911,7 @@ vote to run — see `validate_data`).
     `TOH` / `mask_id` / `IOD_set_id`, and those are the ones to age a correction
     against. A flat `data.TOH` alongside `data.orbit_corrections.TOH` would look
     like the same fact and is not.
-  - `masks::Dictionary{Int,GalileoHASMask}`: every mask received so far, keyed by Mask ID
+  - `masks::SlotDictionary{GalileoHASMask,32}`: every mask received so far, keyed by Mask ID (0-31)
   - `orbit_corrections::GalileoHASCorrectionBlock{GalileoHASOrbitCorrection}`: latest Orbit Corrections block
   - `clock_corrections::GalileoHASCorrectionBlock{GalileoHASClockCorrection}`: latest Clock Full-Set Corrections block
   - `clock_subset_corrections::GalileoHASCorrectionBlock{GalileoHASClockCorrection}`: latest Clock Subset Corrections block
@@ -551,7 +925,7 @@ Galileo HAS SIS ICD, Issue 1.0
 Base.@kwdef struct GalileoE6BData <: AbstractGalileoData
     HAS_status::Union{Nothing,HASStatus} = nothing
     message::Union{Nothing,GalileoHASMessage} = nothing
-    masks::Union{Nothing,Dictionary{Int,GalileoHASMask}} = nothing
+    masks::Union{Nothing,SlotDictionary{GalileoHASMask,E6B_NUM_MASK_IDS}} = nothing
     orbit_corrections::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASOrbitCorrection}} =
         nothing
     clock_corrections::Union{Nothing,GalileoHASCorrectionBlock{GalileoHASClockCorrection}} =
@@ -587,9 +961,25 @@ end
     )
 end
 
-# The mutable `masks::Dictionary` and the `Vector` fields inside the correction
-# blocks make the default struct `==` (which falls back to `===`) too strict.
+# The mutable `masks` store, message record and correction blocks make the
+# default struct `==` (which falls back to `===`) too strict.
 Base.:(==)(a::GalileoE6BData, b::GalileoE6BData) = fields_equal(a, b)
+
+# Every container field at its ICD size: the message record, one mask slot per
+# Mask ID (0-31), and each correction block's buffer at the most entries one
+# message can carry (`e6b_block_capacity`).
+function preallocated_data(::Type{GalileoE6BData})
+    blocks = GalileoHASBlockBuffers()
+    GalileoE6BData(;
+        message = preallocated_message(),
+        masks = SlotDictionary{GalileoHASMask,E6B_NUM_MASK_IDS}(),
+        blocks.orbit_corrections,
+        blocks.clock_corrections,
+        blocks.clock_subset_corrections,
+        blocks.code_biases,
+        blocks.phase_biases,
+    )
+end
 
 """
 $(TYPEDSIGNATURES)
@@ -629,7 +1019,9 @@ Encoded pages collected so far for one Message ID, awaiting the `message_size`
 distinct pages the Reed-Solomon erasure decoder needs (ICD §6.4).
 
 Mutable and mutated in place inside the decoder cache: it is exactly the kind of
-"still partial" state `CONTEXT.md` says belongs there.
+"still partial" state `CONTEXT.md` says belongs there. The page store holds one
+preallocated group per Message ID, sized for the largest message (32 pages),
+and a new message under that ID **overwrites** it (see `e6b_reopen_group!`).
 
 # Fields
 
@@ -650,14 +1042,14 @@ mutable struct GalileoHASPageGroup
     opened_at::Int
     """
     HAS Page IDs of the collected pages, in arrival order — its length is how many
-    are held, and reaching `message_size` is what completes the group
+    are held, and reaching `message_size` is what completes the group (capacity 32)
     """
-    page_ids::Vector{Int}
+    const page_ids::Vector{Int}
     """
-    Collected pages, `message_size × 53` octets; row `i` belongs to `page_ids[i]`,
-    so rows beyond `length(page_ids)` are not yet filled
+    Collected pages, `32 × 53` octets; row `i` belongs to `page_ids[i]`, so rows
+    beyond `length(page_ids)` are not filled (or hold an earlier message's pages)
     """
-    octets::Matrix{UInt8}
+    const octets::Matrix{UInt8}
 end
 
 GalileoHASPageGroup(message_type::Int, message_size::Int, opened_at::Int) =
@@ -665,16 +1057,72 @@ GalileoHASPageGroup(message_type::Int, message_size::Int, opened_at::Int) =
         message_type,
         message_size,
         opened_at,
-        Int[],
-        zeros(UInt8, message_size, E6B_OCTETS_PER_PAGE),
+        sizehint!(Int[], E6B_MAX_MESSAGE_PAGES),
+        zeros(UInt8, E6B_MAX_MESSAGE_PAGES, E6B_OCTETS_PER_PAGE),
     )
+
+"""
+**Overwrite** `group` so it is an empty group for a new message: the given
+header fields, no pages collected.
+"""
+function e6b_reopen_group!(
+    group::GalileoHASPageGroup,
+    message_type::Int,
+    message_size::Int,
+    opened_at::Int,
+)
+    group.message_type = message_type
+    group.message_size = message_size
+    group.opened_at = opened_at
+    empty!(group.page_ids)
+    return group
+end
 
 # Being *mutable* makes the default `==` reference equality outright — not just
 # for the `Vector`/`Matrix` fields — so without this two decoders fed the same
 # stream would compare unequal for as long as either holds a partial message,
 # which is most of the time. `GalileoE6BCache` compares its page store by value,
-# so this is what makes that comparison mean anything.
-Base.:(==)(a::GalileoHASPageGroup, b::GalileoHASPageGroup) = fields_equal(a, b)
+# so this is what makes that comparison mean anything. Only the filled rows of
+# `octets` are compared: the rest is leftover from earlier messages.
+function Base.:(==)(a::GalileoHASPageGroup, b::GalileoHASPageGroup)
+    a.message_type == b.message_type &&
+    a.message_size == b.message_size &&
+    a.opened_at == b.opened_at &&
+    a.page_ids == b.page_ids || return false
+    for j = 1:E6B_OCTETS_PER_PAGE, i = 1:length(a.page_ids)
+        a.octets[i, j] == b.octets[i, j] || return false
+    end
+    return true
+end
+
+"""
+The page store: one slot per Message ID (0-31), each holding its own
+preallocated [`GalileoHASPageGroup`](@ref) whether or not the slot is occupied.
+"""
+const GalileoHASPageStore = SlotDictionary{GalileoHASPageGroup,E6B_NUM_MESSAGE_IDS}
+
+function GalileoHASPageStore()
+    store = SlotDictionary{GalileoHASPageGroup,E6B_NUM_MESSAGE_IDS}(
+        [GalileoHASPageGroup(0, 0, 0) for _ = 1:E6B_NUM_MESSAGE_IDS],
+        SlotIndices(zeros(Bool, E6B_NUM_MESSAGE_IDS), 0),
+    )
+    return store
+end
+
+# The groups are mutable and overwritten in place, so a copy of the store (the
+# one `copy(state)` makes via `duplicate`) must get groups of its own, where the
+# generic `SlotDictionary` copy would share them.
+Base.copy(store::GalileoHASPageStore) = GalileoHASPageStore(
+    [e6b_copy_group(group) for group in store.values],
+    SlotIndices(copy(store.indices.occupied), length(store)),
+)
+
+function e6b_copy_group(group::GalileoHASPageGroup)
+    copied = GalileoHASPageGroup(group.message_type, group.message_size, group.opened_at)
+    append!(copied.page_ids, group.page_ids)
+    copyto!(copied.octets, group.octets)
+    return copied
+end
 
 """
 $(TYPEDEF)
@@ -687,13 +1135,14 @@ One slot is enough: HAS broadcasts a defining mask every few messages, so the
 orphan worth keeping is the newest. It carries the same `opened_at` page stamp as
 [`GalileoHASPageGroup`](@ref) and expires on the same clock, so a mask arriving
 long afterwards cannot resurrect corrections whose validity intervals have run
-out.
+out. The cache preallocates one and **overwrites** it with each newly held
+message.
 
 # Fields
 
 $(TYPEDFIELDS)
 """
-struct GalileoHASPendingMessage
+mutable struct GalileoHASPendingMessage
     """
     Message ID the message's pages carried
     """
@@ -711,13 +1160,152 @@ struct GalileoHASPendingMessage
     """
     opened_at::Int
     """
-    The reassembled message octets, awaiting a mask
+    The reassembled message octets, awaiting a mask (capacity 32 × 53)
     """
-    octets::Vector{UInt8}
+    const octets::Vector{UInt8}
 end
+
+GalileoHASPendingMessage() =
+    GalileoHASPendingMessage(0, 0, 0, 0, sizehint!(UInt8[], E6B_MAX_MESSAGE_OCTETS))
 
 # `octets` is a Vector, so the default struct `==` would be reference equality.
 Base.:(==)(a::GalileoHASPendingMessage, b::GalileoHASPendingMessage) = fields_equal(a, b)
+
+# ---- HAS message bit reader --------------------------------------------------
+#
+# The MT1 body is a variable-length, unaligned bit stream up to 32 × 424 =
+# 13568 bits long, and every block's length depends on values read earlier in
+# it, so it cannot be indexed by precomputed offsets the way a fixed-layout word
+# can. A sequential MSB-first reader over the reassembled octets is the honest
+# representation; it also makes "ran off the end of the message" — which happens
+# whenever a mask is stale or a future block type is appended (ICD §5.1 warns
+# forward-compatible receivers to expect exactly that) — a single check.
+
+"""
+$(TYPEDEF)
+
+Sequential MSB-first bit reader over the octets of a reassembled HAS message.
+The decoder keeps one in its cache and rewinds it onto each message
+(`e6b_rewind!`), overwriting its fields.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+mutable struct HASBitReader
+    """
+    Buffer holding the reassembled message octets (possibly longer than the message)
+    """
+    octets::Vector{UInt8}
+    """
+    Number of leading octets of `octets` that make up the message
+    """
+    num_octets::Int
+    """
+    Number of bits consumed so far
+    """
+    position::Int
+end
+
+HASBitReader(octets::Vector{UInt8}) = HASBitReader(octets, length(octets), 0)
+
+"""
+Point `reader` at the first `num_octets` octets of `octets`, from the start —
+**overwrites** the reader's fields.
+"""
+function e6b_rewind!(reader::HASBitReader, octets::Vector{UInt8}, num_octets::Int)
+    num_octets <= length(octets) ||
+        throw(DimensionMismatch("message longer than its octet buffer"))
+    reader.octets = octets
+    reader.num_octets = num_octets
+    reader.position = 0
+    return reader
+end
+
+"""
+Bits left unread in the message.
+"""
+bits_remaining(reader::HASBitReader) = 8 * reader.num_octets - reader.position
+
+"""
+    peek_bits(reader, position, num_bits) -> UInt64
+
+The `num_bits` (at most 64) bits starting `position` bits into the message,
+MSB-first, without consuming anything.
+"""
+function peek_bits(reader::HASBitReader, position::Int, num_bits::Int)
+    value = UInt64(0)
+    @inbounds for p = position:(position+num_bits-1)
+        byte = reader.octets[(p>>3)+1]
+        value = (value << 1) | UInt64((byte >> (7 - (p & 7))) & 0x01)
+    end
+    return value
+end
+
+"""
+    read_bits!(reader, num_bits) -> UInt64
+
+Consume the next `num_bits` (at most 64) MSB-first. Callers must have checked
+[`bits_remaining`](@ref) first.
+"""
+function read_bits!(reader::HASBitReader, num_bits::Int)
+    value = peek_bits(reader, reader.position, num_bits)
+    reader.position += num_bits
+    return value
+end
+
+"""
+    read_signed_bits!(reader, num_bits) -> Int64
+
+Consume `num_bits` as a two's-complement integer, sign bit in the MSB (the ICD's
+convention for every correction field).
+"""
+function read_signed_bits!(reader::HASBitReader, num_bits::Int)
+    # `get_twos_complement_num` is the package's single sign-extension rule
+    # (`src/bit_fiddling.jl`), including its 32-bit-safe routing through UInt64;
+    # the whole field is the value, so it is read at offset 1 of its own width.
+    get_twos_complement_num(read_bits!(reader, num_bits), num_bits, 1, num_bits)
+end
+
+"""
+$(TYPEDEF)
+
+Everything [`parse_has_message!`](@ref) writes into, preallocated once: the bit
+reader, a scratch list for the constellations of a Mask block, one block of
+each content kind, and the message record the parse returns (whose block fields
+point into `blocks`). **Overwritten** by every parse, so the returned message is
+valid only until the next one — the decoder copies it into `raw_data` straight
+away.
+
+# Fields
+
+$(TYPEDFIELDS)
+"""
+struct GalileoHASParser
+    """
+    Bit reader, rewound onto each message
+    """
+    reader::HASBitReader
+    """
+    Per-constellation masks of the Mask block being parsed (capacity 15)
+    """
+    satellite_masks::Vector{GalileoHASSatelliteMask}
+    """
+    The content blocks being parsed
+    """
+    blocks::GalileoHASBlockBuffers
+    """
+    The parsed message
+    """
+    message::GalileoHASMessage
+end
+
+GalileoHASParser() = GalileoHASParser(
+    HASBitReader(UInt8[]),
+    sizehint!(GalileoHASSatelliteMask[], E6B_MAX_SYSTEMS),
+    GalileoHASBlockBuffers(),
+    preallocated_message(),
+)
 
 # ---- Cache -------------------------------------------------------------------
 
@@ -727,13 +1315,15 @@ $(TYPEDEF)
 Per-decoder cache for Galileo E6-B.
 
 Beyond the shared soft-symbol deque this holds the page-level FEC scratch, the
-long-lived Viterbi decoder, the RS generator matrix (built once — 255 × 32
-octets), and the in-flight HAS page store: the partial-message state that is the
-whole point of the HPVRS outer layer.
+long-lived Viterbi decoder, the in-flight HAS page store — the partial-message
+state that is the whole point of the HPVRS outer layer — and the preallocated
+buffers the reassembly, the parse and the decoded data are written into (the RS
+generator matrix is a shared constant, `E6B_GENERATOR_MATRIX`).
 
-The page store, the page counter, and the held-back message are mutated in
-place (the `CONTEXT.md` rule: immutable decoded fields in `data`/`raw_data`,
-genuinely-in-flight state in the cache).
+Everything here is **overwritten in place** by [`decode!`](@ref): the page
+store, the page counter, the held-back message, and every scratch buffer (the
+`CONTEXT.md` rule: decoded fields in `data`/`raw_data`, genuinely-in-flight
+state in the cache).
 
 # Fields
 
@@ -753,30 +1343,56 @@ struct GalileoE6BCache <: AbstractGNSSCache
     """
     viterbi::GalileoViterbiScratch
     """
-    Encoded pages collected per Message ID, awaiting completion
+    Encoded pages collected per Message ID (0-31), awaiting completion; one preallocated group per slot
     """
-    page_groups::Dictionary{Int,GalileoHASPageGroup}
+    page_groups::GalileoHASPageStore
     """
     Count of accepted C/NAV pages — one per second, the clock for the ICD's 150 s message timeout
     """
     page_counter::Base.RefValue{Int}
     """
     A completed message whose body needs a Mask ID not yet received, held for re-parsing
+    (`nothing`, or the preallocated `held_message`)
     """
     pending_message::Base.RefValue{Union{Nothing,GalileoHASPendingMessage}}
+    """
+    Preallocated record `pending_message` points at while a message is held
+    """
+    held_message::GalileoHASPendingMessage
+    """
+    Working matrices of the RS erasure decode (32 × 32)
+    """
+    rs_scratch::RSErasureScratch
+    """
+    Reassembled message octets (32 × 53), overwritten by each reassembly
+    """
+    message_octets::Vector{UInt8}
+    """
+    Reader, scratch blocks and message record the MT1 parse writes into
+    """
+    parser::GalileoHASParser
+    """
+    Preallocated containers `raw_data` and `data` are decoded into
+    """
+    storage::DataStorage{GalileoE6BData}
 end
 
 GalileoE6BCache() = GalileoE6BCache(
     CircularDeque{Float32}(E6B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, E6B_ENCODED_SYMBOLS),
     GalileoViterbiScratch(E6B_PAGE_BITS, E6B_ENCODED_SYMBOLS),
-    Dictionary{Int,GalileoHASPageGroup}(),
+    GalileoHASPageStore(),
     Ref(0),
     Ref{Union{Nothing,GalileoHASPendingMessage}}(nothing),
+    GalileoHASPendingMessage(),
+    RSErasureScratch(E6B_RS_CODE_DIMENSION),
+    zeros(UInt8, E6B_MAX_MESSAGE_OCTETS),
+    GalileoHASParser(),
+    DataStorage{GalileoE6BData}(),
 )
 
-# The Viterbi handle and the FEC scratch window are derived, not state, so they
-# are excluded — but the page store, the page counter and the held orphan are
+# The Viterbi handle, the FEC, RS and parse scratch and the preallocated data
+# storage are derived, not state, so they are excluded — but the page store, the page counter and the held orphan are
 # genuine in-flight state and are compared, the way `GalileoINAVCache` compares
 # its stitched even page and almanac chain and `BeiDouDNAVCache` its pending
 # pages. (`BeiDouB2bCache` compares only its deque because it holds nothing
@@ -878,6 +1494,10 @@ The page store *is* cleared, deliberately. The ICD's 150 s message timeout is
 counted in received pages (one page = one second of signal), so a decoder that
 went dark for ten minutes would otherwise resume with pages that look fresh but
 are not.
+
+In place: the soft-symbol buffer and the page store are emptied (overwritten)
+and the held message is dropped; the preallocated containers stay in the cache,
+to be overwritten by the next decode. Allocates nothing.
 
 # Arguments
 
@@ -992,74 +1612,12 @@ function complement_buffer_if_necessary(
     GNSSDecoderState(state; is_shifted_by_180_degrees = sync.polarity_flipped), sync
 end
 
-# ---- HAS message bit reader --------------------------------------------------
-#
-# The MT1 body is a variable-length, unaligned bit stream up to 32 × 424 =
-# 13568 bits long, and every block's length depends on values read earlier in
-# it, so it cannot be indexed by precomputed offsets the way a fixed-layout word
-# can. A sequential MSB-first reader over the reassembled octets is the honest
-# representation; it also makes "ran off the end of the message" — which happens
-# whenever a mask is stale or a future block type is appended (ICD §5.1 warns
-# forward-compatible receivers to expect exactly that) — a single check.
-
-"""
-$(TYPEDEF)
-
-Sequential MSB-first bit reader over the octets of a reassembled HAS message.
-
-# Fields
-
-$(TYPEDFIELDS)
-"""
-mutable struct HASBitReader
-    """
-    Reassembled message octets
-    """
-    octets::Vector{UInt8}
-    """
-    Number of bits consumed so far
-    """
-    position::Int
-end
-
-HASBitReader(octets::Vector{UInt8}) = HASBitReader(octets, 0)
-
-"""
-Bits left unread in the message.
-"""
-bits_remaining(reader::HASBitReader) = 8 * length(reader.octets) - reader.position
-
-"""
-    read_bits!(reader, num_bits) -> UInt64
-
-Consume the next `num_bits` (at most 64) MSB-first. Callers must have checked
-[`bits_remaining`](@ref) first.
-"""
-function read_bits!(reader::HASBitReader, num_bits::Int)
-    value = UInt64(0)
-    @inbounds for _ = 1:num_bits
-        byte = reader.octets[(reader.position>>3)+1]
-        bit = (byte >> (7 - (reader.position & 7))) & 0x01
-        value = (value << 1) | UInt64(bit)
-        reader.position += 1
-    end
-    return value
-end
-
-"""
-    read_signed_bits!(reader, num_bits) -> Int64
-
-Consume `num_bits` as a two's-complement integer, sign bit in the MSB (the ICD's
-convention for every correction field).
-"""
-function read_signed_bits!(reader::HASBitReader, num_bits::Int)
-    # `get_twos_complement_num` is the package's single sign-extension rule
-    # (`src/bit_fiddling.jl`), including its 32-bit-safe routing through UInt64;
-    # the whole field is the value, so it is read at offset 1 of its own width.
-    get_twos_complement_num(read_bits!(reader, num_bits), num_bits, 1, num_bits)
-end
-
 # ---- MT1 parsing (ICD §5) ----------------------------------------------------
+#
+# Every parser below writes into preallocated storage (a `GalileoHASParser`):
+# a block parser **overwrites** the block it is handed and returns it, or
+# returns `nothing` when the message runs out of bits — in which case the
+# block's contents are unspecified and it is not published.
 
 """
 $(TYPEDEF)
@@ -1070,10 +1628,9 @@ stamped with.
 
 All five content blocks of an MT1 body take exactly this, so it travels as one
 value rather than four repeated parameters, and
-[`has_correction_block`](@ref) turns it plus a block's own two fields into the
-block itself. The mask belongs here for the same reason the header fields do:
-*every* block's length is derived from it (HAS SIS ICD, Issue 1.0, §5.2), so no
-parser can run without one.
+[`e6b_start_block!`](@ref) stamps a block with it. The mask belongs here for the
+same reason the header fields do: *every* block's length is derived from it
+(HAS SIS ICD, Issue 1.0, §5.2), so no parser can run without one.
 
 # Fields
 
@@ -1099,51 +1656,47 @@ struct GalileoHASBlockContext
 end
 
 """
-    has_correction_block(context, validity_interval, corrections) -> GalileoHASCorrectionBlock
+    e6b_start_block!(block, context, validity_interval) -> block
 
-Stamp a parsed block's entries with the header context they were broadcast
-under. The element type is taken from `corrections`, so each parser names its
-correction type once, where it builds them.
+**Overwrite** `block` with the header context it is broadcast under and an
+empty `corrections` list (its capacity kept), ready for a parser to push the
+block's entries.
 """
-has_correction_block(
+function e6b_start_block!(
+    block::GalileoHASCorrectionBlock,
     context::GalileoHASBlockContext,
     validity_interval::Union{Nothing,Int},
-    corrections::Vector{T},
-) where {T} = GalileoHASCorrectionBlock{T}(;
-    context.TOH,
-    context.mask_id,
-    context.IOD_set_id,
-    validity_interval,
-    corrections,
 )
+    block.TOH = context.TOH
+    block.mask_id = context.mask_id
+    block.IOD_set_id = context.IOD_set_id
+    block.validity_interval = validity_interval
+    empty!(block.corrections)
+    return block
+end
 
 """
-    e6b_expand_mask(mask, width; first_index = 0) -> Vector{Int}
+    e6b_expand_mask(mask, width; first_index = 0) -> GalileoHASMaskIndices
 
-Expand a `width`-bit HAS mask into the indices its set bits name, MSB = index 0,
-counting from `first_index`.
+The indices a `width`-bit HAS mask's set bits name, MSB = index 0, counting from
+`first_index` — as a [`GalileoHASMaskIndices`](@ref), which computes them from
+the mask instead of storing them.
 
 Both masks the ICD defines are this walk and differ only in those two numbers:
 the 40-bit Satellite Mask names Galileo SVID / GPS PRN `index + 1` (Table 19),
 and the 16-bit Signal Mask names 0-based signal indices (Table 20).
 """
-function e6b_expand_mask(mask::Unsigned, width::Int; first_index::Int = 0)
-    indices = Int[]
-    for index = 0:(width-1)
-        if (mask >> (width - 1 - index)) & one(mask) == 1
-            push!(indices, index + first_index)
-        end
-    end
-    return indices
-end
+e6b_expand_mask(mask::Unsigned, width::Int; first_index::Int = 0) =
+    GalileoHASMaskIndices(UInt64(mask), width, first_index)
 
 """
-    parse_has_mask_block!(reader, mask_id) -> Union{Nothing,GalileoHASMask}
+    parse_has_mask_block!(parser, mask_id) -> Union{Nothing,GalileoHASMask}
 
-Parse the Mask block (ICD §5.2.1). Returns `nothing` if the message runs out of
-bits, declares the reserved `Nsys` value 0, or names a reserved GNSS ID — in
-every case every following block's length is unknown, so the body parse must
-stop.
+Parse the Mask block (ICD §5.2.1) from `parser.reader`, using
+`parser.satellite_masks` as scratch (overwritten). Returns `nothing` if the
+message runs out of bits, declares the reserved `Nsys` value 0, or names a
+reserved GNSS ID — in every case every following block's length is unknown, so
+the body parse must stop.
 
 Note the 6 reserved bits after the per-constellation masks are consumed
 unconditionally, whereas GNSS-SDR consumes them (and the `Nsys` field itself)
@@ -1152,7 +1705,8 @@ only when `Nsys != 0`. That is not a framing bug on its part — it clears its
 desynchronising — but this parser rejects `Nsys == 0` outright instead, which is
 what the ICD asks for.
 """
-function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
+function parse_has_mask_block!(parser::GalileoHASParser, mask_id::Int)
+    reader = parser.reader
     bits_remaining(reader) >= 4 || return nothing
     num_systems = Int(read_bits!(reader, 4))
     # `Nsys` takes "values from 1 to 15 (value "0" is Reserved)" (ICD §5.2.1). A
@@ -1161,7 +1715,7 @@ function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
     # `Mask Flag = 0` messages, so they would parse to empty correction blocks
     # instead of being held until the genuine mask arrives.
     num_systems == 0 && return nothing
-    masks = GalileoHASSatelliteMask[]
+    masks = empty!(parser.satellite_masks)
     for _ = 1:num_systems
         bits_remaining(reader) >= 4 + 40 + 16 + 1 || return nothing
         GNSS_ID = Int(read_bits!(reader, 4))
@@ -1177,20 +1731,23 @@ function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
         if cell_mask_available
             # L_CM = Nsig · Nsat, read satellite-major: the table is "read from
             # left to right and from top to bottom" of Nsat rows by Nsig columns
-            # (ICD §5.2.1.5, Eq. 3).
-            num_cells = length(SVIDs) * length(signal_indices)
-            bits_remaining(reader) >= num_cells + 3 || return nothing
-            cells = Matrix{Bool}(undef, length(SVIDs), length(signal_indices))
-            for row = 1:length(SVIDs), column = 1:length(signal_indices)
-                cells[row, column] = read_bits!(reader, 1) == 1
+            # (ICD §5.2.1.5, Eq. 3). Each row is one Nsig-bit field.
+            num_satellites = length(SVIDs)
+            num_signals = length(signal_indices)
+            bits_remaining(reader) >= num_satellites * num_signals + 3 || return nothing
+            start = reader.position
+            rows = ntuple(Val(E6B_MAX_SATELLITES)) do row
+                row <= num_satellites ?
+                UInt16(peek_bits(reader, start + (row - 1) * num_signals, num_signals)) : 0x0000
             end
-            cell_mask = cells
+            reader.position += num_satellites * num_signals
+            cell_mask = GalileoHASCellMask(rows, num_satellites, num_signals)
         end
         bits_remaining(reader) >= 3 || return nothing
         nav_message_index = Int(read_bits!(reader, 3))
         push!(
             masks,
-            GalileoHASSatelliteMask(;
+            GalileoHASSatelliteMask(
                 GNSS_ID,
                 satellite_mask,
                 signal_mask,
@@ -1204,19 +1761,23 @@ function parse_has_mask_block!(reader::HASBitReader, mask_id::Int)
     # 6 reserved bits close the Mask block (ICD Table 15).
     bits_remaining(reader) >= 6 || return nothing
     read_bits!(reader, 6)
-    return GalileoHASMask(; mask_id, satellite_masks = masks)
+    return GalileoHASMask(mask_id, GalileoHASSatelliteMaskList(masks))
 end
 
 """
-    parse_has_orbit_block!(reader, context)
+    parse_has_orbit_block!(block, reader, context)
 
-Parse the Orbit Corrections block (ICD §5.2.2). Returns `nothing` on a
-truncated message.
+Parse the Orbit Corrections block (ICD §5.2.2) into `block` (overwritten).
+Returns `nothing` on a truncated message.
 """
-function parse_has_orbit_block!(reader::HASBitReader, context::GalileoHASBlockContext)
+function parse_has_orbit_block!(
+    block::GalileoHASCorrectionBlock{GalileoHASOrbitCorrection},
+    reader::HASBitReader,
+    context::GalileoHASBlockContext,
+)
     bits_remaining(reader) >= 4 || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
-    corrections = GalileoHASOrbitCorrection[]
+    corrections = e6b_start_block!(block, context, validity_interval).corrections
     for satellite_mask in context.mask.satellite_masks
         iod_length = e6b_iod_ref_length(satellite_mask.GNSS_ID)
         isnothing(iod_length) && return nothing
@@ -1242,7 +1803,7 @@ function parse_has_orbit_block!(reader::HASBitReader, context::GalileoHASBlockCo
             )
         end
     end
-    return has_correction_block(context, validity_interval, corrections)
+    return block
 end
 
 """
@@ -1256,11 +1817,12 @@ function e6b_delta_clock(raw::Int64, multiplier::Int)
 end
 
 """
-    parse_has_clock_full_set_block!(reader, context)
+    parse_has_clock_full_set_block!(block, reader, context)
 
-Parse the Clock Full-Set Corrections block (ICD §5.2.3): one 2-bit Delta Clock
-Multiplier per constellation of the mask, then one 13-bit correction per
-corrected satellite. Returns `nothing` on a truncated message.
+Parse the Clock Full-Set Corrections block (ICD §5.2.3) into `block`
+(overwritten): one 2-bit Delta Clock Multiplier per constellation of the mask,
+then one 13-bit correction per corrected satellite. Returns `nothing` on a
+truncated message.
 
 The 2-bit multiplier field maps `0…3` to multipliers `1…4` (ICD Table 29); the
 raw field is *not* the multiplier, and reading it as one scales every correction
@@ -1272,16 +1834,21 @@ positions and the 0.0025 m LSB but cannot confirm or refute the multiplier
 table either way.
 """
 function parse_has_clock_full_set_block!(
+    block::GalileoHASCorrectionBlock{GalileoHASClockCorrection},
     reader::HASBitReader,
     context::GalileoHASBlockContext,
 )
     num_systems = length(context.mask.satellite_masks)
     bits_remaining(reader) >= 4 + 2 * num_systems || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
-    multipliers = [Int(read_bits!(reader, 2)) + 1 for _ = 1:num_systems]
-    corrections = GalileoHASClockCorrection[]
+    # The multipliers precede every correction; they are read in place from
+    # their positions here rather than collected into a list first.
+    multipliers_start = reader.position
+    reader.position += 2 * num_systems
+    corrections = e6b_start_block!(block, context, validity_interval).corrections
     for (system_index, satellite_mask) in enumerate(context.mask.satellite_masks)
-        multiplier = multipliers[system_index]
+        multiplier =
+            Int(peek_bits(reader, multipliers_start + 2 * (system_index - 1), 2)) + 1
         for SVID in satellite_mask.SVIDs
             bits_remaining(reader) >= 13 || return nothing
             value, do_not_use = e6b_delta_clock(read_signed_bits!(reader, 13), multiplier)
@@ -1297,16 +1864,17 @@ function parse_has_clock_full_set_block!(
             )
         end
     end
-    return has_correction_block(context, validity_interval, corrections)
+    return block
 end
 
 """
-    parse_has_clock_subset_block!(reader, context)
+    parse_has_clock_subset_block!(block, reader, context)
 
-Parse the Clock Subset Corrections block (ICD §5.2.4): corrections for a subset
-of the mask's satellites, each constellation carrying its own satellite submask
-whose length is that constellation's masked-satellite count. Returns `nothing`
-on a truncated message, an unknown GNSS ID, or `Nsys_sub == 0`.
+Parse the Clock Subset Corrections block (ICD §5.2.4) into `block`
+(overwritten): corrections for a subset of the mask's satellites, each
+constellation carrying its own satellite submask whose length is that
+constellation's masked-satellite count. Returns `nothing` on a truncated
+message, an unknown GNSS ID, or `Nsys_sub == 0`.
 
 The submask is `Nsat` bits — the number of ones in that constellation's Satellite
 Mask, not one fewer. GNSS-SDR's loop stops a bit short here and then writes the
@@ -1320,6 +1888,7 @@ constellation at all is vacuous, and accepting it would publish an empty
 GNSS-SDR does.
 """
 function parse_has_clock_subset_block!(
+    block::GalileoHASCorrectionBlock{GalileoHASClockCorrection},
     reader::HASBitReader,
     context::GalileoHASBlockContext,
 )
@@ -1327,22 +1896,29 @@ function parse_has_clock_subset_block!(
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
     num_subset_systems = Int(read_bits!(reader, 4))
     num_subset_systems == 0 && return nothing
-    corrections = GalileoHASClockCorrection[]
+    corrections = e6b_start_block!(block, context, validity_interval).corrections
+    satellite_masks = context.mask.satellite_masks
     for _ = 1:num_subset_systems
         bits_remaining(reader) >= 6 || return nothing
         GNSS_ID = Int(read_bits!(reader, 4))
         multiplier = Int(read_bits!(reader, 2)) + 1
-        index = findfirst(m -> m.GNSS_ID == GNSS_ID, context.mask.satellite_masks)
+        index = 0
+        for (i, satellite_mask) in enumerate(satellite_masks)
+            if satellite_mask.GNSS_ID == GNSS_ID
+                index = i
+                break
+            end
+        end
         # A subset naming a constellation the mask does not cover leaves the
         # submask length unknown.
-        isnothing(index) && return nothing
-        SVIDs = context.mask.satellite_masks[index].SVIDs
-        bits_remaining(reader) >= length(SVIDs) || return nothing
-        subset_SVIDs = Int[]
-        for SVID in SVIDs
-            read_bits!(reader, 1) == 1 && push!(subset_SVIDs, SVID)
-        end
-        for SVID in subset_SVIDs
+        index == 0 && return nothing
+        SVIDs = satellite_masks[index].SVIDs
+        num_satellites = length(SVIDs)
+        bits_remaining(reader) >= num_satellites || return nothing
+        # At most 40 bits: the whole submask fits one word, MSB = first SVID.
+        submask = read_bits!(reader, num_satellites)
+        for (i, SVID) in enumerate(SVIDs)
+            (submask >> (num_satellites - i)) & 0x1 == 0x1 || continue
             bits_remaining(reader) >= 13 || return nothing
             value, do_not_use = e6b_delta_clock(read_signed_bits!(reader, 13), multiplier)
             push!(
@@ -1357,7 +1933,7 @@ function parse_has_clock_subset_block!(
             )
         end
     end
-    return has_correction_block(context, validity_interval, corrections)
+    return block
 end
 
 """
@@ -1377,10 +1953,10 @@ cell, which no CRC downstream can catch.
 """
 function e6b_foreach_cell(f, mask::GalileoHASMask)
     for satellite_mask in mask.satellite_masks
+        cell_mask = satellite_mask.cell_mask
         for (row, SVID) in enumerate(satellite_mask.SVIDs)
             for (column, signal_index) in enumerate(satellite_mask.signal_indices)
-                if !isnothing(satellite_mask.cell_mask) &&
-                   !satellite_mask.cell_mask[row, column]
+                if !isnothing(cell_mask) && !cell_mask[row, column]
                     continue
                 end
                 f(satellite_mask.GNSS_ID, SVID, signal_index) || return false
@@ -1391,15 +1967,20 @@ function e6b_foreach_cell(f, mask::GalileoHASMask)
 end
 
 """
-    parse_has_code_bias_block!(reader, context)
+    parse_has_code_bias_block!(block, reader, context)
 
-Parse the Code Biases block (ICD §5.2.5): one 11-bit bias per cell of the mask,
-over [`e6b_foreach_cell`](@ref). Returns `nothing` on a truncated message.
+Parse the Code Biases block (ICD §5.2.5) into `block` (overwritten): one 11-bit
+bias per cell of the mask, over [`e6b_foreach_cell`](@ref). Returns `nothing`
+on a truncated message.
 """
-function parse_has_code_bias_block!(reader::HASBitReader, context::GalileoHASBlockContext)
+function parse_has_code_bias_block!(
+    block::GalileoHASCorrectionBlock{GalileoHASCodeBias},
+    reader::HASBitReader,
+    context::GalileoHASBlockContext,
+)
     bits_remaining(reader) >= 4 || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
-    biases = GalileoHASCodeBias[]
+    biases = e6b_start_block!(block, context, validity_interval).corrections
     complete = e6b_foreach_cell(context.mask) do GNSS_ID, SVID, signal_index
         bits_remaining(reader) >= 11 || return false
         raw = read_signed_bits!(reader, 11)
@@ -1415,21 +1996,25 @@ function parse_has_code_bias_block!(reader::HASBitReader, context::GalileoHASBlo
         return true
     end
     complete || return nothing
-    return has_correction_block(context, validity_interval, biases)
+    return block
 end
 
 """
-    parse_has_phase_bias_block!(reader, context)
+    parse_has_phase_bias_block!(block, reader, context)
 
-Parse the Phase Biases block (ICD §5.2.6): per cell an 11-bit bias immediately
-followed by its 2-bit Phase Discontinuity Indicator, over the same
-[`e6b_foreach_cell`](@ref) walk the code biases use. Returns `nothing` on a
-truncated message.
+Parse the Phase Biases block (ICD §5.2.6) into `block` (overwritten): per cell
+an 11-bit bias immediately followed by its 2-bit Phase Discontinuity Indicator,
+over the same [`e6b_foreach_cell`](@ref) walk the code biases use. Returns
+`nothing` on a truncated message.
 """
-function parse_has_phase_bias_block!(reader::HASBitReader, context::GalileoHASBlockContext)
+function parse_has_phase_bias_block!(
+    block::GalileoHASCorrectionBlock{GalileoHASPhaseBias},
+    reader::HASBitReader,
+    context::GalileoHASBlockContext,
+)
     bits_remaining(reader) >= 4 || return nothing
     validity_interval = e6b_validity_interval(Int(read_bits!(reader, 4)))
-    biases = GalileoHASPhaseBias[]
+    biases = e6b_start_block!(block, context, validity_interval).corrections
     complete = e6b_foreach_cell(context.mask) do GNSS_ID, SVID, signal_index
         bits_remaining(reader) >= 13 || return false
         raw = read_signed_bits!(reader, 11)
@@ -1447,20 +2032,42 @@ function parse_has_phase_bias_block!(reader::HASBitReader, context::GalileoHASBl
         return true
     end
     complete || return nothing
-    return has_correction_block(context, validity_interval, biases)
+    return block
 end
 
 """
-    parse_has_message(octets, message_id, message_type, message_size, masks)
+Run one content-block parser if its header flag is set and the reader is still
+aligned (every block before it parsed), returning `(block or nothing, aligned)`.
+"""
+@inline function e6b_parse_block(
+    parse!,
+    aligned::Bool,
+    flag::Bool,
+    block,
+    reader::HASBitReader,
+    context::GalileoHASBlockContext,
+)
+    (aligned && flag) || return (nothing, aligned)
+    parsed = parse!(block, reader, context)
+    return (parsed, !isnothing(parsed))
+end
+
+"""
+    parse_has_message!(parser, octets, num_octets, message_id, message_type, message_size, masks)
         -> Union{Nothing,Symbol,GalileoHASMessage}
 
-Parse a reassembled HAS message. Returns
+Parse the reassembled HAS message in the first `num_octets` of `octets`,
+**overwriting** `parser`'s reader, scratch, blocks and message record. Returns
 
-  - a [`GalileoHASMessage`](@ref) on success,
+  - `parser.message` on success — valid until the next parse, its block fields
+    pointing into `parser.blocks`,
   - `:mask_unavailable` when the body needs a Mask ID that has not been received
     (the caller holds the message and retries once a matching mask arrives), or
   - `nothing` when the message is not parseable at all (reserved Message Type,
     out-of-range Time Of Hour, or a body that runs out of bits).
+
+`masks` is the store of masks received so far (anything `haskey`/`getindex`-able
+by Mask ID, or `nothing`).
 
 Blocks are read strictly in header-flag order (ICD §5.1). A block that fails to
 parse ends the body — everything after it in the stream is unaligned — but the
@@ -1471,16 +2078,18 @@ The MT1 header's 4 reserved bits are skipped, per the ICD's instruction that
 messages containing additional non-decodable information at the end of the
 decodable one": trailing bits we cannot interpret are simply left unread.
 """
-function parse_has_message(
+function parse_has_message!(
+    parser::GalileoHASParser,
     octets::Vector{UInt8},
+    num_octets::Int,
     message_id::Int,
     message_type::Int,
     message_size::Int,
-    masks::Union{Nothing,Dictionary{Int,GalileoHASMask}},
+    masks,
 )
     # Only Message Type 1 is defined (ICD Table 10).
     message_type == 1 || return nothing
-    reader = HASBitReader(octets)
+    reader = e6b_rewind!(parser.reader, octets, num_octets)
     bits_remaining(reader) >= 32 || return nothing
     TOH = Int(read_bits!(reader, 12))
     # TOH is seconds into the hour, so 3600-4095 cannot occur (ICD Table 13).
@@ -1495,9 +2104,24 @@ function parse_has_message(
     mask_id = Int(read_bits!(reader, 5))
     IOD_set_id = Int(read_bits!(reader, 5))
 
+    # The message record is overwritten from here on.
+    message = parser.message
+    message.message_id = message_id
+    message.message_type = message_type
+    message.message_size = message_size
+    message.TOH = TOH
+    message.mask_id = mask_id
+    message.IOD_set_id = IOD_set_id
+    message.mask = nothing
+    message.orbit_corrections = nothing
+    message.clock_corrections = nothing
+    message.clock_subset_corrections = nothing
+    message.code_biases = nothing
+    message.phase_biases = nothing
+
     mask = nothing
     if mask_flag
-        mask = parse_has_mask_block!(reader, mask_id)
+        mask = parse_has_mask_block!(parser, mask_id)
         isnothing(mask) && return nothing
     elseif !isnothing(masks) && haskey(masks, mask_id)
         # Mask Flag = 0 relates the body to a mask already defined by another
@@ -1514,63 +2138,100 @@ function parse_has_message(
             code_bias_flag ||
             phase_bias_flag
         ) && return :mask_unavailable
-        return GalileoHASMessage(;
-            message_id,
-            message_type,
-            message_size,
-            TOH,
-            mask_id,
-            IOD_set_id,
-        )
+        return message
     end
     context = GalileoHASBlockContext(mask, TOH, mask_id, IOD_set_id)
 
     # Content blocks appear in flag order (ICD Table 14). A block that fails to
     # parse leaves the reader unaligned, so everything after it is unreadable —
     # but the blocks already parsed are self-contained and are kept. Stating that
-    # rule once, here, keeps it from having to be re-established at each of the
-    # five call sites (and from being quietly omitted at the last one).
-    # `aligned` lives in a `Ref` rather than as a captured local: a closure that
-    # *reassigns* a captured variable forces Julia to box it, and a boxed `Bool`
-    # is both an allocation and an inference barrier for every call below.
-    aligned = Ref(true)
-    parse_block(flag::Bool, parser) =
-        if aligned[] && flag
-            block = parser(reader, context)
-            aligned[] = !isnothing(block)
-            block
-        else
-            nothing
-        end
-    orbit_corrections = parse_block(orbit_flag, parse_has_orbit_block!)
-    clock_corrections = parse_block(clock_full_set_flag, parse_has_clock_full_set_block!)
-    clock_subset_corrections = parse_block(clock_subset_flag, parse_has_clock_subset_block!)
-    code_biases = parse_block(code_bias_flag, parse_has_code_bias_block!)
-    phase_biases = parse_block(phase_bias_flag, parse_has_phase_bias_block!)
-    return GalileoHASMessage(;
-        message_id,
-        message_type,
-        message_size,
-        TOH,
-        mask_id,
-        IOD_set_id,
-        mask = mask_flag ? mask : nothing,
-        orbit_corrections,
-        clock_corrections,
-        clock_subset_corrections,
-        code_biases,
-        phase_biases,
+    # rule once, in `e6b_parse_block`, keeps it from having to be re-established
+    # at each of the five call sites (and from being quietly omitted at the last
+    # one).
+    blocks = parser.blocks
+    aligned = true
+    orbit, aligned = e6b_parse_block(
+        parse_has_orbit_block!,
+        aligned,
+        orbit_flag,
+        blocks.orbit_corrections,
+        reader,
+        context,
     )
+    clock, aligned = e6b_parse_block(
+        parse_has_clock_full_set_block!,
+        aligned,
+        clock_full_set_flag,
+        blocks.clock_corrections,
+        reader,
+        context,
+    )
+    clock_subset, aligned = e6b_parse_block(
+        parse_has_clock_subset_block!,
+        aligned,
+        clock_subset_flag,
+        blocks.clock_subset_corrections,
+        reader,
+        context,
+    )
+    code, aligned = e6b_parse_block(
+        parse_has_code_bias_block!,
+        aligned,
+        code_bias_flag,
+        blocks.code_biases,
+        reader,
+        context,
+    )
+    phase, _ = e6b_parse_block(
+        parse_has_phase_bias_block!,
+        aligned,
+        phase_bias_flag,
+        blocks.phase_biases,
+        reader,
+        context,
+    )
+    message.mask = mask_flag ? mask : nothing
+    message.orbit_corrections = orbit
+    message.clock_corrections = clock
+    message.clock_subset_corrections = clock_subset
+    message.code_biases = code
+    message.phase_biases = phase
+    return message
 end
+
+"""
+    parse_has_message(octets, message_id, message_type, message_size, masks)
+        -> Union{Nothing,Symbol,GalileoHASMessage}
+
+[`parse_has_message!`](@ref) of the whole of `octets` into freshly allocated
+storage — a convenience for inspecting a single message outside a decoder. The
+returned message owns its blocks.
+"""
+parse_has_message(
+    octets::Vector{UInt8},
+    message_id::Int,
+    message_type::Int,
+    message_size::Int,
+    masks,
+) = parse_has_message!(
+    GalileoHASParser(),
+    octets,
+    length(octets),
+    message_id,
+    message_type,
+    message_size,
+    masks,
+)
 
 # ---- Page accumulation and message assembly (ICD §6.4) ----------------------
 
 """
-    e6b_reassemble_message(group) -> Union{Nothing,Vector{UInt8}}
+    e6b_reassemble_message!(octets, scratch, group) -> Union{Nothing,Int}
 
-Run the HPVRS erasure decode on a complete page group and return the
-`message_size × 53` message octets in page order, or `nothing` if the decode is
-impossible.
+Run the HPVRS erasure decode on a complete page group, **overwriting** the
+leading `message_size × 53` entries of `octets` with the message octets in page
+order (and the working matrices in `scratch`). Returns the number of message
+octets, or `nothing` if the decode is impossible.
 
 The ICD's own recipe (§6.4): take the `k` rows of the generator matrix named by
 the received Page IDs and its first `k` columns — the trailing `32 - k`
@@ -1580,52 +2241,100 @@ each of the 53 octet columns. GNSS-SDR instead runs a Berlekamp-Massey erasure
 decode over the full 255-symbol codeword; both recover the same message, but the
 matrix form is what the ICD specifies and needs no error-locator machinery.
 """
-function e6b_reassemble_message(group::GalileoHASPageGroup)
+function e6b_reassemble_message!(
+    octets::Vector{UInt8},
+    scratch::RSErasureScratch,
+    group::GalileoHASPageGroup,
+)
     k = group.message_size
-    received = view(group.octets, 1:k, :)
-    decoded = rs_erasure_decode(
+    # Row `i` of the decode is non-encoded page `M_i`; the message is those
+    # pages concatenated, which is the row-by-row order `rs_erasure_decode!`
+    # writes in.
+    decoded = rs_erasure_decode!(
+        octets,
+        scratch,
         GALILEO_HAS_GF256,
         E6B_GENERATOR_MATRIX,
         group.page_ids,
-        received,
+        group.octets,
         k,
     )
     isnothing(decoded) && return nothing
-    # Row `i` is non-encoded page `M_i`; the message is those pages concatenated,
-    # so the k × 53 result is read out row by row.
-    return vec(permutedims(decoded))
+    return k * E6B_OCTETS_PER_PAGE
 end
 
 """
-Keep a block the new message carried, else the one already published. Unlike
-`something` this tolerates both being `nothing` — the common case, since a
-message carries only two or three of the six blocks.
+    e6b_reassemble_message(group) -> Union{Nothing,Vector{UInt8}}
+
+[`e6b_reassemble_message!`](@ref) into a freshly allocated vector of exactly the
+message's octets.
 """
-_e6b_latest(new, old) = isnothing(new) ? old : new
+function e6b_reassemble_message(group::GalileoHASPageGroup)
+    octets = Vector{UInt8}(undef, group.message_size * E6B_OCTETS_PER_PAGE)
+    num_octets =
+        e6b_reassemble_message!(octets, RSErasureScratch(E6B_RS_CODE_DIMENSION), group)
+    return isnothing(num_octets) ? nothing : octets
+end
 
 """
-Fold a decoded [`GalileoHASMessage`](@ref) into the accumulated data container:
-publish it as the latest message, remember any mask it defined, and replace the
-latest instance of each content block it carried.
+    e6b_merge_block!(current, spare, new) -> Union{Nothing,GalileoHASCorrectionBlock}
+
+The latest block of one kind after a message: `current` unchanged when the
+message did not carry one (`new === nothing`), otherwise `new` copied into —
+**overwriting** — `current`, or the preallocated `spare` when there is no
+current block yet.
 """
-function e6b_merge_message(data::GalileoE6BData, message::GalileoHASMessage)
+e6b_merge_block!(current, spare, new) =
+    isnothing(new) ? current : overwrite!(something(current, spare), new)
+
+"""
+    e6b_merge_message!(data, storage, message) -> GalileoE6BData
+
+Fold a decoded [`GalileoHASMessage`](@ref) into the accumulated data container
+by **overwriting** its containers in place: publish it as the latest message,
+remember any mask it defined, and replace the latest instance of each content
+block it carried. Containers `data` does not have yet are taken from the
+preallocated `storage` (the cache's `storage.raw`). `message` is copied, so the
+parser may overwrite it afterwards.
+"""
+function e6b_merge_message!(
+    data::GalileoE6BData,
+    storage::GalileoE6BData,
+    message::GalileoHASMessage,
+)
     masks = data.masks
-    if !isnothing(message.mask)
-        masks = _merge_keyed(masks, message.mask.mask_id, message.mask)
+    mask = message.mask
+    if !isnothing(mask)
+        masks = writable_container(data.masks, storage.masks)
+        set!(masks, mask.mask_id, mask)
     end
-    GalileoE6BData(
-        data;
-        message,
-        masks,
-        orbit_corrections = _e6b_latest(message.orbit_corrections, data.orbit_corrections),
-        clock_corrections = _e6b_latest(message.clock_corrections, data.clock_corrections),
-        clock_subset_corrections = _e6b_latest(
-            message.clock_subset_corrections,
-            data.clock_subset_corrections,
-        ),
-        code_biases = _e6b_latest(message.code_biases, data.code_biases),
-        phase_biases = _e6b_latest(message.phase_biases, data.phase_biases),
+    orbit = e6b_merge_block!(
+        data.orbit_corrections,
+        storage.orbit_corrections,
+        message.orbit_corrections,
     )
+    clock = e6b_merge_block!(
+        data.clock_corrections,
+        storage.clock_corrections,
+        message.clock_corrections,
+    )
+    clock_subset = e6b_merge_block!(
+        data.clock_subset_corrections,
+        storage.clock_subset_corrections,
+        message.clock_subset_corrections,
+    )
+    code = e6b_merge_block!(data.code_biases, storage.code_biases, message.code_biases)
+    phase = e6b_merge_block!(data.phase_biases, storage.phase_biases, message.phase_biases)
+    latest = e6b_overwrite_message!(
+        something(data.message, storage.message),
+        message,
+        orbit,
+        clock,
+        clock_subset,
+        code,
+        phase,
+    )
+    GalileoE6BData(data.HAS_status, latest, masks, orbit, clock, clock_subset, code, phase)
 end
 
 """
@@ -1647,19 +2356,12 @@ function e6b_expire_stale!(cache::GalileoE6BCache)
     if !isnothing(held) && now - held.opened_at >= E6B_MESSAGE_TIMEOUT_PAGES
         cache.pending_message[] = nothing
     end
-    # Collect first, then unset: `Dictionaries.unset!` while iterating `pairs`
-    # is not allowed. The vector is allocated only when something is actually
-    # stale, which on a healthy stream is never — this runs once per accepted
-    # page, i.e. once a second per tracked satellite.
-    stale = nothing
-    for (message_id, group) in pairs(cache.page_groups)
-        if now - group.opened_at >= E6B_MESSAGE_TIMEOUT_PAGES
-            stale = push!(something(stale, Int[]), message_id)
+    groups = cache.page_groups
+    for message_id = 0:(E6B_NUM_MESSAGE_IDS-1)
+        if haskey(groups, message_id) &&
+           now - groups[message_id].opened_at >= E6B_MESSAGE_TIMEOUT_PAGES
+            unset!(groups, message_id)
         end
-    end
-    isnothing(stale) && return cache
-    for message_id in stale
-        unset!(cache.page_groups, message_id)
     end
     return cache
 end
@@ -1670,7 +2372,8 @@ now complete (ready for the RS decode) and `nothing` otherwise. `unpack!` is
 called with the group's newly claimed octet row to fill in.
 
 A Message ID is reused over time, so a page whose Message Type or Message Size
-disagrees with the group's starts a fresh group — the previous message is gone.
+disagrees with the group's starts a fresh group — the previous message is gone,
+and the slot's preallocated group is **overwritten** (`e6b_reopen_group!`).
 Duplicate Page IDs are ignored: the RS decode needs `k` *distinct* rows.
 """
 function e6b_collect_page!(
@@ -1681,14 +2384,24 @@ function e6b_collect_page!(
     message_size::Int,
     page_id::Int,
 )
-    group = get(cache.page_groups, message_id, nothing)
-    if isnothing(group) ||
-       group.message_type != message_type ||
-       group.message_size != message_size
-        group = GalileoHASPageGroup(message_type, message_size, cache.page_counter[])
-        set!(cache.page_groups, message_id, group)
+    groups = cache.page_groups
+    if haskey(groups, message_id) &&
+       groups[message_id].message_type == message_type &&
+       groups[message_id].message_size == message_size
+        group = groups[message_id]
+    else
+        # Every slot owns a preallocated group, occupied or not.
+        group = e6b_reopen_group!(
+            groups.values[message_id+1],
+            message_type,
+            message_size,
+            cache.page_counter[],
+        )
+        set!(groups, message_id, group)
     end
     page_id in group.page_ids && return nothing
+    # A group is complete at `message_size` ≤ 32 distinct pages, so it never
+    # grows past its 32 preallocated rows.
     push!(group.page_ids, page_id)
     # `unpack!` writes the page's octets into the row that has just been claimed;
     # taking a callback rather than a vector lets the caller unpack in place.
@@ -1702,6 +2415,8 @@ end
 Consume one CRC-validated C/NAV page: read its HAS Page Header, discard dummy
 and unusable pages, add its HAS Encoded Page to the store for its Message ID,
 and — once `MS` distinct pages are held — recover and parse the HAS message.
+Overwrites the cache's page store and scratch buffers and `raw_data`'s
+containers in place.
 
 Pages are dropped, before reaching the store, when
 
@@ -1743,7 +2458,8 @@ function decode_syncro_sequence(
     if HAS_status == has_do_not_use
         # Table 9 requires more than dropping the page: everything received so
         # far goes, so the status is carried into an otherwise empty container
-        # rather than merged into the existing one.
+        # rather than merged into the existing one. (The preallocated containers
+        # stay in the cache's storage, to be overwritten by the next message.)
         empty!(cache.page_groups)
         cache.pending_message[] = nothing
         return GNSSDecoderState(
@@ -1780,28 +2496,58 @@ function decode_syncro_sequence(
     end
     isnothing(group) && return state
 
-    octets = e6b_reassemble_message(group)
+    num_octets = e6b_reassemble_message!(cache.message_octets, cache.rs_scratch, group)
     unset!(cache.page_groups, message_id)
-    isnothing(octets) && return state
+    isnothing(num_octets) && return state
 
-    return e6b_apply_message(state, message_id, message_type, message_size, octets)
+    return e6b_apply_message(state, message_id, message_type, message_size, num_octets)
 end
 
 """
-Parse a reassembled message and fold it into `raw_data`, handling the
-mask-not-yet-received case by holding the message for a later retry, and
-retrying any previously held message once a new mask has been learnt.
+Hold a message whose mask has not arrived: **overwrite** the cache's
+preallocated held-message record with it (its octets copied out of the
+reassembly buffer, which the next message reuses) and point `pending_message`
+at it. One slot is enough: only the most recent orphan is worth keeping.
+"""
+function e6b_hold_message!(
+    cache::GalileoE6BCache,
+    message_id::Int,
+    message_type::Int,
+    message_size::Int,
+    num_octets::Int,
+)
+    held = something(cache.pending_message[], cache.held_message)
+    held.message_id = message_id
+    held.message_type = message_type
+    held.message_size = message_size
+    held.opened_at = cache.page_counter[]
+    resize!(held.octets, num_octets)
+    copyto!(held.octets, 1, cache.message_octets, 1, num_octets)
+    cache.pending_message[] = held
+    return cache
+end
+
+"""
+Parse the reassembled message in the cache's `message_octets` and fold it into
+`raw_data` (overwriting its containers), handling the mask-not-yet-received
+case by holding the message for a later retry, and retrying any previously held
+message once a new mask has been learnt.
 """
 function e6b_apply_message(
     state::GNSSDecoderState{<:GalileoE6BData},
     message_id::Int,
     message_type::Int,
     message_size::Int,
-    octets::Vector{UInt8},
+    num_octets::Int,
 )
     cache = state.cache
-    parsed = parse_has_message(
+    parser = cache.parser
+    storage = cache.storage.raw
+    octets = cache.message_octets
+    parsed = parse_has_message!(
+        parser,
         octets,
+        num_octets,
         message_id,
         message_type,
         message_size,
@@ -1810,51 +2556,67 @@ function e6b_apply_message(
     if parsed === :mask_unavailable
         # Hold the message; HAS broadcasts a defining mask every few messages,
         # and re-parsing then recovers corrections that would otherwise be lost.
-        # One slot is enough: only the most recent orphan is worth keeping.
-        cache.pending_message[] = GalileoHASPendingMessage(
-            message_id,
-            message_type,
-            message_size,
-            cache.page_counter[],
-            octets,
-        )
+        e6b_hold_message!(cache, message_id, message_type, message_size, num_octets)
         return state
     end
-    isnothing(parsed) && return state
+    parsed isa GalileoHASMessage || return state
     raw = state.raw_data
     # A message that carried a *new* mask may unlock the held-back one; a message
     # that merely referenced an existing one cannot, so only check when
     # `parsed.mask` is present.
     #
     # ORDER MATTERS. The held message completed *earlier* than `parsed`, so it is
-    # merged *first* and `parsed` folded over the top: `e6b_merge_message` lets
+    # merged *first* and `parsed` folded over the top: `e6b_merge_message!` lets
     # the later of two messages win every field it carries, so merging the orphan
     # last would publish it as `message` (documented as the most recently
     # completed one) and would replace a fresher correction block with a staler
     # one of the same kind. Retrying needs the mask `parsed` carries but not the
-    # rest of it, so the mask is merged into the dictionary on its own for the
-    # retry.
+    # rest of it, so the mask is stored on its own for the retry — `parsed`
+    # stores it there anyway when it is merged below.
     held = cache.pending_message[]
-    if !isnothing(parsed.mask) && !isnothing(held)
-        retried = parse_has_message(
+    new_mask = parsed.mask
+    if !isnothing(new_mask) && !isnothing(held)
+        masks = writable_container(raw.masks, storage.masks)
+        set!(masks, new_mask.mask_id, new_mask)
+        raw = GalileoE6BData(raw; masks)
+        retried = parse_has_message!(
+            parser,
             held.octets,
+            length(held.octets),
             held.message_id,
             held.message_type,
             held.message_size,
-            _merge_keyed(raw.masks, parsed.mask.mask_id, parsed.mask),
+            masks,
         )
         if retried isa GalileoHASMessage
             cache.pending_message[] = nothing
-            raw = e6b_merge_message(raw, retried)
+            raw = e6b_merge_message!(raw, storage, retried)
         end
+        # The retry overwrote the parser, so `parsed` is parsed again — the same
+        # octets give the same message (it carries its own mask, so the store
+        # just updated does not change it).
+        parsed = parse_has_message!(
+            parser,
+            octets,
+            num_octets,
+            message_id,
+            message_type,
+            message_size,
+            raw.masks,
+        )
+        parsed isa GalileoHASMessage || return GNSSDecoderState(state; raw_data = raw)
     end
-    return GNSSDecoderState(state; raw_data = e6b_merge_message(raw, parsed))
+    return GNSSDecoderState(state; raw_data = e6b_merge_message!(raw, storage, parsed))
 end
 
 """
     validate_data(state::GNSSDecoderState{<:GalileoE6BData})
 
-Publish `raw_data` as `data` unconditionally.
+Publish `raw_data` as `data` unconditionally — as a copy: every container of
+`raw_data` is copied into (**overwriting**) the matching preallocated container
+of the cache's `storage.validated`, so `data` shares nothing with `raw_data` and
+holds still while later pages are decoded into it. The published message's
+block fields point at the published blocks, as they do in `raw_data`.
 
 Every other decoder here withholds `data` until a cross-message consistency
 check passes — matching issues of data, a repeated broadcast, a plausible time
@@ -1865,7 +2627,36 @@ one Message Size, and the ICD's whole erasure-channel model rests on that gate
 carry their own validity intervals would only make them stale.
 """
 function validate_data(state::GNSSDecoderState{<:GalileoE6BData})
-    GNSSDecoderState(state; data = state.raw_data)
+    raw = state.raw_data
+    validated = state.cache.storage.validated
+    orbit = publish!(validated.orbit_corrections, raw.orbit_corrections)
+    clock = publish!(validated.clock_corrections, raw.clock_corrections)
+    clock_subset =
+        publish!(validated.clock_subset_corrections, raw.clock_subset_corrections)
+    code = publish!(validated.code_biases, raw.code_biases)
+    phase = publish!(validated.phase_biases, raw.phase_biases)
+    message =
+        isnothing(raw.message) ? nothing :
+        e6b_overwrite_message!(
+            validated.message,
+            raw.message,
+            orbit,
+            clock,
+            clock_subset,
+            code,
+            phase,
+        )
+    data = GalileoE6BData(
+        raw.HAS_status,
+        message,
+        publish!(validated.masks, raw.masks),
+        orbit,
+        clock,
+        clock_subset,
+        code,
+        phase,
+    )
+    return GNSSDecoderState(state; data)
 end
 
 """
