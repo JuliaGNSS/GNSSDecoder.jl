@@ -164,7 +164,10 @@ the decoder multiplies by π), matching the convention used by
 
 # Almanac (Page Types 5-6)
 
-  - `almanacs::Dictionary{Int,GalileoAlmanac}`: Decoded almanacs keyed by SVID.
+  - `almanacs::SlotDictionary{GalileoAlmanac,64}`: Decoded almanacs keyed by SVID,
+    preallocated with one slot per value of the 6-bit SVID field (0-63); every
+    store and epoch back-patch below **overwrites** a slot in place (see
+    [`decode!`](@ref)).
     Galileo broadcasts three almanacs across the word-type-5/6 pair: SVID-1 (full
     in WT5), SVID-2 (split across WT5 and WT6), and SVID-3 (full in WT6). The
     in-flight SVID-2 partial lives in the decoder cache and is flushed here only
@@ -251,7 +254,7 @@ Base.@kwdef struct GalileoE5aData <: AbstractGalileoEphemerisData
     t_0G::Union{Nothing,Int} = nothing
     WN_0G::Union{Nothing,Int} = nothing
 
-    almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}} = nothing
+    almanacs::Union{Nothing,SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}} = nothing
 end
 
 function GalileoE5aData(
@@ -369,9 +372,13 @@ function GalileoE5aData(
     )
 end
 
-# As with GalileoINAVData, the mutable `almanacs::Dictionary` field makes the
+# As with GalileoINAVData, the mutable `almanacs::SlotDictionary` field makes the
 # default struct `==` (which falls back to `===`) too strict. Compare field-by-field.
 Base.:(==)(a::GalileoE5aData, b::GalileoE5aData) = fields_equal(a, b)
+
+# The one container field, at its ICD size: an almanac slot per 6-bit SVID.
+preallocated_data(::Type{GalileoE5aData}) =
+    GalileoE5aData(; almanacs = SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}())
 
 # `is_ephemeris_decoded` and `is_clock_correction_decoded` are per-constellation
 # facts (identical fields for I/NAV and F/NAV), defined once on
@@ -451,6 +458,11 @@ struct GalileoE5aCache <: AbstractGNSSCache
     238 decoded bits unpacked for the CRC-24Q check, reused across pages.
     """
     crc_bits::Vector{Bool}
+    """
+    Preallocated containers `raw_data` and `data` are decoded into (the almanac
+    store); overwritten in place by `decode!`
+    """
+    storage::DataStorage{GalileoE5aData}
 end
 
 GalileoE5aCache() = GalileoE5aCache(
@@ -460,6 +472,7 @@ GalileoE5aCache() = GalileoE5aCache(
     GalileoViterbiScratch(GALILEO_E5A_VITERBI_K, GALILEO_E5A_VITERBI_N),
     Vector{Float32}(undef, GALILEO_E5A_VITERBI_N),
     Vector{Bool}(undef, GALILEO_E5A_VITERBI_K),
+    DataStorage{GalileoE5aData}(),
 )
 
 function GalileoE5aCache(
@@ -470,6 +483,7 @@ function GalileoE5aCache(
     viterbi = cache.viterbi,
     soft_page = cache.soft_page,
     crc_bits = cache.crc_bits,
+    storage = cache.storage,
 )
     GalileoE5aCache(
         soft_buffer,
@@ -478,6 +492,7 @@ function GalileoE5aCache(
         viterbi,
         soft_page,
         crc_bits,
+        storage,
     )
 end
 
@@ -597,6 +612,13 @@ function complement_buffer_if_necessary(
     GNSSDecoderState(state; is_shifted_by_180_degrees = polarity_flipped), polarity_flipped
 end
 
+# One unsigned field of a decoded F/NAV page, narrowed to `UInt64` (every F/NAV
+# field is at most 32 bits wide). The page itself is a `UInt256`, and BitIntegers
+# converts a `UInt256` to `Float64` through a `BigInt` — an allocation per scaled
+# field — so each field leaves the wide integer before any arithmetic is done on it.
+fnav_field(bits::UInt256, start::Int, length::Int) =
+    UInt64(get_bits(bits, GALILEO_E5A_VITERBI_K, start, length))
+
 # Combine SVID-2's split right-ascension: WT5 carries the 4 MSBs, WT6 the 12 LSBs,
 # of a 16-bit two's-complement value scaled by π·2⁻¹⁵ (semicircles → radians).
 function combine_almanac_omega0(msb::Int, lsb::Int, PI::Float64)
@@ -610,24 +632,36 @@ end
 # WT6 whose paired WT5 was missed (mid-stream acquisition / IOD cutover). This
 # lets a one-shot WT6 orbit become usable once a later WT5 arrives, even if that
 # WT6 never reappears; without it the WT6's orbital block would be stranded.
-# Returns `almanacs` unchanged when nothing matches, else a patched copy (the
-# input dictionary, shared with `raw_data`, is never mutated in place).
-function backpatch_almanac_epochs(
-    almanacs::Union{Nothing,Dictionary{Int,GalileoAlmanac}},
+# **Overwrites** the matching records of `almanacs` — the raw store, never the
+# validated one `data` holds — in place and returns it.
+function backpatch_almanac_epochs!(
+    almanacs::Union{Nothing,SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}},
     IOD_a::Int,
     WN_a::Int,
     t_0a::Int,
 )
     isnothing(almanacs) && return almanacs
-    patched = almanacs
     for SVID in keys(almanacs)
         alm = almanacs[SVID]
         if alm.IOD_a == IOD_a && (isnothing(alm.WN_a) || isnothing(alm.t_0a))
-            patched === almanacs && (patched = copy(almanacs))
-            set!(patched, SVID, GalileoAlmanac(alm; WN_a, t_0a))
+            almanacs[SVID] = GalileoAlmanac(alm; WN_a, t_0a)
         end
     end
-    return patched
+    return almanacs
+end
+
+# Store one decoded almanac into the raw almanac store, **overwriting** its
+# SVID's slot in place, and return the store to put back into `raw_data`.
+# `almanacs` is the store as this page has left it so far (`nothing` before the
+# first almanac), which a page storing two almanacs threads through both calls.
+function store_almanac!(
+    state::GNSSDecoderState{<:GalileoE5aData},
+    almanacs::Union{Nothing,SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}},
+    almanac::GalileoAlmanac,
+)
+    almanacs = writable_container(almanacs, state.cache.storage.raw.almanacs)
+    set!(almanacs, something(almanac.SVID), almanac)
+    return almanacs
 end
 
 function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Bool)
@@ -667,17 +701,17 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
     crc24q(crc_bits) == 0 || return state
 
     PI = state.constants.PI
-    page_type = get_bits(bits, GALILEO_E5A_VITERBI_K, 1, 6)
+    page_type = fnav_field(bits, 1, 6)
 
     if page_type == 1
-        SVID = Int(get_bits(bits, 238, 7, 6))
-        IOD_nav1 = get_bits(bits, 238, 13, 10)
-        t_0c = get_bits(bits, 238, 23, 14) * 60
+        SVID = Int(fnav_field(bits, 7, 6))
+        IOD_nav1 = fnav_field(bits, 13, 10)
+        t_0c = fnav_field(bits, 23, 14) * 60
         a_f0 = get_twos_complement_num(bits, 238, 37, 31) * 2.0^-34
         a_f1 = get_twos_complement_num(bits, 238, 68, 21) * 2.0^-46
         a_f2 = get_twos_complement_num(bits, 238, 89, 6) * 2.0^-59
-        SISA_E1_E5a = Int(get_bits(bits, 238, 95, 8))
-        a_i0 = get_bits(bits, 238, 103, 11) / (1 << 2)
+        SISA_E1_E5a = Int(fnav_field(bits, 95, 8))
+        a_i0 = fnav_field(bits, 103, 11) / (1 << 2)
         a_i1 = get_twos_complement_num(bits, 238, 114, 11) / (1 << 8)
         a_i2 = get_twos_complement_num(bits, 238, 125, 14) / (1 << 15)
         iono_storm_flag_region1 = get_bit(bits, 238, 139)
@@ -686,9 +720,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         iono_storm_flag_region4 = get_bit(bits, 238, 142)
         iono_storm_flag_region5 = get_bit(bits, 238, 143)
         BGD_E1_E5a = get_twos_complement_num(bits, 238, 144, 10) * 2.0^-32
-        E5a_SHS = SignalHealth(get_bits(bits, 238, 154, 2))
-        WN = get_bits(bits, 238, 156, 12)
-        TOW = get_bits(bits, 238, 168, 20)
+        E5a_SHS = SignalHealth(fnav_field(bits, 154, 2))
+        WN = fnav_field(bits, 156, 12)
+        TOW = fnav_field(bits, 168, 20)
         E5a_DVS = DataValidityStatus(get_bit(bits, 238, 188))
         state = GNSSDecoderState(
             state;
@@ -719,15 +753,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ),
         )
     elseif page_type == 2
-        IOD_nav2 = get_bits(bits, 238, 7, 10)
+        IOD_nav2 = fnav_field(bits, 7, 10)
         M_0 = get_twos_complement_num(bits, 238, 17, 32) * PI * 2.0^-31
         Ω_dot = get_twos_complement_num(bits, 238, 49, 24) * PI * 2.0^-43
-        e = get_bits(bits, 238, 73, 32) * 2.0^-33
-        sqrt_A = get_bits(bits, 238, 105, 32) / (1 << 19)
+        e = fnav_field(bits, 73, 32) * 2.0^-33
+        sqrt_A = fnav_field(bits, 105, 32) / (1 << 19)
         Ω_0 = get_twos_complement_num(bits, 238, 137, 32) * PI * 2.0^-31
         i_dot = get_twos_complement_num(bits, 238, 169, 14) * PI * 2.0^-43
-        WN = get_bits(bits, 238, 183, 12)
-        TOW = get_bits(bits, 238, 195, 20)
+        WN = fnav_field(bits, 183, 12)
+        TOW = fnav_field(bits, 195, 20)
         state = GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -746,7 +780,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ),
         )
     elseif page_type == 3
-        IOD_nav3 = get_bits(bits, 238, 7, 10)
+        IOD_nav3 = fnav_field(bits, 7, 10)
         i_0 = get_twos_complement_num(bits, 238, 17, 32) * PI * 2.0^-31
         ω = get_twos_complement_num(bits, 238, 49, 32) * PI * 2.0^-31
         Δn = get_twos_complement_num(bits, 238, 81, 16) * PI * 2.0^-43
@@ -754,9 +788,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         C_us = get_twos_complement_num(bits, 238, 113, 16) / Float64(1 << 29)
         C_rc = get_twos_complement_num(bits, 238, 129, 16) / (1 << 5)
         C_rs = get_twos_complement_num(bits, 238, 145, 16) / (1 << 5)
-        t_0e = get_bits(bits, 238, 161, 14) * 60
-        WN = get_bits(bits, 238, 175, 12)
-        TOW = get_bits(bits, 238, 187, 20)
+        t_0e = fnav_field(bits, 161, 14) * 60
+        WN = fnav_field(bits, 175, 12)
+        TOW = fnav_field(bits, 187, 20)
         state = GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -777,26 +811,26 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ),
         )
     elseif page_type == 4
-        IOD_nav4 = get_bits(bits, 238, 7, 10)
+        IOD_nav4 = fnav_field(bits, 7, 10)
         C_ic = get_twos_complement_num(bits, 238, 17, 16) / Float64(1 << 29)
         C_is = get_twos_complement_num(bits, 238, 33, 16) / Float64(1 << 29)
         A_0UTC = get_twos_complement_num(bits, 238, 49, 32) / Float64(1 << 30)
         A_1UTC = get_twos_complement_num(bits, 238, 81, 24) * 2.0^-50
         Δt_LS = Int(get_twos_complement_num(bits, 238, 105, 8))
-        t_0t = Int(get_bits(bits, 238, 113, 8) * 3600)
-        WN_0t = Int(get_bits(bits, 238, 121, 8))
-        WN_LSF = Int(get_bits(bits, 238, 129, 8))
-        DN = Int(get_bits(bits, 238, 137, 3))
+        t_0t = Int(fnav_field(bits, 113, 8) * 3600)
+        WN_0t = Int(fnav_field(bits, 121, 8))
+        WN_LSF = Int(fnav_field(bits, 129, 8))
+        DN = Int(fnav_field(bits, 137, 3))
         Δt_LSF = Int(get_twos_complement_num(bits, 238, 140, 8))
         # GGTO — all four fields all-ones means "not valid" (ICD 5.1.8), so
         # they are read raw and scaled by `galileo_ggto`.
         A_0G, A_1G, t_0G, WN_0G = galileo_ggto(
-            get_bits(bits, 238, 156, 16),
-            get_bits(bits, 238, 172, 12),
-            get_bits(bits, 238, 148, 8),
-            get_bits(bits, 238, 184, 6),
+            fnav_field(bits, 156, 16),
+            fnav_field(bits, 172, 12),
+            fnav_field(bits, 148, 8),
+            fnav_field(bits, 184, 6),
         )
-        TOW = get_bits(bits, 238, 190, 20)
+        TOW = fnav_field(bits, 190, 20)
         state = GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -822,15 +856,15 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ),
         )
     elseif page_type == 5
-        IOD_a = Int(get_bits(bits, 238, 7, 4))
-        WN_a = Int(get_bits(bits, 238, 11, 2))
-        t_0a = Int(get_bits(bits, 238, 13, 10) * 600)
+        IOD_a = Int(fnav_field(bits, 7, 4))
+        WN_a = Int(fnav_field(bits, 11, 2))
+        t_0a = Int(fnav_field(bits, 13, 10) * 600)
         # SVID-1: fully contained in page type 5 → flush immediately.
-        SVID1 = Int(get_bits(bits, 238, 23, 6))
+        SVID1 = Int(fnav_field(bits, 23, 6))
         almanac1 = GalileoAlmanac(;
             SVID = SVID1,
             Δsqrt_A = get_twos_complement_num(bits, 238, 29, 13) / (1 << 9),
-            e = get_bits(bits, 238, 42, 11) / (1 << 16),
+            e = fnav_field(bits, 42, 11) / (1 << 16),
             ω = get_twos_complement_num(bits, 238, 53, 16) * PI / (1 << 15),
             δi = get_twos_complement_num(bits, 238, 69, 11) * PI / (1 << 14),
             Ω_0 = get_twos_complement_num(bits, 238, 80, 16) * PI / (1 << 15),
@@ -838,34 +872,32 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             M_0 = get_twos_complement_num(bits, 238, 107, 16) * PI / (1 << 15),
             a_f0 = get_twos_complement_num(bits, 238, 123, 16) / Float64(1 << 19),
             a_f1 = get_twos_complement_num(bits, 238, 139, 13) * 2.0^-38,
-            E5a_SHS = SignalHealth(get_bits(bits, 238, 152, 2)),
+            E5a_SHS = SignalHealth(fnav_field(bits, 152, 2)),
             IOD_a,
             WN_a,
             t_0a,
         )
         # SVID-2: first half (orbital shape + Ω_0 MSB) in page type 5; the
         # remainder arrives in page type 6.
-        SVID2 = Int(get_bits(bits, 238, 154, 6))
+        SVID2 = Int(fnav_field(bits, 154, 6))
         almanac2_partial = GalileoAlmanac(;
             SVID = SVID2,
             Δsqrt_A = get_twos_complement_num(bits, 238, 160, 13) / (1 << 9),
-            e = get_bits(bits, 238, 173, 11) / (1 << 16),
+            e = fnav_field(bits, 173, 11) / (1 << 16),
             ω = get_twos_complement_num(bits, 238, 184, 16) * PI / (1 << 15),
             δi = get_twos_complement_num(bits, 238, 200, 11) * PI / (1 << 14),
             IOD_a,
             WN_a,
             t_0a,
         )
-        omega0_msb = Int(get_bits(bits, 238, 211, 4))
+        omega0_msb = Int(fnav_field(bits, 211, 4))
 
         # Complete any earlier record still missing its reference epoch (e.g. an
         # SVID-3 from a WT6 whose paired WT5 was missed) — WN_a/t_0a are shared by
         # all almanacs of this IOD_a.
-        almanacs = backpatch_almanac_epochs(state.raw_data.almanacs, IOD_a, WN_a, t_0a)
+        almanacs = backpatch_almanac_epochs!(state.raw_data.almanacs, IOD_a, WN_a, t_0a)
         if SVID1 >= 1
-            almanacs =
-                isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() : copy(almanacs)
-            set!(almanacs, SVID1, almanac1)
+            almanacs = store_almanac!(state, almanacs, almanac1)
         end
         valid_SVID2 = SVID2 >= 1
         state = GNSSDecoderState(
@@ -878,11 +910,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             ),
         )
     elseif page_type == 6
-        IOD_a = Int(get_bits(bits, 238, 7, 4))
+        IOD_a = Int(fnav_field(bits, 7, 4))
         # SVID-2 completion: combine the WT5 Ω_0 MSBs with the WT6 LSBs and add
         # the remaining orbital/clock/health terms. Only flush if the PT5 partial
         # is intact and its IOD_a matches.
-        omega0_lsb = Int(get_bits(bits, 238, 11, 12))
+        omega0_lsb = Int(fnav_field(bits, 11, 12))
         partial = state.cache.almanac_chain_partial
         msb = state.cache.almanac_chain_omega0_msb
         almanacs = state.raw_data.almanacs
@@ -894,11 +926,9 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 M_0 = get_twos_complement_num(bits, 238, 34, 16) * PI / (1 << 15),
                 a_f0 = get_twos_complement_num(bits, 238, 50, 16) / Float64(1 << 19),
                 a_f1 = get_twos_complement_num(bits, 238, 66, 13) * 2.0^-38,
-                E5a_SHS = SignalHealth(get_bits(bits, 238, 79, 2)),
+                E5a_SHS = SignalHealth(fnav_field(bits, 79, 2)),
             )
-            almanacs =
-                isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() : copy(almanacs)
-            set!(almanacs, completed2.SVID, completed2)
+            almanacs = store_almanac!(state, almanacs, completed2)
         end
         # SVID-3: orbital/clock/health are fully contained in page type 6, but its
         # almanac reference epoch (WN_a, t_0a) is broadcast only in the paired word
@@ -908,7 +938,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         # acquisition or an IOD cutover that lands WT6 without its paired WT5; the
         # epoch is filled in later by `backpatch_almanac_epochs` when the matching
         # WT5 arrives (or wholesale by the next full WT5→WT6 cycle).
-        SVID3 = Int(get_bits(bits, 238, 81, 6))
+        SVID3 = Int(fnav_field(bits, 81, 6))
         if SVID3 >= 1
             shared_wn_a, shared_t_0a =
                 (!isnothing(partial.SVID) && partial.IOD_a == IOD_a) ?
@@ -916,7 +946,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
             almanac3 = GalileoAlmanac(;
                 SVID = SVID3,
                 Δsqrt_A = get_twos_complement_num(bits, 238, 87, 13) / (1 << 9),
-                e = get_bits(bits, 238, 100, 11) / (1 << 16),
+                e = fnav_field(bits, 100, 11) / (1 << 16),
                 ω = get_twos_complement_num(bits, 238, 111, 16) * PI / (1 << 15),
                 δi = get_twos_complement_num(bits, 238, 127, 11) * PI / (1 << 14),
                 Ω_0 = get_twos_complement_num(bits, 238, 138, 16) * PI / (1 << 15),
@@ -924,14 +954,12 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 M_0 = get_twos_complement_num(bits, 238, 165, 16) * PI / (1 << 15),
                 a_f0 = get_twos_complement_num(bits, 238, 181, 16) / Float64(1 << 19),
                 a_f1 = get_twos_complement_num(bits, 238, 197, 13) * 2.0^-38,
-                E5a_SHS = SignalHealth(get_bits(bits, 238, 210, 2)),
+                E5a_SHS = SignalHealth(fnav_field(bits, 210, 2)),
                 IOD_a,
                 WN_a = shared_wn_a,
                 t_0a = shared_t_0a,
             )
-            almanacs =
-                isnothing(almanacs) ? Dictionary{Int,GalileoAlmanac}() : copy(almanacs)
-            set!(almanacs, SVID3, almanac3)
+            almanacs = store_almanac!(state, almanacs, almanac3)
         end
         state = GNSSDecoderState(
             state;
@@ -974,9 +1002,12 @@ function validate_data(state::GNSSDecoderState{<:GalileoE5aData})
                 state.raw_data.num_pages_after_last_TOW *
                 state.constants.syncro_sequence_length
         end
+        # `data` gets its own copy of the almanac store (`publish_data`
+        # overwrites the preallocated validated one), so later almanac pages
+        # written into `raw_data` do not leak into `data` before the next promotion.
         state = GNSSDecoderState(
             state;
-            data = state.raw_data,
+            data = publish_data(state.cache.storage, state.raw_data),
             num_bits_after_valid_syncro_sequence,
         )
     end
