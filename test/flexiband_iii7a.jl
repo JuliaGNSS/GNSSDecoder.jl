@@ -369,23 +369,23 @@ else
             )
             for p in gps_prns
                 s = get_soft_bits(ts, :gps, p);
-                isempty(s) || (dec_gps[p] = decode(dec_gps[p], s, length(s)))
+                isempty(s) || (dec_gps[p] = decode!(dec_gps[p], s, length(s)))
             end
             for p in gal_prns
                 s = get_soft_bits(ts, :gal, p);
-                isempty(s) || (dec_gal[p] = decode(dec_gal[p], s, length(s)))
+                isempty(s) || (dec_gal[p] = decode!(dec_gal[p], s, length(s)))
             end
             for p in l5_prns
                 s = get_soft_bits(ts, :gps_l5, p);
-                isempty(s) || (dec_l5[p] = decode(dec_l5[p], s, length(s)))
+                isempty(s) || (dec_l5[p] = decode!(dec_l5[p], s, length(s)))
             end
             for p in e5a_prns
                 s = get_soft_bits(ts, :gal_e5a, p);
-                isempty(s) || (dec_e5a[p] = decode(dec_e5a[p], s, length(s)))
+                isempty(s) || (dec_e5a[p] = decode!(dec_e5a[p], s, length(s)))
             end
             for p in b1i_prns
                 s = get_soft_bits(ts, :bds, p);
-                isempty(s) || (dec_b1i[p] = decode(dec_b1i[p], s, length(s)))
+                isempty(s) || (dec_b1i[p] = decode!(dec_b1i[p], s, length(s)))
             end
         end
         close(r)

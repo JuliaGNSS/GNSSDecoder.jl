@@ -772,7 +772,7 @@ LDPC belief-propagation decoders loaded from the committed binary-image
 Like GPS L1C-D, the LDPC decode is flooding sum-product and therefore
 scale-sensitive: feed soft symbols whose magnitudes are confidence-weighted
 on a roughly LLR-like scale (`≈ 2·r/σ²`) for best performance at marginal
-SNR (see the soft-symbol convention note on [`decode`](@ref)).
+SNR (see the soft-symbol convention note on [`decode!`](@ref)).
 
 # Arguments
 
@@ -786,7 +786,7 @@ SNR (see the soft-symbol convention note on [`decode`](@ref)).
 
 ```julia
 state = BeiDouB1CDecoderState(30)          # PRN 30
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -795,8 +795,8 @@ end
 # See Also
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
 """
 function BeiDouB1CDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
@@ -843,7 +843,7 @@ re-decoding all of subframe 2. Mirrors the GPS L1C-D implementation.
 # See Also
 
   - [`BeiDouB1CDecoderState`](@ref): Create a fresh decoder state
-  - [`decode`](@ref): Continue decoding after reset
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
     empty!(state.cache.soft_buffer)

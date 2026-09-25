@@ -579,7 +579,7 @@ clock correction, and health data from the 50 bps LNAV data stream.
 
 ```julia
 state = GPSL1CADecoderState(1)  # Create decoder for PRN 1
-state = decode(state, bits, num_bits)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -588,8 +588,8 @@ end
 # See Also
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
-  - [`decode`](@ref): Decode bits using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode bits using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function GPSL1CADecoderState(prn)
@@ -643,9 +643,9 @@ after brief signal outages without requiring a full re-decode of all subframes.
 
 ```julia
 # After detecting signal loss
-state = reset_decoder_state(state)
+state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode(state, new_bits, num_bits)
+state = decode!(state, new_bits, num_bits)
 ```
 
 # See Also
@@ -653,7 +653,7 @@ state = decode(state, new_bits, num_bits)
     # Reset bit buffers and TOW data field, while keeping the
 
   - [`GPSL1CADecoderState`](@ref): Create a fresh decoder state    # remaining parameters in raw_data. This allows a GNSSReceiver
-  - [`decode`](@ref): Continue decoding after reset    # to use a satellite after a reacquisition without waiting for
+  - [`decode!`](@ref): Continue decoding after reset    # to use a satellite after a reacquisition without waiting for
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1CAData})
     # Reset bit buffers and TOW data field, while keeping the
@@ -1620,7 +1620,7 @@ is considered healthy only if all health bits are zero (`"000000"`).
 
 ```julia
 state = GPSL1CADecoderState(1)
-state = decode(state, bits, num_bits)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end
@@ -1629,7 +1629,7 @@ end
 # See Also
 
   - [`GPSL1CADecoderState`](@ref): Create decoder state
-  - [`decode`](@ref): Decode navigation data
+  - [`decode!`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GPSL1CAData})
     state.data.sv_health == 0

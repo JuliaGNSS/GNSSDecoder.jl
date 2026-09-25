@@ -1540,7 +1540,7 @@ end
 function validate_data(state::GNSSDecoderState{<:BeiDouDNAVData})
     # Promotion re-anchors the symbol counter to this subframe's SOW epoch, so
     # it may only run for a SOW decoded from the subframe that just synced.
-    # `decode` calls this hook after *every* sync, including the D2 subframes
+    # `decode!` calls this hook after *every* sync, including the D2 subframes
     # 2-5 that carry no SOW at all.
     is_dnav_SOW_from_this_subframe(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)

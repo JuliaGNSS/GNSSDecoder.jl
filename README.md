@@ -51,9 +51,7 @@ is_decoding_completed_for_positioning(state) && is_sat_healthy(state)
 was constructed with (soft-symbol buffer, FEC scratch, the almanac stores and
 other containers behind `state.raw_data` and `state.data`). Always continue
 with the state it returns and do not keep using the old one — take a
-`copy(state)` if you need a snapshot. `decode(state, chunk, n)` is the
-value-semantics variant: it decodes into a copy and leaves `state` untouched,
-at the cost of that copy on every call.
+`copy(state)` if you need a snapshot.
 
 ## Standalone executables (`juliac --trim`)
 

@@ -50,7 +50,7 @@ correction, and parsing into the shared [`BeiDouDNAVData`](@ref) container.
 
 ```julia
 state = BeiDouB3IDecoderState(30)         # PRN 30 (MEO/IGSO ⇒ D1)
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -60,8 +60,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`BeiDouB1IDecoderState`](@ref): The B1I decoder sharing this legacy NAV core
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function BeiDouB3IDecoderState(prn)

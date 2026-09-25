@@ -122,7 +122,7 @@ using GNSSSignals: Hz
     @testset "D1 subframes 1-3 decode and promote (PRN 20)" begin
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test is_sat_healthy(state)
         check_d1_fundamental(state.data)
@@ -135,7 +135,7 @@ using GNSSSignals: Hz
         # thing between a mis-correction and `state.data`.
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_cycle(0)...)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test !is_decoding_completed_for_positioning(state)
         @test state.data == BeiDouDNAVData()
     end
@@ -188,7 +188,7 @@ using GNSSSignals: Hz
         function feed!(state, upto)
             slice = view(stream, (consumed+1):upto)
             consumed = upto
-            decode(state, slice, length(slice))
+            decode!(state, slice, length(slice))
         end
 
         state = feed!(state, 6 * 300 + 11)
@@ -226,7 +226,7 @@ using GNSSSignals: Hz
         # time one whole subframe early.
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test state.num_bits_after_valid_syncro_sequence == 311
         @test state.data.SOW + state.num_bits_after_valid_syncro_sequence / 50 ≈
               D1_LAST_SOW + 6.22
@@ -235,7 +235,7 @@ using GNSSSignals: Hz
     @testset "D1 decode with 180-degree phase shift" begin
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...; polarity = -1.0f0)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test state.is_shifted_by_180_degrees == true
         check_d1_fundamental(state.data)
@@ -247,7 +247,7 @@ using GNSSSignals: Hz
         sf1_err = sf1 ⊻ UInt320(1) << (300 - 65)
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(sf1_err, sf2, sf3, d1_cycle(D1_CYCLE_SPAN)...)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test state.data.WN == 810
     end
@@ -265,7 +265,7 @@ using GNSSSignals: Hz
         )
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(sf1, bad_sf2, sf3)
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         # Neither the rejected subframe's payload nor a promotion built on it.
         @test isnothing(state.raw_data.M_0)
         @test state.data == BeiDouDNAVData()
@@ -290,7 +290,7 @@ using GNSSSignals: Hz
             ),
         )
         symbols = dnav_test_soft_symbols(d1_cycle(0)..., c2[1], stand_in_sf1, c2[3])
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         # Subframe 2's MSBs were dropped when it was skipped, so no t_0e is
         # assembled and nothing is promoted.
         @test isnothing(state.raw_data.t_0e)
@@ -302,7 +302,7 @@ using GNSSSignals: Hz
         symbols = dnav_test_soft_symbols(sf1)
         symbols[301] = -symbols[301]  # first bit of the trailing preamble
         symbols[303] = -symbols[303]
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test isnothing(state.raw_data.WN)
         @test state.data == BeiDouDNAVData()
     end
@@ -387,7 +387,7 @@ using GNSSSignals: Hz
             sf5_p10,
             sf5_p11,
         )
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
 
         for sv_id in (1, 31)
             @test !isnothing(state.data.almanacs) && haskey(state.data.almanacs, sv_id)
@@ -567,7 +567,7 @@ using GNSSSignals: Hz
                 if page < length(tails)
                     symbols = symbols[1:1500]
                 end
-                state = decode(state, symbols, length(symbols))
+                state = decode!(state, symbols, length(symbols))
             end
             state
         end
@@ -706,15 +706,15 @@ using GNSSSignals: Hz
     @testset "reset_decoder_state clears SOW and D2 pages" begin
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
-        state = decode(state, symbols, length(symbols))
-        state = reset_decoder_state(state)
+        state = decode!(state, symbols, length(symbols))
+        state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.WN == 810              # ephemeris survives the reset
         @test state.data == BeiDouDNAVData()
         @test isnothing(state.num_bits_after_valid_syncro_sequence)
         @test isempty(state.cache.d2_pages)
         # And decoding resumes cleanly after the reset.
-        state = decode(state, symbols, length(symbols))
+        state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         @test state.data.WN == 810
     end
@@ -865,9 +865,9 @@ using GNSSSignals: Hz
         # `data` owns its containers: they are not `raw_data`'s.
         @test state.data.almanacs !== state.raw_data.almanacs
 
-        # `decode` keeps value semantics on top of it: the input state is untouched.
+        # A `copy` is independent: decoding into it leaves the original untouched.
         fresh = BeiDouB1IDecoderState(20)
-        decoded = decode(fresh, symbols, length(symbols))
+        decoded = decode!(copy(fresh), symbols, length(symbols))
         @test decoded.data == state.data
         @test fresh == BeiDouB1IDecoderState(20)
     end

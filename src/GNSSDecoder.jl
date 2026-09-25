@@ -5,8 +5,7 @@ using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: Hz, s, ustrip
 import Aff3ct
 
-export decode,
-    decode!,
+export decode!,
     SlotDictionary,
     GPSL1CADecoderState,
     GPSL1CAData,
@@ -66,7 +65,6 @@ export decode,
     GNSSTimeOffset,
     get_time_offset,
     GNSSDecoderState,
-    reset_decoder_state,
     reset_decoder_state!
 
 # Shared decode framework and cross-signal accessors, then the generic

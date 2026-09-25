@@ -813,7 +813,7 @@ parity matrices in `data/`.
 
 ```julia
 state = GPSL1C_DDecoderState(1)            # PRN 1
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -822,8 +822,8 @@ end
 # See Also
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
 """
 function GPSL1C_DDecoderState(prn)
     GNSSDecoderState(
@@ -868,7 +868,7 @@ implementations.
 # See Also
 
   - [`GPSL1C_DDecoderState`](@ref): Create a fresh decoder state
-  - [`decode`](@ref): Continue decoding after reset
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
     empty!(state.cache.soft_buffer)

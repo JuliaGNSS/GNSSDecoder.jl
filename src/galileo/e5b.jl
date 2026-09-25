@@ -67,7 +67,7 @@ Decoded fields land in a [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData)
 
 ```julia
 state = GalileoE5bDecoderState(1)  # Create decoder for PRN 1
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -77,8 +77,8 @@ end
 
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`GalileoE1BDecoderState`](@ref): The Galileo E1-B decoder sharing this I/NAV core
-  - [`decode`](@ref): Decode soft symbols using this state
-  - [`reset_decoder_state`](@ref): Reset after signal loss
+  - [`decode!`](@ref): Decode soft symbols using this state
+  - [`reset_decoder_state!`](@ref): Reset after signal loss
   - [`is_sat_healthy`](@ref): Check satellite health status
 """
 function GalileoE5bDecoderState(prn)
@@ -143,7 +143,7 @@ facets, so a decoder on either component always has both available.
 
 ```julia
 state = GalileoE5bDecoderState(1)
-state = decode(state, soft_symbols, num_symbols)
+state = decode!(state, soft_symbols, num_symbols)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end
@@ -152,7 +152,7 @@ end
 # See Also
 
   - [`GalileoE5bDecoderState`](@ref): Create decoder state
-  - [`decode`](@ref): Decode navigation data
+  - [`decode!`](@ref): Decode navigation data
 """
 function is_sat_healthy(state::GNSSDecoderState{<:GalileoINAVData,<:GalileoE5bConstants})
     state.data.E5b_SHS == signal_ok && state.data.E5b_DVS == navigation_data_valid

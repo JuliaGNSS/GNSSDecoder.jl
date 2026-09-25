@@ -204,7 +204,7 @@ end
         toi0 = 137
         stream = build_stream(toi0, 4, payload)
         state = GPSL1C_DDecoderState(7)
-        state = decode(state, stream, length(stream))
+        state = decode!(state, stream, length(stream))
 
         # Sync found and TOI tracked monotonically (last validated frame).
         @test state.data.toi == (toi0 + 2) % 400
@@ -226,7 +226,7 @@ end
 
     @testset "is_sat_healthy reflects the L1C health bit" begin
         # Healthy (bit 33 = 0).
-        state = decode(GPSL1C_DDecoderState(7), build_stream(50, 4, payload), 4 * 1800)
+        state = decode!(GPSL1C_DDecoderState(7), build_stream(50, 4, payload), 4 * 1800)
         @test is_sat_healthy(state)
 
         # Unhealthy (bit 33 = 1): rebuild with health flag set.
@@ -241,7 +241,7 @@ end
         _append_crc!(bad, 576)
         bad_payload = build_payload(Int32.(collect(bad)), sf3_info)
         bad_state =
-            decode(GPSL1C_DDecoderState(7), build_stream(60, 4, bad_payload), 4 * 1800)
+            decode!(GPSL1C_DDecoderState(7), build_stream(60, 4, bad_payload), 4 * 1800)
         @test bad_state.data.l1c_health == true
         @test !is_sat_healthy(bad_state)
     end
@@ -250,7 +250,7 @@ end
         toi0 = 200
         stream = build_stream(toi0, 4, payload)
         state = GPSL1C_DDecoderState(7)
-        state = decode(state, -stream, length(stream))  # 180° phase flip ⇒ negate all symbols
+        state = decode!(state, -stream, length(stream))  # 180° phase flip ⇒ negate all symbols
         @test state.is_shifted_by_180_degrees == true
         @test state.data.toi == (toi0 + 2) % 400
         @test state.data.WN == golden.WN
@@ -261,7 +261,7 @@ end
         sf2_bad = build_sf2_bits(corrupt = true)
         bad_payload = build_payload(sf2_bad, sf3_info)
         state = GPSL1C_DDecoderState(7)
-        state = decode(state, build_stream(90, 4, bad_payload), 4 * 1800)
+        state = decode!(state, build_stream(90, 4, bad_payload), 4 * 1800)
         # SF2 fields never populated; data never validated; no exception thrown.
         @test state.raw_data.WN === nothing
         @test state.data == GPSL1C_DData()
@@ -270,10 +270,10 @@ end
     end
 
     @testset "reset_decoder_state clears in-flight state, keeps decoded data" begin
-        state = decode(GPSL1C_DDecoderState(7), build_stream(137, 4, payload), 4 * 1800)
+        state = decode!(GPSL1C_DDecoderState(7), build_stream(137, 4, payload), 4 * 1800)
         @test state.data.WN == golden.WN
 
-        reset = reset_decoder_state(state)
+        reset = reset_decoder_state!(state)
         @test reset.data == GPSL1C_DData()                 # validated data cleared
         @test reset.raw_data.WN == golden.WN               # long-lived CED preserved
         @test reset.raw_data.toi === nothing               # in-flight TOI cleared
@@ -294,7 +294,7 @@ end
         state = GPSL1C_DDecoderState(7)
         crashed = false
         try
-            state = decode(state, discontinuous, length(discontinuous))
+            state = decode!(state, discontinuous, length(discontinuous))
         catch
             crashed = true
         end
@@ -307,7 +307,7 @@ end
         # re-acquires sync and decodes subframe 2 again. (The exact final TOI
         # depends on residual buffer alignment after the reset, so only assert
         # that sync was re-acquired and the golden fields decode.)
-        state = decode(state, build_stream(300, 4, payload), 4 * 1800)
+        state = decode!(state, build_stream(300, 4, payload), 4 * 1800)
         @test state.data.toi !== nothing
         @test state.data.WN == golden.WN
         @test state.data.M_0 ≈ golden.M0_raw * 2.0^-32 * state.constants.PI
@@ -336,7 +336,7 @@ end
         # Cold start: no previous frame to be continuous with, so the branch is
         # settled by retrying subframe 2's LDPC+CRC under the complement — the
         # only in-band oracle for the pair.
-        state = decode(GPSL1C_DDecoderState(7), stream, 1800 + 52)
+        state = decode!(GPSL1C_DDecoderState(7), stream, 1800 + 52)
         @test state.data.toi == toi0
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
@@ -346,7 +346,7 @@ end
         # The next frame follows the settled (high) branch by +1, which TOI
         # continuity resolves on its own — here it must, its subframe 2 being
         # undecodable in both polarities.
-        state = decode(state, stream[1853:end], length(stream) - 1852)
+        state = decode!(state, stream[1853:end], length(stream) - 1852)
         @test state.data.toi == toi0 + 1
         @test state.is_shifted_by_180_degrees == false
         @test state.raw_data.WN == golden.WN   # kept from the previous frame
@@ -360,7 +360,7 @@ end
         toi0 = 100
         sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])
         @test sync.toi == toi0 && !sync.polarity_flipped
-        state = decode(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
+        state = decode!(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
         @test state.data.toi == toi0 + 2
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
@@ -400,7 +400,7 @@ end
     """
     function decode_with_sf3(sf3_page::Vector{Int32}; toi0::Int = 120)
         payload = build_payload(sf2_info, sf3_page)
-        state = decode(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
+        state = decode!(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
         return state
     end
 
@@ -734,7 +734,7 @@ end
         soft = load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn1_symbols.bin"))
         @test length(soft) == 69 * 1800
 
-        state = decode(GPSL1C_DDecoderState(1), soft, length(soft))
+        state = decode!(GPSL1C_DDecoderState(1), soft, length(soft))
         assert_spirent_golden(state)
         @test !state.is_shifted_by_180_degrees
         # The recording starts at TOI 1; the 69th frame cannot complete (its
@@ -744,7 +744,7 @@ end
 
         # Polarity-inverted stream must decode identically with the
         # 180°-flip flag set.
-        state_inv = decode(GPSL1C_DDecoderState(1), -soft, length(soft))
+        state_inv = decode!(GPSL1C_DDecoderState(1), -soft, length(soft))
         @test state_inv.is_shifted_by_180_degrees
         @test state_inv.data == state.data
     end
@@ -754,8 +754,8 @@ end
             load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn1_symbols.bin"))
         soft2 =
             load_packed_symbols(joinpath(@__DIR__, "data", "gps_l1c_d_prn2_symbols.bin"))
-        d1 = decode(GPSL1C_DDecoderState(1), soft1, length(soft1)).data
-        state2 = decode(GPSL1C_DDecoderState(2), soft2, length(soft2))
+        d1 = decode!(GPSL1C_DDecoderState(1), soft1, length(soft1)).data
+        state2 = decode!(GPSL1C_DDecoderState(2), soft2, length(soft2))
         d2 = state2.data
 
         # Same constellation epoch, different satellite.
@@ -815,7 +815,7 @@ end
         @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
 
         # The stream actually exercised every store.
-        state = decode(GPSL1C_DDecoderState(1), symbols, length(symbols))
+        state = decode!(GPSL1C_DDecoderState(1), symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
         # The cold start at TOI ≥ 256 comes after the reset with subframe 2
         # unchanged in `raw_data` — the complement retry must still settle it.
@@ -828,9 +828,9 @@ end
         @test d.text_message == "Test text message for page: 2"
         @test !isnothing(d.A_0UTC) && !isnothing(d.t_GGTO)
 
-        # `decode` keeps value semantics on top of it: the input state is untouched.
+        # A `copy` is independent: decoding into it leaves the original untouched.
         fresh = GPSL1C_DDecoderState(1)
-        decode(fresh, symbols, length(symbols))
+        decode!(copy(fresh), symbols, length(symbols))
         @test fresh == GPSL1C_DDecoderState(1)
         @test isnothing(fresh.raw_data.reduced_almanacs)
 
