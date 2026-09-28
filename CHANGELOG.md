@@ -1,5 +1,35 @@
 # Changelog
 
+# [5.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.2.1...v5.0.0) (2026-09-28)
+
+
+### Bug Fixes
+
+* keep vector capacity when copying a state on Julia 1.10 ([2923cbb](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/2923cbb7e9101c340dca0f5c5780379769c1de23))
+* **trim:** unroll duplicate into one method body per type ([5b2cf1a](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/5b2cf1a19cc6d5a45c01237392063f1c4f956ab0))
+
+
+### Features
+
+* make every decoder trimmable with juliac --trim=safe ([4289001](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/428900146a53186573e1f75b40956993ccb714a7))
+
+
+### Performance Improvements
+
+* **beidou-bcnav:** make B1C, B2a and B2b decode! allocation-free ([98a4a82](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/98a4a823e18f58a01ad054925f92623796f458c2))
+* **beidou-dnav:** make B1I/B3I decode! allocation-free ([d5b4c8f](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/d5b4c8fdda1db0b5ddeedab053a58e942f37236e))
+* **beidou:** keep decode! allocation-free on Julia 1.10 ([d3602f5](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/d3602f5cfbd1d7cce49624412b39e24b235e1ed4))
+* bind interleaver lengths before the checks ([00bb30c](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/00bb30cdfc5f343201c48df47d8718a4f4981777))
+* **galileo-e6b:** keep decode! allocation-free on Julia 1.10 ([afdcb12](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/afdcb12b16ecab56e774dac3ce26c5986eccbfc6))
+* **galileo-e6b:** make decode! allocation-free ([bd68985](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/bd68985e75134d1fa7a2b654f2a2f049982dd425))
+* **galileo-inav,galileo-fnav:** make decode! allocation-free ([68a6f06](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/68a6f06b4b34fefcdb63edbfca74d3b309e683b4))
+* **galileo:** keep I/NAV and F/NAV decode! allocation-free on Julia 1.10 ([ac0edfb](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/ac0edfb8aca740cd4c6b1e15dfdfa037eb83d6e6))
+* **gps-cnav:** make decode! allocation-free ([8686c40](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/8686c40db5d7c0b47a4b0bc62278c7ba8a0b068e))
+* **gps-l1cd:** make decode! allocation-free ([6084aae](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/6084aae5b9885c2b9e30b9819895a8808e416aa3))
+* hold DataStorage by reference in the caches ([206857f](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/206857f8d3086c3004c50f9bbc6bdcc7442111f1))
+* inline the keyword rebuild constructors ([6e6cfa3](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/6e6cfa351355d1458c6fa1a45e04664621e9f770))
+* keep decode! allocation-free on Julia 1.10 ([493cc81](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/493cc8151a605df6c8b4627ffdaab39c2cb7e889))
+
 ## [4.2.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.2.0...v4.2.1) (2026-09-10)
 
 
