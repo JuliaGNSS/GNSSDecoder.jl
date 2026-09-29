@@ -6,9 +6,10 @@
 # `conventionalcommits` preset but writes the release notes with the default
 # `angular` preset. The two disagree:
 #   - `feat!: ...` bumps the major version, but the angular parser cannot parse
-#     the `!`, so the commit is dropped from the release notes entirely.
-#   - Only a `BREAKING CHANGE:` footer is understood by both; `BREAKING:` and
-#     friends are ignored.
+#     the `!`, so it adds nothing to the "BREAKING CHANGES" section.
+#   - That section is built only from `BREAKING CHANGE:` footers; `BREAKING:`
+#     and friends are ignored.
+# So a `!` commit is fine as long as it also carries a `BREAKING CHANGE:` footer.
 # Release notes without a breaking-change section block the General registry's
 # AutoMerge for a breaking release (see JuliaRegistries/General#169671).
 #
@@ -24,9 +25,9 @@ for sha in $commits; do
     body=$(git log -1 --format=%b "$sha")
     short=$(git rev-parse --short "$sha")
 
-    if [[ $subject =~ ^[a-zA-Z]+(\([^\)]*\))?\!: ]]; then
-        echo "::error::$short \"$subject\": the '!' hides this commit from the release notes." \
-            "Drop the '!' and add a 'BREAKING CHANGE: <description>' footer instead."
+    if [[ $subject =~ ^[a-zA-Z]+(\([^\)]*\))?\!: ]] && ! grep -q "^BREAKING CHANGE: " <<<"$body"; then
+        echo "::error::$short \"$subject\": the '!' alone does not reach the release notes' breaking-change section." \
+            "Add a 'BREAKING CHANGE: <description>' footer."
         status=1
     fi
 
