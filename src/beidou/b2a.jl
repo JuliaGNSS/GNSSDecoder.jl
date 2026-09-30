@@ -645,7 +645,8 @@ $(TYPEDEF)
 Per-decoder cache for BeiDou B2a: the soft-symbol deque (624 = 600 frame
 symbols + 24 next-frame preamble symbols) and the Aff3ct LDPC BP decoder
 handle for the B-CNAV2 binary image (`data/bcnv2.alist`), reused across
-frames rather than reallocated.
+frames rather than reallocated. The keyword constructor rebuilds the cache
+with a new `frame_decoded`, sharing every buffer.
 
 # Fields
 
@@ -665,6 +666,11 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     """
     llr_scratch::Vector{Float32}
     """
+    Whether the frame just synced cleared LDPC, CRC and the PRN gate
+    (see `is_b2a_frame_decoded`)
+    """
+    frame_decoded::Bool
+    """
     Preallocated almanac stores `raw_data` and `data` are decoded into,
     overwritten in place by [`decode!`](@ref)
     """
@@ -676,12 +682,37 @@ function BeiDouB2aCache()
         CircularDeque{Float32}(B2A_WINDOW_SYMBOLS),
         committed_ldpc_scratch("bcnv2.alist"),
         Vector{Float32}(undef, B2A_ENCODED_SYMBOLS),
+        false,
         DataStorage{BeiDouB2aData}(),
     )
 end
 
+function BeiDouB2aCache(cache::BeiDouB2aCache; frame_decoded = cache.frame_decoded)
+    BeiDouB2aCache(
+        cache.soft_buffer,
+        cache.ldpc,
+        cache.llr_scratch,
+        frame_decoded,
+        cache.storage,
+    )
+end
+
+"""
+True when the frame that just synced was decoded into `raw_data`.
+
+`decode_syncro_sequence` clears the flag as it starts and sets it only once the
+frame has cleared LDPC, CRC-24Q and the PRN gate. A frame whose preambles sync
+but whose payload fails one of those gates leaves `raw_data` untouched, so
+`raw_data.SOW` still names the *previous* frame; `validate_data` must not
+promote it then, since promotion re-anchors the symbol counter to the frame
+that just synced and would freeze the time of transmission for one frame.
+"""
+is_b2a_frame_decoded(state::GNSSDecoderState{<:BeiDouB2aData}) = state.cache.frame_decoded
+
 # The LDPC decoder handle is stateless w.r.t. equality (a runtime Aff3ct
 # object); two B2a caches are equal when their soft buffers match.
+# `frame_decoded` is ignored too: it only carries one sync's outcome from
+# `decode_syncro_sequence` to `validate_data`.
 function Base.:(==)(a::BeiDouB2aCache, b::BeiDouB2aCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
@@ -928,6 +959,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
         state;
         raw_data = BeiDouB2aData(state.raw_data; SOW = nothing),
         data = BeiDouB2aData(),
+        cache = BeiDouB2aCache(state.cache; frame_decoded = false),
         num_bits_after_valid_syncro_sequence = nothing,
         is_shifted_by_180_degrees = false,
     )
@@ -948,12 +980,20 @@ per-message-type parser. Unknown or reserved message types keep the decoded
 header but no further fields.
 
 The 18-bit SOW field counts in 3-second units (Table 7-2: scale factor 3)
-and denotes the rising edge of the *current* frame's first preamble chip, so
-a successfully parsed frame re-arms `num_bits_after_valid_syncro_sequence`
-to the full 624-symbol window (that epoch lies one frame plus one preamble
-behind the newest buffered symbol).
+and denotes the rising edge of the *current* frame's first preamble chip,
+which lies one frame plus one preamble (624 symbols) behind the newest
+buffered symbol. The symbol counter is not re-armed here but in
+`validate_data`, when the frame is promoted.
+
+Sets the cache's `frame_decoded` flag (see `is_b2a_frame_decoded`) only when
+the frame clears every gate and is parsed into `raw_data`; a frame dropped by
+LDPC/CRC or the PRN gate leaves it false and `raw_data` untouched.
 """
 function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
+    # Clear the flag first: every path out of this function leaves it false
+    # unless the frame is parsed into `raw_data` below.
+    state =
+        GNSSDecoderState(state; cache = BeiDouB2aCache(state.cache; frame_decoded = false))
     # The 576 encoded symbols sit between the leading 24-symbol preamble and
     # the trailing preamble of the next frame (deque indices
     # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
@@ -1014,7 +1054,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     # per message cycle). The counter therefore keeps counting from the last
     # *promoted* frame, which stays consistent through skipped promotions and
     # CRC failures alike; `validate_data` re-anchors it whenever it promotes.
-    GNSSDecoderState(state; raw_data = raw)
+    GNSSDecoderState(
+        state;
+        raw_data = raw,
+        cache = BeiDouB2aCache(state.cache; frame_decoded = true),
+    )
 end
 
 """
@@ -1023,18 +1067,24 @@ end
 Promote `raw_data` to `data` once the minimum positioning set is decoded and
 consistent: the MT10+MT11 ephemeris pair from adjacent frames, a clock set
 from any of MT30-34, and IODE == the 8 LSBs of IODC (the "matched pair" rule
-of BDS-SIS-ICD-B2a-1.0 §7.4.3).
+of BDS-SIS-ICD-B2a-1.0 §7.4.3). Only a frame that was actually decoded is
+promoted (see `is_b2a_frame_decoded`).
 
 Promotion overwrites the preallocated validated almanac stores with the raw
 ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
+    # `decode!` calls this hook after *every* sync, including one whose frame
+    # failed LDPC/CRC or the PRN gate and left `raw_data` holding the previous
+    # frame. Promoting that would publish the previous SOW against this frame's
+    # sync epoch — one frame (3 s) low until the next decoded frame (#97).
+    is_b2a_frame_decoded(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
         # `tow + num_bits/rate` (see `get_time_of_week`) to stay on the true
-        # time through frames the gate skips. Runs right after
-        # `decode_syncro_sequence`, so `raw_data.SOW` is the just-decoded frame's.
+        # time through frames the gate skips. The frame was decoded (checked
+        # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
