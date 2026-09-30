@@ -36,6 +36,7 @@ const L1C_D_WINDOW_LENGTH = L1C_D_FRAME_LENGTH + L1C_D_SUBFRAME1_LENGTH  # 1852
 # divided into 84 two-hour intervals counted by the subframe-2 `ITOW`, and each
 # interval into 400 18-second frames counted by the subframe-1 `toi`.
 const L1C_D_ITOW_SECONDS = 7200
+const L1C_D_ITOW_RANGE = 84  # two-hour intervals per week
 const L1C_D_FRAME_SECONDS = 18
 
 # Subframe 2/3 channel-symbol counts (IS-GPS-800J §3.2.3).
@@ -874,7 +875,12 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        raw_data = GPSL1C_DData(state.raw_data; toi = nothing),
+        # `ITOW` is cleared with `toi`: the pair only means a time as a pair, and
+        # an outage can span any number of interval boundaries, so a kept `ITOW`
+        # re-paired with a fresh `toi` would date the first re-locked frames
+        # whole two-hour intervals in the past. Re-learning it costs one decoded
+        # subframe 2.
+        raw_data = GPSL1C_DData(state.raw_data; toi = nothing, ITOW = nothing),
         data = GPSL1C_DData(),
         num_bits_after_valid_syncro_sequence = nothing,
         is_shifted_by_180_degrees = false,
@@ -950,11 +956,22 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
             return reset_decoder_state!(state)
         end
     end
-    state = GNSSDecoderState(
-        state;
-        is_shifted_by_180_degrees = flipped,
-        raw_data = GPSL1C_DData(state.raw_data; toi),
-    )
+    # `toi` advances with every locked frame, but `ITOW` only refreshes when a
+    # subframe 2 clears LDPC+CRC. The frame at `toi = 1` is the first to
+    # broadcast the new interval's `ITOW` (the one at `toi = 0` still carries
+    # the old one; see `get_time_of_week`), so carry the interval across here,
+    # or a noisy subframe 2 from that frame on promotes a time of week exactly
+    # 7200 s low. A later decoded subframe 2 overwrites this with the broadcast
+    # value either way. Continuity above makes `prev_toi == 0` here. The week
+    # rollover (ITOW 83 → 0 while `WN` still awaits its subframe 2) inherits
+    # the same one-frame ambiguity every WN-carrying signal has at that instant.
+    ITOW = state.raw_data.ITOW
+    if !isnothing(prev_toi) && toi == 1 && !isnothing(ITOW)
+        ITOW = (ITOW + 1) % L1C_D_ITOW_RANGE
+    end
+    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+    raw_data = @split_nothing ITOW GPSL1C_DData(state.raw_data; toi, ITOW)
+    state = GNSSDecoderState(state; is_shifted_by_180_degrees = flipped, raw_data)
 
     # Extract the 1748-symbol interleaved SF2+SF3 payload (symbols 53..1800),
     # applying the polarity flip by negating soft symbols up front.
