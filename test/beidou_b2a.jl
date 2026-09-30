@@ -563,6 +563,56 @@ end
         @test b2a_now(state) ≈ t_promoted + 9 atol = 1e-6
     end
 
+    @testset "Dropped frames keep tow + num_bits/rate on the true time" begin
+        # A frame whose preambles sync but whose payload fails LDPC/CRC, or
+        # which names another PRN, leaves `raw_data` holding the previous
+        # frame. `validate_data` runs after that sync too, but must not promote
+        # then: promotion would publish the previous frame's SOW against this
+        # frame's sync epoch and freeze the published time for one 3-second
+        # frame (#97). The counter alone carries the dropped frame's time.
+        frames = b2a_frame_symbols.([
+            build_b2a_mt10(; sow = t0),
+            build_b2a_mt11(; sow = t0 + 3),
+            build_b2a_mt30(; sow = t0 + 6),                       # promotes
+            build_b2a_mt10(; sow = t0 + 9, corrupt_crc = true),   # fails CRC
+            build_b2a_mt11(; sow = t0 + 12, prn = B2A_PRN + 1),   # foreign PRN
+            build_b2a_mt30(; sow = t0 + 15),                      # promotes again
+        ])
+        b2a_now(state) =
+            get_time_of_week(state.data) + state.num_bits_after_valid_syncro_sequence / 200
+
+        state = BeiDouB2aDecoderState(B2A_PRN)
+        head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
+        state = decode!(state, head, length(head))
+        @test state.data.SOW == t0 + 6
+        @test state.num_bits_after_valid_syncro_sequence == 624
+        t_promoted = b2a_now(state)
+
+        # The CRC failure syncs but decodes nothing: nothing is promoted and
+        # the counter carries the elapsed frame.
+        step = vcat(frames[4][25:600], frames[5][1:24])
+        state = decode!(state, step, length(step))
+        @test state.raw_data.SOW == t0 + 6
+        @test state.data.SOW == t0 + 6
+        @test state.num_bits_after_valid_syncro_sequence == 624 + 600
+        @test b2a_now(state) ≈ t_promoted + 3 atol = 1e-6
+
+        # Same for a CRC-valid frame from another satellite.
+        step = vcat(frames[5][25:600], frames[6][1:24])
+        state = decode!(state, step, length(step))
+        @test state.raw_data.SOW == t0 + 6
+        @test state.data.SOW == t0 + 6
+        @test state.num_bits_after_valid_syncro_sequence == 624 + 1200
+        @test b2a_now(state) ≈ t_promoted + 6 atol = 1e-6
+
+        # The next decoded frame promotes and re-anchors without a step.
+        step = vcat(frames[6][25:600], b2a_trailing_preamble())
+        state = decode!(state, step, length(step))
+        @test state.data.SOW == t0 + 15
+        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test b2a_now(state) ≈ t_promoted + 9 atol = 1e-6
+    end
+
     @testset "180-degree phase inversion" begin
         state = BeiDouB2aDecoderState(B2A_PRN)
         state = decode_b2a_frames(
