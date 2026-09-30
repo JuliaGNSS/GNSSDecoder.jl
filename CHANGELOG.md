@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.0.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v5.0.0...v5.0.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **beidou:** promote B2a data only from a frame that decoded ([62e4f58](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/62e4f58da1b37c04b437171db53cd3226f5e6c1d)), closes [#97](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/97)
+* **gpsl1c:** carry the ITOW across the interval boundary, and forget it on reset ([1ea6ae6](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/1ea6ae6060e1098b4c075109b7919f14f895d6bf))
+
 # [5.0.0](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v4.2.1...v5.0.0) (2026-09-28)
 
 
