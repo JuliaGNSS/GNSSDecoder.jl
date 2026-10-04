@@ -725,11 +725,11 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouB1CData}, target::TimeS
             target,
             bgto.A_0BGTO,
             bgto.A_1BGTO,
-            bgto.A_2BGTO;
-            t_0 = bgto.t_0BGTO,
-            WN_0 = bgto.WN_0BGTO,
-            WN = state.data.WN,
-            WN_0_modulus = BEIDOU_BGTO_WN_MODULUS,
+            bgto.A_2BGTO,
+            bgto.t_0BGTO,
+            bgto.WN_0BGTO,
+            state.data.WN,
+            BEIDOU_BGTO_WN_MODULUS,
         )
     end
     return nothing

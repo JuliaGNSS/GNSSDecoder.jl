@@ -806,11 +806,11 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
         target,
         A_0,
         A_1,
-        0.0;
-        t_0 = nothing,
-        WN_0 = nothing,
-        WN = data.WN,
-        WN_0_modulus = BEIDOU_BGTO_WN_MODULUS,
+        0.0,
+        nothing,  # t_0: D1/D2 broadcasts no reference epoch
+        nothing,  # WN_0
+        data.WN,
+        BEIDOU_BGTO_WN_MODULUS,
     )
 end
 

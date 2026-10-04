@@ -52,3 +52,15 @@ function copy_decode_allocations(make_state, symbols::Vector{Float32})
     copied = reset_decoder_state!(copy(state))
     return @allocated decode!(copied, symbols, n)
 end
+
+"""
+    time_offset_allocations(state, target) -> Int
+
+Bytes `get_time_offset(state, target)` allocates once compiled. Navigation
+solvers read it per satellite per epoch, so a decoder holding a usable offset
+must answer without allocating (issue #101).
+"""
+function time_offset_allocations(state, target)
+    get_time_offset(state, target)
+    return @allocated get_time_offset(state, target)
+end

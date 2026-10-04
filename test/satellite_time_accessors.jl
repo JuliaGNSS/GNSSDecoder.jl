@@ -487,6 +487,9 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 # And that is 0 for every GPS/Galileo pair but -14 s for BeiDou,
                 # so a suite that only exercised Galileo would pass either way.
                 @test expected == (own === BDT() ? -14.0 : 0.0)
+                # Read per satellite per epoch by a navigation solver, so it
+                # must not allocate once an offset is decoded (issue #101).
+                CHECK_ALLOCATIONS && @test time_offset_allocations(state, target) == 0
             end
         end
 

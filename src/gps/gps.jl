@@ -45,10 +45,10 @@ function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id)
         target,
         data.A_0GGTO,
         data.A_1GGTO,
-        data.A_2GGTO;
-        t_0 = data.t_GGTO,
-        WN_0 = data.WN_GGTO,
-        WN = data.WN,
-        WN_0_modulus = GPS_GGTO_WN_MODULUS,
+        data.A_2GGTO,
+        data.t_GGTO,
+        data.WN_GGTO,
+        data.WN,
+        GPS_GGTO_WN_MODULUS,
     )
 end
