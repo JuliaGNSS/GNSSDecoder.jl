@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.2](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v5.0.1...v5.0.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* read a decoded time offset without allocating ([ddd9dc9](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/ddd9dc909943e9532f51155ac55bc5f721aad082)), closes [#101](https://github.com/JuliaGNSS/GNSSDecoder.jl/issues/101)
+
 ## [5.0.1](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v5.0.0...v5.0.1) (2026-09-30)
 
 
