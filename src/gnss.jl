@@ -733,7 +733,7 @@ function get_time_offset end
 # offset available" and its correction would go quietly unapplied.
 
 """
-    broadcast_time_offset(state, target, A_0, A_1, A_2;
+    broadcast_time_offset(state, target, A_0, A_1, A_2,
                           t_0, WN_0, WN, WN_0_modulus) -> Union{Nothing,GNSSTimeOffset}
 
 Assemble a [`GNSSTimeOffset`](@ref) from one message's broadcast coefficients,
@@ -750,13 +750,19 @@ is built means there is one place to be right instead of six.
 The scales here are all fixed offsets from TAI with no leap seconds of their
 own, so the term is a constant per pair and `get_tai_offset` is its whole
 source; nothing needs a leap-second table.
+
+The arguments are positional on purpose. `t_0`, `WN_0` and `WN` are
+`Union{Nothing,Int}` fields at every call site, and as keyword arguments they
+would be collected into a `NamedTuple` of that non-concrete type, which is
+heap-allocated on every call — and `get_time_offset` is read once per satellite
+per navigation epoch, on a path that must stay allocation-free.
 """
 function broadcast_time_offset(
     state::GNSSDecoderState,
     target::TimeSystem,
     A_0::Real,
     A_1::Real,
-    A_2::Real;
+    A_2::Real,
     t_0::Union{Nothing,Integer},
     WN_0::Union{Nothing,Integer},
     WN::Union{Nothing,Integer},

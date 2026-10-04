@@ -296,11 +296,11 @@ function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
         target,
         data.A_0G,
         data.A_1G,
-        0.0;
-        t_0 = data.t_0G,
-        WN_0 = data.WN_0G,
-        WN = data.WN,
-        WN_0_modulus = GALILEO_GGTO_WN_MODULUS,
+        0.0,
+        data.t_0G,
+        data.WN_0G,
+        data.WN,
+        GALILEO_GGTO_WN_MODULUS,
     )
 end
 

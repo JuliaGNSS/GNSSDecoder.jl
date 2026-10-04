@@ -321,11 +321,11 @@ function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
         target,
         data.A_0BGTO,
         data.A_1BGTO,
-        data.A_2BGTO;
-        t_0 = data.t_0BGTO,
-        WN_0 = data.WN_0BGTO,
-        WN = data.WN,
-        WN_0_modulus = BEIDOU_BGTO_WN_MODULUS,
+        data.A_2BGTO,
+        data.t_0BGTO,
+        data.WN_0BGTO,
+        data.WN,
+        BEIDOU_BGTO_WN_MODULUS,
     )
 end
 
