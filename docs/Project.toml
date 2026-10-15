@@ -10,4 +10,5 @@ GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
 
 [compat]
 Documenter = "1"
+GNSSDecoder = "5.0.1"
 GNSSSignals = "4"
