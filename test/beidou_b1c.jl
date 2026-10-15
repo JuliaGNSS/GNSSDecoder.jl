@@ -750,6 +750,31 @@ end
         @test !is_decoding_completed_for_positioning(state)
     end
 
+    @testset "A state rebound to another PRN syncs on that PRN" begin
+        # A tracking loop that hands a channel to another satellite keeps the
+        # cache and swaps only `prn`: sync must follow `state.prn`, not
+        # anything the cache was built with.
+        sf2 = Bool.(_golden_sf2_bits())
+        sf3 = Bool.(_golden_sf3_page1_bits())
+        stream = vcat(
+            _b1c_frame_symbols(prn + 1, 10, sf2, sf3),
+            _b1c_frame_symbols(prn + 1, 11, sf2, sf3)[1:72],
+        )
+        old = BeiDouB1CDecoderState(prn)
+        rebound = GNSSDecoderState(
+            prn + 1,
+            BeiDouB1CData(),
+            BeiDouB1CData(),
+            old.constants,
+            old.cache,
+            nothing,
+            false,
+        )
+        state = decode!(rebound, stream, length(stream))
+        @test state.raw_data.soh == 10
+        @test is_decoding_completed_for_positioning(state)
+    end
+
     @testset "Noisy symbols still decode (LDPC margin)" begin
         rng = MersenneTwister(0xB1C)
         sf2 = Bool.(_golden_sf2_bits())

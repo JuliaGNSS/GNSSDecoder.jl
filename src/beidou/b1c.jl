@@ -97,6 +97,12 @@ b1c_prn_codeword(prn::Int) =
 b1c_soh_codeword(soh::Int) =
     bch_lfsr_codeword(soh, B1C_SOH_CODEWORD_LEN, B1C_SOH_BCH_WIDTH, B1C_SOH_BCH_TAP)
 
+# 63-entry PRN codeword table, indexed by PRN and materialised once at
+# precompile time. `try_sync` looks its codeword up from `state.prn` rather
+# than the cache holding one: everything PRN-specific lives in `state.prn`, so a
+# state rebound to another PRN with the same cache syncs on the new PRN.
+const B1C_PRN_CODEWORDS = ntuple(b1c_prn_codeword, 63)
+
 # 200-entry SOH codeword table, materialised once at precompile time.
 const B1C_SOH_CODEWORDS = ntuple(i -> b1c_soh_codeword(i - 1), B1C_SOH_RANGE)
 
@@ -596,9 +602,10 @@ N=528 — bit counts of the `data/bcnv1_sf{2,3}.alist` matrices). The decoder
 objects are mutable Aff3ct handles; they are shared by reference through the
 otherwise-immutable [`GNSSDecoderState`](@ref).
 
-The rest is scratch, sized once so that a decoded frame allocates nothing: this
-satellite's PRN codeword, which `try_sync` compares against on every symbol, and
-the four symbol buffers the deinterleave and the two LDPC decodes run through.
+The rest is scratch, sized once so that a decoded frame allocates nothing: the
+four symbol buffers the deinterleave and the two LDPC decodes run through.
+Nothing here depends on the PRN — `try_sync` takes the PRN codeword from
+`state.prn` — so a cache can be carried over to a state for another satellite.
 
 # Fields
 
@@ -617,11 +624,6 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     Subframe-3 LDPC decoder and its scratch buffers (binary image, K=264, N=528)
     """
     sf3_ldpc::LDPCScratch
-    """
-    This satellite's 21-symbol BCH(21,6) PRN codeword, built once — `try_sync`
-    compares against it on every symbol
-    """
-    prn_codeword::UInt64
     """
     Polarity-resolved 1728-symbol interleaved SF2+SF3 payload, copied out per frame
     """
@@ -645,12 +647,11 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     storage::DataStorage{BeiDouB1CData}
 end
 
-function BeiDouB1CCache(prn::Int)
+function BeiDouB1CCache()
     BeiDouB1CCache(
         CircularDeque{Float32}(B1C_WINDOW_LENGTH),
         committed_ldpc_scratch("bcnv1_sf2.alist"),
         committed_ldpc_scratch("bcnv1_sf3.alist"),
-        b1c_prn_codeword(prn),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_SF2_SYMBOLS),
@@ -805,7 +806,7 @@ function BeiDouB1CDecoderState(prn)
         BeiDouB1CData(),
         BeiDouB1CData(),
         BeiDouB1CConstants(),
-        BeiDouB1CCache(prn),
+        BeiDouB1CCache(),
         nothing,
         false,
     )
@@ -935,7 +936,7 @@ detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:BeiDouB1CData})
     deque = soft_buffer(state)
-    prn_codeword = state.cache.prn_codeword
+    prn_codeword = B1C_PRN_CODEWORDS[state.prn]
     for flip in (false, true)
         soh = _match_sf1_soh(deque, 1, prn_codeword, flip)
         isnothing(soh) && continue
