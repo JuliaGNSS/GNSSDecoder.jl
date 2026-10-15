@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.3](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v5.0.2...v5.0.3) (2026-10-15)
+
+
+### Bug Fixes
+
+* **beidou:** sync B1C on the codeword of state.prn, not the cache's ([3df4465](https://github.com/JuliaGNSS/GNSSDecoder.jl/commit/3df446582e1524ea94f3d85805a528cc68d911ec))
+
 ## [5.0.2](https://github.com/JuliaGNSS/GNSSDecoder.jl/compare/v5.0.1...v5.0.2) (2026-10-04)
 
 
