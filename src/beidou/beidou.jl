@@ -315,15 +315,24 @@ since it has a keyed store and no key to file an unavailable set under.
 function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     beidou_bgto_target(data.GNSS_ID) === target || return nothing
-    isnothing(data.A_0BGTO) && return nothing
+    # Decoded together from one message, so all present or all `nothing`. Each is
+    # checked anyway, to narrow it for the call below (see `galileo_ggto_offset`).
+    (; A_0BGTO, A_1BGTO, A_2BGTO, t_0BGTO, WN_0BGTO) = data
+    (
+        isnothing(A_0BGTO) ||
+        isnothing(A_1BGTO) ||
+        isnothing(A_2BGTO) ||
+        isnothing(t_0BGTO) ||
+        isnothing(WN_0BGTO)
+    ) && return nothing
     broadcast_time_offset(
         state,
         target,
-        data.A_0BGTO,
-        data.A_1BGTO,
-        data.A_2BGTO,
-        data.t_0BGTO,
-        data.WN_0BGTO,
+        A_0BGTO,
+        A_1BGTO,
+        A_2BGTO,
+        t_0BGTO,
+        WN_0BGTO,
         data.WN,
         BEIDOU_BGTO_WN_MODULUS,
     )
