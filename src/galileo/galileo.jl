@@ -290,15 +290,21 @@ without a GGTO does not inherit a `FieldError`.
 function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     target === GPST() || return nothing
-    isnothing(data.A_0G) && return nothing
+    # Decoded together from one word, so all present or all `nothing`. Each is checked
+    # anyway: it narrows them from `Union{Nothing,…}`, and Julia 1.10 cannot split the
+    # call below over that many `Union` arguments, so it would dispatch at runtime and
+    # allocate.
+    (; A_0G, A_1G, t_0G, WN_0G) = data
+    (isnothing(A_0G) || isnothing(A_1G) || isnothing(t_0G) || isnothing(WN_0G)) &&
+        return nothing
     broadcast_time_offset(
         state,
         target,
-        data.A_0G,
-        data.A_1G,
+        A_0G,
+        A_1G,
         0.0,
-        data.t_0G,
-        data.WN_0G,
+        t_0G,
+        WN_0G,
         data.WN,
         GALILEO_GGTO_WN_MODULUS,
     )

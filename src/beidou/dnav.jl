@@ -800,7 +800,9 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
     A_0, A_1 =
         target === GPST() ? (data.A_0GPS, data.A_1GPS) :
         target === GST() ? (data.A_0Gal, data.A_1Gal) : (nothing, nothing)
-    isnothing(A_0) && return nothing
+    # Each section carries both or neither; `A_1` is checked anyway, to narrow it for
+    # the call below (see `galileo_ggto_offset`).
+    (isnothing(A_0) || isnothing(A_1)) && return nothing
     broadcast_time_offset(
         state,
         target,

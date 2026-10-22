@@ -39,15 +39,24 @@ function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id)
     # available" and the reserved codes are to be read as unusable rather than
     # guessed at.
     (ggto_id == GPS_GGTO_ID_GALILEO && target === GST()) || return nothing
-    isnothing(data.A_0GGTO) && return nothing
+    # Decoded together from one message, so all present or all `nothing`. Each is
+    # checked anyway, to narrow it for the call below (see `galileo_ggto_offset`).
+    (; A_0GGTO, A_1GGTO, A_2GGTO, t_GGTO, WN_GGTO) = data
+    (
+        isnothing(A_0GGTO) ||
+        isnothing(A_1GGTO) ||
+        isnothing(A_2GGTO) ||
+        isnothing(t_GGTO) ||
+        isnothing(WN_GGTO)
+    ) && return nothing
     broadcast_time_offset(
         state,
         target,
-        data.A_0GGTO,
-        data.A_1GGTO,
-        data.A_2GGTO,
-        data.t_GGTO,
-        data.WN_GGTO,
+        A_0GGTO,
+        A_1GGTO,
+        A_2GGTO,
+        t_GGTO,
+        WN_GGTO,
         data.WN,
         GPS_GGTO_WN_MODULUS,
     )
