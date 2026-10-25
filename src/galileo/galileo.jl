@@ -269,9 +269,9 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
 const GALILEO_GGTO_WN_MODULUS = 64
 
 """
-    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
+    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,BroadcastTimeOffset}
 
-Normalise a decoded GGTO into a [`GNSSTimeOffset`](@ref), or `nothing` when the
+Normalise a decoded GGTO into a `BroadcastTimeOffset`, or `nothing` when the
 satellite is not broadcasting one or `target` is not GPS time.
 
 Galileo's GNSS Time Offset is GPS-only — the ICD defines exactly one, GST to
@@ -297,8 +297,7 @@ function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     (; A_0G, A_1G, t_0G, WN_0G) = data
     (isnothing(A_0G) || isnothing(A_1G) || isnothing(t_0G) || isnothing(WN_0G)) &&
         return nothing
-    broadcast_time_offset(
-        state,
+    assemble_broadcast_time_offset(
         target,
         A_0G,
         A_1G,

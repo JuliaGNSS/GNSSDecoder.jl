@@ -21,10 +21,10 @@ const GPS_GGTO_ID_GALILEO = 1
 const GPS_GGTO_WN_MODULUS = 8192
 
 """
-    gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id) -> Union{Nothing,GNSSTimeOffset}
+    gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id) -> Union{Nothing,BroadcastTimeOffset}
 
 Normalise the GGTO parameter set that CNAV (message type 35) and CNAV-2
-(subframe 3 page 2) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing`
+(subframe 3 page 2) broadcast into a `BroadcastTimeOffset`, or `nothing`
 when the set is absent, marked unavailable, or refers to a system other than
 `target` — the GPS counterpart of `beidou_bgto_offset`.
 
@@ -49,8 +49,7 @@ function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id)
         isnothing(t_GGTO) ||
         isnothing(WN_GGTO)
     ) && return nothing
-    broadcast_time_offset(
-        state,
+    assemble_broadcast_time_offset(
         target,
         A_0GGTO,
         A_1GGTO,

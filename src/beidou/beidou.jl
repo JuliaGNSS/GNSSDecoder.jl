@@ -293,15 +293,15 @@ Map a broadcast BGTO `GNSS_ID` onto the time scale the offset refers to: 1 GPS,
 
 GLONASS reports `nothing`, as do code 0 and an undecoded `nothing`: `GNSSSignals`
 defines no GLONASS `TimeSystem`, so a GLONASS offset has no target to be asked
-for and is read off the data fields directly. See [`get_time_offset`](@ref).
+for and is read off the data fields directly. See [`get_broadcast_time_offset`](@ref).
 """
 beidou_bgto_target(GNSS_ID) = GNSS_ID == 1 ? GPST() : GNSS_ID == 2 ? GST() : nothing
 
 """
-    beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
+    beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,BroadcastTimeOffset}
 
 Normalise the single flat BGTO parameter set that B2a (message type 33) and B2b
-(message type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when
+(message type 40) broadcast into a `BroadcastTimeOffset`, or `nothing` when
 the set is absent, marked unavailable, or refers to a system other than
 `target`.
 
@@ -325,8 +325,7 @@ function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
         isnothing(t_0BGTO) ||
         isnothing(WN_0BGTO)
     ) && return nothing
-    broadcast_time_offset(
-        state,
+    assemble_broadcast_time_offset(
         target,
         A_0BGTO,
         A_1BGTO,

@@ -398,7 +398,7 @@ The GST-to-GPS time offset from F/NAV page type 4, or `nothing` when the
 satellite is not broadcasting a valid GGTO or `target` is not `GPST()`.
 See `galileo_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GalileoE5aData}, target::TimeSystem) =
+broadcast_time_offset(state::GNSSDecoderState{<:GalileoE5aData}, target::TimeSystem) =
     galileo_ggto_offset(state, target)
 
 function is_decoding_completed_for_positioning(data::GalileoE5aData)

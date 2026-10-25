@@ -806,7 +806,7 @@ The BDT-to-`target` offset from message type 40, or `nothing` when this
 satellite is not currently broadcasting one for `target`. One set at a time,
 tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:BeiDouB2bData}, target::TimeSystem) =
+broadcast_time_offset(state::GNSSDecoderState{<:BeiDouB2bData}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
 function is_decoding_completed_for_positioning(data::BeiDouB2bData)

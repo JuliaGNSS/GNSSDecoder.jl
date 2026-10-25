@@ -129,7 +129,7 @@ defines — so it is done here, once per signal, rather than in every consumer.
 |:---|:---|:---|
 | [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
 | [`get_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
-| [`get_time_offset`](@ref) | offset to another constellation's time scale, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
+| [`get_broadcast_time_offset`](@ref) | offset to another constellation's time scale at a time of week, in seconds | this satellite is not broadcasting one for that target |
 
 `get_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
 or `SOW` on most signals, `ITOW·7200 + toi·18` on GPS L1C-D, and
@@ -143,33 +143,35 @@ tow = get_time_of_week(state)
 now = tow + state.num_symbols_since_sync / ustrip(Hz, get_data_frequency(state))
 ```
 
-`get_time_offset` folds away the five shapes the same quantity is broadcast in —
-Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
+`get_broadcast_time_offset` folds away the five shapes the same quantity is
+broadcast in — Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
 `GNSS_ID`/`GGTO_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
 keyed per system, and D1/D2's three epochless pairs named per system — including
 each ICD's "not available" sentinel:
 
 ```julia
-offset = get_time_offset(state, GPST())     # `GPST()`, `GST()` or `BDT()`
-# Δτ is the time since the offset's reference epoch: `t - t_0 + 604800(WN - WN_0)`,
-# or simply `t` on BeiDou D1/D2, which broadcasts no epoch (`t_0 === nothing`).
-t_gpst = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
+Δt = get_broadcast_time_offset(state, GPST(), t_bdt)  # `GPST()`, `GST()` or `BDT()`
+leap_seconds = ustrip(s, get_tai_offset(GPST()) - get_tai_offset(BDT()))  # -14 s
+t_gpst = t_bdt - Δt - leap_seconds
 ```
 
-It also folds in the part that is *not* broadcast. Two time scales differ by a
-defined whole-second offset plus a steering residual, and only the residual is
-on the air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs,
-which cannot express a whole second. `A_0` carries both, so the subtraction
-above is true as written. The defined part is zero between GPST and GST (both
-TAI − 19 s) and −14 s from BDT to either, so a consumer that tested only Galileo
-would never see it.
+It evaluates the broadcast polynomial at the given time of week against the
+decoder's own week number, which the truncated reference week is resolved
+against, so a caller needs only the time of week.
+
+`Δt` comes from the coefficients as broadcast. Two time scales differ by the leap
+seconds between them plus a steering residual, and only the residual is on the
+air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs, which
+cannot express a whole second. The leap seconds follow from the scales'
+definitions, through `get_tai_offset`: zero between GPST and GST (both
+TAI − 19 s) and −14 s from BDT to either, so a conversion that is only ever
+tried on Galileo never notices them missing.
 
 ```@docs
 OrbitClass
 get_orbit_class
 get_time_of_week
-GNSSTimeOffset
-get_time_offset
+get_broadcast_time_offset
 ```
 
 ## Shared Utilities

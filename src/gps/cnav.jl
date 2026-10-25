@@ -855,7 +855,7 @@ broadcasting one for `target`.
 `GNSS_ID` names the system the single broadcast set refers to — 0 none,
 1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI); see `gps_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
+broadcast_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target, state.data.GNSS_ID)
 
 function is_decoding_completed_for_positioning(data::GPSCNAVData)
