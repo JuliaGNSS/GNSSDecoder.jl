@@ -244,56 +244,21 @@ get_nequick_g_parameters
 get_bdgim_parameters
 ```
 
-## Shared Utilities
-
-Signal-independent building blocks used across the decoders (CRC-24Q, the
-BCH(51,8) TOI codec, the block (de)interleaver, and the GF(2^8) Reed-Solomon
-codec behind Galileo HAS).
-
-These are public but unexported, so they are reached through the module: write
-`GNSSDecoder.crc24q(…)`, or import what you need with
-`using GNSSDecoder: crc24q`.
-
-```@docs
-GNSSDecoder.crc24q
-GNSSDecoder.BCHToiSync
-GNSSDecoder.sync_bch_toi
-GNSSDecoder.pack_hard_codeword
-GNSSDecoder.deinterleave!
-GNSSDecoder.interleave!
-GNSSDecoder.GaloisField256
-GNSSDecoder.GALILEO_HAS_GF256
-GNSSDecoder.rs_generator_polynomial
-GNSSDecoder.rs_systematic_generator_matrix
-GNSSDecoder.rs_erasure_decode!
-GNSSDecoder.RSErasureScratch
-```
-
 ## Data Types
 
 Every concrete per-signal data type subtypes the abstract supertype of its
-constellation, which in turn subtypes `AbstractGNSSData`. The supertypes carry
-the facts every signal of a constellation shares, stated once via subtype
-dispatch. Three intermediate levels name families within a constellation:
-`AbstractGalileoEphemerisData` separates the ephemeris-bearing Galileo messages
-from E6-B's corrections-only data, and `AbstractGPSCNAVData` /
-`AbstractBeiDouCNAVData` name the modern civil message families (CNAV/CNAV-2
-and B-CNAV1/2/3), which share a quasi-Keplerian ephemeris
-([`get_broadcast_ephemeris`](@ref) normalises it).
+constellation, so a caller can dispatch on the constellation of a decoder's data
+without enumerating its signals.
 
 ```@docs
 GNSSDecoder.AbstractGPSData
-GNSSDecoder.AbstractGPSCNAVData
 GNSSDecoder.AbstractGalileoData
-GNSSDecoder.AbstractGalileoEphemerisData
 GNSSDecoder.AbstractBeiDouData
-GNSSDecoder.AbstractBeiDouCNAVData
 ```
 
 ### GPS L1 C/A
 
 ```@docs
-GNSSDecoder.GPSL1CAConstants
 GPSL1CAData
 GPSL1CAAlmanac
 ```
@@ -302,17 +267,12 @@ GPSL1CAAlmanac
 
 Galileo E1-B and E5b-I carry the identical I/NAV message — the OS SIS ICD states
 they use "the same page layout", differing only in page sequencing — so they
-share the decoded [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData) container
-and one constants struct,
-[`GalileoINAVConstants`](@ref GNSSDecoder.GalileoINAVConstants). The per-signal
-constants are type aliases that fix its signal tag; they differ only in which
-signal-health facet of word type 5 [`is_sat_healthy`](@ref) reports (E1-B/C or
-E5b), mirroring GPS CNAV.
+share the decoded [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData)
+container. The two decoders differ only in which signal-health facet of word
+type 5 [`is_sat_healthy`](@ref) reports (E1-B/C or E5b), mirroring GPS
+CNAV.
 
 ```@docs
-GNSSDecoder.GalileoINAVConstants
-GNSSDecoder.GalileoE1BConstants
-GNSSDecoder.GalileoE5bConstants
 GNSSDecoder.GalileoINAVData
 GalileoReducedCED
 GalileoAlmanac
@@ -323,7 +283,6 @@ DataValidityStatus
 ### Galileo E5a
 
 ```@docs
-GNSSDecoder.GalileoE5aConstants
 GNSSDecoder.GalileoE5aData
 ```
 
@@ -333,21 +292,17 @@ Galileo E6-B carries the C/NAV message, which is the Signal-in-Space channel of
 the Galileo High Accuracy Service: PPP-grade orbit, clock, code-bias and
 phase-bias corrections *to another signal's* broadcast ephemeris, rather than an
 ephemeris of its own. A HAS message is spread across up to 32 encoded pages
-distributed among satellites and reassembled with a Reed-Solomon erasure decode
-(see [Shared Utilities](#Shared-Utilities)), so
+distributed among satellites and reassembled with a Reed-Solomon erasure decode,
+so
 [`GalileoE6BData`](@ref) exposes both the latest complete
 [`GalileoHASMessage`](@ref) and an accumulated view of the latest of each
 correction block.
 
 ```@docs
-GNSSDecoder.GalileoE6BConstants
 GalileoE6BData
 GalileoHASMessage
 GalileoHASMask
 GalileoHASSatelliteMask
-GNSSDecoder.GalileoHASSatelliteMaskList
-GNSSDecoder.GalileoHASMaskIndices
-GNSSDecoder.GalileoHASCellMask
 GalileoHASCorrectionBlock
 GalileoHASOrbitCorrection
 GalileoHASClockCorrection
@@ -359,7 +314,6 @@ HASStatus
 ### GPS L1C-D
 
 ```@docs
-GNSSDecoder.GPSL1C_DConstants
 GPSL1C_DData
 GPSL1C_DReducedAlmanac
 GPSL1C_DMidiAlmanac
@@ -369,15 +323,11 @@ GPSL1C_DDifferentialCorrection
 ### GPS CNAV (shared by L5I and L2C)
 
 GPS L5I and GPS L2C carry the identical CNAV message, so they share the decoded
-[`GPSCNAVData`](@ref) container (and its almanac/correction records) and one
-constants struct, [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants). The
-per-signal constants are type aliases that fix its signal tag; they differ only
-in which signal-health bit [`is_sat_healthy`](@ref) reports.
+[`GPSCNAVData`](@ref) container (and its almanac/correction records). The two
+decoders differ only in which signal-health bit [`is_sat_healthy`](@ref)
+reports.
 
 ```@docs
-GNSSDecoder.GPSCNAVConstants
-GNSSDecoder.GPSL5IConstants
-GNSSDecoder.GPSL2CMConstants
 GPSCNAVData
 GPSCNAVReducedAlmanac
 GPSCNAVMidiAlmanac
@@ -391,14 +341,9 @@ GPSCNAVIntegritySupportMessage
 
 BeiDou B1I and B3I carry the identical legacy navigation message — D1 NAV on
 MEO/IGSO satellites, D2 NAV on GEO satellites, selected by PRN — so they share
-the decoded [`BeiDouDNAVData`](@ref) container and one constants struct,
-[`BeiDouDNAVConstants`](@ref GNSSDecoder.BeiDouDNAVConstants). The per-signal
-constants are type aliases that fix its signal tag, mirroring GPS CNAV.
+the decoded [`BeiDouDNAVData`](@ref) container, mirroring GPS CNAV.
 
 ```@docs
-GNSSDecoder.BeiDouDNAVConstants
-GNSSDecoder.BeiDouB1IConstants
-GNSSDecoder.BeiDouB3IConstants
 BeiDouDNAVData
 BeiDouDNAVAlmanac
 ```
@@ -406,7 +351,6 @@ BeiDouDNAVAlmanac
 ### BeiDou B1C
 
 ```@docs
-GNSSDecoder.BeiDouB1CConstants
 BeiDouB1CData
 BeiDouB1CBGTO
 ```
@@ -414,14 +358,12 @@ BeiDouB1CBGTO
 ### BeiDou B2a
 
 ```@docs
-GNSSDecoder.BeiDouB2aConstants
 BeiDouB2aData
 ```
 
 ### BeiDou B2b
 
 ```@docs
-GNSSDecoder.BeiDouB2bConstants
 BeiDouB2bData
 ```
 
