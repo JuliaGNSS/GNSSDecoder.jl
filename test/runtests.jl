@@ -41,6 +41,7 @@ include("allocation_utils.jl")
     # that answer only once it does.
     include("complete_data.jl")
     include("group_delay.jl")
+    include("ephemeris.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")
