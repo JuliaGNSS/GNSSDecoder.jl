@@ -116,7 +116,7 @@ e6b_decode_stream(state, stream) = decode!(state, stream, length(stream))
     decoder = GalileoE6BDecoderState(1)
     @test decoder.prn == 1
     @test decoder.data isa GalileoE6BData
-    @test decoder.constants.syncro_sequence_length == 1000
+    @test decoder.constants.sync_unit_length == 1000
     @test decoder.constants.preamble_length == 16
     @test decoder.constants.preamble == 0b1011011101110000
     @test decoder.constants.preamble == 0xB770
@@ -588,20 +588,20 @@ end
 end
 
 @testset "Galileo E6-B arms the framework symbol counter" begin
-    # `num_bits_after_valid_syncro_sequence` is documented as symbols since the
+    # `num_symbols_since_sync` is documented as symbols since the
     # last valid sync, `nothing` meaning "not yet synchronised". A locked E6-B
     # decoder must not keep reporting `nothing` — that is how a consumer tells a
     # tracking decoder from a dead one.
     decoder = GalileoE6BDecoderState(1)
-    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
+    @test isnothing(decoder.num_symbols_since_sync)
     decoder =
         e6b_decode_stream(decoder, e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_1)))
     # Re-armed to the trailing next-page sync that `drain_after_sync!` keeps.
-    @test decoder.num_bits_after_valid_syncro_sequence == decoder.constants.preamble_length
+    @test decoder.num_symbols_since_sync == decoder.constants.preamble_length
     # A page whose contents are unusable still framed correctly, so it re-arms too.
     dummy = e6b_page_bits(0xAF3BC3, hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1]))
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream([dummy]))
-    @test decoder.num_bits_after_valid_syncro_sequence == decoder.constants.preamble_length
+    @test decoder.num_symbols_since_sync == decoder.constants.preamble_length
 end
 
 @testset "Galileo E6-B expires a held message with its page groups" begin
@@ -849,7 +849,7 @@ end
     # they would otherwise look fresh forever across an outage.
     @test isempty(decoder.cache.page_groups)
     @test isempty(decoder.cache.soft_buffer)
-    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
+    @test isnothing(decoder.num_symbols_since_sync)
     @test isnothing(decoder.data.orbit_corrections)
     # Masks survive — they change only when the corrected set does.
     @test haskey(decoder.raw_data.masks, 0)

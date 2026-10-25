@@ -227,7 +227,7 @@ Base.@kwdef struct GalileoE6BConstants <: AbstractGNSSConstants
     """
     Page length drained after each decoded page (1000 symbols)
     """
-    syncro_sequence_length::Int = E6B_PAGE_SYMBOLS
+    sync_unit_length::Int = E6B_PAGE_SYMBOLS
     """
     Synchronisation pattern 0xB770 = `1011011101110000` (ICD §2.3.1), MSB first
     """
@@ -1552,7 +1552,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
         state;
         raw_data,
         data = GalileoE6BData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_symbols_since_sync = nothing,
     )
 end
 
@@ -1567,7 +1567,7 @@ $(TYPEDEF)
 
 Result of a successful C/NAV page sync: the CRC-validated 486-bit page and the
 resolved polarity. Produced by `try_sync`, threaded through
-`complement_buffer_if_necessary` to `decode_syncro_sequence`.
+`complement_buffer_if_necessary` to `decode_sync_unit`.
 
 # Fields
 
@@ -1596,7 +1596,7 @@ C/NAV page sync (HAS SIS ICD, Issue 1.0, §2.3). Two gates, cheapest first:
  2. The 984 encoded symbols must Viterbi-decode to a 486-bit page whose
     CRC-24Q over the leading 462 bits matches the broadcast checksum.
 
-Only then is the page handed to `decode_syncro_sequence`, so a corrupted page
+Only then is the page handed to `decode_sync_unit`, so a corrupted page
 can never enter the HAS page store — which matters more here than elsewhere,
 because the RS erasure decoder trusts every collected page absolutely: one bad
 octet corrupts the whole reassembled message, with no syndrome left to catch it
@@ -2434,7 +2434,7 @@ function e6b_collect_page!(
 end
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
 
 Consume one CRC-validated C/NAV page: read its HAS Page Header, discard dummy
 and unusable pages, add its HAS Encoded Page to the store for its Message ID,
@@ -2453,10 +2453,7 @@ Pages are dropped, before reaching the store, when
   - the Page ID is 0, which is reserved (ICD Table 8);
   - the Message Type is not 1, the only type defined (ICD Table 10).
 """
-function decode_syncro_sequence(
-    state::GNSSDecoderState{<:GalileoE6BData},
-    sync::GalileoE6BSync,
-)
+function decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
     cache = state.cache
     page = sync.page
     cache.page_counter[] += 1
@@ -2468,10 +2465,8 @@ function decode_syncro_sequence(
     # stay `nothing` forever on E6-B, since `decode` only ever increments a
     # counter that is already armed. `preamble_length` is the trailing next-page
     # sync `drain_after_sync!` leaves buffered (cf. `gps/cnav.jl`).
-    state = GNSSDecoderState(
-        state;
-        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
-    )
+    state =
+        GNSSDecoderState(state; num_symbols_since_sync = state.constants.preamble_length)
 
     header = UInt32(get_bits(page, E6B_PAGE_BITS, E6B_HEADER_START, 24))
     # Dummy pages carry no HAS data at all (ICD §2.4.1); their header fields are
@@ -2701,7 +2696,7 @@ Test mode (`has_test_mode`) returns `false`: the data decodes normally and is
 published in `state.data`, but the ICD warns that "nominal performance may not
 be met", so it should not be trusted silently. `has_do_not_use` also returns
 `false`, and additionally causes every previously received message to be
-discarded (see `decode_syncro_sequence`).
+discarded (see `decode_sync_unit`).
 
 # Arguments
 

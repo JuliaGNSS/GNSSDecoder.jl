@@ -20,7 +20,7 @@
 # a free 6-symbol preamble extension that rejects cross-correlation locks
 # onto another satellite), and the LDPC-decoded message must pass CRC-24Q.
 # Both gates run inside `try_sync` (mirroring the GPS CNAV window decoder),
-# so a failed frame never reaches `decode_syncro_sequence` and can never
+# so a failed frame never reaches `decode_sync_unit` and can never
 # re-arm the SOW counter with stale data.
 #
 # Message types (§6.2.3, Table 7-1): 10 (ephemeris + integrity flags),
@@ -86,7 +86,7 @@ Base.@kwdef struct BeiDouB2bConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded frame (1000 symbols)
     """
-    syncro_sequence_length::Int = B2B_FRAME_SYMBOLS
+    sync_unit_length::Int = B2B_FRAME_SYMBOLS
     """
     Preamble 0xEB90 (ICD §6.2.1), MSB first
     """
@@ -133,7 +133,7 @@ each CRC-gated message is atomic.
 # Header (every message type)
 
   - `last_message_type::Int`: MesType of the most recently decoded frame (Table 7-1; 0 until the first decode).
-  - `SOW::Int64`: Seconds of week of the current frame's leading edge (s). Broadcast as a 20-bit count with LSB 1 s — the scale factor of the Chinese-language Table 7-2; the English edition misprints it as 3. See `decode_syncro_sequence` for why the English table is not followed.
+  - `SOW::Int64`: Seconds of week of the current frame's leading edge (s). Broadcast as a 20-bit count with LSB 1 s — the scale factor of the Chinese-language Table 7-2; the English edition misprints it as 3. See `decode_sync_unit` for why the English table is not followed.
 
 # Message type 10 — ephemeris (Figures 6-3, 6-6, 6-7) and integrity flags
 
@@ -489,7 +489,7 @@ $(TYPEDEF)
 
 Result of a successful B-CNAV3 frame sync: the CRC-validated 486-bit message
 and the resolved polarity. Produced by `try_sync`, threaded through
-`complement_buffer_if_necessary` to `decode_syncro_sequence`.
+`complement_buffer_if_necessary` to `decode_sync_unit`.
 
 # Fields
 
@@ -519,7 +519,7 @@ B-CNAV3 frame sync (BDS-SIS-ICD-B2b-1.0 §6.2.1). Three gates, cheapest first:
     priori, so they act as a free 6-symbol preamble extension.
  3. The 972 encoded symbols must LDPC-decode to a message passing CRC-24Q.
 
-Only then is the frame handed to `decode_syncro_sequence`, so a corrupted or
+Only then is the frame handed to `decode_sync_unit`, so a corrupted or
 foreign frame can never update `raw_data` (and, via `validate_data`, can
 never re-arm the SOW symbol counter with stale time).
 """
@@ -579,7 +579,7 @@ end
 # data-block layouts of Figures 6-6 through 6-15.
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDouB2bSync)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDouB2bSync)
 
 Parse one CRC-validated B-CNAV3 message into `raw_data`. The 20-bit SOW
 (LSB 1 s — the Chinese-language ICD Table 7-2 is authoritative here; see the
@@ -587,10 +587,7 @@ provenance note in the body before "correcting" it) stamps the rising edge of
 the current frame's preamble. Message types other than 10, 30, and 40 are reserved (Table 7-1)
 and contribute only the header.
 """
-function decode_syncro_sequence(
-    state::GNSSDecoderState{<:BeiDouB2bData},
-    sync::BeiDouB2bSync,
-)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDouB2bSync)
     word = sync.word
     word_length = B2B_MESSAGE_BITS
     PI = state.constants.PI
@@ -627,7 +624,7 @@ function decode_syncro_sequence(
     # `b2a.jl`, for the same reason): `get_time_of_week` reads the *validated*
     # `data.SOW`, so the counter must anchor to the last frame `validate_data`
     # promoted, not to the last frame that passed CRC. Re-arming per frame while
-    # the published SOW stands still makes `tow + num_bits/rate` read a whole
+    # the published SOW stands still makes `tow + num_symbols_since_sync/rate` read a whole
     # frame low whenever the completeness gate skips a frame — on B2b the gate
     # normally holds once MT10 and MT30 are in, so this is defensive here where
     # on B2a (whose MT10/MT11 adjacency gate skips one frame per message cycle)
@@ -799,7 +796,7 @@ function is_clock_correction_decoded(data::BeiDouB2bData)
 end
 
 # B-CNAV3 broadcasts the seconds of week as a 20-bit count with LSB 1 s (see
-# `decode_syncro_sequence` on why the English Table 7-2 scale of 3 is a misprint).
+# `decode_sync_unit` on why the English Table 7-2 scale of 3 is a misprint).
 get_time_of_week(data::BeiDouB2bData) = data.SOW
 
 """
@@ -831,7 +828,7 @@ Every frame carries its own SOW, so each validated frame re-arms the
 streaming symbol counter: the SOW stamps the *current* frame's leading edge
 (ICD Table 7-2), and by validation time that whole frame (1000 symbols) plus
 the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
-`SOW + num_bits_after_valid_syncro_sequence / 1000 Hz` is the current time.
+`SOW + num_symbols_since_sync / 1000 Hz` is the current time.
 
 Promotion overwrites the preallocated validated almanac stores with the raw
 ones (`publish_data`), so `data` never shares a container with `raw_data`.
@@ -841,13 +838,13 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
         # Promotion publishes this frame's SOW; the symbol counter re-anchors to
         # this frame's sync epoch with it, so the pair `data.SOW` + counter that
         # `get_time_of_week` consumers combine always describes one frame. Runs
-        # right after `decode_syncro_sequence`, so `raw_data.SOW` is the
+        # right after `decode_sync_unit`, so `raw_data.SOW` is the
         # just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                                   state.constants.preamble_length,
+            num_symbols_since_sync = state.constants.sync_unit_length +
+                                     state.constants.preamble_length,
         )
     end
     return state
@@ -859,7 +856,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2bData})
         state;
         raw_data = BeiDouB2bData(state.raw_data; SOW = nothing),
         data = BeiDouB2bData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_symbols_since_sync = nothing,
         is_shifted_by_180_degrees = false,
     )
 end

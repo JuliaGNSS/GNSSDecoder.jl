@@ -84,7 +84,7 @@ WGS 84 constants and CNAV-2 message structure parameters for GPS L1C-D decoding.
 
 The frame is modelled through the generic streaming framework: `preamble_length`
 is the 52-symbol subframe-1 BCH segment of the *next* frame retained at the tail
-of the sync window, and `syncro_sequence_length` is the 1800-symbol frame that is
+of the sync window, and `sync_unit_length` is the 1800-symbol frame that is
 drained once a subframe is decoded.
 
 # Fields
@@ -99,7 +99,7 @@ Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded subframe (1800 symbols)
     """
-    syncro_sequence_length::Int = L1C_D_FRAME_LENGTH
+    sync_unit_length::Int = L1C_D_FRAME_LENGTH
     """
     Trailing next-frame subframe-1 BCH segment retained for sync (52 symbols)
     """
@@ -882,7 +882,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
         # subframe 2.
         raw_data = GPSL1C_DData(state.raw_data; toi = nothing, ITOW = nothing),
         data = GPSL1C_DData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_symbols_since_sync = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -917,7 +917,7 @@ end
 
 Resolve the 180° polarity ambiguity for L1C-D. `sync::BCHToiSync` already
 carries the detected polarity from `sync_bch_toi`; record it on the state and
-pass the sync object through unchanged for `decode_syncro_sequence`.
+pass the sync object through unchanged for `decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GPSL1C_DData},
@@ -929,7 +929,7 @@ end
 # ---- Subframe pipeline -----------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
 
 Process one locked CNAV-2 frame. Enforces a monotonic TOI (each frame's TOI must
 be `(previous + 1) mod 400`; a break resets the decoder to searching), then
@@ -937,7 +937,7 @@ deinterleaves and LDPC-decodes subframes 2 and 3 from the 1748-symbol payload,
 CRC-checking each. Subframe 2 fields are parsed into `raw_data`; subframe 3 is
 recorded as a received page (issue #39 will parse it).
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
+function decode_sync_unit(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
     # `sync` always carries the *low* branch of the BCH complement ambiguity
     # (`sync_bch_toi` cannot tell (toi, polarity) from (toi + 256, !polarity)
     # when both are in range, and reports the lower TOI). Resolve it by TOI
@@ -1414,7 +1414,7 @@ end
 
 Promote `raw_data` to `data` once subframe 2 has been fully decoded. The
 per-frame BCH re-check and monotonic-TOI enforcement are performed inline by
-[`decode_syncro_sequence`](@ref); this hook only publishes validated data and
+[`decode_sync_unit`](@ref); this hook only publishes validated data and
 arms the streaming counter.
 """
 function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
@@ -1425,7 +1425,7 @@ function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+            num_symbols_since_sync = state.constants.preamble_length,
         )
     end
     return state

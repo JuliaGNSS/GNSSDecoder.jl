@@ -279,13 +279,13 @@ end
         @test reset.raw_data.toi === nothing               # in-flight TOI cleared
         @test reset.raw_data.ITOW === nothing              # paired with the TOI
         @test isempty(reset.cache.soft_buffer)             # soft-symbol deque drained
-        @test reset.num_bits_after_valid_syncro_sequence === nothing
+        @test reset.num_symbols_since_sync === nothing
         @test reset.is_shifted_by_180_degrees == false
     end
 
     @testset "TOI discontinuity mid-stream resets without crashing" begin
         # A locked frame establishes a decoded TOI (137); a later frame whose
-        # TOI does not follow by +1 (200) makes `decode_syncro_sequence` reset
+        # TOI does not follow by +1 (200) makes `decode_sync_unit` reset
         # the decoder mid-stream, which empties the soft-symbol deque. The
         # generic `decode` loop then runs `drain_after_sync!` unconditionally —
         # before the drain was clamped to `length(deque)` this `popfirst!`'d an
@@ -319,7 +319,7 @@ end
         # so `sync_bch_toi` cannot tell (toi, pol) from (toi + 256, !pol) and
         # always reports the *low* branch. An unflipped stream whose true TOI is
         # ≥ 256 — 43 minutes of every two-hour interval — therefore reaches
-        # `decode_syncro_sequence` mislabelled as (toi − 256, flipped), and the
+        # `decode_sync_unit` mislabelled as (toi − 256, flipped), and the
         # decoder has to undo that or publish a time 256·18 s = 76.8 min early.
         toi0 = 300
         sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])

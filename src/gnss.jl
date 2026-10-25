@@ -130,7 +130,7 @@ required for decoding navigation messages from GNSS satellites.
 The struct itself is immutable; per-field reconstruction works via the keyword
 constructor. Every buffer a decoder needs is allocated once, by the per-signal
 constructor, and owned by the state: the soft-symbol `CircularDeque{Float32}`
-(capacity `syncro_sequence_length + preamble_length`), the FEC scratch and
+(capacity `sync_unit_length + preamble_length`), the FEC scratch and
 voting tallies in the `cache`, and the containers (almanac stores, health
 tables, ...) that `raw_data` and `data` reference, preallocated in the cache's
 `DataStorage`.
@@ -185,9 +185,9 @@ Base.@kwdef struct GNSSDecoderState{
     """
     cache::CA
     """
-    Number of symbols received after the last valid synchronization sequence, or `nothing` if not yet synchronized
+    Number of symbols received after the last valid sync unit, or `nothing` if not yet synchronized
     """
-    num_bits_after_valid_syncro_sequence::Union{Nothing,Int} = 0
+    num_symbols_since_sync::Union{Nothing,Int} = 0
     """
     Whether the signal phase is inverted by 180 degrees
     """
@@ -199,7 +199,7 @@ end
     raw_data = state.raw_data,
     data = state.data,
     cache = state.cache,
-    num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence,
+    num_symbols_since_sync = state.num_symbols_since_sync,
     is_shifted_by_180_degrees = state.is_shifted_by_180_degrees,
 )
     GNSSDecoderState(
@@ -208,7 +208,7 @@ end
         data,
         state.constants,
         cache,
-        num_bits_after_valid_syncro_sequence,
+        num_symbols_since_sync,
         is_shifted_by_180_degrees,
     )
 end
@@ -537,15 +537,16 @@ on the blocks that own them (see [`GalileoHASCorrectionBlock`](@ref)).
 # The epoch it denotes, and reading the current time
 
 Every signal's value is the time of the epoch that
-[`num_bits_after_valid_syncro_sequence`](@ref GNSSDecoderState) is anchored to —
+[`num_symbols_since_sync`](@ref GNSSDecoderState) is anchored to —
 which is why the anchor is set per signal at promotion time, to the frame the
 broadcast field actually stamps (the *next* subframe for GPS LNAV, CNAV and
 L1C-D; the *current* frame for the BeiDou signals). So the current time of week
 is the same expression on every signal:
 
 ```julia
+using GNSSSignals: Hz, ustrip
 tow = get_time_of_week(state)
-now = tow + state.num_bits_after_valid_syncro_sequence / get_data_frequency(state)
+now = tow + state.num_symbols_since_sync / ustrip(Hz, get_data_frequency(state))
 ```
 
 Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this
@@ -833,13 +834,13 @@ soft_buffer(state::GNSSDecoderState) = state.cache.soft_buffer
 """
 Number of soft symbols currently buffered.
 """
-num_bits_buffered(state::GNSSDecoderState) = length(soft_buffer(state))
+num_symbols_buffered(state::GNSSDecoderState) = length(soft_buffer(state))
 
 """
     push_soft_symbol!(state, sym)
 
 Push one `Float32` soft symbol onto the per-signal circular deque. The deque
-is sized at `syncro_sequence_length + preamble_length`; once full, the oldest
+is sized at `sync_unit_length + preamble_length`; once full, the oldest
 sample is overwritten via `popfirst!`.
 """
 function push_soft_symbol!(state::GNSSDecoderState, sym::Real)
@@ -851,9 +852,9 @@ function push_soft_symbol!(state::GNSSDecoderState, sym::Real)
     return state
 end
 
-function is_enough_buffered_bits_to_decode(state::GNSSDecoderState)
-    num_bits_buffered(state) >=
-    state.constants.syncro_sequence_length + state.constants.preamble_length
+function is_enough_buffered_symbols_to_decode(state::GNSSDecoderState)
+    num_symbols_buffered(state) >=
+    state.constants.sync_unit_length + state.constants.preamble_length
 end
 
 """
@@ -902,7 +903,7 @@ the entire window on every symbol.
 `len` must be at most 64, and `offset + len - 1` must be within the deque: the
 read is `@inbounds`, so the caller owns both bounds. Every caller is a
 `try_sync` hook, which the decode loop runs only behind
-`is_enough_buffered_bits_to_decode`.
+`is_enough_buffered_symbols_to_decode`.
 """
 function pack_bits_msb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)
@@ -930,7 +931,7 @@ slice.
 read is `@inbounds`, so the caller owns both bounds — the length check that
 `pack_hard_codeword` performs on a materialised slice is not available here.
 Every caller is a `try_sync` hook, which the decode loop runs only behind
-`is_enough_buffered_bits_to_decode`.
+`is_enough_buffered_symbols_to_decode`.
 """
 function pack_bits_lsb_first(deque::CircularDeque{Float32}, offset::Int, len::Int)
     word = UInt64(0)
@@ -945,7 +946,7 @@ end
 """
     pack_buffer(state) -> Unsigned
 
-Hard-slice the leading `syncro_sequence_length + preamble_length` soft
+Hard-slice the leading `sync_unit_length + preamble_length` soft
 symbols of the per-signal soft buffer into a packed-bit value (the v1
 `raw_buffer`: oldest bit at MSB, newest bit at LSB). The concrete unsigned
 type is signal-specific and supplied by `packed_buffer_type`. The
@@ -953,7 +954,7 @@ result is a plain value — it is threaded through the sync path rather than
 stashed in mutable cache state.
 """
 function pack_buffer(state::GNSSDecoderState)
-    n = state.constants.syncro_sequence_length + state.constants.preamble_length
+    n = state.constants.sync_unit_length + state.constants.preamble_length
     pack_soft_buffer(packed_buffer_type(state), soft_buffer(state), n)
 end
 
@@ -962,7 +963,7 @@ end
 
 Default per-signal sync hook: hard-slice the deque into a packed-bit buffer
 (via `pack_buffer`) and run the `find_preamble` bit-pattern
-check (preamble visible at both ends of the candidate syncro sequence, in
+check (preamble visible at both ends of the candidate sync unit, in
 either polarity). Returns the packed buffer on a match, or `nothing` if there
 is no sync. Returning the buffer lets the caller reuse it without recomputing
 and keeps it out of mutable cache state.
@@ -981,7 +982,7 @@ function try_sync(state::GNSSDecoderState)
             soft_buffer(state),
             constants.preamble,
             constants.preamble_length,
-            constants.syncro_sequence_length,
+            constants.sync_unit_length,
         ),
     ) && return nothing
     return pack_buffer(state)
@@ -998,13 +999,13 @@ either both upright OR both inverted (180-degree polarity ambiguity).
 function find_preamble(buffer, constants::AbstractGNSSConstants)
     mask = calc_preamble_mask(constants)
     buffer & mask == constants.preamble &&
-    (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
+    (buffer >> constants.sync_unit_length) & mask == constants.preamble ||
         buffer & mask == ~constants.preamble & mask &&
-        (buffer >> constants.syncro_sequence_length) & mask == ~constants.preamble & mask
+        (buffer >> constants.sync_unit_length) & mask == ~constants.preamble & mask
 end
 
 """
-    find_preamble_in_deque(deque, preamble, preamble_length, syncro_sequence_length)
+    find_preamble_in_deque(deque, preamble, preamble_length, sync_unit_length)
         -> Union{Nothing,Bool}
 
 Soft-domain counterpart of [`find_preamble`](@ref): match the preamble at both
@@ -1043,14 +1044,14 @@ essentially every symbol.
     deque::CircularDeque{Float32},
     preamble::Unsigned,
     preamble_length::Int,
-    syncro_sequence_length::Int,
+    sync_unit_length::Int,
 )
     pattern = UInt64(preamble)
     inverted = pattern ⊻ ((UInt64(1) << preamble_length) - UInt64(1))
     head = pack_bits_msb_first(deque, 1, preamble_length)
     upright = head == pattern
     (upright || head == inverted) || return nothing
-    tail = pack_bits_msb_first(deque, syncro_sequence_length + 1, preamble_length)
+    tail = pack_bits_msb_first(deque, sync_unit_length + 1, preamble_length)
     tail == (upright ? pattern : inverted) || return nothing
     return !upright
 end
@@ -1088,7 +1089,7 @@ If the newest preamble in `buffer` is the *inverted* preamble, return the
 state flagged `is_shifted_by_180_degrees = true` together with the
 complemented buffer; otherwise return the state flagged `false` with `buffer`
 unchanged. The polarity-resolved buffer is returned as a value (the v1
-`buffer`) for the per-signal `decode_syncro_sequence` to consume. Mirrors v1
+`buffer`) for the per-signal `decode_sync_unit` to consume. Mirrors v1
 behaviour.
 """
 function complement_buffer_if_necessary(state::GNSSDecoderState, buffer)
@@ -1103,19 +1104,18 @@ end
 """
     drain_after_sync!(state)
 
-Drop the consumed `syncro_sequence_length` oldest soft symbols from the
+Drop the consumed `sync_unit_length` oldest soft symbols from the
 deque, keeping the trailing `preamble_length` symbols as the leading
-preamble of the next subframe. Equivalent to v1's
-`GNSSDecoderState(state; num_bits_buffered = preamble_length)`.
+preamble of the next subframe.
 
-Drops at most `length(deque)` symbols: a `decode_syncro_sequence` hook may
+Drops at most `length(deque)` symbols: a `decode_sync_unit` hook may
 reset the decoder mid-frame (e.g. GPS L1C-D on a TOI discontinuity), which
 empties the buffer. Without the clamp the unconditional drain in `decode`
 would `popfirst!` an empty `CircularDeque` and throw.
 """
 function drain_after_sync!(state::GNSSDecoderState)
     deque = soft_buffer(state)
-    n_drop = min(state.constants.syncro_sequence_length, length(deque))
+    n_drop = min(state.constants.sync_unit_length, length(deque))
     for _ = 1:n_drop
         popfirst!(deque)
     end
@@ -1151,7 +1151,7 @@ end
     a snapshot is needed.
 
 Processes incoming soft symbols from a GNSS signal, detecting preambles and
-decoding synchronization sequences to extract navigation data. The function
+decoding sync units to extract navigation data. The function
 handles both normal and 180-degree phase-shifted signals automatically.
 
 # Soft-symbol convention
@@ -1212,32 +1212,32 @@ function decode!(
 )
     num_symbols <= length(soft_symbols) ||
         throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
-    num_bits = state.num_bits_after_valid_syncro_sequence
+    num_symbols_since_sync = state.num_symbols_since_sync
     next = 1
     while next <= num_symbols
-        next, buffer, num_bits =
-            push_until_sync!(state, soft_symbols, next, num_symbols, num_bits)
+        next, buffer, num_symbols_since_sync =
+            push_until_sync!(state, soft_symbols, next, num_symbols, num_symbols_since_sync)
         isnothing(buffer) && break
-        state = with_symbol_counter(state, num_bits)
+        state = with_symbol_counter(state, num_symbols_since_sync)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
-        state = decode_syncro_sequence(state, resolved_buffer)
+        state = decode_sync_unit(state, resolved_buffer)
         if !decode_once || !is_decoding_completed_for_positioning(state.data)
             state = validate_data(state)
         end
         state = drain_after_sync!(state)
-        num_bits = state.num_bits_after_valid_syncro_sequence
+        num_symbols_since_sync = state.num_symbols_since_sync
     end
-    return with_symbol_counter(state, num_bits)
+    return with_symbol_counter(state, num_symbols_since_sync)
 end
 
 """
-    push_until_sync!(state, soft_symbols, first, last, num_bits)
-        -> (next, buffer, num_bits)
+    push_until_sync!(state, soft_symbols, first, last, num_symbols_since_sync)
+        -> (next, buffer, num_symbols_since_sync)
 
 The per-symbol half of [`decode!`](@ref): push `soft_symbols[first:last]` onto
 `state`'s soft-symbol buffer (overwriting its oldest entries) one at a time,
-counting them in `num_bits` (the running `num_bits_after_valid_syncro_sequence`,
-or `nothing` before the first sync), until `try_sync` finds a sync. Returns the
+counting them in `num_symbols_since_sync` (the state's running counter, or
+`nothing` before the first sync), until `try_sync` finds a sync. Returns the
 index of the next unconsumed symbol, the sync buffer (`nothing` if the symbols
 ran out first) and the updated count.
 
@@ -1251,27 +1251,27 @@ function push_until_sync!(
     soft_symbols::AbstractVector{<:Real},
     first::Int,
     last::Int,
-    num_bits::Union{Nothing,Int},
+    num_symbols_since_sync::Union{Nothing,Int},
 )
     for i = first:last
         push_soft_symbol!(state, soft_symbols[i])
-        if num_bits !== nothing
-            num_bits += 1
+        if num_symbols_since_sync !== nothing
+            num_symbols_since_sync += 1
         end
-        if is_enough_buffered_bits_to_decode(state)
+        if is_enough_buffered_symbols_to_decode(state)
             buffer = try_sync(state)
-            isnothing(buffer) || return (i + 1, buffer, num_bits)
+            isnothing(buffer) || return (i + 1, buffer, num_symbols_since_sync)
         end
     end
-    return (last + 1, nothing, num_bits)
+    return (last + 1, nothing, num_symbols_since_sync)
 end
 
 # Split on the counter being set, so each rebuild has a concretely typed keyword
 # (a `Union` keyword value takes the allocating keyword path on Julia 1.10).
-with_symbol_counter(state::GNSSDecoderState, num_bits) =
-    num_bits === nothing ?
-    GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = nothing) :
-    GNSSDecoderState(state; num_bits_after_valid_syncro_sequence = num_bits)
+with_symbol_counter(state::GNSSDecoderState, num_symbols_since_sync) =
+    num_symbols_since_sync === nothing ?
+    GNSSDecoderState(state; num_symbols_since_sync = nothing) :
+    GNSSDecoderState(state; num_symbols_since_sync)
 
 """
     copy(state::GNSSDecoderState) -> GNSSDecoderState
@@ -1288,7 +1288,7 @@ Base.copy(state::GNSSDecoderState) = GNSSDecoderState(
     duplicate(state.data),
     state.constants,
     duplicate(state.cache),
-    state.num_bits_after_valid_syncro_sequence,
+    state.num_symbols_since_sync,
     state.is_shifted_by_180_degrees,
 )
 
@@ -1342,7 +1342,7 @@ increment_voting(old_vote, max_vote) = min(max_vote, old_vote + 1)
     elapsed_symbols(anchor, now) -> Union{Nothing,Int64}
 
 Symbols counted between the decoder's symbol-counter reading `anchor` and its
-current reading `now` (both `num_bits_after_valid_syncro_sequence` values), or
+current reading `now` (both `num_symbols_since_sync` values), or
 `nothing` if either reading is missing.
 """
 elapsed_symbols(anchor, now) = isnothing(anchor) || isnothing(now) ? nothing : now - anchor

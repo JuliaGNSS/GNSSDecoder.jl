@@ -86,7 +86,7 @@
         @test state.data.URAI == 0
         # The shared core's SOW epoch handling reaches B3I too: 311 symbols
         # (one subframe + the trailing preamble) past the last SOW.
-        @test state.num_bits_after_valid_syncro_sequence == 311
+        @test state.num_symbols_since_sync == 311
         @test state.data.SOW == SOW0 + 30
 
         @testset "D1 decode! is allocation-free (PRN 25)" begin

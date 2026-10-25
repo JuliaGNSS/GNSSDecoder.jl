@@ -117,7 +117,7 @@ inav_symbol_stream(parts::Vector{Vector{Bool}}) =
     @test decoder.data isa GNSSDecoder.GalileoINAVData
     @test decoder.constants isa GNSSDecoder.GalileoE5bConstants
     # Framing is I/NAV's, identical to E1-B (OS SIS ICD Table 37).
-    @test decoder.constants.syncro_sequence_length == 250
+    @test decoder.constants.sync_unit_length == 250
     @test decoder.constants.preamble_length == 10
     @test decoder.constants.preamble == 0b0101100000
     # Same field values as E1-B's constants — only the type tag differs.
@@ -157,8 +157,7 @@ end
     )
     @test e5b.data == e1b.data
     @test e5b.raw_data == e1b.raw_data
-    @test e5b.num_bits_after_valid_syncro_sequence ==
-          e1b.num_bits_after_valid_syncro_sequence
+    @test e5b.num_symbols_since_sync == e1b.num_symbols_since_sync
     @test e5b.is_shifted_by_180_degrees == e1b.is_shifted_by_180_degrees
     # Spot-check absolute values too, so this is not merely "equal to whatever
     # E1-B produced": these are the fixture's known TOW/WN and health.
@@ -291,10 +290,10 @@ end
     )
     @test !isnothing(state.data.TOW)
     state = reset_decoder_state!(state)
-    @test GNSSDecoder.num_bits_buffered(state) == 0
+    @test GNSSDecoder.num_symbols_buffered(state) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
-    @test isnothing(state.num_bits_after_valid_syncro_sequence)
+    @test isnothing(state.num_symbols_since_sync)
     # Ephemeris survives the reset, as on E1-B.
     @test !isnothing(state.raw_data.sqrt_A)
 end

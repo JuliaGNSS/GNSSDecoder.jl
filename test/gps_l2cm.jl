@@ -53,7 +53,7 @@ end
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()          # shared CNAV container
         @test state_a.constants isa GNSSDecoder.GPSL2CMConstants
-        @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state_a.num_symbols_since_sync)
         @test !state_a.is_shifted_by_180_degrees
         # A fresh decoder has no validated data, so the exported
         # state-forwarding readiness predicate is `false`.
@@ -140,7 +140,7 @@ end
         state = reset_decoder_state!(state)
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_symbols_since_sync)
         @test !state.is_shifted_by_180_degrees
         @test state.raw_data.WN == 2345  # ephemeris preserved
     end

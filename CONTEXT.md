@@ -276,7 +276,7 @@ The same word means different things in different ICDs. Within this codebase:
   the HAS Page ID names the latter. For BeiDou
   B1I/B3I: the Pnum-stamped cycle position of a D1 subframe 4/5 (1-24) or a
   D2 subframe (Pnum1 1-10). For B1C: a PageID-typed subframe 3 (1-4).
-- **syncro sequence** — package-internal: the smallest navigable unit the
+- **sync unit** — package-internal: the smallest navigable unit the
   decoder synchronises on (subframe for GPS L1 C/A and BeiDou B1I/B3I, page
   for Galileo — including one C/NAV page on E6-B — frame for L1C-D, B1C, B2a,
   and B2b, message for L5I).
@@ -408,7 +408,7 @@ lives in the `cache`.
   frame N+1, in either polarity.
 - **BeiDou B2a**: fixed 24-symbol preamble `0xE24DE8` at both ends of the
   600-symbol frame window, either polarity; the LDPC + CRC-24Q + own-PRN
-  gates then confirm inside `decode_syncro_sequence`.
+  gates then confirm inside `decode_sync_unit`.
 - **BeiDou B2b**: fixed 16-symbol preamble `0xEB90` at both ends of the
   1000-symbol frame window, either polarity, strengthened by the 6 unencoded
   own-PRN symbols and the LDPC + CRC-24Q gate before any state is updated.

@@ -301,7 +301,7 @@ end
         @test state.is_shifted_by_180_degrees == false
         # SOW epoch is the start of the newest decoded frame: one frame plus
         # one preamble ago.
-        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test state.num_symbols_since_sync == 624
 
         # Flags (identical in every message)
         @test state.raw_data.HS == 0
@@ -524,14 +524,13 @@ end
         # A frame is decoded once the *next* frame's 24 preamble symbols are
         # buffered, so the stream is cut at those sync instants: after the first
         # step each `decode` call below feeds exactly one frame, 600 symbols = 3 s.
-        b2a_now(state) =
-            get_time_of_week(state.data) + state.num_bits_after_valid_syncro_sequence / 200
+        b2a_now(state) = get_time_of_week(state.data) + state.num_symbols_since_sync / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
         state = decode!(state, head, length(head))
         @test state.data.SOW == t0 + 6
-        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test state.num_symbols_since_sync == 624
         t_promoted = b2a_now(state)
 
         # Frame 4 decodes but is not promoted: the new MT10 has no partner yet.
@@ -540,7 +539,7 @@ end
         @test state.raw_data.SOW == t0 + 9          # the frame did decode ...
         @test state.raw_data.IODE == new_iode
         @test state.data.SOW == t0 + 6              # ... and nothing was promoted
-        @test state.num_bits_after_valid_syncro_sequence == 624 + 600
+        @test state.num_symbols_since_sync == 624 + 600
         @test b2a_now(state) ≈ t_promoted + 3 atol = 1e-6
 
         # Frame 5 pairs the ephemeris again, but the clock set still carries the
@@ -549,7 +548,7 @@ end
         state = decode!(state, step, length(step))
         @test state.raw_data.SOW == t0 + 12
         @test state.data.SOW == t0 + 6
-        @test state.num_bits_after_valid_syncro_sequence == 624 + 1200
+        @test state.num_symbols_since_sync == 624 + 1200
         @test b2a_now(state) ≈ t_promoted + 6 atol = 1e-6
 
         # The matching MT30 promotes: SOW and counter re-anchor together, so the
@@ -559,7 +558,7 @@ end
         @test state.data.SOW == t0 + 15
         @test state.data.IODE == new_iode
         @test state.data.IODC == new_iodc
-        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test state.num_symbols_since_sync == 624
         @test b2a_now(state) ≈ t_promoted + 9 atol = 1e-6
     end
 
@@ -578,14 +577,13 @@ end
             build_b2a_mt11(; sow = t0 + 12, prn = B2A_PRN + 1),   # foreign PRN
             build_b2a_mt30(; sow = t0 + 15),                      # promotes again
         ])
-        b2a_now(state) =
-            get_time_of_week(state.data) + state.num_bits_after_valid_syncro_sequence / 200
+        b2a_now(state) = get_time_of_week(state.data) + state.num_symbols_since_sync / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
         state = decode!(state, head, length(head))
         @test state.data.SOW == t0 + 6
-        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test state.num_symbols_since_sync == 624
         t_promoted = b2a_now(state)
 
         # The CRC failure syncs but decodes nothing: nothing is promoted and
@@ -594,7 +592,7 @@ end
         state = decode!(state, step, length(step))
         @test state.raw_data.SOW == t0 + 6
         @test state.data.SOW == t0 + 6
-        @test state.num_bits_after_valid_syncro_sequence == 624 + 600
+        @test state.num_symbols_since_sync == 624 + 600
         @test b2a_now(state) ≈ t_promoted + 3 atol = 1e-6
 
         # Same for a CRC-valid frame from another satellite.
@@ -602,14 +600,14 @@ end
         state = decode!(state, step, length(step))
         @test state.raw_data.SOW == t0 + 6
         @test state.data.SOW == t0 + 6
-        @test state.num_bits_after_valid_syncro_sequence == 624 + 1200
+        @test state.num_symbols_since_sync == 624 + 1200
         @test b2a_now(state) ≈ t_promoted + 6 atol = 1e-6
 
         # The next decoded frame promotes and re-anchors without a step.
         step = vcat(frames[6][25:600], b2a_trailing_preamble())
         state = decode!(state, step, length(step))
         @test state.data.SOW == t0 + 15
-        @test state.num_bits_after_valid_syncro_sequence == 624
+        @test state.num_symbols_since_sync == 624
         @test b2a_now(state) ≈ t_promoted + 9 atol = 1e-6
     end
 
@@ -637,7 +635,7 @@ end
         state = BeiDouB2aDecoderState(B2A_PRN)
         state = decode_b2a_frames(state, [build_b2a_mt10(; sow = t0, corrupt_crc = true)])
         @test isnothing(state.raw_data.SOW)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_symbols_since_sync)
     end
 
     @testset "reset_decoder_state" begin
@@ -655,7 +653,7 @@ end
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.IODE == B2A_IODE   # ephemeris survives reset
         @test state.data == BeiDouB2aData()
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_symbols_since_sync)
         @test length(GNSSDecoder.soft_buffer(state)) == 0
         # And the decoder re-locks from scratch.
         state = decode_b2a_frames(

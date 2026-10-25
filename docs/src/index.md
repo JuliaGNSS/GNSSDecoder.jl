@@ -50,7 +50,7 @@ Process incoming soft symbols and check the decoder state:
 ```jldoctest gps_example
 julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
+julia> GNSSDecoder.num_symbols_buffered(state)  # Symbols are now buffered
 8
 ```
 
@@ -91,7 +91,7 @@ GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B},
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -128,7 +128,7 @@ julia> using GNSSDecoder
 
 julia> state = GalileoE6BDecoderState(1);
 
-julia> state.constants.syncro_sequence_length   # 1000 symbols = 1 s per page
+julia> state.constants.sync_unit_length   # 1000 symbols = 1 s per page
 1000
 
 julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
@@ -176,7 +176,7 @@ GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -201,7 +201,7 @@ GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -225,7 +225,7 @@ GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecode
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -247,7 +247,7 @@ GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GN
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -272,7 +272,7 @@ GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiD
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -290,12 +290,12 @@ julia> state = GPSL1CADecoderState(1);
 
 julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 8
 
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
+julia> GNSSDecoder.num_symbols_buffered(state)  # Buffers are cleared
 0
 
 julia> state.prn  # PRN is preserved

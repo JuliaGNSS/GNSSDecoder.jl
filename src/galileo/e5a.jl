@@ -33,7 +33,7 @@ corrections from broadcast ephemeris data.
 
 # Fields
 
-  - `syncro_sequence_length::Int`: Length of one F/NAV page in channel symbols (500 symbols = 10 s at 50 sps)
+  - `sync_unit_length::Int`: Length of one F/NAV page in channel symbols (500 symbols = 10 s at 50 sps)
   - `preamble::UInt16`: F/NAV synchronisation pattern (101101110000 binary)
   - `preamble_length::Int`: Length of the sync pattern in symbols (12)
   - `PI::Float64`: Mathematical constant π = 3.1415926535898 (Galileo OS SIS ICD Table 68)
@@ -47,7 +47,7 @@ corrections from broadcast ephemeris data.
 Galileo OS SIS ICD, Issue 2.2, §4.2 and Table 68
 """
 Base.@kwdef struct GalileoE5aConstants <: AbstractGNSSConstants
-    syncro_sequence_length::Int = GALILEO_E5A_PAGE_SYMBOLS
+    sync_unit_length::Int = GALILEO_E5A_PAGE_SYMBOLS
     preamble::UInt16 = 0b101101110000
     preamble_length::Int = GALILEO_E5A_SYNC_SYMBOLS
     PI::Float64 = GNSS_PI
@@ -120,7 +120,7 @@ the decoder multiplies by π), matching the convention used by
   - `IOD_nav3::UInt`: Issue of Data from page type 3 (10-bit)
   - `IOD_nav4::UInt`: Issue of Data from page type 4 (10-bit)
   - `num_pages_after_last_TOW::Int`: Pages decoded since last TOW update
-  - `num_bits_after_valid_syncro_sequence_after_last_TOW::Int`: Symbols since last TOW sync
+  - `num_symbols_since_last_TOW::Int`: Symbols since last TOW sync
 
 # Signal Health and Data Validity (Page Type 1)
 
@@ -224,7 +224,7 @@ Base.@kwdef struct GalileoE5aData <: AbstractGalileoEphemerisData
     IOD_nav3::Union{Nothing,UInt} = nothing
     IOD_nav4::Union{Nothing,UInt} = nothing
     num_pages_after_last_TOW::Int = 0
-    num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
+    num_symbols_since_last_TOW::Union{Nothing,Int} = nothing
 
     E5a_SHS::Union{Nothing,SignalHealth} = nothing
     E5a_DVS::Union{Nothing,DataValidityStatus} = nothing
@@ -288,7 +288,7 @@ end
     IOD_nav3 = data.IOD_nav3,
     IOD_nav4 = data.IOD_nav4,
     num_pages_after_last_TOW = data.num_pages_after_last_TOW,
-    num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
+    num_symbols_since_last_TOW = data.num_symbols_since_last_TOW,
     E5a_SHS = data.E5a_SHS,
     E5a_DVS = data.E5a_DVS,
     BGD_E1_E5a = data.BGD_E1_E5a,
@@ -344,7 +344,7 @@ end
         IOD_nav3,
         IOD_nav4,
         num_pages_after_last_TOW,
-        num_bits_after_valid_syncro_sequence_after_last_TOW,
+        num_symbols_since_last_TOW,
         E5a_SHS,
         E5a_DVS,
         BGD_E1_E5a,
@@ -433,7 +433,7 @@ $(TYPEDFIELDS)
 """
 struct GalileoE5aCache <: AbstractGNSSCache
     """
-    Soft-symbol buffer (512 = 500 syncro + 12 sync pattern)
+    Soft-symbol buffer (512 = 500 sync unit + 12 sync pattern)
     """
     soft_buffer::CircularDeque{Float32}
     """
@@ -578,10 +578,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE5aData})
         raw_data = GalileoE5aData(
             state.raw_data;
             TOW = nothing,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+            num_symbols_since_last_TOW = nothing,
         ),
         data = GalileoE5aData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_symbols_since_sync = nothing,
     )
 end
 
@@ -603,7 +603,7 @@ try_sync(state::GNSSDecoderState{<:GalileoE5aData}) = find_preamble_in_deque(
     GALILEO_E5A_PAGE_SYMBOLS,
 )
 
-# Record the polarity `try_sync` resolved; `decode_syncro_sequence` reads it back
+# Record the polarity `try_sync` resolved; `decode_sync_unit` reads it back
 # off the state when it copies the soft page out of the deque.
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GalileoE5aData},
@@ -664,10 +664,10 @@ function store_almanac!(
     return almanacs
 end
 
-function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Bool)
+function decode_sync_unit(state::GNSSDecoderState{<:GalileoE5aData}, ::Bool)
     # The 488 encoded symbols sit between the leading 12-symbol sync pattern and
     # the trailing sync pattern of the next page (deque indices
-    # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
+    # preamble_length+1 .. sync_unit_length). Resolve the 180-degree
     # polarity ambiguity by negating the LLRs when the sync hook flagged the page
     # as inverted.
     soft_page = copy_soft_window!(
@@ -725,7 +725,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         TOW = fnav_field(bits, 168, 20)
         E5a_DVS = DataValidityStatus(get_bit(bits, 238, 188))
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        TOW_anchor = state.num_bits_after_valid_syncro_sequence
+        TOW_anchor = state.num_symbols_since_sync
         state = @split_nothing TOW_anchor GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -751,7 +751,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 WN,
                 TOW,
                 num_pages_after_last_TOW = 1,
-                num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
+                num_symbols_since_last_TOW = TOW_anchor,
             ),
         )
     elseif page_type == 2
@@ -765,7 +765,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         WN = fnav_field(bits, 183, 12)
         TOW = fnav_field(bits, 195, 20)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        TOW_anchor = state.num_bits_after_valid_syncro_sequence
+        TOW_anchor = state.num_symbols_since_sync
         state = @split_nothing TOW_anchor GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -780,7 +780,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 WN,
                 TOW,
                 num_pages_after_last_TOW = 1,
-                num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
+                num_symbols_since_last_TOW = TOW_anchor,
             ),
         )
     elseif page_type == 3
@@ -796,7 +796,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         WN = fnav_field(bits, 175, 12)
         TOW = fnav_field(bits, 187, 20)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        TOW_anchor = state.num_bits_after_valid_syncro_sequence
+        TOW_anchor = state.num_symbols_since_sync
         state = @split_nothing TOW_anchor GNSSDecoderState(
             state;
             raw_data = GalileoE5aData(
@@ -813,7 +813,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                 WN,
                 TOW,
                 num_pages_after_last_TOW = 1,
-                num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
+                num_symbols_since_last_TOW = TOW_anchor,
             ),
         )
     elseif page_type == 4
@@ -838,7 +838,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
         )
         TOW = fnav_field(bits, 190, 20)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        TOW_anchor = state.num_bits_after_valid_syncro_sequence
+        TOW_anchor = state.num_symbols_since_sync
         state = @split_nothing TOW_anchor GNSSDecoderState(
             state;
             raw_data = with_ggto(
@@ -857,7 +857,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE5aData}, ::Boo
                     Δt_LSF,
                     TOW,
                     num_pages_after_last_TOW = 1,
-                    num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
+                    num_symbols_since_last_TOW = TOW_anchor,
                 ),
                 ggto,
             ),
@@ -1005,36 +1005,35 @@ function validate_data(state::GNSSDecoderState{<:GalileoE5aData})
        state.raw_data.IOD_nav4
         # Read the optional counters into locals: Julia 1.10 does not narrow a
         # field access through `isnothing`, so the arithmetic would dispatch dynamically.
-        now = state.num_bits_after_valid_syncro_sequence
-        TOW_anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW
-        num_bits_after_valid_syncro_sequence = 0
+        now = state.num_symbols_since_sync
+        TOW_anchor = state.raw_data.num_symbols_since_last_TOW
+        num_symbols_since_sync = 0
         if state.data.TOW == state.raw_data.TOW
-            num_bits_after_valid_syncro_sequence = now
+            num_symbols_since_sync = now
         elseif TOW_anchor !== nothing
             # Re-reference the symbol counter to the page that carried the most
-            # recent TOW. A F/NAV word is exactly one page (syncro_sequence_length
+            # recent TOW. A F/NAV word is exactly one page (sync_unit_length
             # symbols + the leading sync pattern).
             # `now` is set whenever a TOW anchor is: both are cleared together on reset.
-            num_bits_after_valid_syncro_sequence =
+            num_symbols_since_sync =
                 (now::Int) - (
-                    TOW_anchor - state.constants.syncro_sequence_length -
+                    TOW_anchor - state.constants.sync_unit_length -
                     state.constants.preamble_length
                 )
         else # first successful decoding
-            num_bits_after_valid_syncro_sequence =
+            num_symbols_since_sync =
                 state.constants.preamble_length +
-                state.raw_data.num_pages_after_last_TOW *
-                state.constants.syncro_sequence_length
+                state.raw_data.num_pages_after_last_TOW * state.constants.sync_unit_length
         end
         # `data` gets its own copy of the almanac store (`publish_data`
         # overwrites the preallocated validated one), so later almanac pages
         # written into `raw_data` do not leak into `data` before the next promotion.
         data = publish_data(state.cache.storage, state.raw_data)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        state = @split_nothing num_bits_after_valid_syncro_sequence GNSSDecoderState(
+        state = @split_nothing num_symbols_since_sync GNSSDecoderState(
             state;
             data,
-            num_bits_after_valid_syncro_sequence,
+            num_symbols_since_sync,
         )
     end
     return state

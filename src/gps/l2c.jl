@@ -11,7 +11,7 @@
 # purely in the time domain and do not affect this symbol-domain decoder: the
 # message is always 600 symbols and the sync window 616. The TOW count is in
 # 6-second units on both signals (IS-GPS-200N §30.3.3: "multiplied by 6 …
-# start of the next 12-second message"), so the shared `decode_syncro_sequence`
+# start of the next 12-second message"), so the shared `decode_sync_unit`
 # (`TOW × 6`) applies unchanged.
 #
 # Consequently this file reuses the entire shared GPS CNAV core in

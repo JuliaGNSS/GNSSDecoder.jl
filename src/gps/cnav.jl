@@ -43,7 +43,7 @@ the L5 health bit, L2C the L2 health bit). The per-signal aliases
 [`GPSL5IConstants`](@ref) and [`GPSL2CMConstants`](@ref) fix `S`.
 
 The message is modelled through the generic streaming framework:
-`syncro_sequence_length` is the 600-symbol message that is drained once
+`sync_unit_length` is the 600-symbol message that is drained once
 decoded, and `preamble_length` is the 16-symbol encoding of the *next*
 message's preamble retained at the tail of the sync window.
 
@@ -61,7 +61,7 @@ Base.@kwdef struct GPSCNAVConstants{S} <: AbstractGNSSConstants
     """
     Message length drained after each decoded message (600 symbols)
     """
-    syncro_sequence_length::Int = CNAV_MESSAGE_SYMBOLS
+    sync_unit_length::Int = CNAV_MESSAGE_SYMBOLS
     """
     Trailing next-message preamble segment retained for sync (16 symbols)
     """
@@ -893,7 +893,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSCNAVData})
         state;
         raw_data = GPSCNAVData(state.raw_data; TOW = nothing),
         data = GPSCNAVData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_symbols_since_sync = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1125,7 +1125,7 @@ end
 Resolve the 180° polarity ambiguity for a GPS CNAV message. `sync::GPSCNAVSync` already
 carries the polarity-resolved message bits from `try_sync`; record the
 polarity on the state and pass the sync object through unchanged for
-`decode_syncro_sequence`.
+`decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GPSCNAVData},
@@ -1137,7 +1137,7 @@ end
 # ---- Message pipeline -------------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
 
 Process one CRC-validated 300-bit CNAV message: parse the common header
 (message type ID at bits 15-20, message TOW count at 21-37, alert flag at
@@ -1145,7 +1145,7 @@ Process one CRC-validated 300-bit CNAV message: parse the common header
 Unknown or reserved message types keep the decoded header but no further
 fields.
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
+function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
     word = sync.word
     word_length = CNAV_MESSAGE_BITS
     PI = state.constants.PI
@@ -1714,7 +1714,7 @@ function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+            num_symbols_since_sync = state.constants.preamble_length,
         )
     end
     return state

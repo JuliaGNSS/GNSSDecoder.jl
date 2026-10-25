@@ -322,7 +322,7 @@ end
         )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
-        @test state.num_bits_after_valid_syncro_sequence == 1016
+        @test state.num_symbols_since_sync == 1016
         @test state.data.SOW == B2B_SOW_FIELD_BASE + 2
         @test state.data.last_message_type == 40
         @test is_sat_healthy(state)
@@ -345,14 +345,14 @@ end
         )
         @test state.raw_data.SOW == 5000                              # frame decoded ...
         @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)   # ... armed nothing
+        @test isnothing(state.num_symbols_since_sync)   # ... armed nothing
         # A second decoded frame does not arm it either.
         state = b2b_decode_frames(
             state,
             [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5001); prn)],
         )
         @test state.raw_data.SOW == 5001
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_symbols_since_sync)
         # The MT30 that completes the set promotes, and arms the counter to the
         # frame plus next-frame preamble whose SOW it just published.
         state = b2b_decode_frames(
@@ -360,7 +360,7 @@ end
             [b2b_frame_symbols(b2b_mt30_message(; sow_field = 5002); prn)],
         )
         @test state.data.SOW == 5002
-        @test state.num_bits_after_valid_syncro_sequence == 1016
+        @test state.num_symbols_since_sync == 1016
     end
 
     @testset "SOW stamps each frame; unhealthy satellite is flagged" begin
@@ -482,8 +482,8 @@ end
         @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)
         @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
-        @test GNSSDecoder.num_bits_buffered(state) == 0
+        @test isnothing(state.num_symbols_since_sync)
+        @test GNSSDecoder.num_symbols_buffered(state) == 0
     end
 
     @testset "GNSSDecoderState(::BeiDouB2bI, prn) dispatch" begin

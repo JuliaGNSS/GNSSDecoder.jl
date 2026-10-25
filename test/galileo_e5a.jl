@@ -68,11 +68,11 @@ end
     decoder = GalileoE5aDecoderState(21)
     @test decoder.prn == 21
     @test decoder.data isa GNSSDecoder.GalileoE5aData
-    @test decoder.constants.syncro_sequence_length == 500
+    @test decoder.constants.sync_unit_length == 500
     @test decoder.constants.preamble_length == 12
     @test decoder.constants.preamble == 0b101101110000
-    @test GNSSDecoder.num_bits_buffered(decoder) == 0
-    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
+    @test GNSSDecoder.num_symbols_buffered(decoder) == 0
+    @test isnothing(decoder.num_symbols_since_sync)
 
     # F/NAV rides on the E5a-I (data) component; dispatch from the GNSSSignals
     # system type must match the direct constructor.
@@ -146,7 +146,7 @@ end
         IOD_nav3 = 0x0000000000000030,
         IOD_nav4 = 0x0000000000000030,
         num_pages_after_last_TOW = 2,
-        num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+        num_symbols_since_last_TOW = nothing,
         E5a_SHS = GNSSDecoder.signal_ok,
         E5a_DVS = GNSSDecoder.navigation_data_valid,
         BGD_E1_E5a = -9.313225746154785e-10,
@@ -189,7 +189,7 @@ end
     # 1012 = symbols elapsed since the leading sync edge of word type 4 (the page
     # carrying the validated TOW): two further pages (WT4→WT5→trailing sync) of
     # 500 symbols each, less the 488 — i.e. preamble (12) + 2·500.
-    @test decoder.num_bits_after_valid_syncro_sequence == 1012
+    @test decoder.num_symbols_since_sync == 1012
 
     # Inverting the whole stream (180° Costas ambiguity) decodes identically but
     # flags the polarity flip.
@@ -328,10 +328,10 @@ end
     @test !isnothing(decoder.data.TOW)
 
     decoder = reset_decoder_state!(decoder)
-    @test GNSSDecoder.num_bits_buffered(decoder) == 0
+    @test GNSSDecoder.num_symbols_buffered(decoder) == 0
     @test isnothing(decoder.raw_data.TOW)
     @test isnothing(decoder.data.TOW)
-    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
+    @test isnothing(decoder.num_symbols_since_sync)
     # Ephemeris is retained in raw_data across a reset (fast reacquisition).
     @test decoder.raw_data.sqrt_A == 5440.588203430176
 end

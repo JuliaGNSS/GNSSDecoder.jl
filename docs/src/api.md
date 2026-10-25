@@ -138,8 +138,9 @@ give the current time on every signal with one expression:
 
 ```julia
 using GNSSDecoder, GNSSSignals
+using GNSSSignals: Hz, ustrip
 tow = get_time_of_week(state)
-now = tow + state.num_bits_after_valid_syncro_sequence / get_data_frequency(state)
+now = tow + state.num_symbols_since_sync / ustrip(Hz, get_data_frequency(state))
 ```
 
 `get_time_offset` folds away the five shapes the same quantity is broadcast in —

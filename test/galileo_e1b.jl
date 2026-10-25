@@ -52,7 +52,7 @@ end
         IOD_nav3 = 0x0000000000000030,
         IOD_nav4 = 0x0000000000000030,
         num_pages_after_last_TOW = 12,
-        num_bits_after_valid_syncro_sequence_after_last_TOW = 2510,
+        num_symbols_since_last_TOW = 2510,
         E1B_SHS = GNSSDecoder.signal_ok,
         E5b_SHS = GNSSDecoder.signal_ok,
         E1B_DVS = GNSSDecoder.navigation_data_valid,
@@ -164,7 +164,7 @@ end
     )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == false
-    @test state.num_bits_after_valid_syncro_sequence == 3500
+    @test state.num_symbols_since_sync == 3500
     @test is_sat_healthy(state) == true
 
     decoder2 = GalileoE1BDecoderState(21)
@@ -176,15 +176,15 @@ end
     )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == true
-    @test state.num_bits_after_valid_syncro_sequence == 3500
+    @test state.num_symbols_since_sync == 3500
     @test is_sat_healthy(state) == true
 
     state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
-    @test GNSSDecoder.num_bits_buffered(state) == 0
-    @test isnothing(state.num_bits_after_valid_syncro_sequence)
+    @test GNSSDecoder.num_symbols_buffered(state) == 0
+    @test isnothing(state.num_symbols_since_sync)
 end
 
 @testset "Galileo E1B decode! is allocation-free" begin
@@ -207,5 +207,5 @@ end
     @test is_decoding_completed_for_positioning(decoded)
     @test state == GalileoE1BDecoderState(21)
     @test isnothing(state.raw_data.almanacs)
-    @test GNSSDecoder.num_bits_buffered(state) == 0
+    @test GNSSDecoder.num_symbols_buffered(state) == 0
 end
