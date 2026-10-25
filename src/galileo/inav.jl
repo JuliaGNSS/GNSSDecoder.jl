@@ -658,7 +658,7 @@ after brief signal outages without requiring a full re-decode of all pages.
 
     The week number (`WN`) field is intentionally not reset as it is not
     broadcast as frequently as TOW. This may cause brief errors if a week
-    rollover occurs during a signal outage.
+    crossover occurs during a signal outage.
 
 # Arguments
 

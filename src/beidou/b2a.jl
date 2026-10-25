@@ -842,7 +842,7 @@ function is_ephemeris_decoded(data::BeiDouB2aData)
         # the ICD pairs it with MT10 by requiring the two to be broadcast
         # continuously together (§6.2.3), i.e. in consecutive 3-second frames
         # (either order). Adjacency is evaluated modulo the week so a pair
-        # straddling the BDT week rollover (SOW 604797 ↔ 0) still pairs up,
+        # straddling the BDT week crossover (SOW 604797 ↔ 0) still pairs up,
         # matching how every other SOW/TOW comparison in this package wraps.
         _b2a_sow_adjacent(data.SOW_mt10, data.SOW_mt11)
 end

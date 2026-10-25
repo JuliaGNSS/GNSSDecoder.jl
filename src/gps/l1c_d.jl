@@ -761,7 +761,7 @@ the *next* 18-second frame", with a range of 0–399: the frame broadcasting
 `toi = 0` is the last frame of the old two-hour interval, so its own subframe-2
 `ITOW` is one interval behind the one its TOI counts against. Without the
 carry, that one frame in every 400 stamps a time two hours in the past. The
-week wrap (`ITOW = 83`, `toi = 0` stamps second 0 of the *following* week, while
+week crossover (`ITOW = 83`, `toi = 0` stamps second 0 of the *following* week, while
 the paired `WN` is still the old week) is folded by the `mod`; a consumer
 combining this with `WN` inherits that one-frame-per-week ambiguity, which is
 also the ICD's.
@@ -974,7 +974,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiS
     # or a noisy subframe 2 from that frame on promotes a time of week exactly
     # 7200 s low. A later decoded subframe 2 overwrites this with the broadcast
     # value either way. Continuity above makes `prev_toi == 0` here. The week
-    # rollover (ITOW 83 → 0 while `WN` still awaits its subframe 2) inherits
+    # crossover (ITOW 83 → 0 while `WN` still awaits its subframe 2) inherits
     # the same one-frame ambiguity every WN-carrying signal has at that instant.
     ITOW = state.raw_data.ITOW
     if !isnothing(prev_toi) && toi == 1 && !isnothing(ITOW)

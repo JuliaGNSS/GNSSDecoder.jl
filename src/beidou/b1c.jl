@@ -998,7 +998,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1
     # or the one frame in 200 that straddles an hour boundary with a noisy
     # subframe 2 promotes a time of week exactly 3600 s low. A later decoded
     # subframe 2 overwrites this with the broadcast value either way. The week
-    # rollover (HOW 167 → 0 while `WN` still awaits its subframe 2) inherits
+    # crossover (HOW 167 → 0 while `WN` still awaits its subframe 2) inherits
     # the same one-frame ambiguity every WN-carrying signal has at that instant.
     HOW = state.raw_data.HOW
     if !isnothing(prev_soh) && sync.soh == 0 && !isnothing(HOW)
