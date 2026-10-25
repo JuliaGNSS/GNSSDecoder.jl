@@ -68,6 +68,8 @@ export decode!,
     get_broadcast_time_offset,
     get_broadcast_time_offset_epoch,
     get_group_delay,
+    BroadcastEphemeris,
+    get_broadcast_ephemeris,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -117,5 +119,6 @@ include("beidou/b3i.jl")
 include("beidou/b1c.jl")
 include("beidou/b2a.jl")
 include("beidou/b2b.jl")
+include("ephemeris.jl")
 include("precompile.jl")
 end

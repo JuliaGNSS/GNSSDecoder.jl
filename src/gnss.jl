@@ -27,9 +27,9 @@ Abstract supertype for the modern GPS civil navigation messages: CNAV
 What the two messages share — and legacy LNAV (`GPSL1CAData`) does not — is a
 full-width 13-bit week number and the quasi-Keplerian ephemeris broadcast as
 deltas off the fixed reference values `A_REF` and `Ω̇_REF` (IS-GPS-200N
-§30.3.3.1.1, IS-GPS-800J §3.5.3), so a consumer's propagator and week handling
-dispatch on this type rather than enumerating the two messages. The GPS
-counterpart of [`AbstractBeiDouCNAVData`](@ref).
+§30.3.3.1.1, IS-GPS-800J §3.5.3), which [`get_broadcast_ephemeris`](@ref)
+applies for both messages through this type. The GPS counterpart of
+[`AbstractBeiDouCNAVData`](@ref).
 """
 abstract type AbstractGPSCNAVData <: AbstractGPSData end
 

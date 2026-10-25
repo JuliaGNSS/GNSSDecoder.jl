@@ -13,13 +13,16 @@
 
 # BDCS (BeiDou Coordinate System) constants specific to BeiDou (BDS-SIS-ICD-
 # B1I-3.0 Table 3-1 / §5.2.4.12; identical across the B1I, B3I, B1C, B2a, and
-# B2b ICDs). Only the two that differ from the GPS WGS-84 values live here; π
+# B2b ICDs). Only the three that differ from the GPS WGS-84 values live here; π
 # and the speed of light are shared package-wide (`GNSS_PI`, `SPEED_OF_LIGHT`
 # in `gnss.jl`). Note the Earth rotation rate genuinely differs from the
 # WGS-84/GTRF value used by GPS and Galileo (7.2921151467e-5 rad/s), so the
 # package-wide `EARTH_ROTATION_RATE` must *not* be used for BeiDou.
 const BEIDOU_μ = 3.986004418e14                # geocentric gravitational constant (m³/s²)
 const BEIDOU_EARTH_ROTATION_RATE = 7.2921150e-5 # Earth rotation rate of BDCS (rad/s)
+# Relativistic correction constant F = −2√μ/c² (s/√m; B1C-1.0 §7.5.2 and the
+# B2a/B2b counterparts): Galileo's value, because μ agrees.
+const BEIDOU_F = -4.442807309e-10
 
 # Whether a broadcast B-CNAV satellite orbit type names an orbit class. The
 # 2-bit field encodes 1 = GEO, 2 = IGSO, 3 = MEO and reserves 0 (Table 7-6 of

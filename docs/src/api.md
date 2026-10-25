@@ -179,6 +179,26 @@ get_broadcast_time_offset
 get_broadcast_time_offset_epoch
 ```
 
+## Broadcast Ephemeris
+
+The decoded data keeps every ephemeris field under its ICD name, which differs
+between the messages that state the orbit in Keplerian form (GPS LNAV, Galileo
+I/NAV and F/NAV, BeiDou D1/D2) and those that state it quasi-Keplerian, as
+deltas off reference values (GPS CNAV and CNAV-2, BeiDou B-CNAV).
+[`get_broadcast_ephemeris`](@ref) folds both into one record of plain numbers,
+with the reference values applied and the system's constants alongside, so one
+propagator covers every signal:
+
+```julia
+using GNSSDecoder
+ephemeris = get_broadcast_ephemeris(state)  # `nothing` until decoding is complete
+```
+
+```@docs
+BroadcastEphemeris
+get_broadcast_ephemeris
+```
+
 ## Group Delay
 
 The broadcast satellite clock is stated for a reference signal or signal pair,
@@ -239,8 +259,8 @@ dispatch. Three intermediate levels name families within a constellation:
 `AbstractGalileoEphemerisData` separates the ephemeris-bearing Galileo messages
 from E6-B's corrections-only data, and `AbstractGPSCNAVData` /
 `AbstractBeiDouCNAVData` name the modern civil message families (CNAV/CNAV-2
-and B-CNAV1/2/3), whose shared quasi-Keplerian ephemeris a consumer's
-propagator dispatches on.
+and B-CNAV1/2/3), which share a quasi-Keplerian ephemeris
+([`get_broadcast_ephemeris`](@ref) normalises it).
 
 ```@docs
 GNSSDecoder.AbstractGPSData
