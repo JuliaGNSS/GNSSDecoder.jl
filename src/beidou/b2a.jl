@@ -59,7 +59,7 @@ Base.@kwdef struct BeiDouB2aConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded frame (600 symbols)
     """
-    syncro_sequence_length::Int = B2A_FRAME_SYMBOLS
+    sync_unit_length::Int = B2A_FRAME_SYMBOLS
     """
     Preamble length (24 symbols, `0xE24DE8`, ICD §6.2.1)
     """
@@ -700,7 +700,7 @@ end
 """
 True when the frame that just synced was decoded into `raw_data`.
 
-`decode_syncro_sequence` clears the flag as it starts and sets it only once the
+`decode_sync_unit` clears the flag as it starts and sets it only once the
 frame has cleared LDPC, CRC-24Q and the PRN gate. A frame whose preambles sync
 but whose payload fails one of those gates leaves `raw_data` untouched, so
 `raw_data.SOW` still names the *previous* frame; `validate_data` must not
@@ -712,7 +712,7 @@ is_b2a_frame_decoded(state::GNSSDecoderState{<:BeiDouB2aData}) = state.cache.fra
 # The LDPC decoder handle is stateless w.r.t. equality (a runtime Aff3ct
 # object); two B2a caches are equal when their soft buffers match.
 # `frame_decoded` is ignored too: it only carries one sync's outcome from
-# `decode_syncro_sequence` to `validate_data`.
+# `decode_sync_unit` to `validate_data`.
 function Base.:(==)(a::BeiDouB2aCache, b::BeiDouB2aCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
@@ -729,7 +729,7 @@ B-CNAV2 frame sync: the 24-symbol preamble `0xE24DE8` must appear at both ends
 of the 624-symbol window (start of this frame and start of the next), both
 upright or both inverted. Returns the resolved polarity, or `nothing` when there
 is no sync. The LDPC + CRC-24Q + own-PRN gates then run in
-`decode_syncro_sequence`.
+`decode_sync_unit`.
 """
 try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) = find_preamble_in_deque(
     soft_buffer(state),
@@ -738,7 +738,7 @@ try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) = find_preamble_in_deque(
     B2A_FRAME_SYMBOLS,
 )
 
-# Record the polarity `try_sync` resolved; `decode_syncro_sequence` reads it back
+# Record the polarity `try_sync` resolved; `decode_sync_unit` reads it back
 # off the state when it copies the frame out of the deque (mirrors Galileo I/NAV).
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:BeiDouB2aData},
@@ -960,7 +960,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
         raw_data = BeiDouB2aData(state.raw_data; SOW = nothing),
         data = BeiDouB2aData(),
         cache = BeiDouB2aCache(state.cache; frame_decoded = false),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_sync = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -968,7 +968,7 @@ end
 # ---- Frame pipeline -------------------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, buffer)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2aData}, buffer)
 
 Process one preamble-synchronized B-CNAV2 frame: LDPC-decode the 576 encoded
 soft symbols through the binary image of the 64-ary LDPC(96,48) code, gate on
@@ -989,14 +989,14 @@ Sets the cache's `frame_decoded` flag (see `is_b2a_frame_decoded`) only when
 the frame clears every gate and is parsed into `raw_data`; a frame dropped by
 LDPC/CRC or the PRN gate leaves it false and `raw_data` untouched.
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
     # Clear the flag first: every path out of this function leaves it false
     # unless the frame is parsed into `raw_data` below.
     state =
         GNSSDecoderState(state; cache = BeiDouB2aCache(state.cache; frame_decoded = false))
     # The 576 encoded symbols sit between the leading 24-symbol preamble and
     # the trailing preamble of the next frame (deque indices
-    # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
+    # preamble_length+1 .. sync_unit_length). Resolve the 180-degree
     # polarity ambiguity by negating the LLRs when the sync hook flagged the
     # frame as inverted.
     llr = copy_soft_window!(
@@ -1048,7 +1048,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
     # that carries a new ephemeris-I block until its partner arrives. Re-arming
     # on every CRC-valid frame while the published SOW stands still made
-    # `tow + num_bits/rate` read exactly one 3-second frame low for the duration
+    # `tow + num_bits_since_sync/rate` read exactly one 3-second frame low for the duration
     # of every such skip — a ~9 km along-track error in every satellite position
     # propagated from it (measured on TEX-CUP: a 2.2 km position excursion once
     # per message cycle). The counter therefore keeps counting from the last
@@ -1082,14 +1082,14 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits/rate` (see `get_time_of_week`) to stay on the true
+        # `tow + num_bits_since_sync/rate` (see `get_time_of_week`) to stay on the true
         # time through frames the gate skips. The frame was decoded (checked
         # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                                   state.constants.preamble_length,
+            num_bits_since_sync = state.constants.sync_unit_length +
+                                  state.constants.preamble_length,
         )
     end
     return state

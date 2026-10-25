@@ -8,7 +8,7 @@ for computing satellite positions and clock corrections from broadcast ephemeris
 
 # Fields
 
-  - `syncro_sequence_length::Int`: Length of synchronization sequence in bits (300 bits = 10 words × 30 bits)
+  - `sync_unit_length::Int`: Length of the sync unit in symbols (300 symbols = 10 words × 30 bits)
   - `preamble::UInt8`: TLM word preamble pattern (10001011 binary, 0x8B)
   - `preamble_length::Int`: Length of preamble in bits (8)
   - `word_length::Int`: Length of each LNAV word in bits (30)
@@ -23,7 +23,7 @@ for computing satellite positions and clock corrections from broadcast ephemeris
 IS-GPS-200N, Section 20.3.3 and Table 20-IV
 """
 Base.@kwdef struct GPSL1CAConstants <: AbstractGNSSConstants
-    syncro_sequence_length::Int = 300
+    sync_unit_length::Int = 300
     preamble::UInt8 = 0b10001011
     preamble_length::Int = 8
     word_length::Int = 30
@@ -98,7 +98,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
-  - `num_bits_after_valid_syncro_sequence_after_last_TOW::Int`: Symbol-counter value when `TOW` was decoded
+  - `num_bits_since_last_TOW::Int`: Bit-counter value when `TOW` was decoded
 
 # Subframe 1 - Clock Correction Parameters
 
@@ -185,9 +185,9 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing
     anti_spoof_flag::Union{Nothing,Bool} = nothing
-    # `num_bits_after_valid_syncro_sequence` when `TOW` was decoded; lets
+    # `num_bits_since_sync` when `TOW` was decoded; lets
     # `is_plausible_TOW` predict the next legal TOW exactly (issue #82).
-    num_bits_after_valid_syncro_sequence_after_last_TOW::Union{Nothing,Int} = nothing
+    num_bits_since_last_TOW::Union{Nothing,Int} = nothing
 
     WN::Union{Nothing,Int64} = nothing
     code_on_L2::Union{Nothing,Int64} = nothing
@@ -267,7 +267,7 @@ end
     TOW = data.TOW,
     alert_flag = data.alert_flag,
     anti_spoof_flag = data.anti_spoof_flag,
-    num_bits_after_valid_syncro_sequence_after_last_TOW = data.num_bits_after_valid_syncro_sequence_after_last_TOW,
+    num_bits_since_last_TOW = data.num_bits_since_last_TOW,
     WN = data.WN,
     code_on_L2 = data.code_on_L2,
     URA_index = data.URA_index,
@@ -328,7 +328,7 @@ end
         TOW,
         alert_flag,
         anti_spoof_flag,
-        num_bits_after_valid_syncro_sequence_after_last_TOW,
+        num_bits_since_last_TOW,
         WN,
         code_on_L2,
         URA_index,
@@ -427,7 +427,7 @@ $(TYPEDFIELDS)
 """
 struct GPSL1CACache <: AbstractGNSSCache
     """
-    Soft-symbol buffer (308 = 300 syncro + 8 preamble)
+    Soft-symbol buffer (308 = 300 sync unit + 8 preamble)
     """
     soft_buffer::CircularDeque{Float32}
     """
@@ -550,7 +550,7 @@ clock correction, and health data from the 50 bps LNAV data stream.
 
 ```julia
 state = GPSL1CADecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, bits, num_bits)
+state = decode!(state, bits, num_symbols)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -616,7 +616,7 @@ after brief signal outages without requiring a full re-decode of all subframes.
 # After detecting signal loss
 state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode!(state, new_bits, num_bits)
+state = decode!(state, new_bits, num_symbols)
 ```
 
 # See Also
@@ -642,10 +642,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1CAData})
         raw_data = GPSL1CAData(
             state.raw_data;
             TOW = nothing,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+            num_bits_since_last_TOW = nothing,
         ),
         data = GPSL1CAData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_sync = nothing,
     )
 end
 
@@ -682,7 +682,7 @@ function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
 end
 
 function get_word(buffer, state::GNSSDecoderState{<:GPSL1CAData}, word_number::Int)
-    num_words = Int(state.constants.syncro_sequence_length / state.constants.word_length)
+    num_words = Int(state.constants.sync_unit_length / state.constants.word_length)
     word =
         buffer >> UInt(
             state.constants.word_length * (num_words - word_number) +
@@ -765,14 +765,14 @@ const LNAV_SYMBOLS_PER_SUBFRAME = 300
 const LNAV_MAX_TOW_GAP = 600
 
 """
-    is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_after_valid_syncro_sequence)
+    is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_sync)
 
 Screen a truncated time-of-week count freshly decoded from a HOW against what
 a genuine frame lock can produce, before it is stored (in seconds) in
 `raw_data.TOW`. `prev_TOW` is the TOW held from an earlier subframe's HOW in
 seconds (`nothing` if none is held), `prev_TOW_anchor` the symbol-counter
 value recorded when it was decoded, and the last argument the counter's
-current value (`state.num_bits_after_valid_syncro_sequence`).
+current value (`state.num_bits_since_sync`).
 
 Frame sync is only a 16-bit preamble match, so a false lock on noise
 occasionally reaches this point with an arbitrary 17-bit count behind valid
@@ -792,16 +792,12 @@ parity (issue #82). The screens, strongest available first:
   - Before the counter runs there is no elapsed-time reference, so fall back
     to a bounded forward step of at most `LNAV_MAX_TOW_GAP` seconds.
 """
-is_plausible_TOW(
-    TOW_count,
-    prev_TOW,
-    prev_TOW_anchor,
-    num_bits_after_valid_syncro_sequence,
-) = is_plausible_TOW(
-    TOW_count,
-    prev_TOW,
-    elapsed_symbols(prev_TOW_anchor, num_bits_after_valid_syncro_sequence),
-)
+is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_sync) =
+    is_plausible_TOW(
+        TOW_count,
+        prev_TOW,
+        elapsed_symbols(prev_TOW_anchor, num_bits_since_sync),
+    )
 
 # The decoder calls this form: three `Union{Nothing,Int64}` arguments are eight
 # union-split combinations, past inference's limit, so the four-argument call
@@ -825,7 +821,7 @@ function read_tlm_and_how_words(state, buffer)
         GPSL1CAData(state.raw_data; integrity_status_flag)
     end
     # `raw_data.TOW` must only ever hold a TOW decoded from *this* subframe's
-    # HOW: `confirm_data` re-anchors `num_bits_after_valid_syncro_sequence` to
+    # HOW: `confirm_data` re-anchors `num_bits_since_sync` to
     # it when promoting `raw_data`, so a TOW left over from an earlier subframe
     # would shift the reported transmit time by a multiple of 6 s. Clear it
     # (and its anchor) up front; a HOW that passes parity and the plausibility
@@ -842,7 +838,7 @@ function read_tlm_and_how_words(state, buffer)
         raw_data = GPSL1CAData(
             state.raw_data;
             TOW = nothing,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = nothing,
+            num_bits_since_last_TOW = nothing,
         ),
     )
     state = can_decode_word(state, buffer, 2) do how_word, state
@@ -854,18 +850,17 @@ function read_tlm_and_how_words(state, buffer)
             TOW_count,
             previous_state.raw_data.TOW,
             elapsed_symbols(
-                previous_state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-                previous_state.num_bits_after_valid_syncro_sequence,
+                previous_state.raw_data.num_bits_since_last_TOW,
+                previous_state.num_bits_since_sync,
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        TOW_anchor =
-            is_plausible ? previous_state.num_bits_after_valid_syncro_sequence : nothing
+        TOW_anchor = is_plausible ? previous_state.num_bits_since_sync : nothing
         @split_nothing (TOW, TOW_anchor) GPSL1CAData(
             state.raw_data;
             last_subframe_id,
             TOW,
-            num_bits_after_valid_syncro_sequence_after_last_TOW = TOW_anchor,
+            num_bits_since_last_TOW = TOW_anchor,
             alert_flag,
             anti_spoof_flag,
         )
@@ -873,7 +868,7 @@ function read_tlm_and_how_words(state, buffer)
     state
 end
 
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
+function decode_sync_unit(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
     state = read_tlm_and_how_words(state, buffer)
     subframe_id = state.raw_data.last_subframe_id
 
@@ -1489,13 +1484,13 @@ end
 function promote_data(state)
     promoted = GPSL1CAData(
         state.raw_data;
-        num_bits_after_valid_syncro_sequence_after_last_TOW = state.constants.preamble_length,
+        num_bits_since_last_TOW = state.constants.preamble_length,
     )
     GNSSDecoderState(
         state;
         raw_data = promoted,
         data = publish_data(state.cache.storage, promoted),
-        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+        num_bits_since_sync = state.constants.preamble_length,
     )
 end
 
@@ -1591,7 +1586,7 @@ is considered healthy only if all health bits are zero (`"000000"`).
 
 ```julia
 state = GPSL1CADecoderState(1)
-state = decode!(state, bits, num_bits)
+state = decode!(state, bits, num_symbols)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end

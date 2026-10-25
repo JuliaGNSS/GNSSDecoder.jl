@@ -414,7 +414,7 @@ end
         # subframe 1: 1800 + 72 = 1872 symbols = 18.72 s at 100 sps. (GPS
         # L1C-D's TOI stamps the *next* frame and anchors to 52 alone; using
         # that convention here would report the time a full 18 s early.)
-        @test state.num_bits_after_valid_syncro_sequence == 1872
+        @test state.num_bits_since_sync == 1872
         # The last decoded frame carried SOH = 60.
         @test d.soh == 60
         @test d.WN == 800
@@ -822,7 +822,7 @@ end
         @test isnothing(get_time_of_week(state.raw_data))
         @test state.raw_data.WN == 800   # ephemeris survives for warm re-lock
         @test isnothing(state.data.WN)   # validated data cleared
-        @test GNSSDecoder.num_bits_buffered(state) == 0
+        @test GNSSDecoder.num_symbols_buffered(state) == 0
     end
 end
 

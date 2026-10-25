@@ -198,7 +198,7 @@ using Unitful: Hz
         state = feed!(state, 9 * 300 + 11)
         @test state.data.t_0c == 43200               # B staged, not yet promoted
         @test state.raw_data.SOW == SOW0 + 48        # …with the pair carried
-        @test !isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW)
+        @test !isnothing(state.raw_data.num_bits_since_last_SOW)
         @test isnothing(state.raw_data.t_0c)         # the clear itself happened
 
         # The carried pair predicts SOW0 + 54 from the elapsed 300 symbols, so
@@ -227,9 +227,8 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         state = decode!(state, symbols, length(symbols))
-        @test state.num_bits_after_valid_syncro_sequence == 311
-        @test state.data.SOW + state.num_bits_after_valid_syncro_sequence / 50 ≈
-              D1_LAST_SOW + 6.22
+        @test state.num_bits_since_sync == 311
+        @test state.data.SOW + state.num_bits_since_sync / 50 ≈ D1_LAST_SOW + 6.22
     end
 
     @testset "D1 decode with 180-degree phase shift" begin
@@ -585,8 +584,8 @@ using Unitful: Hz
         # up to four subframes old. The stream ends four filler subframes
         # after the promoting subframe 1, so the counter reads
         # 311 + 4*300 and the implied time is SOW + 1511/500 s.
-        @test state.num_bits_after_valid_syncro_sequence == 311 + 4 * 300
-        @test data.SOW + state.num_bits_after_valid_syncro_sequence / 500 ≈
+        @test state.num_bits_since_sync == 311 + 4 * 300
+        @test data.SOW + state.num_bits_since_sync / 500 ≈
               SOW_D2 + D2_CYCLE_SPAN + 27 + 3.022
         @test data.WN == WN
         @test data.AODC == 1
@@ -711,7 +710,7 @@ using Unitful: Hz
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.WN == 810              # ephemeris survives the reset
         @test state.data == BeiDouDNAVData()
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_bits_since_sync)
         @test isempty(state.cache.d2_pages)
         # And decoding resumes cleanly after the reset.
         state = decode!(state, symbols, length(symbols))

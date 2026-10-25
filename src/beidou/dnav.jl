@@ -52,7 +52,7 @@ structure and all constants are identical on both signals
 
 # Fields
 
-  - `syncro_sequence_length::Int`: Length of one subframe in bits (300)
+  - `sync_unit_length::Int`: Length of one subframe in bits (300)
   - `preamble::UInt16`: 11-bit preamble `11100010010` (modified Barker code, §5.2.4.1)
   - `preamble_length::Int`: Length of preamble in bits (11)
   - `word_length::Int`: Length of each word in bits (30)
@@ -67,7 +67,7 @@ structure and all constants are identical on both signals
 BDS-SIS-ICD-B1I-3.0, §5.1-§5.3 and Tables 5-7, 5-10, 5-11
 """
 Base.@kwdef struct BeiDouDNAVConstants{S} <: AbstractGNSSConstants
-    syncro_sequence_length::Int = DNAV_SUBFRAME_BITS
+    sync_unit_length::Int = DNAV_SUBFRAME_BITS
     preamble::UInt16 = 0b11100010010
     preamble_length::Int = DNAV_PREAMBLE_BITS
     word_length::Int = DNAV_WORD_BITS
@@ -146,7 +146,7 @@ end
 # Extract transmitted word `word_number` (1-10, 30 bits) from the packed sync
 # buffer (300 subframe bits + 11 trailing preamble bits, oldest at MSB).
 function dnav_get_word(buffer, constants::BeiDouDNAVConstants, word_number::Int)
-    num_words = constants.syncro_sequence_length ÷ constants.word_length
+    num_words = constants.sync_unit_length ÷ constants.word_length
     shifted =
         buffer >>
         (constants.word_length * (num_words - word_number) + constants.preamble_length)
@@ -287,7 +287,7 @@ are in seconds of BeiDou Time (BDT).
   - `last_subframe_id::Int`: FraID of the last decoded subframe (1-5)
   - `SOW::Int64`: Seconds of week at the leading edge of the current subframe's
     preamble (D1) or of subframe 1 of the current frame (D2), §5.2.4.3/§5.3.3.1
-  - `num_bits_after_valid_syncro_sequence_after_last_SOW::Int`: Symbol-counter
+  - `num_bits_since_last_SOW::Int`: Bit-counter
     value when `SOW` was decoded (drives the SOW plausibility screen)
 
 # Subframe 1 (D1) / Subframe 1 Pages 1-4 (D2) - Clock, Health, Iono
@@ -370,7 +370,7 @@ BDS-SIS-ICD-B1I-3.0 §5.2.4, §5.3.3 (and identically BDS-SIS-ICD-B3I-1.0 §5)
 Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     last_subframe_id::Int = 0
     SOW::Union{Nothing,Int64} = nothing
-    num_bits_after_valid_syncro_sequence_after_last_SOW::Union{Nothing,Int} = nothing
+    num_bits_since_last_SOW::Union{Nothing,Int} = nothing
 
     # Fundamental navigation information: health, clock, group delay, iono
     SatH1::Union{Nothing,Bool} = nothing
@@ -439,7 +439,7 @@ end
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
     SOW = data.SOW,
-    num_bits_after_valid_syncro_sequence_after_last_SOW = data.num_bits_after_valid_syncro_sequence_after_last_SOW,
+    num_bits_since_last_SOW = data.num_bits_since_last_SOW,
     SatH1 = data.SatH1,
     AODC = data.AODC,
     URAI = data.URAI,
@@ -498,7 +498,7 @@ end
     BeiDouDNAVData(
         last_subframe_id,
         SOW,
-        num_bits_after_valid_syncro_sequence_after_last_SOW,
+        num_bits_since_last_SOW,
         SatH1,
         AODC,
         URAI,
@@ -610,7 +610,7 @@ $(TYPEDFIELDS)
 """
 struct BeiDouDNAVCache <: AbstractGNSSCache
     """
-    Soft-symbol buffer (`DNAV_WINDOW_BITS` = 300 syncro + 11 preamble)
+    Soft-symbol buffer (`DNAV_WINDOW_BITS` = 300 sync unit + 11 preamble)
     """
     soft_buffer::CircularDeque{Float32}
     """
@@ -842,7 +842,7 @@ end
 
 const DNAV_MAX_SOW_GAP = 600
 
-# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_after_valid_syncro_sequence)`,
+# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_since_sync)`,
 # folded by the caller so the call carries two `Union{Nothing,Int64}` arguments
 # rather than three — within inference's union-split limit, so the call resolves
 # statically (see `is_plausible_TOW`).
@@ -914,11 +914,8 @@ GNSSSignals.get_data_frequency(state::GNSSDecoderState{<:BeiDouDNAVData}) =
 function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     SOW_count = Int64(dnav_bits(content, 19, 20))
     prev_SOW = state.raw_data.SOW
-    num_bits = state.num_bits_after_valid_syncro_sequence
-    elapsed = elapsed_symbols(
-        state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW,
-        num_bits,
-    )
+    num_bits_since_sync = state.num_bits_since_sync
+    elapsed = elapsed_symbols(state.raw_data.num_bits_since_last_SOW, num_bits_since_sync)
     is_plausible = is_plausible_dnav_SOW(
         SOW_count,
         prev_SOW,
@@ -927,10 +924,10 @@ function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     )
     is_plausible || return state
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    raw_data = @split_nothing num_bits BeiDouDNAVData(
+    raw_data = @split_nothing num_bits_since_sync BeiDouDNAVData(
         state.raw_data;
         SOW = SOW_count,
-        num_bits_after_valid_syncro_sequence_after_last_SOW = num_bits,
+        num_bits_since_last_SOW = num_bits_since_sync,
     )
     GNSSDecoderState(
         state;
@@ -942,7 +939,7 @@ end
 """
 True when `raw_data.SOW` was decoded from the subframe that just synced.
 
-`decode_syncro_sequence` clears the flag as it starts and `store_dnav_SOW`
+`decode_sync_unit` clears the flag as it starts and `store_dnav_SOW`
 sets it only on acceptance, so it distinguishes a SOW read *now* from one
 carried over. The symbol counter cannot serve here: it stays `nothing` until
 the first promotion, so an anchor-versus-counter comparison would read
@@ -1341,7 +1338,7 @@ end
 
 # ---- Frame dispatch --------------------------------------------------------------
 
-function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
     # Clear the freshness flag first: every path out of this function leaves
     # it false unless `store_dnav_SOW` accepts a SOW from this very subframe.
     state =
@@ -1436,12 +1433,12 @@ dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
 # the epoch the SOW stamps, so that a consumer reads the current time as
-# `SOW + num_bits_after_valid_syncro_sequence / get_data_frequency(state)`.
+# `SOW + num_bits_since_sync / get_data_frequency(state)`.
 #
 # That epoch is the *leading edge of this subframe's preamble*
 # (BDS-SIS-ICD-B1I-3.0 §5.2.4.3 for D1, §5.3.3.1(2) for D2), and at promotion
 # time the whole subframe plus the next preamble sit in the window — so the
-# anchor is `syncro_sequence_length + preamble_length` (311 symbols; 6.22 s at
+# anchor is `sync_unit_length + preamble_length` (311 symbols; 6.22 s at
 # D1's 50 sps, 0.622 s at D2's 500 sps), matching `b2a.jl` and `b2b.jl`.
 #
 # This is where BeiDou parts company with GPS: LNAV's HOW TOW stamps the
@@ -1457,16 +1454,13 @@ dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 # preallocated validated ones), so later pages written into `raw_data`'s
 # containers do not leak into `data` before they are voted on.
 function dnav_promote_data(state)
-    anchor = state.constants.syncro_sequence_length + state.constants.preamble_length
-    promoted = BeiDouDNAVData(
-        state.raw_data;
-        num_bits_after_valid_syncro_sequence_after_last_SOW = anchor,
-    )
+    anchor = state.constants.sync_unit_length + state.constants.preamble_length
+    promoted = BeiDouDNAVData(state.raw_data; num_bits_since_last_SOW = anchor)
     GNSSDecoderState(
         state;
         raw_data = promoted,
         data = publish_data(state.cache.storage, promoted),
-        num_bits_after_valid_syncro_sequence = anchor,
+        num_bits_since_sync = anchor,
     )
 end
 
@@ -1491,12 +1485,10 @@ function dnav_confirm_data(state, max_vote = 20)
     # mis-corrects silently; one such accepted SOW then fails every honest
     # subframe against the elapsed-symbol prediction until an external reset.
     SOW = state.raw_data.SOW
-    anchor = state.raw_data.num_bits_after_valid_syncro_sequence_after_last_SOW
+    anchor = state.raw_data.num_bits_since_last_SOW
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    cleared = @split_nothing (SOW, anchor) BeiDouDNAVData(;
-        SOW,
-        num_bits_after_valid_syncro_sequence_after_last_SOW = anchor,
-    )
+    cleared =
+        @split_nothing (SOW, anchor) BeiDouDNAVData(; SOW, num_bits_since_last_SOW = anchor)
 
     if isnothing(matching_idx)
         # First sighting of this dataset — stage it and wait for the broadcast
@@ -1580,10 +1572,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouDNAVData})
         raw_data = BeiDouDNAVData(
             state.raw_data;
             SOW = nothing,
-            num_bits_after_valid_syncro_sequence_after_last_SOW = nothing,
+            num_bits_since_last_SOW = nothing,
         ),
         data = BeiDouDNAVData(),
         cache = BeiDouDNAVCache(state.cache; sow_is_fresh = false),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_sync = nothing,
     )
 end

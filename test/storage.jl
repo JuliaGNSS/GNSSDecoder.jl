@@ -153,8 +153,8 @@ using GNSSDecoder:
         copied = copy(state)
         @test copied == state
         GNSSDecoder.push_soft_symbol!(copied, -1.0f0)
-        @test GNSSDecoder.num_bits_buffered(state) == 1
-        @test GNSSDecoder.num_bits_buffered(copied) == 2
+        @test GNSSDecoder.num_symbols_buffered(state) == 1
+        @test GNSSDecoder.num_symbols_buffered(copied) == 2
         @test copied.cache.storage.raw.almanacs !== state.cache.storage.raw.almanacs
     end
 end

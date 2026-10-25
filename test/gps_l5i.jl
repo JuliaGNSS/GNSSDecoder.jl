@@ -48,7 +48,7 @@ end
         @test state_a.prn == 13
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()
-        @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state_a.num_bits_since_sync)
         @test !state_a.is_shifted_by_180_degrees
     end
 
@@ -131,7 +131,7 @@ end
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.data.TOW)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_bits_since_sync)
         @test !state.is_shifted_by_180_degrees
         # raw_data keeps WN, ephemeris fields, etc.
         @test state.raw_data.WN == 2345

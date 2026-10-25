@@ -140,7 +140,7 @@ decoding.
 
 The frame is modelled through the generic streaming framework:
 `preamble_length` is the 72-symbol subframe-1 BCH segment of the *next* frame
-retained at the tail of the sync window, and `syncro_sequence_length` is the
+retained at the tail of the sync window, and `sync_unit_length` is the
 1800-symbol frame that is drained once a frame is decoded.
 
 # Fields
@@ -155,7 +155,7 @@ Base.@kwdef struct BeiDouB1CConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded frame (1800 symbols)
     """
-    syncro_sequence_length::Int = B1C_FRAME_LENGTH
+    sync_unit_length::Int = B1C_FRAME_LENGTH
     """
     Trailing next-frame subframe-1 BCH segment retained for sync (72 symbols)
     """
@@ -694,7 +694,7 @@ neither field is a time of week on its own. Both must be present; `nothing`
 until they are.
 
 The epoch is the leading edge of the *current* frame's subframe 1, which is what
-`num_bits_after_valid_syncro_sequence` is anchored to for this signal (see
+`num_bits_since_sync` is anchored to for this signal (see
 `validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
 otherwise identical-looking reconstruction is anchored differently.
 """
@@ -856,7 +856,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
         # whole hours in the past. Re-learning it costs one decoded subframe 2.
         raw_data = BeiDouB1CData(state.raw_data; soh = nothing, HOW = nothing),
         data = BeiDouB1CData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_sync = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -954,7 +954,7 @@ end
 Resolve the 180° polarity ambiguity for BeiDou B1C. `sync::B1CSF1Sync`
 already carries the detected polarity from [`try_sync`](@ref); record it on
 the state and pass the sync object through unchanged for
-`decode_syncro_sequence`.
+`decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:BeiDouB1CData},
@@ -966,7 +966,7 @@ end
 # ---- Frame pipeline ----------------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
 
 Process one locked B-CNAV1 frame. Enforces a monotonic SOH (each frame's SOH
 must be `(previous + 1) mod 200`; a break resets the decoder to searching),
@@ -974,7 +974,7 @@ then deinterleaves the 1728-symbol payload (36×48 staggered block interleaver,
 ICD §6.2.2.4) and LDPC-decodes + CRC-checks subframes 2 and 3, parsing their
 fields into `raw_data`.
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
     prev_soh = state.raw_data.soh
     if !isnothing(prev_soh) && (prev_soh + 1) % B1C_SOH_RANGE != sync.soh
         return reset_decoder_state!(state)
@@ -1278,7 +1278,7 @@ end
 Promote `raw_data` to `data` once the positioning set is complete (SOH,
 subframe 2, and the subframe-3 health status) and the ephemeris and clock sets
 are a matched pair. The per-frame BCH re-check and monotonic-SOH enforcement
-are performed inline by [`decode_syncro_sequence`](@ref); this hook publishes
+are performed inline by [`decode_sync_unit`](@ref); this hook publishes
 validated data and arms the streaming counter.
 
 Promotion overwrites the preallocated validated containers with the raw ones
@@ -1290,7 +1290,7 @@ see [`is_decoding_completed_for_positioning`](@ref), which carries that gate.
 
 The counter is armed at the epoch the SOH stamps — the leading edge of the
 *current* subframe 1 (ICD §7.3) — which at promotion time is
-`syncro_sequence_length + preamble_length` (1872 symbols = 18.72 s) behind the
+`sync_unit_length + preamble_length` (1872 symbols = 18.72 s) behind the
 newest buffered symbol, as in `b2a.jl` and `b2b.jl`. GPS L1C-D's TOI stamps
 the *next* frame instead, so `gps/l1c_d.jl` anchors to `preamble_length`
 alone; using that anchor here would report the time 18 s early.
@@ -1300,8 +1300,8 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB1CData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                                   state.constants.preamble_length,
+            num_bits_since_sync = state.constants.sync_unit_length +
+                                  state.constants.preamble_length,
         )
     end
     return state

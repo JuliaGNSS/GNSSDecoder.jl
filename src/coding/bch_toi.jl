@@ -40,7 +40,7 @@ const TOI_RANGE = 400  # 9-bit modulo-400 counter
 # The BCH(51,8) construction XORs the TOI's MSB (weight 256) over the whole
 # codeword, so `codeword(t + 256) == ~codeword(t)`: a hard-decision match cannot
 # tell (TOI, polarity) from (TOI + 256, flipped polarity) whenever both are in
-# range. The consumer resolves the pair — see `decode_syncro_sequence` in
+# range. The consumer resolves the pair — see `decode_sync_unit` in
 # `src/gps/l1c_d.jl`.
 const TOI_COMPLEMENT_OFFSET = 256
 
@@ -171,7 +171,7 @@ is the bitwise complement of the codeword for `t` (whenever both are in
 range). The receiver therefore cannot tell apart "TOI=`t`, no flip" from
 "TOI=`t + 256`, with flip" for `t ∈ 0..143`, and this function always
 reports the *low* branch (following PocketSDR's `sync_CNV2_frame` match
-order). The caller must resolve the pair: `decode_syncro_sequence` in
+order). The caller must resolve the pair: `decode_sync_unit` in
 `src/gps/l1c_d.jl` does it by TOI continuity with the previous frame
 when one is held, and otherwise by trying subframe 2's LDPC+CRC under
 both branches — the CRC is the only in-band oracle. A consumer that
