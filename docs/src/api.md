@@ -225,6 +225,25 @@ take the correction as zero or to wait.
 get_group_delay
 ```
 
+## Ionospheric Parameters
+
+Each constellation broadcasts the coefficients of its own ionospheric model:
+Klobuchar on GPS (every civil message), BeiDou's Klobuchar variant on D1/D2,
+NeQuick-G on Galileo I/NAV and F/NAV, and BDGIM on BeiDou B-CNAV. Each accessor
+answers on every decoder, with `nothing` where the message carries no such set
+or has not decoded it yet. The sets are not part of the positioning readiness
+gate; the models that evaluate them belong to the positioning engine.
+
+```@docs
+KlobucharParameters
+BeiDouKlobucharParameters
+NeQuickGParameters
+BDGIMParameters
+get_klobuchar_parameters
+get_nequick_g_parameters
+get_bdgim_parameters
+```
+
 ## Shared Utilities
 
 Signal-independent building blocks used across the decoders (CRC-24Q, the
