@@ -726,7 +726,7 @@ satellite has not broadcast one for `target`.
 
 B1C is the one shape that keys its offsets by system: successive frames may
 carry sets for different systems, and each is filed under its `GNSS_ID` in
-`data.bgtos` rather than overwriting the last (see [`BeiDouB1CBGTO`](@ref)), so
+`data.bgtos` rather than overwriting the last (see [`BeiDouB1CBGTO`](@ref GNSSDecoder.BeiDouB1CBGTO)), so
 every system this satellite has ever broadcast an offset for stays answerable.
 Sets tagged `GNSS_ID == 0` ("not available", §7.13.1) are dropped at decode and
 never appear here.

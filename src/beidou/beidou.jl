@@ -310,7 +310,7 @@ the set is absent, marked unavailable, or refers to a system other than
 
 Both signals carry one set at a time, tagged with the system it refers to, so
 which target is answerable is the satellite's choice at the moment of asking —
-unlike B1C, which keys a set per system (see [`BeiDouB1CBGTO`](@ref)). The
+unlike B1C, which keys a set per system (see [`BeiDouB1CBGTO`](@ref GNSSDecoder.BeiDouB1CBGTO)). The
 `GNSS_ID == 0` "not available" sentinel is screened here rather than at decode,
 because both decoders keep the raw field; B1C screens it at decode instead,
 since it has a keyed store and no key to file an unavailable set under.

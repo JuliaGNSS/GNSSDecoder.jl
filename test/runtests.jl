@@ -34,6 +34,7 @@ include("allocation_utils.jl")
         Aqua.test_all(GNSSDecoder)
     end
 
+    include("api.jl")
     include("gnss_supertype.jl")
     include("signal_accessors.jl")
     include("satellite_time_accessors.jl")

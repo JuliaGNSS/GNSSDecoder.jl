@@ -43,7 +43,7 @@ broadcast text messages are inline `CStaticString`s from StaticStrings.jl for
 the same reason.
 
 ```@docs
-SlotDictionary
+GNSSDecoder.SlotDictionary
 ```
 
 ## State Management
@@ -260,7 +260,7 @@ GNSSDecoder.AbstractBeiDouData
 
 ```@docs
 GPSL1CAData
-GPSL1CAAlmanac
+GNSSDecoder.GPSL1CAAlmanac
 ```
 
 ### Galileo I/NAV (shared by E1-B and E5b)
@@ -273,9 +273,9 @@ type 5 [`is_sat_healthy`](@ref) reports (E1-B/C or E5b), mirroring GPS
 CNAV.
 
 ```@docs
-GNSSDecoder.GalileoINAVData
-GalileoReducedCED
-GalileoAlmanac
+GalileoINAVData
+GNSSDecoder.GalileoReducedCED
+GNSSDecoder.GalileoAlmanac
 SignalHealth
 DataValidityStatus
 ```
@@ -283,7 +283,7 @@ DataValidityStatus
 ### Galileo E5a
 
 ```@docs
-GNSSDecoder.GalileoE5aData
+GalileoE5aData
 ```
 
 ### Galileo E6-B (C/NAV — High Accuracy Service)
@@ -315,9 +315,9 @@ HASStatus
 
 ```@docs
 GPSL1C_DData
-GPSL1C_DReducedAlmanac
-GPSL1C_DMidiAlmanac
-GPSL1C_DDifferentialCorrection
+GNSSDecoder.GPSL1C_DReducedAlmanac
+GNSSDecoder.GPSL1C_DMidiAlmanac
+GNSSDecoder.GPSL1C_DDifferentialCorrection
 ```
 
 ### GPS CNAV (shared by L5I and L2C)
@@ -329,11 +329,11 @@ reports.
 
 ```@docs
 GPSCNAVData
-GPSCNAVReducedAlmanac
-GPSCNAVMidiAlmanac
-GPSCNAVClockDifferentialCorrection
-GPSCNAVEphemerisDifferentialCorrection
-GPSCNAVIntegritySupportMessage
+GNSSDecoder.GPSCNAVReducedAlmanac
+GNSSDecoder.GPSCNAVMidiAlmanac
+GNSSDecoder.GPSCNAVClockDifferentialCorrection
+GNSSDecoder.GPSCNAVEphemerisDifferentialCorrection
+GNSSDecoder.GPSCNAVIntegritySupportMessage
 ```
 
 
@@ -345,14 +345,14 @@ the decoded [`BeiDouDNAVData`](@ref) container, mirroring GPS CNAV.
 
 ```@docs
 BeiDouDNAVData
-BeiDouDNAVAlmanac
+GNSSDecoder.BeiDouDNAVAlmanac
 ```
 
 ### BeiDou B1C
 
 ```@docs
 BeiDouB1CData
-BeiDouB1CBGTO
+GNSSDecoder.BeiDouB1CBGTO
 ```
 
 ### BeiDou B2a
@@ -374,6 +374,6 @@ The BDS-3 midi and reduced almanac blocks are bit-identical across B-CNAV1
 same record types.
 
 ```@docs
-BeiDouMidiAlmanac
-BeiDouReducedAlmanac
+GNSSDecoder.BeiDouMidiAlmanac
+GNSSDecoder.BeiDouReducedAlmanac
 ```
