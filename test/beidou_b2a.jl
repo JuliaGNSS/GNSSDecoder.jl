@@ -484,7 +484,7 @@ end
         @test is_decoding_completed_for_positioning(state)
     end
 
-    @testset "MT10/MT11 pairing wraps at the BDT week rollover" begin
+    @testset "MT10/MT11 pairing wraps at the BDT week crossover" begin
         # Adjacency is modular: the last frame of the week (SOW 604797)
         # followed by the first of the next (SOW 0) is a valid pair, while a
         # straddling non-adjacent gap is not.

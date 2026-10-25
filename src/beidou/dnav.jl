@@ -1531,7 +1531,7 @@ signal outages without a full re-decode of all subframes.
 !!! note
 
     Like the GPS L1 C/A reset, `WN` is intentionally not cleared as it is
-    broadcast only in subframe 1 (D1) / page 1 (D2); a week rollover during
+    broadcast only in subframe 1 (D1) / page 1 (D2); a week crossover during
     the outage yields a briefly stale week number.
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouDNAVData})

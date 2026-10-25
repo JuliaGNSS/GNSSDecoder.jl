@@ -618,7 +618,7 @@ after brief signal outages without requiring a full re-decode of all subframes.
 !!! note
 
     The `WN` field is intentionally not reset as it is only broadcast
-    in subframe 1. This may cause brief errors if a GPS week rollover occurs
+    in subframe 1. This may cause brief errors if a GPS week crossover occurs
     during a signal outage.
 
 # Arguments
@@ -802,7 +802,7 @@ parity (issue #82). The screens, strongest available first:
     predict the TOW exactly: `elapsed` must be a positive multiple of
     `LNAV_SYMBOLS_PER_SUBFRAME` — genuine locks always sit on the same
     300-symbol frame grid — and the TOW must have advanced by 6 s per
-    subframe (modulo `SECONDS_PER_WEEK`, so the week rollover passes). This
+    subframe (modulo `SECONDS_PER_WEEK`, so the week crossover passes). This
     holds across arbitrarily long decode gaps (a blockage, a satellite
     concealed for hours from a vector-tracking receiver) as long as tracking
     keeps symbols flowing, and needs no tuning constant. Should the counter
