@@ -68,6 +68,13 @@ export decode!,
     get_group_delay,
     BroadcastEphemeris,
     get_broadcast_ephemeris,
+    KlobucharParameters,
+    BeiDouKlobucharParameters,
+    NeQuickGParameters,
+    BDGIMParameters,
+    get_klobuchar_parameters,
+    get_nequick_g_parameters,
+    get_bdgim_parameters,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -118,5 +125,6 @@ include("beidou/b1c.jl")
 include("beidou/b2a.jl")
 include("beidou/b2b.jl")
 include("ephemeris.jl")
+include("ionosphere.jl")
 include("precompile.jl")
 end
