@@ -48,8 +48,8 @@ stay on the concrete data types.
 Note that "every Galileo signal" is not "every Galileo signal carries an
 ephemeris" — `GalileoE6BData` holds HAS corrections *to* another signal's
 navigation data and has no orbital fields at all. The ephemeris and clock
-completeness checks therefore live one level down, on
-[`AbstractGalileoEphemerisData`](@ref).
+completeness checks therefore live one level down, on the internal
+`AbstractGalileoEphemerisData`.
 """
 abstract type AbstractGalileoData <: AbstractGNSSData end
 
@@ -143,6 +143,14 @@ treat the returned value as *the* live state and do not use the earlier one;
 take a [`copy`](@ref Base.copy(::GNSSDecoderState)) if a snapshot is needed. The transient packed-bit buffer used for
 preamble matching is **not** stored here; it is computed as a local value at
 sync time and threaded through the sync path (see `pack_buffer` / `try_sync`).
+
+Of the fields, `prn`, `raw_data`, `data`, `num_symbols_since_sync` and
+`is_shifted_by_180_degrees` are part of the API: a receiver reads them, and
+`num_symbols_since_sync` together with [`get_time_of_week`](@ref) and
+`get_data_frequency` dates the latest symbol (see `get_time_of_week`). A tracking
+loop that counts symbols itself may move the counter with the keyword
+constructor, `GNSSDecoderState(state; num_symbols_since_sync = n)`. The
+`constants` and the `cache` are internal.
 
 # Type Parameters
 
@@ -339,7 +347,6 @@ is_decoding_completed_for_positioning(state::GNSSDecoderState) =
 
 """
     get_signal_type(state::GNSSDecoderState) -> Type{<:AbstractGNSSSignal}
-    get_signal_type(constants::AbstractGNSSConstants) -> Type{<:AbstractGNSSSignal}
 
 Get the GNSSSignals signal type whose navigation message a decoder demodulates,
 e.g. `GPSL1CA` for a [`GPSL1CADecoderState`](@ref). This is the single mapping
@@ -353,10 +360,9 @@ code matrix and SIMD lookup table, which a decoder — working purely in the
 symbol domain — never needs. Being a type, it also folds to a compile-time
 constant, so the forwarded accessors cost nothing at run time.
 
-Stated per signal file, dispatched on the constants type rather than the data
-type, because the constants are what tell apart decoders that share a data
-container: GPS L5-I and L2C-M both decode into a `GPSCNAVData` but are distinct
-signals (`GPSCNAVConstants{:GPSL5I}` vs `GPSCNAVConstants{:GPSL2CM}`).
+Each signal states it for its own decoder, so decoders that share a data
+container still answer their own signal: GPS L5-I and L2C-M both decode into a
+`GPSCNAVData`, and report `GPSL5I` and `GPSL2CM`.
 
 The mapping names the data-bearing component of a signal pair, since that is
 what carries the navigation message: `GPSL2CM` (not the `GPSL2CL` pilot) and

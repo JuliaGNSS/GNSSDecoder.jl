@@ -412,8 +412,9 @@ corrections refer to.
 
 The raw ICD bit fields are kept alongside the expanded lists, since the raw
 masks are what later blocks' lengths are computed from. An immutable,
-pointer-free value: the expanded lists are views computed from the raw masks
-(see [`GalileoHASMaskIndices`](@ref)), and the Cell Mask is stored inline.
+pointer-free value: the expanded lists are `AbstractVector{Int}` views computed
+from the raw masks, and the Cell Mask, an `AbstractMatrix{Bool}`, is stored
+inline. Read them through those interfaces; their concrete types are internal.
 
 # Fields
 
