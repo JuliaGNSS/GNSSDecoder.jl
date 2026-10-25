@@ -815,7 +815,7 @@ parity matrices in `data/`.
 ```julia
 state = GPSL1C_DDecoderState(1)            # PRN 1
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -1451,6 +1451,6 @@ Examines the 1-bit L1C signal health flag from subframe 2 (IS-GPS-800J
 
   - `Bool`: `true` iff the L1C signal-health bit indicates OK.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GPSL1C_DData})
+function is_satellite_healthy(state::GNSSDecoderState{<:GPSL1C_DData})
     state.data.l1c_health === false
 end

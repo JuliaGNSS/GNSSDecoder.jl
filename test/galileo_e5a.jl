@@ -185,7 +185,7 @@ end
 
     @test decoder.data == expected
     @test decoder.is_shifted_by_180_degrees == false
-    @test is_sat_healthy(decoder) == true
+    @test is_satellite_healthy(decoder) == true
     # 1012 = symbols elapsed since the leading sync edge of word type 4 (the page
     # carrying the validated TOW): two further pages (WT4→WT5→trailing sync) of
     # 500 symbols each, less the 488 — i.e. preamble (12) + 2·500.
@@ -197,7 +197,7 @@ end
     decoder_inv = decode!(decoder_inv, -stream, length(stream))
     @test decoder_inv.data == expected
     @test decoder_inv.is_shifted_by_180_degrees == true
-    @test is_sat_healthy(decoder_inv) == true
+    @test is_satellite_healthy(decoder_inv) == true
 end
 
 @testset "Galileo E5a almanac decoding" begin

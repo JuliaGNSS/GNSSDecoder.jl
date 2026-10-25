@@ -325,7 +325,7 @@ end
         @test state.num_symbols_since_sync == 1016
         @test state.data.SOW == B2B_SOW_FIELD_BASE + 2
         @test state.data.last_message_type == 40
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
     end
 
     # The 1016 above is armed by `validate_data`, and by nothing else: a frame
@@ -373,7 +373,7 @@ end
         @test state.raw_data.SOW == 2001
         @test state.data.HS == 1
         @test is_decoding_completed_for_positioning(state)
-        @test !is_sat_healthy(state)
+        @test !is_satellite_healthy(state)
     end
 
     # The 20-bit B-CNAV3 SOW is a count of *seconds* (LSB 1 s), not the 3-second

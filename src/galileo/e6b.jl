@@ -2711,6 +2711,6 @@ discarded (see `decode_sync_unit`).
   - [`GalileoE6BDecoderState`](@ref): Create decoder state
   - [`HASStatus`](@ref): The broadcast status values
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GalileoE6BData})
+function is_satellite_healthy(state::GNSSDecoderState{<:GalileoE6BData})
     state.data.HAS_status == has_operational_mode
 end

@@ -14,7 +14,7 @@ instead of once per signal. Constellation membership is encoded at the struct
 definition site — the `<: AbstractGPSData` line written anyway — so a new GPS
 signal inherits the shared behaviour with nothing to remember. Genuinely
 per-signal facts (the subframe/message-type completeness checks, the health-bit
-selection in `is_sat_healthy`) stay defined on the concrete data types.
+selection in `is_satellite_healthy`) stay defined on the concrete data types.
 """
 abstract type AbstractGPSData <: AbstractGNSSData end
 
@@ -81,7 +81,7 @@ The BeiDou counterpart to [`AbstractGPSData`](@ref) and
 [`AbstractGalileoData`](@ref): it carries the constellation-level facts every
 BeiDou signal's data shares, so they can be stated once via subtype dispatch.
 Genuinely per-signal facts (the message-set completeness checks, the
-health-flag selection in `is_sat_healthy`) stay defined on the concrete data
+health-flag selection in `is_satellite_healthy`) stay defined on the concrete data
 types.
 """
 abstract type AbstractBeiDouData <: AbstractGNSSData end
@@ -275,8 +275,8 @@ so it only becomes `true` once the required message set has passed CRC/parity
 `raw_data` to `data`.
 
 This is the readiness gate a receiver (e.g. `PositionVelocityTime.jl`) should
-pair with [`is_sat_healthy`](@ref): whenever this returns `true`, the health
-field `is_sat_healthy` inspects is guaranteed to have been decoded, so the two
+pair with [`is_satellite_healthy`](@ref): whenever this returns `true`, the health
+field `is_satellite_healthy` inspects is guaranteed to have been decoded, so the two
 can be checked together without a separate `nothing` guard.
 
 !!! note "What this deliberately does *not* gate on"
@@ -315,7 +315,7 @@ can be checked together without a separate `nothing` guard.
         way. Such a field is still decoded and published; it is only this
         readiness gate that ignores it.
 
-      - **Alert flag.** `is_sat_healthy` reflects the broadcast health bits
+      - **Alert flag.** `is_satellite_healthy` reflects the broadcast health bits
         only; a receiver that wants to honour the L1 C/A alert flag (or
         equivalent) must check it separately.
 """
@@ -1202,7 +1202,7 @@ glossary.
 
   - [`GNSSDecoderState`](@ref): The state structure being updated
   - [`reset_decoder_state!`](@ref): Reset the decoder after a signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health after decoding
+  - [`is_satellite_healthy`](@ref): Check satellite health after decoding
 """
 function decode!(
     state::GNSSDecoderState,

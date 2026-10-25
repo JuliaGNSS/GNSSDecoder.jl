@@ -580,7 +580,7 @@ clock correction, and health data from the 50 bps LNAV data stream.
 ```julia
 state = GPSL1CADecoderState(1)  # Create decoder for PRN 1
 state = decode!(state, bits, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -590,7 +590,7 @@ end
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`decode!`](@ref): Decode bits using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function GPSL1CADecoderState(prn)
     GNSSDecoderState(
@@ -1616,7 +1616,7 @@ is considered healthy only if all health bits are zero (`"000000"`).
 ```julia
 state = GPSL1CADecoderState(1)
 state = decode!(state, bits, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Safe to use for positioning
 end
 ```
@@ -1626,6 +1626,6 @@ end
   - [`GPSL1CADecoderState`](@ref): Create decoder state
   - [`decode!`](@ref): Decode navigation data
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GPSL1CAData})
+function is_satellite_healthy(state::GNSSDecoderState{<:GPSL1CAData})
     state.data.sv_health == 0
 end

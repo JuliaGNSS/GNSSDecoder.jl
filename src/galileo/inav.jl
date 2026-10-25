@@ -23,7 +23,7 @@
 # CRC gate, and all word-type parsing, plus the shared `GalileoINAVData`
 # container — and `e1b.jl` / `e5b.jl` are thin signal layers carrying only
 # their own `*Constants` alias, decoder-state constructor, `get_signal_type`
-# mapping, and health-facet selection in `is_sat_healthy` (E1-B/C health and
+# mapping, and health-facet selection in `is_satellite_healthy` (E1-B/C health and
 # data validity vs E5b's — both fields come from the same word type 5, so both
 # are always decoded together). This mirrors how GPS L5I and L2C share
 # `gps/cnav.jl` and BeiDou B1I and B3I share `beidou/dnav.jl`.
@@ -76,7 +76,7 @@ signal components that broadcast I/NAV, E1-B and E5b-I. Aliased per signal as
 and [`GalileoE5bConstants`](@ref GNSSDecoder.GalileoE5bConstants)
 (`S = :GalileoE5bI`); the field values are identical and the tag `S` only selects
 the signal reported by [`get_signal_type`](@ref) and the health facet checked by
-[`is_sat_healthy`](@ref).
+[`is_satellite_healthy`](@ref).
 
 The physical constants are defined in the Galileo OS SIS ICD (Open Service Signal-In-Space
 Interface Control Document) and are used for computing satellite positions and clock
@@ -593,7 +593,7 @@ end
 # `AbstractGalileoData` in `galileo/galileo.jl`. Only the health-status check
 # below is genuinely per-signal only in *which* facet it reports: word type 5
 # carries E1-B/C and E5b health and data validity together, so an I/NAV decoder
-# on either component always has both. `is_sat_healthy` picks the facet matching
+# on either component always has both. `is_satellite_healthy` picks the facet matching
 # the component being decoded (see `e1b.jl` / `e5b.jl`).
 function is_health_status_decoded(data::GalileoINAVData)
     !isnothing(data.E1B_SHS) &&

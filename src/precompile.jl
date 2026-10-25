@@ -196,7 +196,7 @@ end
             (BeiDouB3I(), 7, random_symbols),
         )
             state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
-            is_sat_healthy(state)
+            is_satellite_healthy(state)
             is_decoding_completed_for_positioning(state)
         end
     end

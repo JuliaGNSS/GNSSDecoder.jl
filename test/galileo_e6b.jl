@@ -130,7 +130,7 @@ e6b_decode_stream(state, stream) = decode!(state, stream, length(stream))
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE6C,Int})
     # No ephemeris of its own — corrections only.
     @test !is_decoding_completed_for_positioning(decoder)
-    @test !is_sat_healthy(decoder)
+    @test !is_satellite_healthy(decoder)
 end
 
 @testset "Galileo E6-B validity interval table" begin
@@ -174,7 +174,7 @@ end
     @test group.octets[1, :] == hex2bytes(HAS_ANNEX_C_ENCODED_PAGE_HEX)
     # HAS status 0 = test mode: decoded, but not reported as usable.
     @test decoder.raw_data.HAS_status == GNSSDecoder.has_test_mode
-    @test !is_sat_healthy(decoder)
+    @test !is_satellite_healthy(decoder)
     @test isnothing(decoder.data.message)
 end
 
@@ -245,7 +245,7 @@ end
     # A completed message clears its page group.
     @test isempty(decoder.cache.page_groups)
     @test decoder.raw_data.HAS_status == GNSSDecoder.has_operational_mode
-    @test is_sat_healthy(decoder)
+    @test is_satellite_healthy(decoder)
     # Corrections are published immediately (nothing left to corroborate).
     @test decoder.data == decoder.raw_data
 
@@ -718,7 +718,7 @@ end
             e6b_decode_stream(decoder, e6b_symbol_stream([e6b_page_bits(header, octets)]))
         @test decoder.raw_data.HAS_status == GNSSDecoder.has_status_reserved
         @test isempty(decoder.cache.page_groups)
-        @test !is_sat_healthy(decoder)
+        @test !is_satellite_healthy(decoder)
     end
 
     @testset "duplicate page IDs are ignored" begin
@@ -806,7 +806,7 @@ end
     )
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream([stop]))
     @test decoder.data.HAS_status == GNSSDecoder.has_do_not_use
-    @test !is_sat_healthy(decoder)
+    @test !is_satellite_healthy(decoder)
     @test isnothing(decoder.data.orbit_corrections)
     @test isnothing(decoder.data.code_biases)
     @test isnothing(decoder.data.message)
@@ -939,7 +939,7 @@ end
     @test data.clock_subset_corrections.corrections[1].SVID == 2
     @test data.clock_subset_corrections.corrections[1].δ_clock ≈ 400 * 0.0025 * 3
     @test collect(keys(data.masks)) == [0, 3]
-    @test is_sat_healthy(allocations.state)
+    @test is_satellite_healthy(allocations.state)
 
     # `data` is a copy of `raw_data`, never the same containers.
     raw = allocations.state.raw_data

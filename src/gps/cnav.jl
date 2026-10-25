@@ -9,11 +9,11 @@
 # (MT10/11, 12–15, 30–37, 40), same π and the same `TOW × 6` scaling. The only
 # differences are in the *signal* layer (L2C: 25 bps → 50 sps, 12-second
 # messages; L5I: 50 bps → 100 sps, 6-second messages) and in which health bit
-# `is_sat_healthy` reports — neither of which affects this symbol-domain
+# `is_satellite_healthy` reports — neither of which affects this symbol-domain
 # decoder (the message is always 600 symbols, the sync window 616). This file
 # therefore holds everything shared; `gps/l5.jl` and `gps/l2c.jl` are thin
 # signal layers (their own `*Constants` type, decoder-state constructor, and
-# `is_sat_healthy`). gnss-sdr and pocketsdr likewise reuse one CNAV decoder
+# `is_satellite_healthy`). gnss-sdr and pocketsdr likewise reuse one CNAV decoder
 # for both signals.
 #
 # Field offsets/scales are cited to IS-GPS-705J figures/tables below; the
@@ -38,7 +38,7 @@
 WGS 84 constants and CNAV message structure parameters shared by the GPS CNAV
 signals. The CNAV message is identical on GPS L5I and GPS L2C, so the field
 values are identical too; the phantom signal tag `S` (`:GPSL5I` / `:GPSL2CM`)
-exists only so [`is_sat_healthy`](@ref) can dispatch on the signal (L5I reports
+exists only so [`is_satellite_healthy`](@ref) can dispatch on the signal (L5I reports
 the L5 health bit, L2C the L2 health bit). The per-signal aliases
 [`GPSL5IConstants`](@ref) and [`GPSL2CMConstants`](@ref) fix `S`.
 

@@ -431,7 +431,7 @@ end
         # Validation: complete after MT10 + MT11 + a clock message
         @test is_decoding_completed_for_positioning(state)
         @test state.data == state.raw_data
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
     end
 
     @testset "Validation gating" begin
@@ -718,7 +718,7 @@ end
         )
         @test is_decoding_completed_for_positioning(state)
         @test state.raw_data.HS == 1
-        @test !is_sat_healthy(state)
+        @test !is_satellite_healthy(state)
     end
 end
 

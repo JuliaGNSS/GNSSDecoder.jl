@@ -525,7 +525,7 @@ F/NAV data stream broadcast on the E5a-I component using Viterbi decoding.
 ```julia
 state = GalileoE5aDecoderState(21)  # Create decoder for PRN 21
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -535,7 +535,7 @@ end
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function GalileoE5aDecoderState(prn)
     GNSSDecoderState(
@@ -1054,6 +1054,6 @@ validity is `navigation_data_valid`.
     This requires that page type 1 has been successfully decoded. Check that
     `state.data.E5a_SHS` is not `nothing` before relying on the result.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GalileoE5aData})
+function is_satellite_healthy(state::GNSSDecoderState{<:GalileoE5aData})
     state.data.E5a_SHS == signal_ok && state.data.E5a_DVS == navigation_data_valid
 end

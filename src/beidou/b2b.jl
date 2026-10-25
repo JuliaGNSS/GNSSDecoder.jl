@@ -893,7 +893,7 @@ binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 ```julia
 state = BeiDouB2bDecoderState(26)        # PRN 26
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -903,7 +903,7 @@ end
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function BeiDouB2bDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
@@ -952,6 +952,6 @@ means unhealthy or in test, 2-3 are reserved.
 
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB2bData})
+function is_satellite_healthy(state::GNSSDecoderState{<:BeiDouB2bData})
     state.data.HS === Int64(0)
 end

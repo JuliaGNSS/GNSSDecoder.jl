@@ -16,7 +16,7 @@
 #
 # Consequently this file reuses the entire shared GPS CNAV core in
 # `gps/cnav.jl` (FEC, sync, message parsing, and the `GPSCNAVData` container).
-# The only L2C-specific behaviour is `is_sat_healthy`, which reports the L2
+# The only L2C-specific behaviour is `is_satellite_healthy`, which reports the L2
 # signal-health bit (IS-GPS-200N §30.3.3.1.1.2) instead of the L5 bit. This
 # mirrors how gnss-sdr and pocketsdr drive L2C and L5 through one CNAV decoder.
 
@@ -26,7 +26,7 @@
 GPS L2C specialization of [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants) (`GPSCNAVConstants{:GPSL2CM}`).
 Same field values as the GPS L5I constants — the CNAV message is identical on
 both signals; the distinct tag only selects the L2 health bit in
-[`is_sat_healthy`](@ref). The data-bearing L2C component is the L2 CM code
+[`is_satellite_healthy`](@ref). The data-bearing L2C component is the L2 CM code
 (`GPSL2CM`); the L2 CL code is a dataless pilot. Reference: IS-GPS-200N
 §30.3.2 / §3.3.3.1.
 """
@@ -60,7 +60,7 @@ CNAV container).
 ```julia
 state = GPSL2CMDecoderState(1)           # PRN 1
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -71,7 +71,7 @@ end
   - [`GPSL5IDecoderState`](@ref): The GPS L5I decoder sharing this CNAV core
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function GPSL2CMDecoderState(prn)
     GNSSDecoderState(
@@ -121,6 +121,6 @@ only decode-level difference from GPS L5I, which reports the L5 health bit.
 
   - `Bool`: `true` iff the L2 signal-health bit indicates OK.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GPSCNAVData,<:GPSL2CMConstants})
+function is_satellite_healthy(state::GNSSDecoderState{<:GPSCNAVData,<:GPSL2CMConstants})
     state.data.l2_health === false
 end

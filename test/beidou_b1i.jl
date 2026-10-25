@@ -124,7 +124,7 @@ using GNSSSignals: Hz
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         state = decode!(state, symbols, length(symbols))
         @test is_decoding_completed_for_positioning(state)
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
         check_d1_fundamental(state.data)
         @test state.is_shifted_by_180_degrees == false
     end
@@ -576,7 +576,7 @@ using GNSSSignals: Hz
         state = feed_d2_cycle(state, D2_CYCLE_SPAN)
 
         @test is_decoding_completed_for_positioning(state)
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
         data = state.data
         @test data.SOW == SOW_D2 + D2_CYCLE_SPAN + 27
         # D2 reads a SOW in subframe 1 only (§5.3.3.1(2)), so subframes 2-5
@@ -695,11 +695,11 @@ using GNSSSignals: Hz
             @test_throws ArgumentError ctor(64)
         end
 
-        # One `is_sat_healthy` method serves both signals: B1I and B3I read the
+        # One `is_satellite_healthy` method serves both signals: B1I and B3I read the
         # same SatH1 out of the same message, unlike GPS L5I/L2CM which select
         # different health bits from a shared container.
-        @test which(is_sat_healthy, (typeof(state),)) ===
-              which(is_sat_healthy, (typeof(BeiDouB3IDecoderState(25)),))
+        @test which(is_satellite_healthy, (typeof(state),)) ===
+              which(is_satellite_healthy, (typeof(BeiDouB3IDecoderState(25)),))
     end
 
     @testset "reset_decoder_state clears SOW and D2 pages" begin

@@ -13,7 +13,7 @@
 
 GPS L5I specialization of [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants) (`GPSCNAVConstants{:GPSL5I}`).
 Same field values as the GPS L2C constants — the distinct tag only selects the
-L5 health bit in [`is_sat_healthy`](@ref). Reference: IS-GPS-705J §20.3.3 /
+L5 health bit in [`is_satellite_healthy`](@ref). Reference: IS-GPS-705J §20.3.3 /
 §20.3.4.3.
 """
 const GPSL5IConstants = GPSCNAVConstants{:GPSL5I}
@@ -43,7 +43,7 @@ parsers (message types 10-15, 30-37, and 40, IS-GPS-705J §20.3.3).
 ```julia
 state = GPSL5IDecoderState(1)            # PRN 1
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -54,7 +54,7 @@ end
   - [`GPSL2CMDecoderState`](@ref): The GPS L2C decoder sharing this CNAV core
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function GPSL5IDecoderState(prn)
     GNSSDecoderState(
@@ -102,6 +102,6 @@ bit is 0 (all navigation data on the L5 signal are OK).
 
   - `Bool`: `true` iff the L5 signal-health bit indicates OK.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GPSCNAVData,<:GPSL5IConstants})
+function is_satellite_healthy(state::GNSSDecoderState{<:GPSCNAVData,<:GPSL5IConstants})
     state.data.l5_health === false
 end

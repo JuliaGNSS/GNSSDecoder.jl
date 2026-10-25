@@ -55,12 +55,12 @@ reset_decoder_state!
 ## Health Status
 
 ```@docs
-is_sat_healthy
+is_satellite_healthy
 ```
 
 ## Positioning Readiness
 
-Pair [`is_decoding_completed_for_positioning`](@ref) with [`is_sat_healthy`](@ref)
+Pair [`is_decoding_completed_for_positioning`](@ref) with [`is_satellite_healthy`](@ref)
 to gate use of a satellite in a fix: the first confirms the required navigation
 data set has been decoded and validated, the second that the satellite is
 broadcasting healthy. See the docstring for what it deliberately does *not*
@@ -235,7 +235,7 @@ share the decoded [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData) containe
 and one constants struct,
 [`GalileoINAVConstants`](@ref GNSSDecoder.GalileoINAVConstants). The per-signal
 constants are type aliases that fix its signal tag; they differ only in which
-signal-health facet of word type 5 [`is_sat_healthy`](@ref) reports (E1-B/C or
+signal-health facet of word type 5 [`is_satellite_healthy`](@ref) reports (E1-B/C or
 E5b), mirroring GPS CNAV.
 
 ```@docs
@@ -301,7 +301,7 @@ GPS L5I and GPS L2C carry the identical CNAV message, so they share the decoded
 [`GPSCNAVData`](@ref) container (and its almanac/correction records) and one
 constants struct, [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants). The
 per-signal constants are type aliases that fix its signal tag; they differ only
-in which signal-health bit [`is_sat_healthy`](@ref) reports.
+in which signal-health bit [`is_satellite_healthy`](@ref) reports.
 
 ```@docs
 GNSSDecoder.GPSCNAVConstants

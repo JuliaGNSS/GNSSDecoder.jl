@@ -23,7 +23,7 @@ code; this file is for naming and meaning only.
   symbols = 12 seconds — which is purely time-domain, so the symbol-domain
   decoder is the same 600-symbol message / 616-symbol sync window. Shares the
   GPS CNAV core (`src/gps/cnav.jl`) and the `GPSCNAVData` container with L5I;
-  the only decode difference is that `is_sat_healthy` reports the L2 health bit
+  the only decode difference is that `is_satellite_healthy` reports the L2 health bit
   (MT10 bit 53) instead of the L5 bit (54). `GNSSDecoderState(::GPSL2CM, prn)`
   maps here (`GPSL2CL` is the pilot); `GPSL2CMDecoderState(prn)` is the
   equivalent direct constructor.
@@ -40,7 +40,7 @@ code; this file is for naming and meaning only.
   has "Reserved 2" — both 64 + 8, both leaving the CRC-protected prefix at 82
   bits and neither trailing field CRC-protected. Word types 16 (Reduced CED) and
   17-20 (FEC2 RS CED) are E1-B only (Table 40), so an E5b decoder simply never
-  sees them. The only decode difference is that `is_sat_healthy` reports the E5b
+  sees them. The only decode difference is that `is_satellite_healthy` reports the E5b
   facet of word type 5 instead of the E1-B/C facet; `GalileoE5bDecoderState(prn)`
   is the E5b constructor (`GalileoE5bQ` is the dataless pilot).
 - **Galileo E5a** (`GalileoE5aDecoderState`) — 50 sps F/NAV broadcast on the
@@ -64,7 +64,7 @@ code; this file is for naming and meaning only.
   Uniquely among the signals here it carries *no ephemeris at all*: the HAS
   message is a set of corrections to another signal's broadcast navigation data,
   so `is_decoding_completed_for_positioning` is always `false` and
-  `is_sat_healthy` reports the HAS *service* status instead of a satellite
+  `is_satellite_healthy` reports the HAS *service* status instead of a satellite
   health bit. Also uniquely, one message spans *satellites*: it is cut into
   k ≤ 32 pages of 424 bits, encoded with a systematic RS(255, 32) code over
   GF(256) ("HPVRS"), and different encoded pages are handed to different

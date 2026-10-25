@@ -165,7 +165,7 @@ end
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == false
     @test state.num_symbols_since_sync == 3500
-    @test is_sat_healthy(state) == true
+    @test is_satellite_healthy(state) == true
 
     decoder2 = GalileoE1BDecoderState(21)
     state = reduce(
@@ -177,7 +177,7 @@ end
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == true
     @test state.num_symbols_since_sync == 3500
-    @test is_sat_healthy(state) == true
+    @test is_satellite_healthy(state) == true
 
     state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0

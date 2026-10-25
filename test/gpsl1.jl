@@ -333,7 +333,7 @@ end
         field -> getfield(state.data, field) == getfield(test_data, field),
         fieldnames(GNSSDecoder.GPSL1CAData),
     )
-    @test is_sat_healthy(state) == true
+    @test is_satellite_healthy(state) == true
 
     # 180° polarity flip: bit-invert the hard literal then convert to soft symbols.
     decoder2 = GPSL1CADecoderState(25)
@@ -347,7 +347,7 @@ end
         field -> getfield(state.data, field) == getfield(test_data, field),
         fieldnames(GNSSDecoder.GPSL1CAData),
     )
-    @test is_sat_healthy(state) == true
+    @test is_satellite_healthy(state) == true
 
     # test confirm_data
     max_vote = 1

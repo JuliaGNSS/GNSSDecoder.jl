@@ -7,7 +7,7 @@
 # things:
 #
 #  1. That the signal layer is right: the E5b-I signal is reported (not E1-B),
-#     its metadata comes out of GNSSSignals, and `is_sat_healthy` reads the *E5b*
+#     its metadata comes out of GNSSSignals, and `is_satellite_healthy` reads the *E5b*
 #     facet of word type 5 rather than the E1-B/C one. That health facet is the
 #     only decode-level difference between the two decoders.
 #  2. That the shared core really is layout-compatible with an E5b page pair.
@@ -136,7 +136,7 @@ inav_symbol_stream(parts::Vector{Vector{Bool}}) =
     @test hasmethod(GNSSDecoderState, Tuple{GalileoE5bI,Int})
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE5bQ,Int})
     @test !is_decoding_completed_for_positioning(decoder)
-    @test !is_sat_healthy(decoder)
+    @test !is_satellite_healthy(decoder)
 end
 
 @testset "Galileo E5b decodes the E1B golden fixture identically" begin
@@ -165,7 +165,7 @@ end
     @test e5b.data.WN == 1082
     @test e5b.data.E5b_SHS == GNSSDecoder.signal_ok
     @test e5b.data.E5b_DVS == GNSSDecoder.navigation_data_valid
-    @test is_sat_healthy(e5b)
+    @test is_satellite_healthy(e5b)
     # Word type 16 (Reduced CED) is broadcast on E1-B only (Table 40); the
     # fixture is an E1-B capture, so it is present here. The parser is shared and
     # deliberately not gated on the component — the word is CRC-protected either
@@ -256,12 +256,12 @@ end
     stream = inav_symbol_stream([even, odd])
     e5b = decode!(GalileoE5bDecoderState(21), stream, length(stream))
     e1b = decode!(GalileoE1BDecoderState(21), stream, length(stream))
-    # `is_sat_healthy` reads the *validated* data, which needs a full positioning
+    # `is_satellite_healthy` reads the *validated* data, which needs a full positioning
     # set, so drive it directly off a state whose `data` is this word.
     e5b = GNSSDecoder.GNSSDecoderState(e5b; data = e5b.raw_data)
     e1b = GNSSDecoder.GNSSDecoderState(e1b; data = e1b.raw_data)
-    @test is_sat_healthy(e5b)
-    @test !is_sat_healthy(e1b)
+    @test is_satellite_healthy(e5b)
+    @test !is_satellite_healthy(e1b)
 
     # And the other way round.
     word = inav_word_type_5(;
@@ -276,8 +276,8 @@ end
     e1b = decode!(GalileoE1BDecoderState(21), stream, length(stream))
     e5b = GNSSDecoder.GNSSDecoderState(e5b; data = e5b.raw_data)
     e1b = GNSSDecoder.GNSSDecoderState(e1b; data = e1b.raw_data)
-    @test !is_sat_healthy(e5b)
-    @test is_sat_healthy(e1b)
+    @test !is_satellite_healthy(e5b)
+    @test is_satellite_healthy(e1b)
     @test e5b.raw_data.E5b_SHS == GNSSDecoder.signal_component_currently_in_test
 end
 

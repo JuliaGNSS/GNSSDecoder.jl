@@ -460,7 +460,7 @@ end
         @test d.SISAI_ocb == 7
         @test d.SISAI_oc1 == 2
         @test d.SISAI_oc2 == 3
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
         # Page 1: BDGIM iono (Table 7-10; α₅ scale −2⁻³) + BDT-UTC (Table 7-20).
         @test d.α_bdgim_1 ≈ 800 * 2.0^-3
         @test d.α_bdgim_2 ≈ -40 * 2.0^-3
@@ -554,7 +554,7 @@ end
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test state.data.HS == 1
         @test is_decoding_completed_for_positioning(state)
-        @test !is_sat_healthy(state)
+        @test !is_satellite_healthy(state)
     end
 
     @testset "Corrupted subframe-2 CRC is rejected, subframe 3 still decodes" begin
@@ -573,7 +573,7 @@ end
         @test state.raw_data.num_sf3_pages_received == 1   # SF3 decoded
         @test state.raw_data.HS == 0
         @test !is_decoding_completed_for_positioning(state)  # promotion gated
-        @test !is_sat_healthy(state)
+        @test !is_satellite_healthy(state)
     end
 
     @testset "SOH discontinuity resets the decoder, then re-locks" begin

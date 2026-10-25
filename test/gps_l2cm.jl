@@ -9,7 +9,7 @@ using GNSSDecoder: crc24q
 # helpers (CNAVTestEncoder, fec_encode_soft, build_mt10) from
 # `cnav_test_utils.jl`. They focus on what is L2C-specific: the GPSL2CM
 # dispatch, that the shared decoder runs through a GPSL2CM decoder state, and
-# that `is_sat_healthy` reads the L2 health bit (53) rather than the L5 bit (54).
+# that `is_satellite_healthy` reads the L2 health bit (53) rather than the L5 bit (54).
 
 # ---------------------------------------------------------------------------
 # Spirent fixture.
@@ -82,7 +82,7 @@ end
         @test !state.is_shifted_by_180_degrees
     end
 
-    @testset "is_sat_healthy reads the L2 health bit (not L5)" begin
+    @testset "is_satellite_healthy reads the L2 health bit (not L5)" begin
         # MT10 with L2 OK (bit 53 = 0) but L5 bad (bit 54 = 1). The exact same
         # symbol stream must read healthy on L2C and unhealthy on L5I — this is
         # the one decode-level difference between the two signals.
@@ -99,12 +99,12 @@ end
         # Health is reported from validated `data`; the synthetic MT10 alone is
         # not a complete positioning set, so promote raw_data to compare the
         # bit selection directly.
-        @test is_sat_healthy(
+        @test is_satellite_healthy(
             GNSSDecoder.GNSSDecoderState(state_l2c; data = state_l2c.raw_data),
         )
 
         state_l5i = decode!(GPSL5IDecoderState(9), stream, length(stream))
-        @test !is_sat_healthy(
+        @test !is_satellite_healthy(
             GNSSDecoder.GNSSDecoderState(state_l5i; data = state_l5i.raw_data),
         )
 
@@ -116,9 +116,13 @@ end
         ]
         stream2 = fec_encode_soft(enc2, msgs2)
         s2_l2c = decode!(GPSL2CMDecoderState(9), stream2, length(stream2))
-        @test !is_sat_healthy(GNSSDecoder.GNSSDecoderState(s2_l2c; data = s2_l2c.raw_data))
+        @test !is_satellite_healthy(
+            GNSSDecoder.GNSSDecoderState(s2_l2c; data = s2_l2c.raw_data),
+        )
         s2_l5i = decode!(GPSL5IDecoderState(9), stream2, length(stream2))
-        @test is_sat_healthy(GNSSDecoder.GNSSDecoderState(s2_l5i; data = s2_l5i.raw_data))
+        @test is_satellite_healthy(
+            GNSSDecoder.GNSSDecoderState(s2_l5i; data = s2_l5i.raw_data),
+        )
     end
 
     @testset "Phase-inverted stream decodes with is_shifted_by_180_degrees" begin
@@ -321,7 +325,7 @@ end
         # Exported state-forwarding method: dispatches on the validated `data`,
         # so it agrees with the `data`-typed check above.
         @test is_decoding_completed_for_positioning(state)
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
     end
 
     @testset "Spirent recording fixture (PRN 25)" begin

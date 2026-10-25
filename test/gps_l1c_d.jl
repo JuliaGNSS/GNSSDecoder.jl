@@ -224,10 +224,10 @@ end
         @test d.num_sf3_pages_received >= 1
     end
 
-    @testset "is_sat_healthy reflects the L1C health bit" begin
+    @testset "is_satellite_healthy reflects the L1C health bit" begin
         # Healthy (bit 33 = 0).
         state = decode!(GPSL1C_DDecoderState(7), build_stream(50, 4, payload), 4 * 1800)
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
 
         # Unhealthy (bit 33 = 1): rebuild with health flag set.
         bad = falses(600)
@@ -243,7 +243,7 @@ end
         bad_state =
             decode!(GPSL1C_DDecoderState(7), build_stream(60, 4, bad_payload), 4 * 1800)
         @test bad_state.data.l1c_health == true
-        @test !is_sat_healthy(bad_state)
+        @test !is_satellite_healthy(bad_state)
     end
 
     @testset "Polarity-inverted stream decodes with is_shifted_by_180_degrees" begin
@@ -720,7 +720,7 @@ end
         @test d.ΔΩ_dot ≈ 2.6000179786933586e-9 * π
         @test d.a_f0 ≈ 0.0
         @test d.T_GD ≈ 0.0
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
 
         # Subframe 3 pages observed in the recording.
         @test d.Δt_LS == 18
@@ -796,7 +796,7 @@ end
         @test d2.ITOW == 36
         @test d2.t_0e == 264600
         @test d2.toi == 68
-        @test is_sat_healthy(state2)
+        @test is_satellite_healthy(state2)
         @test d2.Ω_0 != d1.Ω_0  # PRN 2 broadcasts its own ephemeris ...
         # ... consistent (at almanac quantisation) with PRN 2's midi-almanac
         # entry independently decoded from PRN 1's stream.

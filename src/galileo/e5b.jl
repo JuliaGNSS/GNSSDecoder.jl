@@ -25,7 +25,7 @@
 # almanac chain, offset half a constellation from E1-B's, Table 41) all appear.
 #
 # The only decode-level difference from E1-B is which facet of word type 5
-# `is_sat_healthy` reports — E5b signal health and data validity instead of
+# `is_satellite_healthy` reports — E5b signal health and data validity instead of
 # E1-B/C's.
 
 """
@@ -35,7 +35,7 @@ Galileo E5b specialization of [`GalileoINAVConstants`](@ref GNSSDecoder.GalileoI
 (`GalileoINAVConstants{:GalileoE5bI}`). Same field values as the E1-B constants —
 the I/NAV message is identical on both components; the distinct tag only selects
 the reported signal (`GalileoE5bI`, the data-bearing component; `GalileoE5bQ` is
-the dataless pilot) and the E5b health facet in [`is_sat_healthy`](@ref).
+the dataless pilot) and the E5b health facet in [`is_satellite_healthy`](@ref).
 Reference: Galileo OS SIS ICD, Issue 2.2, Table 38 / Table 68.
 """
 const GalileoE5bConstants = GalileoINAVConstants{:GalileoE5bI}
@@ -68,7 +68,7 @@ Decoded fields land in a [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData)
 ```julia
 state = GalileoE5bDecoderState(1)  # Create decoder for PRN 1
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -79,7 +79,7 @@ end
   - [`GalileoE1BDecoderState`](@ref): The Galileo E1-B decoder sharing this I/NAV core
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function GalileoE5bDecoderState(prn)
     GNSSDecoderState(
@@ -144,7 +144,7 @@ facets, so a decoder on either component always has both available.
 ```julia
 state = GalileoE5bDecoderState(1)
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Safe to use for positioning
 end
 ```
@@ -154,6 +154,8 @@ end
   - [`GalileoE5bDecoderState`](@ref): Create decoder state
   - [`decode!`](@ref): Decode navigation data
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GalileoINAVData,<:GalileoE5bConstants})
+function is_satellite_healthy(
+    state::GNSSDecoderState{<:GalileoINAVData,<:GalileoE5bConstants},
+)
     state.data.E5b_SHS == signal_ok && state.data.E5b_DVS == navigation_data_valid
 end

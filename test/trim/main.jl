@@ -36,7 +36,7 @@ function run_decoder(name, system, prn, symbols)
         " PRN ",
         prn,
         ": healthy=",
-        is_sat_healthy(state),
+        is_satellite_healthy(state),
         " complete=",
         is_decoding_completed_for_positioning(state),
     )

@@ -44,7 +44,7 @@ state = GPSL1CADecoderState(25)   # every buffer is allocated here, once
 for chunk in soft_symbol_chunks   # e.g. `get_soft_bits` from Tracking.jl
     state = decode!(state, chunk, length(chunk))
 end
-is_decoding_completed_for_positioning(state) && is_sat_healthy(state)
+is_decoding_completed_for_positioning(state) && is_satellite_healthy(state)
 ```
 
 `decode!` allocates nothing: it **overwrites** the buffers the decoder state

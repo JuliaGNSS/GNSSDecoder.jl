@@ -777,7 +777,7 @@ matching this decoder's PRN, and dispatched to per-message-type parsers
 ```julia
 state = BeiDouB2aDecoderState(19)         # PRN 19
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -787,7 +787,7 @@ end
   - [`GNSSDecoderState`](@ref): The underlying state structure
   - [`decode!`](@ref): Decode soft symbols using this state
   - [`reset_decoder_state!`](@ref): Reset after signal loss
-  - [`is_sat_healthy`](@ref): Check satellite health status
+  - [`is_satellite_healthy`](@ref): Check satellite health status
 """
 function BeiDouB2aDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
@@ -926,7 +926,7 @@ as unhealthy.
 
   - `Bool`: `true` iff the broadcast health status indicates a usable satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB2aData})
+function is_satellite_healthy(state::GNSSDecoderState{<:BeiDouB2aData})
     !isnothing(state.data.HS) && state.data.HS == 0
 end
 

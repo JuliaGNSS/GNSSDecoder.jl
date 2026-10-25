@@ -788,7 +788,7 @@ SNR (see the soft-symbol convention note on [`decode!`](@ref)).
 ```julia
 state = BeiDouB1CDecoderState(30)          # PRN 30
 state = decode!(state, soft_symbols, num_symbols)
-if is_sat_healthy(state)
+if is_satellite_healthy(state)
     # Use state.data for positioning
 end
 ```
@@ -1333,7 +1333,7 @@ state.
 
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB1CData})
+function is_satellite_healthy(state::GNSSDecoderState{<:BeiDouB1CData})
     # `HS` is stored as Int64; compare against a typed zero so the egal check
     # cannot fail on a platform where the literal `0` is Int32.
     state.data.HS === Int64(0)

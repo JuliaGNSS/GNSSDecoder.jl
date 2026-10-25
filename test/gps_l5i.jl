@@ -108,7 +108,7 @@ end
         @test !state.is_shifted_by_180_degrees
         # Positioning needs message types 11 and 30 as well.
         @test !GNSSDecoder.is_decoding_completed_for_positioning(d)
-        @test !is_sat_healthy(state)
+        @test !is_satellite_healthy(state)
     end
 
     @testset "Phase-inverted stream decodes with is_shifted_by_180_degrees" begin
@@ -311,7 +311,7 @@ end
         @test isnothing(d.ism)
 
         @test GNSSDecoder.is_decoding_completed_for_positioning(d)
-        @test is_sat_healthy(state)
+        @test is_satellite_healthy(state)
     end
 
     @testset "Spirent recording fixture (PRN 25)" begin

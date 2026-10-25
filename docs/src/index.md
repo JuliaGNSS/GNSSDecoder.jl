@@ -100,7 +100,7 @@ julia> GNSSDecoder.num_symbols_buffered(state)
 E5b-I carries the identical I/NAV message as E1-B (OS SIS ICD §4.3.1: "the same
 page layout … only page sequencing is different"), so the decoder is the same
 one, differing only in the signal it reports and in which health facet of word
-type 5 [`is_sat_healthy`](@ref) reads:
+type 5 [`is_satellite_healthy`](@ref) reads:
 
 ```jldoctest galileo_e5b_example
 julia> using GNSSDecoder, GNSSSignals
@@ -309,12 +309,12 @@ julia> using GNSSDecoder
 
 julia> state = GPSL1CADecoderState(1);
 
-julia> is_sat_healthy(state)  # Health not yet decoded
+julia> is_satellite_healthy(state)  # Health not yet decoded
 false
 
 julia> state = GalileoE1BDecoderState(1);
 
-julia> is_sat_healthy(state)  # Health not yet decoded
+julia> is_satellite_healthy(state)  # Health not yet decoded
 false
 ```
 

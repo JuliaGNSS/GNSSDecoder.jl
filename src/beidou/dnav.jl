@@ -755,7 +755,7 @@ dispatch on.
 
   - `Bool`: `true` iff SatH1 indicates a healthy satellite
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouDNAVData})
+function is_satellite_healthy(state::GNSSDecoderState{<:BeiDouDNAVData})
     state.data.SatH1 === false
 end
 
