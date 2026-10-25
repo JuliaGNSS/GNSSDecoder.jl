@@ -1,5 +1,6 @@
 using Test, GNSSDecoder, Dictionaries
 using GNSSDecoder:
+    SlotDictionary,
     writable_container,
     overwrite!,
     publish!,

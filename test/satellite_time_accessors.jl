@@ -1,5 +1,6 @@
 using GNSSSignals: GPST, GST, BDT, Hz
-using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_earth_orbit
+using GNSSDecoder:
+    geostationary_orbit, inclined_geosynchronous_orbit, medium_earth_orbit, BeiDouB1CBGTO
 
 @testset "Satellite and time accessors" begin
     # Every decoder state this package can build. The three accessors under test
