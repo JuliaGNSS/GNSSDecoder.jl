@@ -96,7 +96,7 @@ Base.@kwdef struct BeiDouB2bConstants <: AbstractGNSSConstants
     """
     preamble_length::Int = B2B_PREAMBLE_SYMBOLS
     """
-    Mathematical constant π (BDS-SIS-ICD-B2b-1.0 Table 7-13)
+    Mathematical constant π (BDS-SIS-ICD-B2b-1.0 Table 7-7)
     """
     PI::Float64 = GNSS_PI
     """

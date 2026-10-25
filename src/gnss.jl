@@ -111,8 +111,10 @@ abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
 # values, defined alongside each constellation.
 #
 # `GNSS_PI` is deliberately the truncated value the ICDs fix for the
-# semicircle→radian scaling (IS-GPS-200 Table 20-IV; Galileo OS SIS ICD Table 68),
-# *not* `Base.π` — broadcast angular quantities must be scaled with exactly this
+# semicircle→radian scaling, *not* `Base.π`: every ICD here states the same
+# 3.1415926535898 (IS-GPS-200 Table 20-IV; Galileo OS SIS ICD Table 68;
+# BDS-SIS-ICD-B1I-3.0 and B3I-1.0 Table 5-11, B1C-1.0 and B2a-1.0 Table 7-9,
+# B2b-1.0 Table 7-7) — broadcast angular quantities must be scaled with exactly this
 # value to reproduce the transmitted numbers bit-for-bit.
 const GNSS_PI = 3.1415926535898
 const SPEED_OF_LIGHT = 2.99792458e8        # m/s
