@@ -883,6 +883,9 @@ end
 # scaled at parse (§7.3, Table 7-2).
 get_time_of_week(data::BeiDouB2aData) = data.SOW
 
+# B-CNAV2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_week(data::BeiDouB2aData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 

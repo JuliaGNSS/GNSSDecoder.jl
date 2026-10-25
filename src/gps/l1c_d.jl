@@ -775,6 +775,9 @@ function get_time_of_week(data::GPSL1C_DData)
     )
 end
 
+# CNAV-2's week number is 13 bits, absolute until 2137.
+get_week(data::GPSL1C_DData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 

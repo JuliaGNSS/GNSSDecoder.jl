@@ -120,7 +120,7 @@ get_signal_type
 
 ## Satellite and Time Metadata
 
-Three questions a positioning engine asks of every decoder, whatever signal it
+The questions a positioning engine asks of every decoder, whatever signal it
 is on. Each is answered from broadcast data by some signals and from
 constellation structure by others, and each is reconstruction work the ICD
 defines — so it is done here, once per signal, rather than in every consumer.
@@ -129,6 +129,7 @@ defines — so it is done here, once per signal, rather than in every consumer.
 |:---|:---|:---|
 | [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
 | [`get_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
+| [`get_week`](@ref) | absolute week number, the GPS L1 C/A rollover resolved | no week number has been decoded and validated yet |
 | [`get_broadcast_time_offset`](@ref) | offset to another constellation's time scale at a time of week, in seconds | this satellite is not broadcasting one for that target |
 
 `get_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
@@ -171,6 +172,7 @@ tried on Galileo never notices them missing.
 OrbitClass
 get_orbit_class
 get_time_of_week
+get_week
 get_broadcast_time_offset
 ```
 

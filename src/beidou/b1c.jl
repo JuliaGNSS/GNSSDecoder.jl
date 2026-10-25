@@ -703,6 +703,9 @@ function get_time_of_week(data::BeiDouB1CData)
     return Int(data.HOW) * 3600 + Int(data.soh) * B1C_SOH_SECONDS
 end
 
+# B-CNAV1's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_week(data::BeiDouB1CData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 

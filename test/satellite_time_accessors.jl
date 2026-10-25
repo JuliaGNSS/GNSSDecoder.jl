@@ -130,6 +130,53 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         @test isnothing(get_time_of_week(GalileoE6BData()))
     end
 
+    @testset "week number" begin
+        for state in all_states()
+            @test isnothing(get_week(state; approximate_year = 2026))   # nothing decoded yet
+            # No default year, on any signal: the decoder never reads the clock.
+            @test_throws UndefKeywordError get_week(state)
+        end
+
+        # LNAV's 10-bit week is resolved to the 1024-week cycle nearest the
+        # middle of `approximate_year`.
+        l1ca(WN) = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSL1CAData(; WN))
+        @test get_week(l1ca(Int64(200)); approximate_year = 2023) == 2248
+        @test get_week(l1ca(Int64(200)); approximate_year = 2003) == 1224
+        @test get_week(l1ca(Int64(200)); approximate_year = 1985) == 200
+        # Either side of the 2019-04-07 rollover (GPS week 2048).
+        @test get_week(l1ca(Int64(1023)); approximate_year = 2019) == 2047
+        @test get_week(l1ca(Int64(0)); approximate_year = 2019) == 2048
+        # Within ±9 years of the observation every year selects the same cycle.
+        for year = 2015:2031
+            @test get_week(l1ca(Int64(2348 - 2048)); approximate_year = year) == 2348
+        end
+        # The data form reads the same week, so raw data can be asked too.
+        @test get_week(GPSL1CAData(; WN = Int64(200)); approximate_year = 2023) == 2248
+
+        # Every other message broadcasts an absolute week; `approximate_year`
+        # is ignored.
+        for (state, data) in (
+            (GPSL1C_DDecoderState(1), GPSL1C_DData(; WN = Int64(2348))),
+            (GPSL5IDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
+            (GPSL2CMDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
+            (GalileoE1BDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
+            (GalileoE5bDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
+            (GalileoE5aDecoderState(1), GalileoE5aData(; WN = Int64(1324))),
+            (BeiDouB1IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
+            (BeiDouB3IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
+            (BeiDouB1CDecoderState(20), BeiDouB1CData(; WN = Int64(992))),
+            (BeiDouB2aDecoderState(20), BeiDouB2aData(; WN = Int64(992))),
+            (BeiDouB2bDecoderState(20), BeiDouB2bData(; WN = Int64(992))),
+        )
+            s = GNSSDecoderState(state; data)
+            @test get_week(s; approximate_year = 2026) == data.WN
+            @test get_week(s; approximate_year = 1990) == data.WN
+        end
+
+        # C/NAV broadcasts no week number.
+        @test isnothing(get_week(GalileoE6BDecoderState(1); approximate_year = 2026))
+    end
+
     @testset "inter-system time offset" begin
         # Galileo: GGTO is GPS-only, two-term, and absent as a set of all-ones.
         scaled = GNSSDecoder.galileo_ggto(0x1234, 0x0abc, 0x10, 0x05)

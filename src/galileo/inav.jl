@@ -605,6 +605,9 @@ end
 # I/NAV broadcasts the time of week as seconds (word types 0, 5 and 6).
 get_time_of_week(data::GalileoINAVData) = data.TOW
 
+# I/NAV's week number is 12 bits from GST's 1999 origin, absolute until 2078.
+get_week(data::GalileoINAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
