@@ -1017,7 +1017,7 @@ get_broadcast_time_of_week(::GalileoE6BData) = nothing
 # HAS carries orbit, clock and bias corrections; inter-system time offsets are
 # not among them. The `GNSS_ID` fields in the satellite masks are constellation
 # indices, not time-offset identifiers.
-get_time_offset(::GNSSDecoderState{<:GalileoE6BData}, ::TimeSystem) = nothing
+broadcast_time_offset(::GNSSDecoderState{<:GalileoE6BData}, ::TimeSystem) = nothing
 
 # ---- Page store (ICD §6.4) ---------------------------------------------------
 

@@ -785,7 +785,7 @@ broadcasting one for `target`.
 1 Galileo, 2 GLONASS, 3-7 reserved (IS-GPS-800J §3.5.4.2.1) — the same table
 CNAV carries in message type 35; see `gps_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem) =
+broadcast_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem) =
     gps_ggto_offset(state, target, state.data.GGTO_ID)
 
 function is_decoding_completed_for_positioning(data::GPSL1C_DData)

@@ -56,13 +56,13 @@ end
 """
     time_offset_allocations(state, target) -> Int
 
-Bytes `get_time_offset(state, target)` allocates once compiled. Navigation
+Bytes `GNSSDecoder.broadcast_time_offset(state, target)` allocates once compiled. Navigation
 solvers read it per satellite per epoch, so a decoder holding a usable offset
 must answer without allocating (issue #101). Unlike `decode!`, this holds on
 Julia 1.10 as well.
 
 The offset is read the way a solver reads it, inside one function. Returned
-across a call that is not inlined instead, a `GNSSTimeOffset` is boxed on 1.10:
+across a call that is not inlined instead, a `BroadcastTimeOffset` is boxed on 1.10:
 its `Union{Nothing,Int}` fields keep it from being a bits type.
 """
 function time_offset_allocations(state, target)
@@ -71,6 +71,6 @@ function time_offset_allocations(state, target)
 end
 
 function read_time_offset(state, target)
-    offset = get_time_offset(state, target)
+    offset = GNSSDecoder.broadcast_time_offset(state, target)
     isnothing(offset) ? 0.0 : offset.A_0 + offset.A_1 + offset.A_2
 end

@@ -797,7 +797,10 @@ Expect `nothing` in practice whatever the target: all three sections are marked
 "(Not broadcast temporarily)" in BDS-SIS-ICD-B1I-3.0, and the B-CNAV signals
 carry the BGTO that replaced them.
 """
-function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::TimeSystem)
+function broadcast_time_offset(
+    state::GNSSDecoderState{<:BeiDouDNAVData},
+    target::TimeSystem,
+)
     data = state.data
     A_0, A_1 =
         target === GPST() ? (data.A_0GPS, data.A_1GPS) :
@@ -805,8 +808,7 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
     # Each section carries both or neither; `A_1` is checked anyway, to narrow it for
     # the call below (see `galileo_ggto_offset`).
     (isnothing(A_0) || isnothing(A_1)) && return nothing
-    broadcast_time_offset(
-        state,
+    assemble_broadcast_time_offset(
         target,
         A_0,
         A_1,

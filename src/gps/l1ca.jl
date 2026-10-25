@@ -517,7 +517,7 @@ get_broadcast_time_of_week(data::GPSL1CAData) = data.TOW
 
 # LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
 # CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
-get_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing
+broadcast_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing
 
 function is_decoding_completed_for_positioning(data::GPSL1CAData)
     !isnothing(data.integrity_status_flag) &&

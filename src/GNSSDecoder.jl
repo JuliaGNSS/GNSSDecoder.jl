@@ -3,7 +3,7 @@ module GNSSDecoder
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
 using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: SECONDS_PER_WEEK
-using Unitful: Hz, s, ustrip
+using Unitful: Hz
 import Aff3ct
 
 export decode!,
@@ -63,8 +63,8 @@ export decode!,
     OrbitClass,
     get_orbit_class,
     get_broadcast_time_of_week,
-    GNSSTimeOffset,
-    get_time_offset,
+    get_broadcast_time_offset,
+    get_broadcast_time_offset_epoch,
     GNSSDecoderState,
     reset_decoder_state!
 
