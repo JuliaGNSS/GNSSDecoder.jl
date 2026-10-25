@@ -532,6 +532,12 @@ end
 # CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
 broadcast_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing
 
+# LNAV carries T_GD alone: no ISCs (see `get_group_delay`).
+function get_group_delay(state::GNSSDecoderState{<:GPSL1CAData}, ::GPSL1CA)
+    is_decoding_completed_for_positioning(state) || return nothing
+    something(state.data.T_GD)
+end
+
 function is_decoding_completed_for_positioning(data::GPSL1CAData)
     !isnothing(data.integrity_status_flag) &&
         !isnothing(data.TOW) &&

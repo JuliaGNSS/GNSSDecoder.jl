@@ -37,6 +37,10 @@ include("allocation_utils.jl")
     include("gnss_supertype.jl")
     include("signal_accessors.jl")
     include("satellite_time_accessors.jl")
+    # Decoder states whose data passes the readiness gate, for the accessors
+    # that answer only once it does.
+    include("complete_data.jl")
+    include("group_delay.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
     include("gps_l1c_d.jl")

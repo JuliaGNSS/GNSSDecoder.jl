@@ -179,6 +179,32 @@ get_broadcast_time_offset
 get_broadcast_time_offset_epoch
 ```
 
+## Group Delay
+
+The broadcast satellite clock is stated for a reference signal or signal pair,
+and a range on any other signal needs that signal's group delay subtracted from
+the clock offset. Which broadcast terms apply, with which sign and scale,
+depends on the message and on the ranging signal, which may be a dataless pilot
+whose navigation data the decoder took from the band's data component — so the
+signal instance the range was measured on is passed in:
+
+```julia
+using GNSSDecoder, GNSSSignals
+signal = GalileoE5aQ()  # as the tracking loop holds it
+Δt_SV_E5a = Δt_SV - get_group_delay(state, signal)  # (f_E1/f_E5a)² · BGD_E1_E5a
+```
+
+A combination of ranges, such as the ionosphere-free one, takes the same
+combination of their group delays. The terms GPS CNAV, BeiDou B2a and, for the
+other civil signals, CNAV-2 broadcast apart from the clock can still be missing
+once a fix is possible;
+until they arrive this returns `nothing`, and the caller chooses whether to
+take the correction as zero or to wait.
+
+```@docs
+get_group_delay
+```
+
 ## Shared Utilities
 
 Signal-independent building blocks used across the decoders (CRC-24Q, the

@@ -849,6 +849,24 @@ get_broadcast_time_of_week(data::GPSCNAVData) = data.TOW
 # CNAV's week number is 13 bits, absolute until 2137.
 get_broadcast_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
 
+# CNAV (L5 and L2C share its container): T_GD less the ranging signal's ISC. The
+# L5 pilot has its own ISC_L5Q5; L2 CL shares ISC_L2C with CM (IS-GPS-200N
+# §30.3.3.3.1.1 defines one for L2C). Neither term is gated on CNAV (message type 30)
+# nor, for L1 C/A, on CNAV-2 (subframe 3 page 2), so either may still be missing once
+# the gate passes; then there is no group delay yet.
+function cnav_group_delay(state, ISC)
+    T_GD = state.data.T_GD
+    (is_decoding_completed_for_positioning(state) && !isnothing(T_GD) && !isnothing(ISC)) ||
+        return nothing
+    something(T_GD) - something(ISC)
+end
+get_group_delay(state::GNSSDecoderState{<:GPSCNAVData}, ::GPSL5I) =
+    cnav_group_delay(state, state.data.ISC_L5I5)
+get_group_delay(state::GNSSDecoderState{<:GPSCNAVData}, ::GPSL5Q) =
+    cnav_group_delay(state, state.data.ISC_L5Q5)
+get_group_delay(state::GNSSDecoderState{<:GPSCNAVData}, ::Union{GPSL2CM,GPSL2CL}) =
+    cnav_group_delay(state, state.data.ISC_L2C)
+
 """
 $(TYPEDSIGNATURES)
 

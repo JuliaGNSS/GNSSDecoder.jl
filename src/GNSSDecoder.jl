@@ -67,6 +67,7 @@ export decode!,
     get_broadcast_week,
     get_broadcast_time_offset,
     get_broadcast_time_offset_epoch,
+    get_group_delay,
     GNSSDecoderState,
     reset_decoder_state!
 

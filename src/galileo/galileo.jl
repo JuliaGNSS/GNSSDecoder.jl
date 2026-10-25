@@ -268,6 +268,12 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
 # left as broadcast — see `resolve_reference_week`.
 const GALILEO_GGTO_WN_MODULUS = 64
 
+# A single-frequency user on the second band of the clock's ionosphere-free pair
+# scales the BGD by `(f_E1/f)²`: 1.79 on E5a, 1.70 on E5b, exactly 1 on E1 (OS
+# SIS ICD §5.1.5). Dropping it leaves a metre-level error per satellite.
+galileo_group_delay_scaling(signal) =
+    (get_center_frequency(GalileoE1B) / get_center_frequency(signal))^2
+
 """
     galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,BroadcastTimeOffset}
 
