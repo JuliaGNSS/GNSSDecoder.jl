@@ -846,6 +846,9 @@ end
 # CNAV's `TOW` is already seconds (the 17-bit count is scaled by 6 at parse).
 get_broadcast_time_of_week(data::GPSCNAVData) = data.TOW
 
+# CNAV's week number is 13 bits, absolute until 2137.
+get_broadcast_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 

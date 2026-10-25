@@ -86,7 +86,8 @@ to a compile-time constant.
 | `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
 | `get_bit_rate` | bit rate as tracked: the channel symbol rate, before error-correction decoding, of the satellite, a BeiDou B1I/B3I GEO satellite's D2 rate where it differs from the signal's | `50 Hz` |
 | `get_time_system` / `get_time_system_id` / `get_time_system_name` | time scale the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
-| `get_system_start_time` / `get_tai_system_start_time` / `get_tai_offset` | that scale's epoch (as a UTC label, and on the continuous TAI scale) and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `1980-01-06T00:00:19` / `19 s` |
+| `get_system_start_time` / `get_tai_system_start_time` / `get_tai_offset` | that scale's epoch (as a UTC label, and on the continuous TAI scale) and offset from TAI | `1980-01-06T00:00:00` / `1980-01-06T00:00:19` / `19 s` |
+| `get_week_start_epoch(state, week)` | the TAI epoch a week of that scale begins at, a GNSSSignals `TAITime`: plus a decoded time of week, the instant (see [`get_broadcast_week`](@ref)) | `1980-01-06T00:00:19 TAI` for week 0 |
 
 Dispatch is on the constants type, which keeps decoders that share a data
 container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and
@@ -120,7 +121,7 @@ get_signal_type
 
 ## Satellite and Time Metadata
 
-Three questions a positioning engine asks of every decoder, whatever signal it
+The questions a positioning engine asks of every decoder, whatever signal it
 is on. Each is answered from broadcast data by some signals and from
 constellation structure by others, and each is reconstruction work the ICD
 defines — so it is done here, once per signal, rather than in every consumer.
@@ -129,6 +130,7 @@ defines — so it is done here, once per signal, rather than in every consumer.
 |:---|:---|:---|
 | [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
 | [`get_broadcast_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
+| [`get_broadcast_week`](@ref) | absolute week number, the GPS L1 C/A rollover resolved | no week number has been decoded and validated yet |
 | [`get_broadcast_time_offset`](@ref) | offset to another constellation's time scale at a time of week, in seconds | this satellite is not broadcasting one for that target |
 | [`get_broadcast_time_offset_epoch`](@ref) | the reference epoch that offset is extrapolated from, to judge its age by | no such offset, or one without a reference epoch (BeiDou D1/D2) |
 
@@ -172,6 +174,7 @@ ever tried on Galileo never notices them missing.
 OrbitClass
 get_orbit_class
 get_broadcast_time_of_week
+get_broadcast_week
 get_broadcast_time_offset
 get_broadcast_time_offset_epoch
 ```

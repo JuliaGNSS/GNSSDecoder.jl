@@ -4,6 +4,7 @@ using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructure
 using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: SECONDS_PER_WEEK
 using Unitful: Hz
+using Dates: Dates, Date
 import Aff3ct
 
 export decode!,
@@ -63,6 +64,7 @@ export decode!,
     OrbitClass,
     get_orbit_class,
     get_broadcast_time_of_week,
+    get_broadcast_week,
     get_broadcast_time_offset,
     get_broadcast_time_offset_epoch,
     GNSSDecoderState,

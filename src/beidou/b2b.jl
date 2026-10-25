@@ -799,6 +799,9 @@ end
 # `decode_sync_unit` on why the English Table 7-2 scale of 3 is a misprint).
 get_broadcast_time_of_week(data::BeiDouB2bData) = data.SOW
 
+# B-CNAV3's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouB2bData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 

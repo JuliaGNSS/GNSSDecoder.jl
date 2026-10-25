@@ -378,12 +378,11 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # `get_constellation_id` / `get_constellation_name`, `get_band` / `get_band_id` /
 # `get_band_name`),
 # and the time scale the decoded week numbers and times of week are referenced
-# to (`get_time_system` and friends — the epochs `get_system_start_time` (UTC
-# label) and `get_tai_system_start_time` (the same instant on the continuous
-# TAI scale, GNSSSignals 4.1) and the TAI offset `get_tai_offset` are what turn
-# a decoded WN/TOW pair into an absolute instant, and the Galileo epoch is 13 s
-# shy of a UTC midnight *and* anchored to GPS Time rather than to UTC, so
-# sourcing them rather than restating them matters).
+# to (`get_time_system` and friends: that scale's epoch as a UTC label,
+# `get_system_start_time`, and on the continuous TAI scale,
+# `get_tai_system_start_time`, and its offset from TAI, `get_tai_offset`; the
+# Galileo epoch is 13 s shy of a UTC midnight *and* anchored to GPS Time rather
+# than to UTC, so sourcing them rather than restating them matters).
 #
 # These extend GNSSSignals' own functions rather than introducing GNSSDecoder
 # names, so a caller already doing `using GNSSSignals` needs no new import and
@@ -416,11 +415,18 @@ end
 @inline GNSSSignals.get_bit_rate(state::GNSSDecoderState) =
     GNSSSignals.get_bit_rate(get_signal_type(state), state.prn)
 
+# The TAI epoch a week of the decoder's time system begins at, forwarded like the
+# accessors above, so that a decoded week and time of week date an instant:
+# `get_week_start_epoch(state, week) + time_of_week`.
+@inline GNSSSignals.get_week_start_epoch(state::GNSSDecoderState, week::Integer) =
+    GNSSSignals.get_week_start_epoch(get_signal_type(state), week)
+
 # ---- Satellite and time metadata --------------------------------------------
 #
-# Three questions a positioning engine asks of every decoder, whatever signal it
-# is on: which orbit is this satellite in, what time of week does its decoded
-# message stamp, and how does its system time relate to another constellation's.
+# The questions a positioning engine asks of every decoder, whatever signal it
+# is on: which orbit is this satellite in, what week and time of week does its
+# decoded message stamp, and how does its system time relate to another
+# constellation's.
 # Each is answered from broadcast data by some signals and from constellation
 # structure by others. Deriving a broadcast quantity from a decoded one is
 # decoding work; it belongs here, next to the ICD knowledge, and is stated once
@@ -560,6 +566,66 @@ cross-subframe consistency check — the same gate
   - [`get_broadcast_time_offset`](@ref): relating that time to another constellation's
 """
 get_broadcast_time_of_week(state::GNSSDecoderState) = get_broadcast_time_of_week(state.data)
+
+"""
+    get_broadcast_week(state::GNSSDecoderState; approximate_year::Integer) -> Union{Nothing,Int}
+    get_broadcast_week(data::AbstractGNSSData; approximate_year::Integer) -> Union{Nothing,Int}
+
+Absolute week number of the decoder's validated navigation data, counted from
+the origin of its own time system (`get_system_start_time`), or `nothing`
+before a week number has been decoded.
+
+It is the week the message broadcasts, not the current one: across a week
+crossover it lags behind (see below). GNSSSignals' `get_week_start_epoch`
+answers for a decoder state, so the broadcast week and time of week date an
+instant on TAI:
+
+```julia
+week = get_broadcast_week(state; approximate_year = 2026)
+time_of_week = get_broadcast_time_of_week(state)
+if !isnothing(week) && !isnothing(time_of_week)
+    epoch = get_week_start_epoch(state, week) + time_of_week  # a GNSSSignals.TAITime
+end
+```
+
+Every message here broadcasts its week number wide enough to be absolute for
+decades (Galileo I/NAV and F/NAV 12 bits; GPS CNAV, CNAV-2, BeiDou D1/D2 and
+B-CNAV 13 bits), except GPS L1 C/A: LNAV sends only the week modulo 1024
+(IS-GPS-200 §20.3.3.3.1.1), which rolls over every 19.6 years (1999-08-22,
+2019-04-07, 2038-11-21, …). That rollover is resolved here, against
+`approximate_year`: the 1024-week cycle that puts the broadcast week nearest
+the middle of that year. Any year within ±9 years of the observation selects
+the right cycle: the current year for a live signal, the year a recording was
+made in for a replay.
+
+`approximate_year` is required on every signal, though only GPS L1 C/A reads
+it, so that a call reads the same whatever decoder it is handed. There is no
+default: the decoder has no notion of the current time, and the year an
+observation was made in is the caller's to know.
+
+Galileo E6-B answers `nothing` always: C/NAV broadcasts no week number (see
+[`get_broadcast_time_of_week`](@ref)).
+
+The week is the one the decoded `WN` field states, which the message that
+carries it updates on its own cadence. Across a week crossover it can lag the
+time of week by a subframe, as the signals' `reset_decoder_state!` notes say.
+
+Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, the
+state form answers only once the message set has been validated; call it on
+`state.raw_data` to see an unvalidated week.
+
+# See Also
+
+  - [`get_broadcast_time_of_week`](@ref):
+    the time within that week
+"""
+get_broadcast_week(state::GNSSDecoderState; approximate_year::Integer) =
+    get_broadcast_week(state.data; approximate_year)
+
+# Every signal states its own `get_broadcast_week(data; approximate_year)`, beside its
+# `get_broadcast_time_of_week`, and there is no fallback reading `data.WN`: a future signal
+# with a truncated week number must resolve it rather than silently inherit the
+# truncated value.
 
 """
     get_broadcast_time_offset(state::GNSSDecoderState, target::TimeSystem, time_of_week) -> Union{Nothing,Float64}

@@ -515,6 +515,19 @@ end
 # scaled by 6 at parse), so there is nothing to reconstruct.
 get_broadcast_time_of_week(data::GPSL1CAData) = data.TOW
 
+# LNAV's 10-bit week number is the only truncated one: resolve its 1024-week
+# rollover against `approximate_year` (see `get_broadcast_week`). The cycle is the one that
+# puts `WN` nearest the middle of that year.
+const LNAV_WN_MODULUS = 1024
+
+function get_broadcast_week(data::GPSL1CAData; approximate_year::Integer)
+    isnothing(data.WN) && return nothing
+    anchor = Date(approximate_year, 6, 30) - Date(get_system_start_time(GPSL1CA))
+    weeks_at_anchor = Dates.value(anchor) ÷ 7
+    cycles = round(Int, (weeks_at_anchor - data.WN) / LNAV_WN_MODULUS)
+    return cycles * LNAV_WN_MODULUS + data.WN
+end
+
 # LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
 # CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
 broadcast_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing

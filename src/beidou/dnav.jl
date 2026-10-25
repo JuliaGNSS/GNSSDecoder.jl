@@ -778,6 +778,9 @@ get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
 # D1/D2 broadcasts the seconds of week outright (LSB 1 s, §5.2.4.3/§5.3.3.1).
 get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
 
+# D1/D2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouDNAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
