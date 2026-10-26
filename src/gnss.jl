@@ -206,6 +206,7 @@ end
 
 @inline function GNSSDecoderState(
     state::GNSSDecoderState;
+    prn = state.prn,
     raw_data = state.raw_data,
     data = state.data,
     cache = state.cache,
@@ -213,7 +214,7 @@ end
     is_shifted_by_180_degrees = state.is_shifted_by_180_degrees,
 )
     GNSSDecoderState(
-        state.prn,
+        Int(prn),
         raw_data,
         data,
         state.constants,
@@ -1403,6 +1404,48 @@ signal's method. As with [`decode!`](@ref), treat the return value as the live
 decoder and do not use `state` afterwards.
 """
 function reset_decoder_state! end
+
+"""
+    reset_decoder_state!(state::GNSSDecoderState, prn::Integer) -> GNSSDecoderState
+
+Reset a decoder for another satellite, `prn`, **overwriting** the buffers
+`state` holds, and return the reset state. Beyond what the one-argument
+`reset_decoder_state!` resets, it clears everything that keeps for a fast
+recovery of the same satellite: the decoded `raw_data` and `data`, the
+repetition-voting tallies, and any message assembly in flight. The polarity is
+unknown again. The preallocated buffers and the decoding scratch are kept, so
+the result decodes `prn` as a newly constructed decoder of the same signal
+would, and the reset allocates nothing.
+
+This is how a receiver moves a channel's decoder to another satellite instead
+of constructing a new state, whose buffers would be allocated anew. Everything a
+decoder does differently per satellite follows `state.prn`, so it changes with
+it: BeiDou B1I and B3I switch between the D1 and D2 formats and their symbol
+rates, and B1C syncs on the new satellite's code word. Galileo E6-B keeps the
+HAS pages it holds, as a HAS message is assembled from pages of any satellite.
+
+As with [`decode!`](@ref), treat the return value as the live decoder and do not
+use `state` afterwards.
+"""
+function reset_decoder_state!(state::GNSSDecoderState{D}, prn::Integer) where {D}
+    state = reset_decoder_state!(state)
+    GNSSDecoderState(
+        state;
+        prn,
+        raw_data = D(),
+        data = D(),
+        cache = clear_satellite_cache(state.cache),
+        num_symbols_since_sync = nothing,
+        is_shifted_by_180_degrees = false,
+    )
+end
+
+# The part of a decoder's cache that belongs to the satellite it decoded and that the
+# one-argument `reset_decoder_state!` keeps for a fast recovery: voting tallies and
+# message assembly in flight. Every cache states its own method, beside the cache,
+# returning it unchanged where it holds none; there is no fallback, so a new cache
+# without one fails loudly rather than carrying its satellite's state over.
+function clear_satellite_cache end
 
 # ---- Shared decoder primitives ----------------------------------------------
 #

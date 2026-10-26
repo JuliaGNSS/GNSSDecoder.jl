@@ -1407,6 +1407,9 @@ struct GalileoE6BCache <: AbstractGNSSCache
     storage::DataStorage{GalileoE6BData}
 end
 
+# Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): a HAS message is assembled from pages of any satellite, so its pages stay.
+clear_satellite_cache(cache::GalileoE6BCache) = cache
+
 GalileoE6BCache() = GalileoE6BCache(
     CircularDeque{Float32}(E6B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, E6B_ENCODED_SYMBOLS),
