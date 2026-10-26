@@ -507,7 +507,7 @@ get_time_of_week(data::GPSL1CAData) = data.TOW
 # puts `WN` nearest the middle of that year.
 const LNAV_WN_MODULUS = 1024
 
-function get_week(data::GPSL1CAData; approximate_year::Integer)
+function get_week(data::GPSL1CAData; approximate_year::Integer = year(now(UTC)))
     isnothing(data.WN) && return nothing
     anchor = Date(approximate_year, 6, 30) - Date(get_system_start_time(GPSL1CA))
     weeks_at_anchor = Dates.value(anchor) ÷ 7

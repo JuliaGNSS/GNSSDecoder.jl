@@ -1014,7 +1014,7 @@ is_decoding_completed_for_positioning(data::GalileoE6BData) = false
 # week, and broadcasts no week number to place it in — see the type docstring on
 # why those stay on the blocks that own them rather than being mirrored flat.
 get_time_of_week(::GalileoE6BData) = nothing
-get_week(::GalileoE6BData; approximate_year::Integer) = nothing
+get_week(::GalileoE6BData; approximate_year::Integer = year(now(UTC))) = nothing
 
 # HAS carries orbit, clock and bias corrections; inter-system time offsets are
 # not among them. The `GNSS_ID` fields in the satellite masks are constellation

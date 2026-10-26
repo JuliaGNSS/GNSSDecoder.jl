@@ -3,7 +3,7 @@ module GNSSDecoder
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
 using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: Hz
-using Dates: Dates, Date
+using Dates: Dates, Date, UTC, now, year
 import Aff3ct
 
 export decode!,

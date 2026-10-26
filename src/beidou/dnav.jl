@@ -776,7 +776,7 @@ get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
 get_time_of_week(data::BeiDouDNAVData) = data.SOW
 
 # D1/D2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_week(data::BeiDouDNAVData; approximate_year::Integer) = data.WN
+get_week(data::BeiDouDNAVData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # D1/D2 states its clock for B3I, which so needs no group delay, and T_GD1 for
 # B1I. Its T_GD2 is for BDS-2's B2I, which this package does not decode.

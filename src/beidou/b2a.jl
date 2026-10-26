@@ -866,7 +866,7 @@ end
 get_time_of_week(data::BeiDouB2aData) = data.SOW
 
 # B-CNAV2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_week(data::BeiDouB2aData; approximate_year::Integer) = data.WN
+get_week(data::BeiDouB2aData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # B-CNAV2 mirrors B-CNAV1, but its terms ride in MT30 alone while the clock is in
 # all of MT30-34, so they are not gated and may still be missing once the gate

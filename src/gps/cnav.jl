@@ -830,7 +830,7 @@ end
 get_time_of_week(data::GPSCNAVData) = data.TOW
 
 # CNAV's week number is 13 bits, absolute until 2137.
-get_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
+get_week(data::GPSCNAVData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # CNAV (L5 and L2C share its container): T_GD less the ranging signal's ISC. The
 # L5 pilot has its own ISC_L5Q5; L2 CL shares ISC_L2C with CM (IS-GPS-200N

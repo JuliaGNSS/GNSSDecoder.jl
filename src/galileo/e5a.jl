@@ -378,7 +378,7 @@ end
 get_time_of_week(data::GalileoE5aData) = data.TOW
 
 # F/NAV's week number is 12 bits from GST's 1999 origin, absolute until 2078.
-get_week(data::GalileoE5aData; approximate_year::Integer) = data.WN
+get_week(data::GalileoE5aData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # F/NAV's clock is for the E1/E5a pair.
 function get_group_delay(

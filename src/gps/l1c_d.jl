@@ -759,7 +759,7 @@ function get_time_of_week(data::GPSL1C_DData)
 end
 
 # CNAV-2's week number is 13 bits, absolute until 2137.
-get_week(data::GPSL1C_DData; approximate_year::Integer) = data.WN
+get_week(data::GPSL1C_DData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # CNAV-2 carries the full L1 ISC set: L1C-D, L1C-P or C/A, each against T_GD.
 get_group_delay(state::GNSSDecoderState{<:GPSL1C_DData}, ::GPSL1C_D) =

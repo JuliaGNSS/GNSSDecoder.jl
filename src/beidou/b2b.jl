@@ -770,7 +770,7 @@ end
 get_time_of_week(data::BeiDouB2bData) = data.SOW
 
 # B-CNAV3's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_week(data::BeiDouB2bData; approximate_year::Integer) = data.WN
+get_week(data::BeiDouB2bData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # B-CNAV3 carries only its own: B2b-I has no pilot and no sibling ISC.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB2bData}, ::BeiDouB2bI)

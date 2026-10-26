@@ -134,8 +134,8 @@ using GNSSDecoder:
     @testset "week number" begin
         for state in all_states()
             @test isnothing(get_week(state; approximate_year = 2026))   # nothing decoded yet
-            # No default year, on any signal: the decoder never reads the clock.
-            @test_throws UndefKeywordError get_week(state)
+            # The current year by default, on every signal.
+            @test isnothing(get_week(state))
         end
 
         # LNAV's 10-bit week is resolved to the 1024-week cycle nearest the

@@ -687,7 +687,7 @@ function get_time_of_week(data::BeiDouB1CData)
 end
 
 # B-CNAV1's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_week(data::BeiDouB1CData; approximate_year::Integer) = data.WN
+get_week(data::BeiDouB1CData; approximate_year::Integer = year(now(UTC))) = data.WN
 
 # B-CNAV1: the B1C pilot's group delay, plus the data component's ISC. Both ride
 # in subframe 2 with the ephemeris. Its T_GD_B2ap is not used: a B2a range
