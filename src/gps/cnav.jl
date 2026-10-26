@@ -35,7 +35,7 @@
 """
     GPSCNAVConstants{S} <: AbstractGNSSConstants
 
-WGS 84 constants and CNAV message structure parameters shared by the GPS CNAV
+CNAV message structure parameters shared by the GPS CNAV
 signals. The CNAV message is identical on GPS L5I and GPS L2C, so the field
 values are identical too; the phantom signal tag `S` (`:GPSL5I` / `:GPSL2CM`)
 exists only so [`is_sat_healthy`](@ref) can dispatch on the signal (L5I reports
@@ -66,26 +66,6 @@ Base.@kwdef struct GPSCNAVConstants{S} <: AbstractGNSSConstants
     Trailing next-message preamble segment retained for sync (16 symbols)
     """
     preamble_length::Int = CNAV_PREAMBLE_SYMBOLS
-    """
-    Mathematical constant π (IS-GPS-705J Table 20-II / IS-GPS-200N §30.3.3)
-    """
-    PI::Float64 = GNSS_PI
-    """
-    WGS 84 Earth rotation rate (rad/s)
-    """
-    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
-    """
-    Speed of light (m/s)
-    """
-    c::Float64 = SPEED_OF_LIGHT
-    """
-    WGS 84 Earth gravitational parameter (m³/s²)
-    """
-    μ::Float64 = GPS_μ
-    """
-    Relativistic correction constant (s/√m)
-    """
-    F::Float64 = GPS_F
 end
 
 """
@@ -1173,8 +1153,6 @@ fields.
 function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
     word = sync.word
     word_length = CNAV_MESSAGE_BITS
-    PI = state.constants.PI
-
     message_id = Int(get_bits(word, word_length, 15, 6))
     # The 17-bit message TOW count, in units of 6 seconds, is the SV time at the
     # start of the *next* message — the next message is 6 s away on L5I and 12 s
@@ -1187,33 +1165,33 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVS
     storage = state.cache.storage.raw
 
     raw = if message_id == 10
-        parse_mt10(raw, word, PI)
+        parse_mt10(raw, word)
     elseif message_id == 11
-        parse_mt11(raw, word, PI)
+        parse_mt11(raw, word)
     elseif message_id == 12
-        parse_mt12!(storage, raw, word, PI)
+        parse_mt12!(storage, raw, word)
     elseif message_id == 13
         parse_mt13!(storage, raw, word)
     elseif message_id == 14
-        parse_mt14!(storage, raw, word, PI)
+        parse_mt14!(storage, raw, word)
     elseif message_id == 15
         parse_mt15(raw, word)
     elseif message_id == 30
         parse_mt30(raw, word)
     elseif message_id == 31
-        parse_mt31!(storage, raw, word, PI)
+        parse_mt31!(storage, raw, word)
     elseif message_id == 32
         parse_mt32(raw, word)
     elseif message_id == 33
         parse_mt33(raw, word)
     elseif message_id == 34
-        parse_mt34!(storage, raw, word, PI)
+        parse_mt34!(storage, raw, word)
     elseif message_id == 35
         parse_mt35(raw, word)
     elseif message_id == 36
         parse_mt36(raw, word)
     elseif message_id == 37
-        parse_mt37!(storage, raw, word, PI)
+        parse_mt37!(storage, raw, word)
     elseif message_id == 40
         parse_mt40(raw, word)
     else
@@ -1232,7 +1210,7 @@ end
 """
 Message type 10 — ephemeris 1 + health (IS-GPS-705J Fig 20-1, Table 20-I).
 """
-function parse_mt10(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt10(raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     GPSCNAVData(
         raw;
@@ -1245,13 +1223,13 @@ function parse_mt10(raw::GPSCNAVData, word::UInt320, PI::Float64)
         t_0e = Int64(get_bits(word, word_length, 71, 11)) * 300,
         ΔA = get_twos_complement_num(word, word_length, 82, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 108, 25) * 2.0^-21,
-        Δn_0 = get_twos_complement_num(word, word_length, 133, 17) * 2.0^-44 * PI,
-        Δn_0_dot = get_twos_complement_num(word, word_length, 150, 23) * 2.0^-57 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 173, 33) * 2.0^-32 * PI,
+        Δn_0 = get_twos_complement_num(word, word_length, 133, 17) * 2.0^-44 * GNSS_PI,
+        Δn_0_dot = get_twos_complement_num(word, word_length, 150, 23) * 2.0^-57 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, 173, 33) * 2.0^-32 * GNSS_PI,
         # 33-bit field: convert through Int64 explicitly (a platform Int
         # would overflow on 32-bit), matching the BeiDou B-CNAV parsers.
         e = Int64(get_bits(word, word_length, 206, 33)) * 2.0^-34,
-        ω = get_twos_complement_num(word, word_length, 239, 33) * 2.0^-32 * PI,
+        ω = get_twos_complement_num(word, word_length, 239, 33) * 2.0^-32 * GNSS_PI,
         integrity_status_flag = get_bit(word, word_length, 272),
         l2c_phasing = get_bit(word, word_length, 273),
     )
@@ -1260,15 +1238,15 @@ end
 """
 Message type 11 — ephemeris 2 (IS-GPS-705J Fig 20-2, Table 20-I).
 """
-function parse_mt11(raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt11(raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     GPSCNAVData(
         raw;
         t_0e = Int64(get_bits(word, word_length, 39, 11)) * 300,
-        Ω_0 = get_twos_complement_num(word, word_length, 50, 33) * 2.0^-32 * PI,
-        i_0 = get_twos_complement_num(word, word_length, 83, 33) * 2.0^-32 * PI,
-        ΔΩ_dot = get_twos_complement_num(word, word_length, 116, 17) * 2.0^-44 * PI,
-        i_dot = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, 50, 33) * 2.0^-32 * GNSS_PI,
+        i_0 = get_twos_complement_num(word, word_length, 83, 33) * 2.0^-32 * GNSS_PI,
+        ΔΩ_dot = get_twos_complement_num(word, word_length, 116, 17) * 2.0^-44 * GNSS_PI,
+        i_dot = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * GNSS_PI,
         C_is = get_twos_complement_num(word, word_length, 148, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 164, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 180, 24) * 2.0^-8,
@@ -1324,13 +1302,7 @@ end
 """
 Decode one 31-bit reduced-almanac packet starting at 1-based bit `start` (IS-GPS-705J Fig 20-16).
 """
-function _cnav_reduced_almanac_packet(
-    word::UInt320,
-    start::Int,
-    WN_a::Int,
-    t_0a::Int,
-    PI::Float64,
-)
+function _cnav_reduced_almanac_packet(word::UInt320, start::Int, WN_a::Int, t_0a::Int)
     word_length = CNAV_MESSAGE_BITS
     PRN_a = Int(get_bits(word, word_length, start, 6))
     PRN_a == 0 && return nothing  # empty packet ⇒ no further packets follow
@@ -1339,8 +1311,8 @@ function _cnav_reduced_almanac_packet(
         WN_a,
         t_0a,
         δA = get_twos_complement_num(word, word_length, start + 6, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 14, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, word_length, start + 21, 7) * 2.0^-6 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 14, 7) * 2.0^-6 * GNSS_PI,
+        Φ_0 = get_twos_complement_num(word, word_length, start + 21, 7) * 2.0^-6 * GNSS_PI,
         l1_health = get_bit(word, word_length, start + 28),
         l2_health = get_bit(word, word_length, start + 29),
         l5_health = get_bit(word, word_length, start + 30),
@@ -1348,13 +1320,13 @@ function _cnav_reduced_almanac_packet(
 end
 
 """
-    parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+    parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 12 — seven reduced-almanac packets (IS-GPS-705J Fig 20-11).
 Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` (or, on the
 first almanac, of the preallocated `storage.reduced_almanacs`).
 """
-function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     WN_a = Int(get_bits(word, word_length, 39, 13))
     t_0a = Int(get_bits(word, word_length, 52, 8)) * 2^12
@@ -1366,7 +1338,6 @@ function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::
         (60, 91, 122, 153, 184, 215, 246),
         WN_a,
         t_0a,
-        PI,
     )
 end
 
@@ -1381,14 +1352,13 @@ function _cnav_reduced_almanac_packets!(
     starts::Tuple,
     WN_a::Int,
     t_0a::Int,
-    PI::Float64,
 )
-    first_packet = _cnav_reduced_almanac_packet(word, first(starts), WN_a, t_0a, PI)
+    first_packet = _cnav_reduced_almanac_packet(word, first(starts), WN_a, t_0a)
     # No packet at all: leave the store (and `nothing` before the first one) as is.
     isnothing(first_packet) && return raw
     almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
     for start in starts
-        packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_0a, PI)
+        packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_0a)
         isnothing(packet) && break  # PRN_a==0 ⇒ remaining packets are filler
         set!(almanacs, packet.PRN_a, packet)
     end
@@ -1396,19 +1366,19 @@ function _cnav_reduced_almanac_packets!(
 end
 
 """
-    parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+    parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 31 — clock & four reduced-almanac packets (IS-GPS-705J Fig 20-4).
 Each packet **overwrites** its PRN's slot of the reduced-almanac store, as in
 [`parse_mt12!`](@ref GNSSDecoder.parse_mt12!).
 """
-function parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     WN_a = Int(get_bits(word, word_length, 128, 13))
     t_0a = Int(get_bits(word, word_length, 141, 8)) * 2^12
     # Four 31-bit packets at bits 149, 180, 211, 242.
-    _cnav_reduced_almanac_packets!(storage, raw, word, (149, 180, 211, 242), WN_a, t_0a, PI)
+    _cnav_reduced_almanac_packets!(storage, raw, word, (149, 180, 211, 242), WN_a, t_0a)
 end
 
 """
@@ -1467,13 +1437,13 @@ function parse_mt35(raw::GPSCNAVData, word::UInt320)
 end
 
 """
-    parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+    parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 37 — clock & one Midi almanac (IS-GPS-705J Fig 20-10, Table 20-V).
 The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` (or, on the
 first one, of the preallocated `storage.midi_almanacs`).
 """
-function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     PRN_a = Int(get_bits(word, word_length, 149, 6))
@@ -1486,12 +1456,12 @@ function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::
         l2_health = get_bit(word, word_length, 156),
         l5_health = get_bit(word, word_length, 157),
         e = Int(get_bits(word, word_length, 158, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, 169, 11) * 2.0^-14 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 180, 11) * 2.0^-33 * PI,
+        δi = get_twos_complement_num(word, word_length, 169, 11) * 2.0^-14 * GNSS_PI,
+        Ω_dot = get_twos_complement_num(word, word_length, 180, 11) * 2.0^-33 * GNSS_PI,
         sqrt_A = Int(get_bits(word, word_length, 191, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, word_length, 208, 16) * 2.0^-15 * PI,
-        ω = get_twos_complement_num(word, word_length, 224, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 240, 16) * 2.0^-15 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, 208, 16) * 2.0^-15 * GNSS_PI,
+        ω = get_twos_complement_num(word, word_length, 224, 16) * 2.0^-15 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, 240, 16) * 2.0^-15 * GNSS_PI,
         a_f0 = get_twos_complement_num(word, word_length, 256, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, 267, 10) * 2.0^-37,
     )
@@ -1537,7 +1507,6 @@ function _cnav_edc_packet(
     t_op_D::Int,
     t_OD::Int,
     dc_data_type::Bool,
-    PI::Float64,
 )
     word_length = CNAV_MESSAGE_BITS
     PRN_a = Int(get_bits(word, word_length, start, 8))
@@ -1549,9 +1518,9 @@ function _cnav_edc_packet(
         dc_data_type,
         Δα = get_twos_complement_num(word, word_length, start + 8, 14) * 2.0^-34,
         Δβ = get_twos_complement_num(word, word_length, start + 22, 14) * 2.0^-34,
-        Δγ = get_twos_complement_num(word, word_length, start + 36, 15) * 2.0^-32 * PI,
-        Δi = get_twos_complement_num(word, word_length, start + 51, 12) * 2.0^-32 * PI,
-        ΔΩ = get_twos_complement_num(word, word_length, start + 63, 12) * 2.0^-32 * PI,
+        Δγ = get_twos_complement_num(word, word_length, start + 36, 15) * 2.0^-32 * GNSS_PI,
+        Δi = get_twos_complement_num(word, word_length, start + 51, 12) * 2.0^-32 * GNSS_PI,
+        ΔΩ = get_twos_complement_num(word, word_length, start + 63, 12) * 2.0^-32 * GNSS_PI,
         ΔA = get_twos_complement_num(word, word_length, start + 75, 12) * 2.0^-9,
         UDRA_dot_index = get_twos_complement_num(word, word_length, start + 87, 5),
     )
@@ -1590,13 +1559,13 @@ function parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
 end
 
 """
-    parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+    parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 14 — ephemeris differential correction (IS-GPS-705J Fig 20-13).
 Each EDC packet **overwrites** its PRN's slot of `raw.ephemeris_corrections`
 (or, on the first one, of the preallocated `storage.ephemeris_corrections`).
 """
-function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     t_op_D = Int(get_bits(word, word_length, 39, 11)) * 300
     t_OD = Int(get_bits(word, word_length, 50, 11)) * 300
@@ -1607,7 +1576,7 @@ function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::
     # Two 93-bit packets (1 DC data type bit + 92-bit EDC) at bits 61, 154.
     for start in (61, 154)
         dc_data_type = get_bit(word, word_length, start)
-        packet = _cnav_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type, PI)
+        packet = _cnav_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
         # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is
         # contained in the remainder of the data block ... the remainder shall
         # be filler bits, i.e. alternating ones and zeros beginning with one".
@@ -1622,21 +1591,21 @@ function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::
 end
 
 """
-    parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word, PI) -> GPSCNAVData
+    parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 34 — clock & one CDC+EDC pair (IS-GPS-705J Fig 20-7). Each
 non-empty packet **overwrites** its PRN's slot of the clock / ephemeris
 correction store, as in [`parse_mt13!`](@ref GNSSDecoder.parse_mt13!) /
 [`parse_mt14!`](@ref GNSSDecoder.parse_mt14!).
 """
-function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320, PI::Float64)
+function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     t_op_D = Int(get_bits(word, word_length, 128, 11)) * 300
     t_OD = Int(get_bits(word, word_length, 139, 11)) * 300
     dc_data_type = get_bit(word, word_length, 150)
     cdc = _cnav_cdc_packet(word, 151, t_op_D, t_OD, dc_data_type)
-    edc = _cnav_edc_packet(word, 185, t_op_D, t_OD, dc_data_type, PI)
+    edc = _cnav_edc_packet(word, 185, t_op_D, t_OD, dc_data_type)
     if !isnothing(cdc)
         clock_corrections =
             writable_container(raw.clock_corrections, storage.clock_corrections)

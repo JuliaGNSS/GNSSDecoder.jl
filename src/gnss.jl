@@ -102,21 +102,18 @@ of [`AbstractGPSCNAVData`](@ref).
 """
 abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
 
-# Physical constants common to every GNSS handled here. Each per-signal
-# `*Constants` struct exposes these as fields (so the orbit/clock math reads
-# `state.constants.PI` etc.); the defaults are sourced from here to keep a single
-# source of truth. Constellation-specific values that genuinely differ by
-# reference frame — the Earth gravitational parameter μ and the relativistic
-# correction F — are *not* here: GPS uses WGS-84 values and Galileo the GTRF
-# values, defined alongside each constellation.
+# Physical constants common to every GNSS handled here. The constants each ICD
+# fixes for its own ephemeris algorithm — the Earth gravitational parameter μ,
+# the relativistic correction F that follows from it and, for BeiDou, the Earth
+# rotation rate — are *not* here: GPS uses the WGS-84 values, BeiDou the BDCS
+# values and Galileo its own, defined alongside each constellation.
 #
 # `GNSS_PI` is deliberately the truncated value the ICDs fix for the
 # semicircle→radian scaling (IS-GPS-200 Table 20-IV; Galileo OS SIS ICD Table 68),
 # *not* `Base.π` — broadcast angular quantities must be scaled with exactly this
 # value to reproduce the transmitted numbers bit-for-bit.
 const GNSS_PI = 3.1415926535898
-const SPEED_OF_LIGHT = 2.99792458e8        # m/s
-const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and GTRF agree)
+const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and the Galileo ICD agree)
 
 """
 $(TYPEDEF)
