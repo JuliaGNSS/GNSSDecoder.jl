@@ -8,10 +8,7 @@
 # IS-GPS-800G §3.5.3.5, IS-GPS-200N §3.5.3.5.
 #
 # The CRC field appears at the end of the message, so a correctly received
-# message satisfies `crc24q(whole_message_with_crc) == 0`. This replaced the
-# legacy inline `galCRC24` (built from the `CRC` package) when Galileo E1B
-# migrated to the soft-symbol decode path in issue #37; the `CRC` dependency
-# is no longer required.
+# message satisfies `crc24q(whole_message_with_crc) == 0`.
 
 const CRC24Q_POLY = UInt32(0x01864cfb)
 const CRC24Q_MASK = UInt32(0x00ffffff)
