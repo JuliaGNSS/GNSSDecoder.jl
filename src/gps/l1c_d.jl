@@ -1,4 +1,4 @@
-# GPS L1C-D (CNAV-2) decoder — TOI sync + subframe 2 (issue #38).
+# GPS L1C-D (CNAV-2) decoder — TOI sync, subframe 2 and subframe 3.
 #
 # The L1C-D civil data signal carries the CNAV-2 message as 18-second frames
 # of 1800 symbols at 100 sps:
@@ -10,10 +10,10 @@
 #     subframe 2 (600 info bits) followed by a 548-symbol rate-½ LDPC
 #     codeword for subframe 3 (274 info bits).
 #
-# This slice decodes subframe 2 fully (clock + ephemeris, IS-GPS-800J
-# Figure 3.5-1 / Table 3.5-1) and LDPC-decodes + CRC-checks subframe 3 but
-# only records that a page was received; the per-page subframe-3 field
-# parsing lands in issue #39.
+# Subframe 2 carries the clock and ephemeris (IS-GPS-800J Figure 3.5-1 /
+# Table 3.5-1). Subframe 3 is paged: pages 1-6 (UTC + ionosphere + ISC, GGTO +
+# EOP, reduced almanac, midi almanac, differential correction, text; Figures
+# 3.5-2 to 3.5-7) are parsed, and any other page is counted but not parsed.
 #
 # Frame sync follows the generic streaming framework in `src/gnss.jl`: the
 # soft-symbol `CircularDeque` is sized to one full subframe (1800) plus the
@@ -277,9 +277,9 @@ end
 Decoded GPS L1C-D (CNAV-2) navigation message data.
 
 Holds the subframe-2 clock, ephemeris, and accuracy parameters (IS-GPS-800J
-Figure 3.5-1 / Table 3.5-1). Subframe-3 page contents are not parsed in this
-slice (issue #39); only the count of CRC-valid subframe-3 pages received is
-tracked. Field-naming follows [`GPSL1CAData`](@ref): semi-circle quantities are
+Figure 3.5-1 / Table 3.5-1) and the contents of subframe-3 pages 1-6
+(Figures 3.5-2 to 3.5-7), together with the count of CRC-valid subframe-3
+pages received. Field-naming follows [`GPSL1CAData`](@ref): semi-circle quantities are
 converted to radians on decode (multiplied by π), all `Union{Nothing,…}` until
 first decoded.
 
@@ -934,8 +934,8 @@ end
 Process one locked CNAV-2 frame. Enforces a monotonic TOI (each frame's TOI must
 be `(previous + 1) mod 400`; a break resets the decoder to searching), then
 deinterleaves and LDPC-decodes subframes 2 and 3 from the 1748-symbol payload,
-CRC-checking each. Subframe 2 fields are parsed into `raw_data`; subframe 3 is
-recorded as a received page (issue #39 will parse it).
+CRC-checking each. Subframe 2 fields and the subframe 3 page are parsed into
+`raw_data`.
 """
 function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
     # `sync` always carries the *low* branch of the BCH complement ambiguity
