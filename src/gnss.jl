@@ -421,11 +421,7 @@ end
 # is on: which orbit is this satellite in, what time of week does its decoded
 # message stamp, and how does its system time relate to another constellation's.
 # Each is answered from broadcast data by some signals and from constellation
-# structure by others, and each was, before these accessors existed, reassembled
-# by the consumer out of raw fields — `PositionVelocityTime.jl` inferred the
-# orbit class from the symbol rate, spelled out the ICD's time-of-week
-# reconstruction for two signals, and normalised three shapes of the same
-# inter-system offset. Deriving a broadcast quantity from a decoded one is
+# structure by others. Deriving a broadcast quantity from a decoded one is
 # decoding work; it belongs here, next to the ICD knowledge, and is stated once
 # per signal rather than once per consumer.
 
@@ -946,8 +942,8 @@ end
     pack_buffer(state) -> Unsigned
 
 Hard-slice the leading `syncro_sequence_length + preamble_length` soft
-symbols of the per-signal soft buffer into a packed-bit value (the v1
-`raw_buffer`: oldest bit at MSB, newest bit at LSB). The concrete unsigned
+symbols of the per-signal soft buffer into a packed-bit value (oldest bit at
+MSB, newest bit at LSB). The concrete unsigned
 type is signal-specific and supplied by `packed_buffer_type`. The
 result is a plain value — it is threaded through the sync path rather than
 stashed in mutable cache state.
@@ -1068,9 +1064,8 @@ end
 If the newest preamble in `buffer` is the *inverted* preamble, return the
 state flagged `is_shifted_by_180_degrees = true` together with the
 complemented buffer; otherwise return the state flagged `false` with `buffer`
-unchanged. The polarity-resolved buffer is returned as a value (the v1
-`buffer`) for the per-signal `decode_syncro_sequence` to consume. Mirrors v1
-behaviour.
+unchanged. The polarity-resolved buffer is returned as a value for the
+per-signal `decode_syncro_sequence` to consume.
 """
 function complement_buffer_if_necessary(state::GNSSDecoderState, buffer)
     mask = calc_preamble_mask(state.constants)
