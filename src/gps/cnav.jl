@@ -28,7 +28,7 @@
 # (600 symbols) plus the 16-symbol encoding of the *next* message's start
 # (616 total); each sync attempt Viterbi-decodes the whole window on the raw
 # `Float32` LLRs and requires the preamble at *both ends* of the decoded
-# window (in either polarity, mirroring `find_preamble`) plus a clean
+# window (in either polarity, mirroring `find_preamble_in_deque`) plus a clean
 # CRC-24Q before locking. Symbol-pair phase ambiguity needs no special
 # handling — a misaligned window simply fails to sync and slides one symbol.
 
@@ -1043,7 +1043,7 @@ end
 #
 # Override the generic packed-buffer sync: the CNAV preamble only exists in
 # the *decoded* bit domain, so each sync attempt Viterbi-decodes the whole
-# 616-symbol window into 308 bits and mirrors `find_preamble` on the result —
+# 616-symbol window into 308 bits and mirrors `find_preamble_in_deque` on the result —
 # the preamble must be visible at both the start of this message (bits 1-8)
 # and the start of the next (bits 301-308), either both upright or both
 # inverted (the NSC generators have odd weight, so a 180°-inverted symbol

@@ -232,8 +232,13 @@ end
         # Only the last page completes the group.
         @test !isnothing(group)
         @test length(group.page_ids) == example.message_size
-        @test GNSSDecoder.e6b_reassemble_message(group) ==
-              has_octets(example.message_octets_hex...)
+        octets = Vector{UInt8}(undef, example.message_size * 53)
+        @test GNSSDecoder.e6b_reassemble_message!(
+            octets,
+            GNSSDecoder.RSErasureScratch(32),
+            group,
+        ) == length(octets)
+        @test octets == has_octets(example.message_octets_hex...)
     end
 end
 
@@ -465,7 +470,7 @@ end
 
 """
 Pack a bit vector into whole octets, zero-padding the tail — the shape
-`parse_has_message` reads a reassembled HAS message in.
+`parse_has_message!` reads a reassembled HAS message in.
 """
 function e6b_message_octets(bits::Vector{Bool})
     padded = vcat(bits, falses(mod(-length(bits), 8)))
@@ -473,6 +478,20 @@ function e6b_message_octets(bits::Vector{Bool})
         reduce((acc, b) -> (acc << 1) | UInt8(b), padded[i:(i+7)]; init = UInt8(0))
     end
 end
+
+"""
+Parse `octets` as one whole HAS message (ID 1, type 1, size 1, no mask) with a
+fresh parser, so the result owns its blocks.
+"""
+parse_has_message(octets::Vector{UInt8}) = GNSSDecoder.parse_has_message!(
+    GNSSDecoder.GalileoHASParser(),
+    octets,
+    length(octets),
+    1,
+    1,
+    1,
+    nothing,
+)
 
 """
 The 32 MT1 header bits (HAS SIS ICD Table 12).
@@ -529,9 +548,7 @@ end
             galileo_push_field!(Bool[], 0, 4),      # Nsys = 0
             galileo_push_field!(Bool[], 0, 6),      # reserved
         )
-        @test isnothing(
-            GNSSDecoder.parse_has_message(e6b_message_octets(bits), 1, 1, 1, nothing),
-        )
+        @test isnothing(parse_has_message(e6b_message_octets(bits)))
         # Positive control: the same message with Nsys = 1 parses, so the
         # rejection above is the zero and not the framing.
         bits = vcat(
@@ -540,7 +557,7 @@ end
             one_gps_system,
             galileo_push_field!(Bool[], 0, 6),
         )
-        message = GNSSDecoder.parse_has_message(e6b_message_octets(bits), 1, 1, 1, nothing)
+        message = parse_has_message(e6b_message_octets(bits))
         @test message isa GalileoHASMessage
         @test message.mask.mask_id == 7
         @test message.mask.satellite_masks[1].SVIDs == [1]
@@ -558,7 +575,7 @@ end
             galileo_push_field!(Bool[], 5, 4),      # Validity Interval Index
             galileo_push_field!(Bool[], 0, 4),      # Nsys_sub = 0
         )
-        message = GNSSDecoder.parse_has_message(e6b_message_octets(bits), 1, 1, 1, nothing)
+        message = parse_has_message(e6b_message_octets(bits))
         # The mask parsed before the bad block survives; the block itself does not.
         @test message isa GalileoHASMessage
         @test !isnothing(message.mask)
@@ -576,7 +593,7 @@ end
             Bool[true],                         # satellite submask: the one satellite
             galileo_push_field!(Bool[], 400, 13),   # Delta Clock C0 = 400 × 0.0025 m
         )
-        message = GNSSDecoder.parse_has_message(e6b_message_octets(bits), 1, 1, 1, nothing)
+        message = parse_has_message(e6b_message_octets(bits))
         subset = message.clock_subset_corrections
         @test !isnothing(subset)
         @test subset.validity_interval == 60

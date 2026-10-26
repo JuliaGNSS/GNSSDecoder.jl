@@ -11,7 +11,25 @@ using GNSSDecoder:
     GALILEO_HAS_GF256,
     rs_generator_polynomial,
     rs_systematic_generator_matrix,
-    rs_erasure_decode
+    rs_erasure_decode!,
+    RSErasureScratch
+
+"""
+    rs_erasure_decode(field, G, received_rows, received, k) -> Union{Nothing,Matrix{UInt8}}
+
+[`rs_erasure_decode!`](@ref) into a freshly allocated `k × J` matrix, row `i`
+holding information symbol block `i`.
+"""
+function rs_erasure_decode(field, G, received_rows, received, k)
+    size(received, 1) == k ||
+        throw(DimensionMismatch("expected $k received rows, got $(size(received, 1))"))
+    J = size(received, 2)
+    out = Vector{UInt8}(undef, k * J)
+    decoded =
+        rs_erasure_decode!(out, RSErasureScratch(k), field, G, received_rows, received, k)
+    isnothing(decoded) && return nothing
+    return permutedims(reshape(out, J, k))
+end
 
 @testset "GF(256) field arithmetic" begin
     field = GALILEO_HAS_GF256
@@ -158,7 +176,7 @@ end
 @testset "GF(256) matrix inverse" begin
     field = GALILEO_HAS_GF256
     A = UInt8[0x02 0x03; 0x01 0x01]
-    Ainv = GNSSDecoder.gf_invert(field, A)
+    Ainv = GNSSDecoder.gf_invert!(zeros(UInt8, 2, 2), copy(A), field, 2)
     @test !isnothing(Ainv)
     product = [
         reduce(
@@ -167,6 +185,13 @@ end
         ) for i = 1:2, j = 1:2
     ]
     @test product == UInt8[0x01 0x00; 0x00 0x01]
-    @test isnothing(GNSSDecoder.gf_invert(field, UInt8[0x01 0x01; 0x01 0x01]))
-    @test_throws DimensionMismatch GNSSDecoder.gf_invert(field, zeros(UInt8, 2, 3))
+    @test isnothing(
+        GNSSDecoder.gf_invert!(zeros(UInt8, 2, 2), UInt8[0x01 0x01; 0x01 0x01], field, 2),
+    )
+    @test_throws DimensionMismatch GNSSDecoder.gf_invert!(
+        zeros(UInt8, 2, 2),
+        zeros(UInt8, 2, 1),
+        field,
+        2,
+    )
 end

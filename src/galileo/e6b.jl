@@ -121,7 +121,7 @@ const E6B_RS_CODE_DIMENSION = 32
 The systematic RS(255, 32) generator matrix of the HPVRS outer layer (ICD Annex
 B), built once at load time from the narrow-sense generator polynomial.
 
-Both its arguments are compile-time constants and `rs_erasure_decode` only reads
+Both its arguments are compile-time constants and `rs_erasure_decode!` only reads
 it, so it is shared by every decoder state rather than rebuilt and stored per
 satellite — 8160 read-only octets and ~70 µs each otherwise.
 """
@@ -1596,7 +1596,7 @@ C/NAV page sync (HAS SIS ICD, Issue 1.0, §2.3). Two gates, cheapest first:
 
  1. The 16-bit sync pattern `1011011101110000` must appear at both ends of the
     1016-symbol window (start of this page and start of the next), both upright
-    or both inverted (the shared `find_preamble` rule, resolving the 180-degree
+    or both inverted (the shared `find_preamble_in_deque` rule, resolving the 180-degree
     carrier ambiguity).
  2. The 984 encoded symbols must Viterbi-decode to a 486-bit page whose
     CRC-24Q over the leading 462 bits matches the broadcast checksum.
@@ -2230,30 +2230,6 @@ function parse_has_message!(
     return message
 end
 
-"""
-    parse_has_message(octets, message_id, message_type, message_size, masks)
-        -> Union{Nothing,Symbol,GalileoHASMessage}
-
-[`parse_has_message!`](@ref) of the whole of `octets` into freshly allocated
-storage — a convenience for inspecting a single message outside a decoder. The
-returned message owns its blocks.
-"""
-parse_has_message(
-    octets::Vector{UInt8},
-    message_id::Int,
-    message_type::Int,
-    message_size::Int,
-    masks,
-) = parse_has_message!(
-    GalileoHASParser(),
-    octets,
-    length(octets),
-    message_id,
-    message_type,
-    message_size,
-    masks,
-)
-
 # ---- Page accumulation and message assembly (ICD §6.4) ----------------------
 
 """
@@ -2292,19 +2268,6 @@ function e6b_reassemble_message!(
     )
     isnothing(decoded) && return nothing
     return k * E6B_OCTETS_PER_PAGE
-end
-
-"""
-    e6b_reassemble_message(group) -> Union{Nothing,Vector{UInt8}}
-
-[`e6b_reassemble_message!`](@ref) into a freshly allocated vector of exactly the
-message's octets.
-"""
-function e6b_reassemble_message(group::GalileoHASPageGroup)
-    octets = Vector{UInt8}(undef, group.message_size * E6B_OCTETS_PER_PAGE)
-    num_octets =
-        e6b_reassemble_message!(octets, RSErasureScratch(E6B_RS_CODE_DIMENSION), group)
-    return isnothing(num_octets) ? nothing : octets
 end
 
 """
