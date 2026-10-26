@@ -25,9 +25,18 @@
         for name in keys(shared)
             @test getfield(ephemeris, name) == getfield(shared, name)
         end
-        @test ephemeris.μ == state.constants.μ
-        @test ephemeris.F == state.constants.F
-        @test ephemeris.Ω_dot_e == state.constants.Ω_dot_e
+        # The constants of the constellation's reference frame: WGS-84 for GPS
+        # (IS-GPS-200 Table 20-IV), GTRF for Galileo (OS SIS ICD Table 58), BDCS
+        # for BeiDou (BDS-SIS-ICD-B1I-3.0 §5.2.4.12), whose rotation rate differs.
+        μ, F, Ω_dot_e =
+            state.data isa GNSSDecoder.AbstractGPSData ?
+            (3.986005e14, -4.442807633e-10, 7.2921151467e-5) :
+            state.data isa GNSSDecoder.AbstractGalileoData ?
+            (3.986004418e14, -4.442807309e-10, 7.2921151467e-5) :
+            (3.986004418e14, -4.442807309e-10, 7.2921150e-5)
+        @test ephemeris.μ == μ
+        @test ephemeris.F == F
+        @test ephemeris.Ω_dot_e == Ω_dot_e
     end
 
     @testset "nothing until the positioning set is complete" begin

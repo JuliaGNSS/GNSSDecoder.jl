@@ -20,6 +20,9 @@
 # package-wide `EARTH_ROTATION_RATE` must *not* be used for BeiDou.
 const BEIDOU_μ = 3.986004418e14                # geocentric gravitational constant (m³/s²)
 const BEIDOU_EARTH_ROTATION_RATE = 7.2921150e-5 # Earth rotation rate of BDCS (rad/s)
+# Relativistic correction constant F = −2√μ/c² (s/√m; B1C-1.0 §7.5.2 and the
+# B2a/B2b counterparts): Galileo's GTRF value, because μ agrees.
+const BEIDOU_F = -4.442807309e-10
 
 # Whether a broadcast B-CNAV satellite orbit type names an orbit class. The
 # 2-bit field encodes 1 = GEO, 2 = IGSO, 3 = MEO and reserves 0 (Table 7-6 of
@@ -353,13 +356,13 @@ beidou_bgto_block(word::Unsigned, word_length::Int, start::Int) = (;
 )
 
 """
-    beidou_midi_almanac(word, word_length, start, PI) -> Union{Nothing,BeiDouMidiAlmanac}
+    beidou_midi_almanac(word, word_length, start) -> Union{Nothing,BeiDouMidiAlmanac}
 
 One 156-bit midi-almanac block (Figure 6-21, Table 7-13), or `nothing` for the
 `PRN_a == 0` encoding that marks an empty slot — no almanac was broadcast in this
 frame, and the following blocks may still be valid.
 """
-function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int, PI::Float64)
+function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int)
     PRN_a = Int(get_bits(word, word_length, start, 6))
     PRN_a == 0 && return nothing
     BeiDouMidiAlmanac(;
@@ -368,12 +371,18 @@ function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int, PI::F
         WN_a = Int(get_bits(word, word_length, start + 8, 13)),
         t_0a = Int(get_bits(word, word_length, start + 21, 8)) * 2^12,
         e = Int(get_bits(word, word_length, start + 29, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, start + 40, 11) * 2.0^-14 * PI,
+        δi = get_twos_complement_num(word, word_length, start + 40, 11) * 2.0^-14 * GNSS_PI,
         sqrt_A = Int(get_bits(word, word_length, start + 51, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 68, 16) * 2.0^-15 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, start + 84, 11) * 2.0^-33 * PI,
-        ω = get_twos_complement_num(word, word_length, start + 95, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, word_length, start + 111, 16) * 2.0^-15 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 68, 16) *
+              2.0^-15 *
+              GNSS_PI,
+        Ω_dot = get_twos_complement_num(word, word_length, start + 84, 11) *
+                2.0^-33 *
+                GNSS_PI,
+        ω = get_twos_complement_num(word, word_length, start + 95, 16) * 2.0^-15 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, start + 111, 16) *
+              2.0^-15 *
+              GNSS_PI,
         a_f0 = get_twos_complement_num(word, word_length, start + 127, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, start + 138, 10) * 2.0^-37,
         health = Int(get_bits(word, word_length, start + 148, 8)),
@@ -381,7 +390,7 @@ function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int, PI::F
 end
 
 """
-    beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
+    beidou_reduced_almanac(word, word_length, start, WN_a, t_0a)
         -> Union{Nothing,BeiDouReducedAlmanac}
 
 One 38-bit reduced-almanac block (Figure 6-18, Table 7-16), or `nothing` for the
@@ -395,7 +404,6 @@ function beidou_reduced_almanac(
     start::Int,
     WN_a::Integer,
     t_0a::Integer,
-    PI::Float64,
 )
     PRN_a = Int(get_bits(word, word_length, start, 6))
     PRN_a == 0 && return nothing
@@ -405,8 +413,8 @@ function beidou_reduced_almanac(
         WN_a = Int(WN_a),
         t_0a = Int(t_0a),
         δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * GNSS_PI,
+        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * GNSS_PI,
         health = Int(get_bits(word, word_length, start + 30, 8)),
     )
 end

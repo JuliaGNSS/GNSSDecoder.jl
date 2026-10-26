@@ -43,7 +43,7 @@ const DNAV_WINDOW_BITS = DNAV_SUBFRAME_BITS + DNAV_PREAMBLE_BITS  # 311
 """
     BeiDouDNAVConstants{S}
 
-BDCS constants and D1/D2 NAV message structure parameters for the BeiDou
+D1/D2 NAV message structure parameters for the BeiDou
 B1I/B3I legacy signals, parameterized on the signal tag `S`
 (`:BeiDouB1I` or `:BeiDouB3I`) like `GPSCNAVConstants`. The distinct tag
 selects the signal identity ([`get_signal_type`](@ref)) — the message
@@ -56,11 +56,6 @@ structure and all constants are identical on both signals
   - `preamble::UInt16`: 11-bit preamble `11100010010` (modified Barker code, §5.2.4.1)
   - `preamble_length::Int`: Length of preamble in bits (11)
   - `word_length::Int`: Length of each word in bits (30)
-  - `PI::Float64`: π = 3.1415926535898 (BDS-SIS-ICD-B1I-3.0 Table 5-11)
-  - `Ω_dot_e::Float64`: BDCS Earth rotation rate = 7.2921150×10⁻⁵ rad/s (differs from WGS-84!)
-  - `c::Float64`: Speed of light = 2.99792458×10⁸ m/s
-  - `μ::Float64`: BDCS geocentric gravitational constant = 3.986004418×10¹⁴ m³/s²
-  - `F::Float64`: Relativistic correction constant −2√μ/c² = -4.442807309×10⁻¹⁰ s/√m (§5.2.4.9)
 
 # Reference
 
@@ -71,11 +66,6 @@ Base.@kwdef struct BeiDouDNAVConstants{S} <: AbstractGNSSConstants
     preamble::UInt16 = 0b11100010010
     preamble_length::Int = DNAV_PREAMBLE_BITS
     word_length::Int = DNAV_WORD_BITS
-    PI::Float64 = GNSS_PI
-    Ω_dot_e::Float64 = BEIDOU_EARTH_ROTATION_RATE
-    c::Float64 = SPEED_OF_LIGHT
-    μ::Float64 = BEIDOU_μ
-    F::Float64 = -4.442807309e-10
 end
 
 # ---- BCH(15,11,1) (BDS-SIS-ICD-B1I-3.0 §5.1.3) -------------------------------
@@ -1031,12 +1021,11 @@ function with_assembled_t_0e(data::BeiDouDNAVData, prev_subframe_id::Int)
 end
 
 function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
-    PI = state.constants.PI
     data = BeiDouDNAVData(
         state.raw_data;
-        Δn = dnav_signed(content, 43, 16) * PI / 2.0^43,
+        Δn = dnav_signed(content, 43, 16) * GNSS_PI / 2.0^43,
         C_uc = dnav_signed(content, 67, 18) / 2.0^31,
-        M_0 = dnav_signed(content, 93, 32) * PI / 2.0^31,
+        M_0 = dnav_signed(content, 93, 32) * GNSS_PI / 2.0^31,
         e = Int64(dnav_bits(content, 133, 32)) / 2.0^33,
         C_us = dnav_signed(content, 181, 18) / 2.0^31,
         C_rc = dnav_signed(content, 199, 18) / (1 << 6),
@@ -1053,19 +1042,18 @@ function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
 end
 
 function decode_d1_subframe3(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
-    PI = state.constants.PI
     data = BeiDouDNAVData(
         state.raw_data;
         # Bits 3-17 of t_0e: the 10 middle bits (subframe 3 word 2) and the 5
         # LSBs (word 3) are contiguous in the content domain (Figure 5-10).
         t_0e_lsb15 = Int64(dnav_bits(content, 43, 15)),
-        i_0 = dnav_signed(content, 66, 32) * PI / 2.0^31,
+        i_0 = dnav_signed(content, 66, 32) * GNSS_PI / 2.0^31,
         C_ic = dnav_signed(content, 106, 18) / 2.0^31,
-        Ω_dot = dnav_signed(content, 132, 24) * PI / 2.0^43,
+        Ω_dot = dnav_signed(content, 132, 24) * GNSS_PI / 2.0^43,
         C_is = dnav_signed(content, 164, 18) / 2.0^31,
-        i_dot = dnav_signed(content, 190, 14) * PI / 2.0^43,
-        Ω_0 = dnav_signed(content, 212, 32) * PI / 2.0^31,
-        ω = dnav_signed(content, 252, 32) * PI / 2.0^31,
+        i_dot = dnav_signed(content, 190, 14) * GNSS_PI / 2.0^43,
+        Ω_0 = dnav_signed(content, 212, 32) * GNSS_PI / 2.0^31,
+        ω = dnav_signed(content, 252, 32) * GNSS_PI / 2.0^31,
     )
     GNSSDecoderState(
         state;
@@ -1079,7 +1067,6 @@ end
 # and subframe 5 pages 11-23 (Figures 5-11-1 / 5-11-6); trailing 2-bit field
 # is AmEpID on the former two, AmID on the expanded pages.
 function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, content, sv_id)
-    PI = state.constants.PI
     sqrt_A_raw = Int64(dnav_bits(content, 51, 24))
     # An all-zero √A marks an empty/dummy almanac slot (no satellite has a
     # zero semi-major axis); skip it rather than store zeros.
@@ -1090,13 +1077,13 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
         sqrt_A = sqrt_A_raw / (1 << 11),
         a_f1 = dnav_signed(content, 91, 11) / 2.0^38,
         a_f0 = dnav_signed(content, 102, 11) / (1 << 20),
-        Ω_0 = dnav_signed(content, 121, 24) * PI / (1 << 23),
+        Ω_0 = dnav_signed(content, 121, 24) * GNSS_PI / (1 << 23),
         e = Int64(dnav_bits(content, 153, 17)) / (1 << 21),
-        δi = dnav_signed(content, 170, 16) * PI / (1 << 19),
+        δi = dnav_signed(content, 170, 16) * GNSS_PI / (1 << 19),
         t_0a = Int64(dnav_bits(content, 194, 8)) << 12,
-        Ω_dot = dnav_signed(content, 202, 17) * PI / 2.0^38,
-        ω = dnav_signed(content, 227, 24) * PI / (1 << 23),
-        M_0 = dnav_signed(content, 259, 24) * PI / (1 << 23),
+        Ω_dot = dnav_signed(content, 202, 17) * GNSS_PI / 2.0^38,
+        ω = dnav_signed(content, 227, 24) * GNSS_PI / (1 << 23),
+        M_0 = dnav_signed(content, 259, 24) * GNSS_PI / (1 << 23),
         # Snapshot the reference week in force now: the page carries its own
         # t_0a but no week, and the global `WN_a` moves on at the next
         # almanac changeover.
@@ -1251,7 +1238,6 @@ end
 # Content positions (ICD 300-bit numbering) of the per-page fields. All D2
 # scale factors equal their D1 counterparts (§5.3.3.1).
 function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
-    PI = state.constants.PI
     c(p) = pages[p].content
     URAI = Int64(dnav_bits(c(1), 61, 4))
     # Split fields, assembled MSBs-first from their per-page pieces before
@@ -1305,13 +1291,13 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
         a_f1 = sext(a_1_raw, 22) / 2.0^50,
         a_f2 = sext(a_2_raw, 11) / 2.0^66,
         AODE = Int64(dnav_bits(c(4), 92, 5)),
-        Δn = dnav_signed(c(4), 97, 16) * PI / 2.0^43,
+        Δn = dnav_signed(c(4), 97, 16) * GNSS_PI / 2.0^43,
         C_uc = sext(C_uc_raw, 18) / 2.0^31,
         M_0 = sext(
             dnav_bits(c(5), 51, 2) << 30 | dnav_bits(c(5), 61, 22) << 8 |
             dnav_bits(c(5), 91, 8),
             32,
-        ) * PI / 2.0^31,
+        ) * GNSS_PI / 2.0^31,
         C_us = sext(C_us_raw, 18) / 2.0^31,
         # Through `Int64` (exact for these 32-bit fields), as the D1 parser
         # does: `Float64(::UInt320)` goes through BitIntegers' generic
@@ -1323,13 +1309,13 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
         t_0e = Int64(t_0e_raw) << 3,
         t_0e_msb2 = Int64(t_0e_raw >> 15),
         t_0e_lsb15 = Int64(t_0e_raw & 0x7FFF),
-        i_0 = sext(i_0_raw, 32) * PI / 2.0^31,
+        i_0 = sext(i_0_raw, 32) * GNSS_PI / 2.0^31,
         C_rc = sext(C_rc_raw, 18) / (1 << 6),
         C_rs = dnav_signed(c(8), 92, 18) / (1 << 6),
-        Ω_dot = sext(Ω_dot_raw, 24) * PI / 2.0^43,
-        Ω_0 = sext(Ω_0_raw, 32) * PI / 2.0^31,
-        ω = sext(ω_raw, 32) * PI / 2.0^31,
-        i_dot = sext(i_dot_raw, 14) * PI / 2.0^43,
+        Ω_dot = sext(Ω_dot_raw, 24) * GNSS_PI / 2.0^43,
+        Ω_0 = sext(Ω_0_raw, 32) * GNSS_PI / 2.0^31,
+        ω = sext(ω_raw, 32) * GNSS_PI / 2.0^31,
+        i_dot = sext(i_dot_raw, 14) * GNSS_PI / 2.0^43,
     )
     GNSSDecoderState(state; raw_data = data)
 end

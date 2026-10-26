@@ -182,21 +182,30 @@ function get_broadcast_ephemeris(state::GNSSDecoderState)
     is_decoding_completed_for_positioning(state) || return nothing
     broadcast_ephemeris(
         state.data,
-        state.constants,
+        frame_constants(state.data),
         get_orbit_class(state) === geostationary_orbit,
     )
 end
 
+# The constants of the reference frame each constellation states its orbits in: the
+# gravitational parameter μ, the relativistic correction F and the Earth rotation
+# rate (WGS-84 for GPS, GTRF for Galileo, BDCS for BeiDou).
+frame_constants(::AbstractGPSData) = (μ = GPS_μ, F = GPS_F, Ω_dot_e = EARTH_ROTATION_RATE)
+frame_constants(::AbstractGalileoData) =
+    (μ = GALILEO_μ, F = GALILEO_F, Ω_dot_e = EARTH_ROTATION_RATE)
+frame_constants(::AbstractBeiDouData) =
+    (μ = BEIDOU_μ, F = BEIDOU_F, Ω_dot_e = BEIDOU_EARTH_ROTATION_RATE)
+
 # The Keplerian messages: `√A`, a constant `Δn` and the absolute `Ω̇`.
 function broadcast_ephemeris(
     data::Union{GPSL1CAData,AbstractGalileoEphemerisData,BeiDouDNAVData},
-    constants,
+    frame,
     is_geostationary,
 )
     sqrt_A = something(data.sqrt_A)
     broadcast_ephemeris(
         data,
-        constants,
+        frame,
         is_geostationary,
         sqrt_A^2,
         0.0,
@@ -211,10 +220,10 @@ end
 const GPS_CNAV_A_REF = 26_559_710.0          # m
 const GPS_CNAV_Ω_DOT_REF = -2.6e-9 * GNSS_PI  # rad/s (−2.6e-9 semicircles/s)
 
-function broadcast_ephemeris(data::AbstractGPSCNAVData, constants, is_geostationary)
+function broadcast_ephemeris(data::AbstractGPSCNAVData, frame, is_geostationary)
     broadcast_ephemeris(
         data,
-        constants,
+        frame,
         is_geostationary,
         GPS_CNAV_A_REF + something(data.ΔA),
         something(data.A_dot),
@@ -242,10 +251,10 @@ function beidou_cnav_reference_semi_major_axis(sat_type)
     )
 end
 
-function broadcast_ephemeris(data::AbstractBeiDouCNAVData, constants, is_geostationary)
+function broadcast_ephemeris(data::AbstractBeiDouCNAVData, frame, is_geostationary)
     broadcast_ephemeris(
         data,
-        constants,
+        frame,
         is_geostationary,
         beidou_cnav_reference_semi_major_axis(something(data.sat_type)) +
         something(data.ΔA),
@@ -258,16 +267,7 @@ end
 
 # The elements every message names alike, around the ones each states its own
 # way. Positional, so that every argument reaches it concretely typed.
-function broadcast_ephemeris(
-    data,
-    constants,
-    is_geostationary,
-    A,
-    A_dot,
-    Δn_0,
-    Δn_0_dot,
-    Ω_dot,
-)
+function broadcast_ephemeris(data, frame, is_geostationary, A, A_dot, Δn_0, Δn_0_dot, Ω_dot)
     BroadcastEphemeris(
         something(data.t_0e),
         A,
@@ -291,9 +291,9 @@ function broadcast_ephemeris(
         something(data.a_f0),
         something(data.a_f1),
         something(data.a_f2),
-        constants.μ,
-        constants.F,
-        constants.Ω_dot_e,
+        frame.μ,
+        frame.F,
+        frame.Ω_dot_e,
         is_geostationary,
     )
 end

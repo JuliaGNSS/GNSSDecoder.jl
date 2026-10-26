@@ -135,7 +135,7 @@ const B1C_SF3_ROW_ORDER = ntuple(k -> 3k, 11)
 """
     BeiDouB1CConstants
 
-BDCS constants and B-CNAV1 message structure parameters for BeiDou B1C
+B-CNAV1 message structure parameters for BeiDou B1C
 decoding.
 
 The frame is modelled through the generic streaming framework:
@@ -160,26 +160,6 @@ Base.@kwdef struct BeiDouB1CConstants <: AbstractGNSSConstants
     Trailing next-frame subframe-1 BCH segment retained for sync (72 symbols)
     """
     preamble_length::Int = B1C_SUBFRAME1_LENGTH
-    """
-    Mathematical constant π (BDS-SIS-ICD-B1C-1.0 Table 7-9)
-    """
-    PI::Float64 = GNSS_PI
-    """
-    BDCS Earth rotation rate (rad/s) — differs from the WGS-84 value
-    """
-    Ω_dot_e::Float64 = BEIDOU_EARTH_ROTATION_RATE
-    """
-    Speed of light (m/s)
-    """
-    c::Float64 = SPEED_OF_LIGHT
-    """
-    BDCS Earth gravitational parameter (m³/s²)
-    """
-    μ::Float64 = BEIDOU_μ
-    """
-    Relativistic correction constant F = -2√μ/c² (s/√m, ICD §7.5.2)
-    """
-    F::Float64 = -4.442807309e-10
 end
 
 """
@@ -1069,9 +1049,6 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = B1C_SF2_INFO_BITS
-
-    PI = state.constants.PI
-
     WN = Int(get_bits(word, word_length, 1, 13))
     HOW = Int(get_bits(word, word_length, 14, 8))
     IODC = Int(get_bits(word, word_length, 22, 10))
@@ -1081,18 +1058,18 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     sat_type = Int(get_bits(word, word_length, 51, 2))
     ΔA = get_twos_complement_num(word, word_length, 53, 26) * 2.0^-9
     A_dot = get_twos_complement_num(word, word_length, 79, 25) * 2.0^-21
-    Δn_0 = get_twos_complement_num(word, word_length, 104, 17) * 2.0^-44 * PI
-    Δn_0_dot = get_twos_complement_num(word, word_length, 121, 23) * 2.0^-57 * PI
-    M_0 = get_twos_complement_num(word, word_length, 144, 33) * 2.0^-32 * PI
+    Δn_0 = get_twos_complement_num(word, word_length, 104, 17) * 2.0^-44 * GNSS_PI
+    Δn_0_dot = get_twos_complement_num(word, word_length, 121, 23) * 2.0^-57 * GNSS_PI
+    M_0 = get_twos_complement_num(word, word_length, 144, 33) * 2.0^-32 * GNSS_PI
     # 33-bit field: convert through Int64 explicitly (a platform `Int` would
     # overflow on 32-bit), matching the sibling B2a/B2b parsers.
     e = Int64(get_bits(word, word_length, 177, 33)) * 2.0^-34
-    ω = get_twos_complement_num(word, word_length, 210, 33) * 2.0^-32 * PI
+    ω = get_twos_complement_num(word, word_length, 210, 33) * 2.0^-32 * GNSS_PI
     # Ephemeris II (Figure 6-13, Table 7-8), bits 243-464.
-    Ω_0 = get_twos_complement_num(word, word_length, 243, 33) * 2.0^-32 * PI
-    i_0 = get_twos_complement_num(word, word_length, 276, 33) * 2.0^-32 * PI
-    Ω_dot = get_twos_complement_num(word, word_length, 309, 19) * 2.0^-44 * PI
-    i_dot = get_twos_complement_num(word, word_length, 328, 15) * 2.0^-44 * PI
+    Ω_0 = get_twos_complement_num(word, word_length, 243, 33) * 2.0^-32 * GNSS_PI
+    i_0 = get_twos_complement_num(word, word_length, 276, 33) * 2.0^-32 * GNSS_PI
+    Ω_dot = get_twos_complement_num(word, word_length, 309, 19) * 2.0^-44 * GNSS_PI
+    i_dot = get_twos_complement_num(word, word_length, 328, 15) * 2.0^-44 * GNSS_PI
     C_is = get_twos_complement_num(word, word_length, 343, 16) * 2.0^-30
     C_ic = get_twos_complement_num(word, word_length, 359, 16) * 2.0^-30
     C_rs = get_twos_complement_num(word, word_length, 375, 24) * 2.0^-8
@@ -1179,11 +1156,11 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
     raw = if page == 1
         parse_b1c_sf3_page1(raw, word)
     elseif page == 2
-        parse_b1c_sf3_page2!(raw, word, state.constants.PI, state.cache.storage.raw)
+        parse_b1c_sf3_page2!(raw, word, state.cache.storage.raw)
     elseif page == 3
         parse_b1c_sf3_page3!(raw, word, state.cache.storage.raw)
     elseif page == 4
-        parse_b1c_sf3_page4!(raw, word, state.constants.PI, state.cache.storage.raw)
+        parse_b1c_sf3_page4!(raw, word, state.cache.storage.raw)
     else
         raw  # invalid/reserved page: counted, ignored
     end
@@ -1219,12 +1196,7 @@ Subframe 3, page type 2 — SISAI + four reduced almanacs (ICD Figures 6-9, 6-18
 Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
 while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b1c_sf3_page2!(
-    raw::BeiDouB1CData,
-    word::UInt288,
-    PI::Float64,
-    spare::BeiDouB1CData,
-)
+function parse_b1c_sf3_page2!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     WN_a = Int(get_bits(word, word_length, 38, 13))
@@ -1232,7 +1204,7 @@ function parse_b1c_sf3_page2!(
     almanacs = raw.reduced_almanacs
     # Four 38-bit packets at bits 59, 97, 135, 173 (Figure 6-9).
     for start in (59, 97, 135, 173)
-        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
+        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a)
         isnothing(packet) && continue
         almanacs = writable_container(almanacs, spare.reduced_almanacs)
         set!(almanacs, packet.PRN_a, packet)
@@ -1273,16 +1245,11 @@ Subframe 3, page type 4 — SISAI + one midi almanac (ICD Figures 6-11, 6-21, Ta
 Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b1c_sf3_page4!(
-    raw::BeiDouB1CData,
-    word::UInt288,
-    PI::Float64,
-    spare::BeiDouB1CData,
-)
+function parse_b1c_sf3_page4!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     # Midi almanac (Figure 6-21), bits 38-193.
-    alm = beidou_midi_almanac(word, word_length, 38, PI)
+    alm = beidou_midi_almanac(word, word_length, 38)
     isnothing(alm) && return raw  # empty almanac slot
     midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
     set!(midi_almanacs, alm.PRN_a, alm)

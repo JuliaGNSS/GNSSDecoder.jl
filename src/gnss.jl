@@ -102,13 +102,11 @@ of [`AbstractGPSCNAVData`](@ref).
 """
 abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
 
-# Physical constants common to every GNSS handled here. Each per-signal
-# `*Constants` struct exposes these as fields (so the orbit/clock math reads
-# `state.constants.PI` etc.); the defaults are sourced from here to keep a single
-# source of truth. Constellation-specific values that genuinely differ by
-# reference frame — the Earth gravitational parameter μ and the relativistic
-# correction F — are *not* here: GPS uses WGS-84 values and Galileo the GTRF
-# values, defined alongside each constellation.
+# Physical constants common to every GNSS handled here. Constellation-specific
+# values that genuinely differ by reference frame — the Earth gravitational
+# parameter μ, the relativistic correction F and, for BeiDou, the Earth rotation
+# rate — are *not* here: GPS uses WGS-84 values, Galileo the GTRF values and
+# BeiDou the BDCS values, defined alongside each constellation.
 #
 # `GNSS_PI` is deliberately the truncated value the ICDs fix for the
 # semicircle→radian scaling, *not* `Base.π`: every ICD here states the same
