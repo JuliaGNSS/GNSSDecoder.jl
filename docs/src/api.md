@@ -192,7 +192,6 @@ GNSSDecoder.GaloisField256
 GNSSDecoder.GALILEO_HAS_GF256
 GNSSDecoder.rs_generator_polynomial
 GNSSDecoder.rs_systematic_generator_matrix
-GNSSDecoder.rs_erasure_decode
 GNSSDecoder.rs_erasure_decode!
 GNSSDecoder.RSErasureScratch
 ```

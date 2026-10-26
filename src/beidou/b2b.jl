@@ -513,7 +513,7 @@ B-CNAV3 frame sync (BDS-SIS-ICD-B2b-1.0 §6.2.1). Three gates, cheapest first:
 
  1. The 16-bit preamble `0xEB90` must appear at both ends of the 1016-symbol
     window (start of this frame and start of the next), both upright or both
-    inverted (the shared `find_preamble` rule).
+    inverted (the shared `find_preamble_in_deque` rule).
  2. The 6 unencoded PRN symbols following the preamble must hard-decode (in
     the resolved polarity) to the decoder's own PRN — they are known a
     priori, so they act as a free 6-symbol preamble extension.

@@ -511,35 +511,6 @@ function is_subframe3_decoded(data::GPSL1CAData)
         !isnothing(data.i_dot)
 end
 
-function is_subframe4_decoded(data::GPSL1CAData)
-    # Subframe 4 is considered decoded when we have ionospheric and UTC parameters
-    # (page 18) and SV configurations/health (page 25)
-    !isnothing(data.α_0) &&
-        !isnothing(data.α_1) &&
-        !isnothing(data.α_2) &&
-        !isnothing(data.α_3) &&
-        !isnothing(data.β_0) &&
-        !isnothing(data.β_1) &&
-        !isnothing(data.β_2) &&
-        !isnothing(data.β_3) &&
-        !isnothing(data.A_0UTC) &&
-        !isnothing(data.A_1UTC) &&
-        !isnothing(data.Δt_LS) &&
-        !isnothing(data.t_0t) &&
-        !isnothing(data.WN_0t) &&
-        !isnothing(data.WN_LSF) &&
-        !isnothing(data.DN) &&
-        !isnothing(data.Δt_LSF) &&
-        !isnothing(data.sv_config) &&
-        !isnothing(data.sv_health_sf4_25)
-end
-
-function is_subframe5_decoded(data::GPSL1CAData)
-    # Subframe 5 is considered decoded when we have SV health (page 25)
-    # and almanac reference time/week
-    !isnothing(data.sv_health_sf5_25) && !isnothing(data.t_0a) && !isnothing(data.WN_a)
-end
-
 # LNAV broadcasts the time of week as seconds outright (the 17-bit HOW count is
 # scaled by 6 at parse), so there is nothing to reconstruct.
 get_time_of_week(data::GPSL1CAData) = data.TOW

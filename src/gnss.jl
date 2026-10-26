@@ -961,9 +961,8 @@ end
     try_sync(state) -> Union{Nothing,Unsigned}
 
 Default per-signal sync hook: hard-slice the deque into a packed-bit buffer
-(via `pack_buffer`) and run the `find_preamble` bit-pattern
-check (preamble visible at both ends of the candidate syncro sequence, in
-either polarity). Returns the packed buffer on a match, or `nothing` if there
+(via `pack_buffer`) on a preamble match (preamble visible at both ends of the
+candidate syncro sequence, in either polarity; see `find_preamble_in_deque`). Returns the packed buffer on a match, or `nothing` if there
 is no sync. Returning the buffer lets the caller reuse it without recomputing
 and keeps it out of mutable cache state.
 
@@ -973,8 +972,7 @@ override this method.
 function try_sync(state::GNSSDecoderState)
     # Match the preamble on the few symbols at either end first, and pack the
     # whole window only on a match: packing it (hundreds of symbols) for every
-    # incoming symbol is otherwise most of the per-symbol cost. The match is
-    # `find_preamble`'s, so the packed buffer then always passes it.
+    # incoming symbol is otherwise most of the per-symbol cost.
     constants = state.constants
     isnothing(
         find_preamble_in_deque(
@@ -988,33 +986,16 @@ function try_sync(state::GNSSDecoderState)
 end
 
 """
-    find_preamble(buffer, constants) -> Bool
-
-Bit-pattern preamble check on a packed-bit buffer. Mirrors the v1
-implementation: the preamble must be visible at *both* the oldest 8 bits
-(start of this subframe) and the newest 8 bits (start of next subframe),
-either both upright OR both inverted (180-degree polarity ambiguity).
-"""
-function find_preamble(buffer, constants::AbstractGNSSConstants)
-    mask = calc_preamble_mask(constants)
-    buffer & mask == constants.preamble &&
-    (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
-        buffer & mask == ~constants.preamble & mask &&
-        (buffer >> constants.syncro_sequence_length) & mask == ~constants.preamble & mask
-end
-
-"""
     find_preamble_in_deque(deque, preamble, preamble_length, syncro_sequence_length)
         -> Union{Nothing,Bool}
 
-Soft-domain counterpart of [`find_preamble`](@ref): match the preamble at both
-ends of the candidate window by slicing the soft-symbol deque directly, rather
-than hard-slicing the whole window into a packed integer first.
+Match the preamble at both ends of the candidate window — the start of this sync
+unit and the start of the next — by slicing the soft-symbol deque directly,
+rather than hard-slicing the whole window into a packed integer first.
 
 Returns `nothing` when there is no sync, and otherwise the resolved polarity —
-`true` when both ends carry the *inverted* preamble. The rule is `find_preamble`'s:
-both ends must match, and in a common polarity, which is what resolves the
-180-degree carrier ambiguity.
+`true` when both ends carry the *inverted* preamble. Both ends must match, and in
+a common polarity, which is what resolves the 180-degree carrier ambiguity.
 
 This is the form every FEC-bearing decoder wants. The default `pack_buffer` path
 would shift a window-wide integer once per symbol to expose a preamble sitting at
