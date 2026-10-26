@@ -698,7 +698,7 @@ The epoch is the leading edge of the *current* frame's subframe 1, which is what
 `validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
 otherwise identical-looking reconstruction is anchored differently.
 """
-function get_time_of_week(data::BeiDouB1CData)
+function get_broadcast_time_of_week(data::BeiDouB1CData)
     (isnothing(data.HOW) || isnothing(data.soh)) && return nothing
     return Int(data.HOW) * 3600 + Int(data.soh) * B1C_SOH_SECONDS
 end

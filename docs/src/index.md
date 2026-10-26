@@ -128,7 +128,7 @@ julia> using GNSSDecoder, GNSSSignals
 
 julia> state = GalileoE6BDecoderState(1);
 
-julia> get_data_frequency(state)   # 1000 symbols, one page, per second
+julia> get_bit_rate(state)   # 1000 symbols, one page, per second
 1000 Hz
 
 julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris

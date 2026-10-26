@@ -118,9 +118,6 @@ const GNSS_PI = 3.1415926535898
 const SPEED_OF_LIGHT = 2.99792458e8        # m/s
 const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and GTRF agree)
 
-# Every constellation here counts time as a week number plus a time of week.
-const SECONDS_PER_WEEK = 604_800
-
 """
 $(TYPEDEF)
 
@@ -379,7 +376,7 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # The GNSSSignals accessors a decoder state can answer for itself, forwarded
 # through `get_signal_type`: identity (`get_signal_id` / `get_signal_name`,
 # `get_constellation_id` / `get_constellation_name`, `get_band` / `get_band_id` /
-# `get_band_name`), the navigation-message symbol rate (`get_data_frequency`),
+# `get_band_name`), the navigation-message symbol rate (`get_bit_rate`),
 # and the time scale the decoded week numbers and times of week are referenced
 # to (`get_time_system` and friends — the epochs `get_system_start_time` (UTC
 # label) and `get_tai_system_start_time` (the same instant on the continuous
@@ -391,7 +388,7 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # These extend GNSSSignals' own functions rather than introducing GNSSDecoder
 # names, so a caller already doing `using GNSSSignals` needs no new import and
 # can query a decoder state exactly as it queries a signal. Accessors that
-# describe the *code* (`get_code_length`, `get_code_frequency`,
+# describe the *code* (`get_code_length`, `get_chip_rate`,
 # `get_carrier_phase_offset`, …) are deliberately not forwarded: they belong to
 # acquisition and tracking, not to a symbol-domain decoder, and remain one
 # `get_signal_type(state)` away.
@@ -403,7 +400,7 @@ for accessor in (
     :get_band,
     :get_band_id,
     :get_band_name,
-    :get_data_frequency,
+    :get_bit_rate,
     :get_time_system,
     :get_time_system_id,
     :get_time_system_name,
@@ -511,6 +508,9 @@ $(TYPEDSIGNATURES)
 Seconds of week that the decoder's validated navigation data stamps, or
 `nothing` before a time has been decoded.
 
+It is the time of week the message broadcasts for the epoch it stamps, not the
+current one, which the section below reads from it.
+
 Every signal here broadcasts one, but four of them do not broadcast it as
 seconds: GPS L1C-D counts two-hour intervals plus 18-second TOI steps, BeiDou
 B1C counts hours plus 18-second SOH steps, and the rest carry a plain `TOW` or
@@ -541,8 +541,8 @@ is the same expression on every signal:
 
 ```julia
 using Unitful: Hz, ustrip
-tow = get_time_of_week(state)
-now = tow + state.num_bits_since_sync / ustrip(Hz, get_data_frequency(state))
+tow = get_broadcast_time_of_week(state)
+now = tow + state.num_bits_since_sync / ustrip(Hz, get_bit_rate(state))
 ```
 
 Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this
@@ -555,7 +555,7 @@ cross-subframe consistency check — the same gate
 
   - [`get_time_offset`](@ref): relating that time to another constellation's
 """
-get_time_of_week(state::GNSSDecoderState) = get_time_of_week(state.data)
+get_broadcast_time_of_week(state::GNSSDecoderState) = get_broadcast_time_of_week(state.data)
 
 """
 $(TYPEDEF)
@@ -720,7 +720,7 @@ end
 # See Also
 
   - [`GNSSTimeOffset`](@ref): the returned record, and the sign convention
-  - [`get_time_of_week`](@ref): the `t` the polynomial is evaluated at
+  - [`get_broadcast_time_of_week`](@ref): the `t` the polynomial is evaluated at
 """
 function get_time_offset end
 

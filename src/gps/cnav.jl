@@ -844,7 +844,7 @@ function is_clock_correction_decoded(data::GPSCNAVData)
 end
 
 # CNAV's `TOW` is already seconds (the 17-bit count is scaled by 6 at parse).
-get_time_of_week(data::GPSCNAVData) = data.TOW
+get_broadcast_time_of_week(data::GPSCNAVData) = data.TOW
 
 """
 $(TYPEDSIGNATURES)

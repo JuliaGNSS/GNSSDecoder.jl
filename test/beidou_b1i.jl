@@ -666,7 +666,7 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         @test get_signal_type(state) == BeiDouB1I
         @test GNSSDecoderState(BeiDouB1I(), 20) == state
-        @test get_data_frequency(state) == get_data_frequency(BeiDouB1I)
+        @test get_bit_rate(state) == get_bit_rate(BeiDouB1I)
         @test get_time_system_name(state) == "BeiDou Time"
         @test get_constellation_name(state) == get_constellation_name(BeiDouB1I)
 
@@ -674,13 +674,12 @@ using Unitful: Hz
         # demodulates: GEO PRNs broadcast D2 at 500 sps, ten times the
         # type-level D1 answer (BDS-SIS-ICD-B1I-3.0 §5.1.1).
         geo_state = BeiDouB1IDecoderState(3)
-        @test get_data_frequency(geo_state) == 10 * get_data_frequency(BeiDouB1I)
-        @test get_data_frequency(BeiDouB3IDecoderState(59)) ==
-              10 * get_data_frequency(BeiDouB3I)
+        @test get_bit_rate(geo_state) == 10 * get_bit_rate(BeiDouB1I)
+        @test get_bit_rate(BeiDouB3IDecoderState(59)) == 10 * get_bit_rate(BeiDouB3I)
         # Stated absolutely too, so the accessor cannot drift with whatever the
         # signal type happens to answer.
-        @test get_data_frequency(state) == 50Hz
-        @test get_data_frequency(geo_state) == 500Hz
+        @test get_bit_rate(state) == 50Hz
+        @test get_bit_rate(geo_state) == 500Hz
 
         # Every BeiDou constructor rejects an out-of-range PRN rather than
         # building a decoder that can never sync.

@@ -132,7 +132,7 @@ inav_symbol_stream(parts::Vector{Vector{Bool}}) =
     @test get_signal_type(decoder) == GalileoE5bI
     @test get_band(decoder) == GNSSSignals.E5b()
     @test get_signal_name(decoder) == "Galileo E5b-I"
-    @test get_data_frequency(decoder) == 250Hz
+    @test get_bit_rate(decoder) == 250Hz
     @test get_time_system(decoder) == get_time_system(GalileoE1BDecoderState(21))
     @test hasmethod(GNSSDecoderState, Tuple{GalileoE5bI,Int})
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE5bQ,Int})

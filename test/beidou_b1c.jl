@@ -527,7 +527,7 @@ end
         @test d.num_sf3_pages_received == 4
         # Signal metadata forwarding.
         @test get_signal_type(state) == BeiDouB1C_D
-        @test get_data_frequency(state) == get_data_frequency(BeiDouB1C_D)
+        @test get_bit_rate(state) == get_bit_rate(BeiDouB1C_D)
         @test get_time_system_name(state) == "BeiDou Time"
         @test get_constellation_name(state) == "BeiDou"
     end
@@ -602,7 +602,7 @@ end
         # `soh` advances with every locked frame, but `HOW` only refreshes when
         # a subframe 2 clears LDPC+CRC. The one frame in 200 that wraps `soh`
         # 199 → 0 with a noisy subframe 2 therefore has to carry the hour
-        # itself, or `get_time_of_week` publishes a time exactly 3600 s low.
+        # itself, or `get_broadcast_time_of_week` publishes a time exactly 3600 s low.
         sf2 = Bool.(_golden_sf2_bits())
         lost_sf2 = copy(sf2)
         lost_sf2[600] = !lost_sf2[600]  # break the CRC: this frame's SF2 is dropped
@@ -617,7 +617,7 @@ end
         state = decode!(BeiDouB1CDecoderState(prn), head, length(head))
         @test state.data.soh == 199
         @test state.data.HOW == _B1C_G.HOW
-        @test get_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18
+        @test get_broadcast_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18
 
         # The wrapping frame keeps sync (its subframe 1 is clean) but loses its
         # subframe 2, so the broadcast HOW never arrives — the decoder must
@@ -631,7 +631,7 @@ end
         @test state.data.HOW == _B1C_G.HOW + 1
         # One frame is 18 s: the wrap must step the time forward by 18 s, not
         # back by 3582 s to the start of the hour just left.
-        @test get_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18 + 18
+        @test get_broadcast_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18 + 18
     end
 
     @testset "Subframe-1 BCH correction radii are the codebooks' own" begin
@@ -819,7 +819,7 @@ end
         # outage can span any number of hour boundaries, so a kept `HOW` re-paired
         # with a fresh `soh` would date the first re-locked frames hours in the past.
         @test isnothing(state.raw_data.HOW)
-        @test isnothing(get_time_of_week(state.raw_data))
+        @test isnothing(get_broadcast_time_of_week(state.raw_data))
         @test state.raw_data.WN == 800   # ephemeris survives for warm re-lock
         @test isnothing(state.data.WN)   # validated data cleared
         @test GNSSDecoder.num_symbols_buffered(state) == 0

@@ -84,7 +84,7 @@ to a compile-time constant.
 | `get_signal_id` / `get_signal_name` | which signal | `:GPSL2CM` / `"GPS L2CM"` |
 | `get_constellation_id` / `get_constellation_name` | which constellation | `:GPS` / `"GPS"` |
 | `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
-| `get_data_frequency` | navigation-message symbol rate | `50 Hz` |
+| `get_bit_rate` | navigation-message symbol rate | `50 Hz` |
 | `get_time_system` / `get_time_system_id` / `get_time_system_name` | time scale the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
 | `get_system_start_time` / `get_tai_system_start_time` / `get_tai_offset` | that scale's epoch (as a UTC label, and on the continuous TAI scale) and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `1980-01-06T00:00:19` / `19 s` |
 
@@ -95,8 +95,8 @@ band, ids and symbol rates.
 
 ```julia
 using GNSSDecoder, GNSSSignals
-get_data_frequency(GPSL5IDecoderState(1))     # 100 Hz
-get_data_frequency(GPSL2CMDecoderState(1))    #  50 Hz
+get_bit_rate(GPSL5IDecoderState(1))     # 100 Hz
+get_bit_rate(GPSL2CMDecoderState(1))    #  50 Hz
 get_signal_name(GalileoE5aDecoderState(1))    # "Galileo E5a-I"
 get_signal_name(GalileoE5bDecoderState(1))    # "Galileo E5b-I"
 get_band_id(GalileoE6BDecoderState(1))        # :E6
@@ -106,7 +106,7 @@ get_system_start_time(GalileoE1BDecoderState(1))  # 1999-08-21T23:59:47
 ```
 
 Accessors describing the spreading code (`get_code_length`,
-`get_code_frequency`, `get_carrier_phase_offset`, …) are not forwarded — they
+`get_chip_rate`, `get_carrier_phase_offset`, …) are not forwarded — they
 belong to acquisition and tracking rather than to a symbol-domain decoder — but
 remain one step away via [`get_signal_type`](@ref):
 
@@ -128,10 +128,10 @@ defines — so it is done here, once per signal, rather than in every consumer.
 | Accessor | Answers | `nothing` when |
 |:---|:---|:---|
 | [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
-| [`get_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
+| [`get_broadcast_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
 | [`get_time_offset`](@ref) | offset to another constellation's time scale, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
 
-`get_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
+`get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
 or `SOW` on most signals, `ITOW·7200 + toi·18` on GPS L1C-D, and
 `HOW·3600 + soh·18` on BeiDou B1C — and pairs with the state's symbol counter to
 give the current time on every signal with one expression:
@@ -139,8 +139,8 @@ give the current time on every signal with one expression:
 ```julia
 using GNSSDecoder, GNSSSignals
 using Unitful: Hz, ustrip
-tow = get_time_of_week(state)
-now = tow + state.num_bits_since_sync / ustrip(Hz, get_data_frequency(state))
+tow = get_broadcast_time_of_week(state)
+now = tow + state.num_bits_since_sync / ustrip(Hz, get_bit_rate(state))
 ```
 
 `get_time_offset` folds away the five shapes the same quantity is broadcast in —
@@ -167,7 +167,7 @@ would never see it.
 ```@docs
 OrbitClass
 get_orbit_class
-get_time_of_week
+get_broadcast_time_of_week
 GNSSTimeOffset
 get_time_offset
 ```

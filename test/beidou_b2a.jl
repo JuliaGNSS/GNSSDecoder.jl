@@ -503,13 +503,13 @@ end
     end
 
     @testset "Skipped promotions keep tow + num_bits/rate on the true time" begin
-        # `get_time_of_week` reads the *validated* `data.SOW`, so the symbol
+        # `get_broadcast_time_of_week` reads the *validated* `data.SOW`, so the symbol
         # counter must anchor to the last frame `validate_data` promoted, not to
         # every frame that clears CRC. A fresh ephemeris block breaks first the
         # MT10/MT11 adjacency gate and then the IODE == IODC & 0xff match, so
         # promotion is skipped for two frames; across that gap the published SOW
         # stands still and only the counter may carry the elapsed time. Re-arming
-        # it per decoded frame made `now = tow + num_bits/get_data_frequency`
+        # it per decoded frame made `now = tow + num_bits/get_bit_rate`
         # (src/gnss.jl) read exactly one 3-second frame low for the whole skip.
         new_iode = B2A_IODE + 1
         new_iodc = (3 << 8) | new_iode  # 790; IODE == IODC & 0xff again
@@ -524,7 +524,8 @@ end
         # A frame is decoded once the *next* frame's 24 preamble symbols are
         # buffered, so the stream is cut at those sync instants: after the first
         # step each `decode` call below feeds exactly one frame, 600 symbols = 3 s.
-        b2a_now(state) = get_time_of_week(state.data) + state.num_bits_since_sync / 200
+        b2a_now(state) =
+            get_broadcast_time_of_week(state.data) + state.num_bits_since_sync / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
@@ -577,7 +578,8 @@ end
             build_b2a_mt11(; sow = t0 + 12, prn = B2A_PRN + 1),   # foreign PRN
             build_b2a_mt30(; sow = t0 + 15),                      # promotes again
         ])
-        b2a_now(state) = get_time_of_week(state.data) + state.num_bits_since_sync / 200
+        b2a_now(state) =
+            get_broadcast_time_of_week(state.data) + state.num_bits_since_sync / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
@@ -679,7 +681,7 @@ end
     @testset "Signal metadata accessors" begin
         state = BeiDouB2aDecoderState(B2A_PRN)
         @test get_signal_type(state) == BeiDouB2aI
-        @test get_data_frequency(state) == get_data_frequency(BeiDouB2aI)
+        @test get_bit_rate(state) == get_bit_rate(BeiDouB2aI)
         @test get_time_system_name(state) == "BeiDou Time"
         @test get_constellation_name(state) == "BeiDou"
         # The pilot component does not map to a decoder; only the data

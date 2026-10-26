@@ -12,11 +12,11 @@ ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 GNSSDecoder = {path = "../.."}
 
 [compat]
-Acquisition = "2.6.4"
+Acquisition = "3"
 Downloads = "1"
-GNSSSignals = "4.1"
+GNSSSignals = "5"
 Test = "1"
-Tracking = "8.1"
+Tracking = "12"
 Unitful = "1"
 ZipFile = "0.10"
 julia = "1.11"

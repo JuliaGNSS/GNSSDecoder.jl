@@ -389,7 +389,7 @@ function is_health_status_decoded(data::GalileoE5aData)
 end
 
 # F/NAV broadcasts the time of week as seconds (page types 1-4).
-get_time_of_week(data::GalileoE5aData) = data.TOW
+get_broadcast_time_of_week(data::GalileoE5aData) = data.TOW
 
 """
 $(TYPEDSIGNATURES)

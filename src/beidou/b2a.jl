@@ -852,10 +852,8 @@ end
 _b2a_sow_adjacent(::Nothing, ::Union{Nothing,Integer}) = false
 _b2a_sow_adjacent(::Integer, ::Nothing) = false
 
-function _b2a_sow_adjacent(sow_a::Integer, sow_b::Integer)
-    Δ = mod(sow_a - sow_b, SECONDS_PER_WEEK)
-    min(Δ, SECONDS_PER_WEEK - Δ) == 3
-end
+_b2a_sow_adjacent(sow_a::Integer, sow_b::Integer) =
+    abs(GNSSSignals.fold_week_crossover(sow_a - sow_b)) == 3
 
 function is_clock_correction_decoded(data::BeiDouB2aData)
     # The clock block + IODC are carried identically in message types 30-34.
@@ -881,7 +879,7 @@ end
 
 # B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
 # scaled at parse (§7.3, Table 7-2).
-get_time_of_week(data::BeiDouB2aData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouB2aData) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -1043,7 +1041,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
         raw  # unknown/reserved message type: header only
     end
 
-    # The symbol counter is deliberately NOT re-armed here. `get_time_of_week`
+    # The symbol counter is deliberately NOT re-armed here. `get_broadcast_time_of_week`
     # reads the *validated* `data.SOW`, which only advances when `validate_data`
     # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
     # that carries a new ephemeris-I block until its partner arrives. Re-arming
@@ -1082,7 +1080,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits_since_sync/rate` (see `get_time_of_week`) to stay on the true
+        # `tow + num_bits_since_sync/rate` (see `get_broadcast_time_of_week`) to stay on the true
         # time through frames the gate skips. The frame was decoded (checked
         # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(

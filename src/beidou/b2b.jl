@@ -621,7 +621,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDou
     end
     # SOW refers to the start of the frame just decoded; that epoch lies
     # The symbol counter is deliberately NOT re-armed here (the same split as
-    # `b2a.jl`, for the same reason): `get_time_of_week` reads the *validated*
+    # `b2a.jl`, for the same reason): `get_broadcast_time_of_week` reads the *validated*
     # `data.SOW`, so the counter must anchor to the last frame `validate_data`
     # promoted, not to the last frame that passed CRC. Re-arming per frame while
     # the published SOW stands still makes `tow + num_bits_since_sync/rate` read a whole
@@ -797,7 +797,7 @@ end
 
 # B-CNAV3 broadcasts the seconds of week as a 20-bit count with LSB 1 s (see
 # `decode_sync_unit` on why the English Table 7-2 scale of 3 is a misprint).
-get_time_of_week(data::BeiDouB2bData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouB2bData) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -837,7 +837,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW; the symbol counter re-anchors to
         # this frame's sync epoch with it, so the pair `data.SOW` + counter that
-        # `get_time_of_week` consumers combine always describes one frame. Runs
+        # `get_broadcast_time_of_week` consumers combine always describes one frame. Runs
         # right after `decode_sync_unit`, so `raw_data.SOW` is the
         # just-decoded frame's.
         return GNSSDecoderState(

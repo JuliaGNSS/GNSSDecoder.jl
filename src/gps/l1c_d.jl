@@ -766,7 +766,7 @@ the paired `WN` is still the old week) is folded by the `mod`; a consumer
 combining this with `WN` inherits that one-frame-per-week ambiguity, which is
 also the ICD's.
 """
-function get_time_of_week(data::GPSL1C_DData)
+function get_broadcast_time_of_week(data::GPSL1C_DData)
     (isnothing(data.ITOW) || isnothing(data.toi)) && return nothing
     itow = Int(data.ITOW) + (data.toi == 0)
     return mod(
@@ -959,7 +959,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiS
     # `toi` advances with every locked frame, but `ITOW` only refreshes when a
     # subframe 2 clears LDPC+CRC. The frame at `toi = 1` is the first to
     # broadcast the new interval's `ITOW` (the one at `toi = 0` still carries
-    # the old one; see `get_time_of_week`), so carry the interval across here,
+    # the old one; see `get_broadcast_time_of_week`), so carry the interval across here,
     # or a noisy subframe 2 from that frame on promotes a time of week exactly
     # 7200 s low. A later decoded subframe 2 overwrites this with the broadcast
     # value either way. Continuity above makes `prev_toi == 0` here. The week

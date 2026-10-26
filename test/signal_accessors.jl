@@ -26,7 +26,7 @@
         get_band,
         get_band_id,
         get_band_name,
-        get_data_frequency,
+        get_bit_rate,
         get_time_system,
         get_time_system_id,
         get_time_system_name,
@@ -76,7 +76,7 @@
         l5 = GPSL5IDecoderState(1)
         l2c = GPSL2CMDecoderState(1)
         @test get_signal_type(l5) !== get_signal_type(l2c)
-        @test get_data_frequency(l5) != get_data_frequency(l2c)
+        @test get_bit_rate(l5) != get_bit_rate(l2c)
         @test get_band_id(l5) == :L5
         @test get_band_id(l2c) == :L2
         # Same constellation, same time scale, though.
@@ -126,7 +126,7 @@
         @test @inferred(get_signal_type(state)) === GPSL1CA
         @test @inferred(get_signal_id(state)) == :GPSL1CA
         @test @inferred(get_band_id(state)) == :L1
-        @test @inferred(get_data_frequency(state)) == get_data_frequency(GPSL1CA)
+        @test @inferred(get_bit_rate(state)) == get_bit_rate(GPSL1CA)
         @test @inferred(get_time_system(state)) == GPST()
     end
 end

@@ -603,7 +603,7 @@ function is_health_status_decoded(data::GalileoINAVData)
 end
 
 # I/NAV broadcasts the time of week as seconds (word types 0, 5 and 6).
-get_time_of_week(data::GalileoINAVData) = data.TOW
+get_broadcast_time_of_week(data::GalileoINAVData) = data.TOW
 
 """
 $(TYPEDSIGNATURES)

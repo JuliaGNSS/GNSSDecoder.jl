@@ -190,7 +190,7 @@ end
     @testset "Signal metadata" begin
         state = BeiDouB2bDecoderState(prn)
         @test get_signal_type(state) == BeiDouB2bI
-        @test get_data_frequency(state) == 1000Hz
+        @test get_bit_rate(state) == 1000Hz
         @test get_time_system_name(state) == "BeiDou Time"
         @test get_constellation_name(state) == "BeiDou"
         # Pin the carrier, not the label: GNSSSignals v4 renamed the 1207.14 MHz
@@ -330,7 +330,7 @@ end
 
     # The 1016 above is armed by `validate_data`, and by nothing else: a frame
     # that clears CRC but does not complete the positioning set must leave the
-    # counter alone, because `get_time_of_week` publishes the *validated* SOW and
+    # counter alone, because `get_broadcast_time_of_week` publishes the *validated* SOW and
     # the two only describe a time as a pair. On B2b the completeness gate holds
     # once MT10 and MT30 are in, so this is defensive — it is the same split that
     # fixes a live once-per-message-cycle 3-second error on B2a, whose MT10/MT11

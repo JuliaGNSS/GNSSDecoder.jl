@@ -513,7 +513,7 @@ end
 
 # LNAV broadcasts the time of week as seconds outright (the 17-bit HOW count is
 # scaled by 6 at parse), so there is nothing to reconstruct.
-get_time_of_week(data::GPSL1CAData) = data.TOW
+get_broadcast_time_of_week(data::GPSL1CAData) = data.TOW
 
 # LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
 # CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).

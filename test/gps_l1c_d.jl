@@ -342,7 +342,7 @@ end
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
         @test state.data.ITOW == golden.ITOW
-        @test get_time_of_week(state) == golden.ITOW * 7200 + toi0 * 18
+        @test get_broadcast_time_of_week(state) == golden.ITOW * 7200 + toi0 * 18
 
         # The next frame follows the settled (high) branch by +1, which TOI
         # continuity resolves on its own — here it must, its subframe 2 being
@@ -351,7 +351,7 @@ end
         @test state.data.toi == toi0 + 1
         @test state.is_shifted_by_180_degrees == false
         @test state.raw_data.WN == golden.WN   # kept from the previous frame
-        @test get_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 1) * 18
+        @test get_broadcast_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 1) * 18
     end
 
     @testset "ITOW carries across the interval boundary when subframe 2 fails" begin
@@ -371,12 +371,12 @@ end
         state = decode!(GPSL1C_DDecoderState(7), stream, 3 * 1800 + 52)
         @test state.data.toi == 0
         @test state.data.ITOW == golden.ITOW
-        @test get_time_of_week(state) == (golden.ITOW + 1) * 7200
+        @test get_broadcast_time_of_week(state) == (golden.ITOW + 1) * 7200
 
         state = decode!(state, stream[(3*1800+53):end], length(stream) - (3 * 1800 + 52))
         @test state.data.toi == 2
         @test state.data.ITOW == golden.ITOW + 1
-        @test get_time_of_week(state) == (golden.ITOW + 1) * 7200 + 2 * 18
+        @test get_broadcast_time_of_week(state) == (golden.ITOW + 1) * 7200 + 2 * 18
 
         # The carry wraps with the week: ITOW 83 is followed by ITOW 0.
         state = decode!(GPSL1C_DDecoderState(7), stream[1:(3*1800+52)], 3 * 1800 + 52)
@@ -397,7 +397,7 @@ end
         @test state.data.toi == toi0 + 2
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
-        @test get_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 2) * 18
+        @test get_broadcast_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 2) * 18
     end
 
     # --- Subframe 3 page-format parsing (IS-GPS-800J §3.5.4) -----------------

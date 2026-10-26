@@ -340,7 +340,8 @@ xor-out 0. Shared across signals — implemented once in this package.
 ## Signal metadata
 
 Facts about the *signal* a decoder demodulates — its name and ids, band,
-constellation, navigation-message symbol rate, time scale — as opposed to the
+constellation, bit rate as tracked (`get_bit_rate`, the channel symbol rate),
+time scale — as opposed to the
 navigation *data* it decodes. All of it lives in GNSSSignals and none of it is
 restated here: each signal file states the constants → signal mapping
 (`get_signal_type`) and `src/gnss.jl` forwards GNSSSignals' accessors for a

@@ -27,7 +27,7 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
     @testset "every signal answers all three" begin
         for state in all_states()
             @test get_orbit_class(state) isa Union{Nothing,GNSSDecoder.OrbitClass}
-            @test isnothing(get_time_of_week(state))   # nothing decoded yet
+            @test isnothing(get_broadcast_time_of_week(state))   # nothing decoded yet
             for target in (GPST(), GST(), BDT())
                 @test isnothing(get_time_offset(state, target))
             end
@@ -56,12 +56,12 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         for prn in (1, 5, 59, 63)
             state = BeiDouB1IDecoderState(prn)
             @test get_orbit_class(state) === geostationary_orbit
-            @test get_data_frequency(state) == 500Hz
+            @test get_bit_rate(state) == 500Hz
         end
         for prn in (6, 20, 58)
             state = BeiDouB3IDecoderState(prn)
             @test isnothing(get_orbit_class(state))   # IGSO and MEO are not distinguished
-            @test get_data_frequency(state) == 50Hz
+            @test get_bit_rate(state) == 50Hz
         end
 
         # B-CNAV: from the satellite's own broadcast `sat_type`, reserved code 0
@@ -93,43 +93,46 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
 
     @testset "time of week" begin
         # The signals that broadcast seconds outright pass them through.
-        @test get_time_of_week(GPSL1CAData(; TOW = Int64(432_006))) == 432_006
-        @test get_time_of_week(GalileoINAVData(; TOW = Int64(123_456))) == 123_456
-        @test get_time_of_week(GalileoE5aData(; TOW = Int64(123_456))) == 123_456
-        @test get_time_of_week(BeiDouDNAVData(; SOW = Int64(99))) == 99
-        @test get_time_of_week(BeiDouB2aData(; SOW = Int64(300_003))) == 300_003
-        @test get_time_of_week(BeiDouB2bData(; SOW = Int64(300_001))) == 300_001
+        @test get_broadcast_time_of_week(GPSL1CAData(; TOW = Int64(432_006))) == 432_006
+        @test get_broadcast_time_of_week(GalileoINAVData(; TOW = Int64(123_456))) == 123_456
+        @test get_broadcast_time_of_week(GalileoE5aData(; TOW = Int64(123_456))) == 123_456
+        @test get_broadcast_time_of_week(BeiDouDNAVData(; SOW = Int64(99))) == 99
+        @test get_broadcast_time_of_week(BeiDouB2aData(; SOW = Int64(300_003))) == 300_003
+        @test get_broadcast_time_of_week(BeiDouB2bData(; SOW = Int64(300_001))) == 300_001
 
         # GPS L1C-D: ITOW counts two-hour intervals, toi 18-second frames.
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 7)) ==
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 7)) ==
               3 * 7200 + 7 * 18
         # `toi = 0` counts against the NEXT two-hour interval (IS-GPS-800J §3.5.2:
         # the TOI is defined against "the ITOW count in the subframe 2 of the next
         # 18-second frame", range 0-399): the frame broadcasting it is the last
         # frame of the OLD interval, so its own ITOW is one behind.
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(0), toi = 0)) == 7200
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 0)) == 4 * 7200
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 399)) ==
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(0), toi = 0)) == 7200
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 0)) ==
+              4 * 7200
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 399)) ==
               3 * 7200 + 399 * 18
         # The last frame of the week: interval 83, frame 399 …
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 399)) == 604_800 - 18
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 399)) ==
+              604_800 - 18
         # … and the frame after it stamps second 0 of the following week.
-        @test get_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 0)) == 0
+        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 0)) == 0
         # Either field alone is not a time of week.
-        @test isnothing(get_time_of_week(GPSL1C_DData(; ITOW = Int64(3))))
-        @test isnothing(get_time_of_week(GPSL1C_DData(; toi = 7)))
+        @test isnothing(get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3))))
+        @test isnothing(get_broadcast_time_of_week(GPSL1C_DData(; toi = 7)))
 
         # BeiDou B1C: HOW counts hours, soh 18-second frames.
-        @test get_time_of_week(BeiDouB1CData(; HOW = Int64(0), soh = 0)) == 0
-        @test get_time_of_week(BeiDouB1CData(; HOW = Int64(5), soh = 9)) ==
+        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(0), soh = 0)) == 0
+        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(5), soh = 9)) ==
               5 * 3600 + 9 * 18
         # The last frame of the week: hour 167, frame 199.
-        @test get_time_of_week(BeiDouB1CData(; HOW = Int64(167), soh = 199)) == 604_800 - 18
-        @test isnothing(get_time_of_week(BeiDouB1CData(; HOW = Int64(5))))
-        @test isnothing(get_time_of_week(BeiDouB1CData(; soh = 9)))
+        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(167), soh = 199)) ==
+              604_800 - 18
+        @test isnothing(get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(5))))
+        @test isnothing(get_broadcast_time_of_week(BeiDouB1CData(; soh = 9)))
 
         # E6-B stamps HAS blocks with a time of hour, not a time of week.
-        @test isnothing(get_time_of_week(GalileoE6BData()))
+        @test isnothing(get_broadcast_time_of_week(GalileoE6BData()))
     end
 
     @testset "inter-system time offset" begin

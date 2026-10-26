@@ -776,7 +776,7 @@ get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
     is_beidou_geo(state.prn) ? geostationary_orbit : nothing
 
 # D1/D2 broadcasts the seconds of week outright (LSB 1 s, §5.2.4.3/§5.3.3.1).
-get_time_of_week(data::BeiDouDNAVData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -882,19 +882,19 @@ is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63
 dnav_symbols_per_second(prn::Integer) = is_beidou_geo(prn) ? 500 : 50
 
 """
-    GNSSSignals.get_data_frequency(state::GNSSDecoderState{<:BeiDouDNAVData})
+    GNSSSignals.get_bit_rate(state::GNSSDecoderState{<:BeiDouDNAVData})
 
 Navigation-message symbol rate of a B1I/B3I decoder state: 50 Hz for the
 MEO/IGSO satellites (D1 NAV) and 500 Hz for the GEO satellites (D2 NAV,
 BDS-SIS-ICD-B1I-3.0 §5.1.1).
 
 This specializes the generic forward through `get_signal_type` (see
-`src/gnss.jl`): the type-level `GNSSSignals.get_data_frequency(BeiDouB1I)`
+`src/gnss.jl`): the type-level `GNSSSignals.get_bit_rate(BeiDouB1I)`
 answers 50 Hz because a *signal type* cannot know the satellite, but the D1/D2
 rate is a property of the PRN — which the decoder state does know — so the
 state-level accessor reports the rate this state actually demodulates.
 """
-GNSSSignals.get_data_frequency(state::GNSSDecoderState{<:BeiDouDNAVData}) =
+GNSSSignals.get_bit_rate(state::GNSSDecoderState{<:BeiDouDNAVData}) =
     dnav_symbols_per_second(state.prn) * Hz
 
 # Screen and store a freshly decoded SOW (with its symbol-counter anchor) in
@@ -1433,7 +1433,7 @@ dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
 # the epoch the SOW stamps, so that a consumer reads the current time as
-# `SOW + num_bits_since_sync / get_data_frequency(state)`.
+# `SOW + num_bits_since_sync / get_bit_rate(state)`.
 #
 # That epoch is the *leading edge of this subframe's preamble*
 # (BDS-SIS-ICD-B1I-3.0 §5.2.4.3 for D1, §5.3.3.1(2) for D2), and at promotion
