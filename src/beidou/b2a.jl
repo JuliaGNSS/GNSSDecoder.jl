@@ -677,6 +677,9 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     storage::DataStorage{BeiDouB2aData}
 end
 
+# Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): its buffers are FEC scratch, and `frame_decoded` is set by every frame.
+clear_satellite_cache(cache::BeiDouB2aCache) = cache
+
 function BeiDouB2aCache()
     BeiDouB2aCache(
         CircularDeque{Float32}(B2A_WINDOW_SYMBOLS),

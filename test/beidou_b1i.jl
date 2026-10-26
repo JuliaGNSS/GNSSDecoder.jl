@@ -130,6 +130,45 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test state.is_shifted_by_180_degrees == false
     end
 
+    @testset "reset for another satellite" begin
+        # A cycle stages the dataset in the vote tally without publishing it.
+        staged = decode!(
+            BeiDouB1IDecoderState(20),
+            dnav_test_soft_symbols(d1_cycle(0)...),
+            length(dnav_test_soft_symbols(d1_cycle(0)...)),
+        )
+        @test !is_decoding_completed_for_positioning(staged)
+        next_cycle = dnav_test_soft_symbols(d1_cycle(D1_CYCLE_SPAN)...)
+
+        # Reset for the same satellite after an outage, the tally is kept, so the
+        # next cycle confirms it ...
+        same = decode!(reset_decoder_state!(copy(staged)), next_cycle, length(next_cycle))
+        @test is_decoding_completed_for_positioning(same)
+
+        # ... but for another satellite it is not: its cycle stages anew.
+        other = reset_decoder_state!(copy(staged), 21)
+        @test other.prn == 21
+        @test other.raw_data == BeiDouDNAVData()
+        @test other.data == BeiDouDNAVData()
+        @test isnothing(other.num_bits_since_sync)
+        @test isempty(other.cache.old_data)
+        other = decode!(other, next_cycle, length(next_cycle))
+        @test !is_decoding_completed_for_positioning(other)
+
+        # A GEO decoder (D2 at 500 sps) moved to a MEO satellite decodes D1 at
+        # 50 sps, as a decoder constructed for that satellite does.
+        geo = BeiDouB1IDecoderState(4)
+        @test get_bit_rate(geo) == 500Hz
+        moved = reset_decoder_state!(geo, 20)
+        @test get_bit_rate(moved) == 50Hz
+        symbols = dnav_test_soft_symbols(d1_two_cycles...)
+        moved = decode!(moved, symbols, length(symbols))
+        fresh = decode!(BeiDouB1IDecoderState(20), symbols, length(symbols))
+        @test is_decoding_completed_for_positioning(moved)
+        check_d1_fundamental(moved.data)
+        @test moved.data == fresh.data
+    end
+
     @testset "D1 promotion waits for a broadcast repetition" begin
         # One cycle stages the dataset but must not publish it: BCH(15,11,1)
         # cannot detect a two-error word, so repetition voting is the only

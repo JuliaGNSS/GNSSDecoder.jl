@@ -508,6 +508,14 @@ GalileoE5aCache() = GalileoE5aCache(
     )
 end
 
+# For another satellite (`reset_decoder_state!(state, prn)`): the almanac page type 5
+# part-filled for page type 6 to complete.
+clear_satellite_cache(cache::GalileoE5aCache) = GalileoE5aCache(
+    cache;
+    almanac_chain_partial = GalileoAlmanac(),
+    almanac_chain_omega0_msb = nothing,
+)
+
 function Base.:(==)(a::GalileoE5aCache, b::GalileoE5aCache)
     deques_equal(a.soft_buffer, b.soft_buffer) &&
         a.almanac_chain_partial == b.almanac_chain_partial &&

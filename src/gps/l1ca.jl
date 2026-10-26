@@ -668,6 +668,12 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1CAData})
     )
 end
 
+# For another satellite (`reset_decoder_state!(state, prn)`): its voting tally.
+function clear_satellite_cache(cache::GPSL1CACache)
+    empty!(cache.old_data)
+    return cache
+end
+
 function check_gpsl1_parity(word::Unsigned, prev_29 = false, prev_30 = false)
     function bit(bit_number)
         cbit = get_bit(word, 30, bit_number)
