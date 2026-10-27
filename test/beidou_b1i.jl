@@ -3,7 +3,7 @@
 # `dnav_test_utils.jl`). Field values are checked against the ICD scalings
 # applied to the raw integers fed into the encoder (BDS-SIS-ICD-B1I-3.0 §5.2.4).
 
-using GNSSSignals: Hz
+using Unitful: Hz
 
 @testset "BeiDou B1I" begin
     PI = GNSSDecoder.GNSS_PI

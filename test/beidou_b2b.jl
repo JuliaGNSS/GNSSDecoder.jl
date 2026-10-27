@@ -3,7 +3,7 @@ using GNSSDecoder
 using GNSSSignals
 using Dictionaries
 using Random
-using GNSSSignals: Hz
+using Unitful: Hz
 
 # The GF(2^6) reference arithmetic + systematic encoder for the transmit
 # chain (`beidou_ldpc_encode`, `gf64_symbols_to_bits`, `gf64_bits_to_symbols`,

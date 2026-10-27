@@ -17,6 +17,7 @@
 # the 486 page bits come from the ICD verbatim, CRC included, so the CRC scope is
 # checked against a checksum this package did not compute.
 
+using Unitful: Hz
 using GNSSDecoder: crc24q
 
 """
@@ -122,7 +123,7 @@ e6b_decode_stream(state, stream) = decode!(state, stream, length(stream))
     @test decoder.constants.preamble == 0xB770
     @test get_signal_type(decoder) == GalileoE6B
     @test get_band(decoder) == GNSSSignals.E6()
-    @test get_data_frequency(decoder) == 1000GNSSSignals.Hz
+    @test get_data_frequency(decoder) == 1000Hz
     # C/NAV rides on E6-B; E6-C is the dataless pilot, so only E6-B maps to a
     # decoder. Checked by method existence rather than by constructing the
     # signal, which would build its spreading-code table.

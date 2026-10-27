@@ -2,7 +2,7 @@ module GNSSDecoder
 
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
 using StaticStrings: AbstractStaticString, CStaticString
-using GNSSSignals: Hz, s, ustrip
+using Unitful: Hz, s, ustrip
 import Aff3ct
 
 export decode!,
