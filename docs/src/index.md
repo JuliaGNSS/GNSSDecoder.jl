@@ -41,8 +41,8 @@ julia> state = GPSL1CADecoderState(1);  # Initialize decoder for PRN 1
 julia> state.prn  # Access PRN
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
+julia> typeof(state.data)
+GPSL1CAData
 ```
 
 Process incoming soft symbols and check the decoder state:
@@ -50,8 +50,8 @@ Process incoming soft symbols and check the decoder state:
 ```jldoctest gps_example
 julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
-8
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 In a real application, you would decode soft symbols from a tracking loop. With
@@ -86,13 +86,13 @@ julia> state = GalileoE1BDecoderState(1);  # Initialize decoder for PRN 1
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B}, GNSSDecoder.GalileoINAVCache}
+julia> typeof(state.data)
+GalileoINAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 ### Galileo E5b Decoding
@@ -124,12 +124,12 @@ single satellite may take up to 32 seconds per message, while a receiver pooling
 pages from several E6-B satellites completes them much faster.
 
 ```jldoctest galileo_e6b_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
 julia> state = GalileoE6BDecoderState(1);
 
-julia> state.constants.syncro_sequence_length   # 1000 symbols = 1 s per page
-1000
+julia> get_data_frequency(state)   # 1000 symbols, one page, per second
+1000 Hz
 
 julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
 false
@@ -171,13 +171,13 @@ julia> state = GPSL1C_DDecoderState(1);  # Initialize decoder for PRN 1
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
+julia> typeof(state.data)
+GPSL1C_DData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 ### GPS L5I Decoding
@@ -196,13 +196,13 @@ julia> state = GPSL5IDecoderState(1);  # Initialize decoder for PRN 1
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
+julia> typeof(state.data)
+GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 ### GPS L2C Decoding
@@ -220,13 +220,13 @@ julia> state = GPSL2CMDecoderState(1);  # Initialize decoder for PRN 1
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
+julia> typeof(state.data)
+GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 ### BeiDou Decoding
@@ -242,13 +242,13 @@ julia> using GNSSDecoder
 
 julia> state = BeiDouB1IDecoderState(20);  # PRN 20: MEO/IGSO, D1 NAV
 
-julia> typeof(state)
-GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GNSSDecoder.BeiDouDNAVCache}
+julia> typeof(state.data)
+BeiDouDNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 The modernized BDS-3 signals B1C (B-CNAV1), B2a (B-CNAV2), and B2b (B-CNAV3)
@@ -267,13 +267,13 @@ julia> using GNSSDecoder
 
 julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
 
-julia> typeof(state)
-GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
+julia> typeof(state.data)
+BeiDouB2aData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
 
-julia> GNSSDecoder.num_bits_buffered(state)
-10
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Buffered, not yet synchronised
+true
 ```
 
 ## State Management
@@ -290,13 +290,10 @@ julia> state = GPSL1CADecoderState(1);
 
 julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
-julia> GNSSDecoder.num_bits_buffered(state)
-8
-
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
-0
+julia> isnothing(state.num_bits_after_valid_syncro_sequence)  # Synchronisation is cleared
+true
 
 julia> state.prn  # PRN is preserved
 1
