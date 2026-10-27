@@ -536,7 +536,7 @@ using Unitful: Hz
         ]
 
         state = BeiDouB1IDecoderState(4)   # PRN 4 is a GEO satellite ⇒ D2
-        @test GNSSDecoder.is_beidou_geo(4)
+        @test GNSSSignals.is_beidou_geo(4)
         # One 3-second frame per page: subframe 1 carries the page, subframes
         # 2-5 (integrity/differential, out of scope) are fed as zero-filled
         # filler so the SOW spacing between subframe-1 decodes is genuine.

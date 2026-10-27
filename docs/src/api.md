@@ -84,7 +84,7 @@ to a compile-time constant.
 | `get_signal_id` / `get_signal_name` | which signal | `:GPSL2CM` / `"GPS L2CM"` |
 | `get_constellation_id` / `get_constellation_name` | which constellation | `:GPS` / `"GPS"` |
 | `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
-| `get_bit_rate` | navigation-message symbol rate | `50 Hz` |
+| `get_bit_rate` | bit rate as tracked: the channel symbol rate, before error-correction decoding, of the satellite, a BeiDou B1I/B3I GEO satellite's D2 rate where it differs from the signal's | `50 Hz` |
 | `get_time_system` / `get_time_system_id` / `get_time_system_name` | time scale the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
 | `get_system_start_time` / `get_tai_system_start_time` / `get_tai_offset` | that scale's epoch (as a UTC label, and on the continuous TAI scale) and offset from TAI — what turns a decoded WN/TOW pair into an absolute instant | `1980-01-06T00:00:00` / `1980-01-06T00:00:19` / `19 s` |
 

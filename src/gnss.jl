@@ -376,7 +376,7 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # The GNSSSignals accessors a decoder state can answer for itself, forwarded
 # through `get_signal_type`: identity (`get_signal_id` / `get_signal_name`,
 # `get_constellation_id` / `get_constellation_name`, `get_band` / `get_band_id` /
-# `get_band_name`), the navigation-message symbol rate (`get_bit_rate`),
+# `get_band_name`),
 # and the time scale the decoded week numbers and times of week are referenced
 # to (`get_time_system` and friends — the epochs `get_system_start_time` (UTC
 # label) and `get_tai_system_start_time` (the same instant on the continuous
@@ -400,7 +400,6 @@ for accessor in (
     :get_band,
     :get_band_id,
     :get_band_name,
-    :get_bit_rate,
     :get_time_system,
     :get_time_system_id,
     :get_time_system_name,
@@ -411,6 +410,11 @@ for accessor in (
     @eval @inline GNSSSignals.$accessor(state::GNSSDecoderState) =
         GNSSSignals.$accessor(get_signal_type(state))
 end
+
+# The symbol rate is the satellite's: a BeiDou B1I or B3I GEO satellite broadcasts its
+# D2 message at 500 Hz, where the signal's rate is D1's 50 Hz, so the PRN goes along.
+@inline GNSSSignals.get_bit_rate(state::GNSSDecoderState) =
+    GNSSSignals.get_bit_rate(get_signal_type(state), state.prn)
 
 # ---- Satellite and time metadata --------------------------------------------
 #

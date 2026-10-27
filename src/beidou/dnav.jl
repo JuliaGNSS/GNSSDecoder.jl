@@ -765,7 +765,7 @@ $(TYPEDSIGNATURES)
 [`geostationary_orbit`](@ref OrbitClass) for the GEO PRNs, `nothing` otherwise.
 
 D1/D2 NAV broadcasts `sqrt_A` outright and carries no orbit-type field, so the
-only orbit fact available on B1I and B3I is the PRN partition
+only orbit fact available on B1I and B3I is the PRN partition GNSSSignals'
 `is_beidou_geo` encodes — the one the ICD fixes to select between the
 D1 and D2 message formats (BDS-SIS-ICD-B1I-3.0 Table 4-1, §5.1.1). That
 partition separates GEO from non-GEO and no further, so an IGSO and an MEO
@@ -773,7 +773,7 @@ satellite are indistinguishable here and both report `nothing`. The B-CNAV
 signals answer all three classes, from the broadcast `sat_type`.
 """
 get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
-    is_beidou_geo(state.prn) ? geostationary_orbit : nothing
+    GNSSSignals.is_beidou_geo(state.prn) ? geostationary_orbit : nothing
 
 # D1/D2 broadcasts the seconds of week outright (LSB 1 s, §5.2.4.3/§5.3.3.1).
 get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
@@ -859,44 +859,6 @@ function is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, symbols_per_second)
     return 0 < ΔSOW <= DNAV_MAX_SOW_GAP
 end
 
-"""
-$(SIGNATURES)
-
-Whether a BeiDou PRN is one of the GEO satellites (PRN 1-5 and 59-63).
-
-This is the D1/D2 selector, and nothing else: MEO/IGSO satellites broadcast the
-D1 message (50 bps, under the NH20 secondary code), GEO satellites the D2
-message (500 bps, no secondary code) — BDS-SIS-ICD-B1I-3.0 §5.1.1 / Table 4-1.
-
-The B-CNAV signals never need it for the tracked satellite — GEO satellites do
-not transmit them (e.g. BDS-SIS-ICD-B1C-1.0 §1) — and where they need another
-satellite's orbit class (the reduced and midi almanacs) they carry it as
-broadcast data (`sat_type`, 1 GEO / 2 IGSO / 3 MEO) instead of deriving it from
-the PRN.
-"""
-is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63
-
-# D1 runs at 50 symbols per second, D2 (GEO satellites) at 500 (§5.1.1). The
-# format is a property of the satellite, not of the signal, so it is selected
-# per PRN.
-dnav_symbols_per_second(prn::Integer) = is_beidou_geo(prn) ? 500 : 50
-
-"""
-    GNSSSignals.get_bit_rate(state::GNSSDecoderState{<:BeiDouDNAVData})
-
-Navigation-message symbol rate of a B1I/B3I decoder state: 50 Hz for the
-MEO/IGSO satellites (D1 NAV) and 500 Hz for the GEO satellites (D2 NAV,
-BDS-SIS-ICD-B1I-3.0 §5.1.1).
-
-This specializes the generic forward through `get_signal_type` (see
-`src/gnss.jl`): the type-level `GNSSSignals.get_bit_rate(BeiDouB1I)`
-answers 50 Hz because a *signal type* cannot know the satellite, but the D1/D2
-rate is a property of the PRN — which the decoder state does know — so the
-state-level accessor reports the rate this state actually demodulates.
-"""
-GNSSSignals.get_bit_rate(state::GNSSDecoderState{<:BeiDouDNAVData}) =
-    dnav_symbols_per_second(state.prn) * Hz
-
 # Screen and store a freshly decoded SOW (with its symbol-counter anchor) in
 # `raw_data`.
 #
@@ -916,12 +878,8 @@ function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     prev_SOW = state.raw_data.SOW
     num_bits_since_sync = state.num_bits_since_sync
     elapsed = elapsed_symbols(state.raw_data.num_bits_since_last_SOW, num_bits_since_sync)
-    is_plausible = is_plausible_dnav_SOW(
-        SOW_count,
-        prev_SOW,
-        elapsed,
-        dnav_symbols_per_second(state.prn),
-    )
+    is_plausible =
+        is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, Int(get_bit_rate(state) / Hz))
     is_plausible || return state
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
     raw_data = @split_nothing num_bits_since_sync BeiDouDNAVData(
@@ -1346,7 +1304,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
     content = decode_dnav_subframe_content(buffer, state.constants)
     fra_id = Int(dnav_bits(content, 16, 3))
     fra_id in 1:5 || return state  # FraID 110/111 are reserved (Table 5-3)
-    if is_beidou_geo(state.prn)
+    if GNSSSignals.is_beidou_geo(state.prn)
         # D2: the fundamental navigation data lives in subframe 1 pages 1-10;
         # subframes 2-4 (BDS integrity / wide-area differential corrections)
         # and subframe 5 (D2 almanac & time offsets, 120 pages) belong to the
