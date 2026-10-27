@@ -781,8 +781,10 @@ get_time_of_week(data::BeiDouDNAVData) = data.SOW
 """
 $(TYPEDSIGNATURES)
 
-The BDT-to-`target` offset from D1 subframe 5 / D2 page 102, or `nothing` when
-this satellite is not broadcasting one.
+The BDT-to-`target` offset from D1 subframe 5 pages 9 and 10, or `nothing` when
+this satellite is not broadcasting one. D2 carries the same offsets in subframe 5
+pages 101 and 102, which this decoder does not decode, so a GEO satellite (D2)
+answers `nothing` always.
 
 D1/D2 is the one shape that identifies the target system by *field name* rather
 than by a `GNSS_ID` code — it carries all three offsets side by side

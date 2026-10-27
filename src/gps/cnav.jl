@@ -852,8 +852,9 @@ $(TYPEDSIGNATURES)
 The GPS/GNSS time offset from message type 35, if this satellite is currently
 broadcasting one for `target`.
 
-`GNSS_ID` names the system the single broadcast set refers to — 0 none,
-1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI); see `gps_ggto_offset`.
+`GNSS_ID` names the system the single broadcast set refers to — 0 no data,
+1 Galileo, 2 GLONASS, and 3-7 reserved, to be read as unusable (IS-GPS-705J
+§20.3.3.8.2); see `gps_ggto_offset`.
 """
 get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target, state.data.GNSS_ID)
