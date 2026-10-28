@@ -67,7 +67,7 @@ Decoded fields land in a [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData)
 
 ```julia
 state = GalileoE5bDecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -143,7 +143,7 @@ facets, so a decoder on either component always has both available.
 
 ```julia
 state = GalileoE5bDecoderState(1)
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end

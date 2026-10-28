@@ -550,7 +550,7 @@ clock correction, and health data from the 50 bps LNAV data stream.
 
 ```julia
 state = GPSL1CADecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, bits, num_symbols)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -616,7 +616,7 @@ after brief signal outages without requiring a full re-decode of all subframes.
 # After detecting signal loss
 state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode!(state, new_bits, num_symbols)
+state = decode!(state, new_bits, num_bits)
 ```
 
 # See Also
@@ -1586,7 +1586,7 @@ is considered healthy only if all health bits are zero (`"000000"`).
 
 ```julia
 state = GPSL1CADecoderState(1)
-state = decode!(state, bits, num_symbols)
+state = decode!(state, bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end

@@ -44,7 +44,7 @@ container, also used by the E5b decoder).
 
 ```julia
 state = GalileoE1BDecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -127,7 +127,7 @@ reports the E5b facet of the same word type 5.
 
 ```julia
 state = GalileoE1BDecoderState(1)
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end

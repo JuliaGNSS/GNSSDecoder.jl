@@ -654,7 +654,7 @@ after brief signal outages without requiring a full re-decode of all pages.
 # After detecting signal loss
 state = reset_decoder_state!(state)
 # Continue decoding with preserved ephemeris
-state = decode!(state, new_bits, num_symbols)
+state = decode!(state, new_bits, num_bits)
 ```
 
 # See Also

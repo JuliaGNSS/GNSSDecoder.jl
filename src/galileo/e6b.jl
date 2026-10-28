@@ -1470,7 +1470,7 @@ Message Type 1 content blocks are parsed into a [`GalileoE6BData`](@ref).
 
 ```julia
 state = GalileoE6BDecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if !isnothing(state.data.orbit_corrections)
     # Apply HAS corrections to the I/NAV ephemeris of the masked satellites
 end

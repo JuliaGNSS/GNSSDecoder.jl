@@ -52,7 +52,7 @@ the PRN. Each 300-bit subframe is synchronized via the 11-bit preamble
 
 ```julia
 state = BeiDouB1IDecoderState(20)         # PRN 20 (MEO/IGSO ⇒ D1)
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

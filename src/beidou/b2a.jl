@@ -776,7 +776,7 @@ matching this decoder's PRN, and dispatched to per-message-type parsers
 
 ```julia
 state = BeiDouB2aDecoderState(19)         # PRN 19
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

@@ -787,7 +787,7 @@ SNR (see the soft-symbol convention note on [`decode!`](@ref)).
 
 ```julia
 state = BeiDouB1CDecoderState(30)          # PRN 30
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

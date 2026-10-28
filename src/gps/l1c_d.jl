@@ -814,7 +814,7 @@ parity matrices in `data/`.
 
 ```julia
 state = GPSL1C_DDecoderState(1)            # PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

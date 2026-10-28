@@ -892,7 +892,7 @@ binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 
 ```julia
 state = BeiDouB2bDecoderState(26)        # PRN 26
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

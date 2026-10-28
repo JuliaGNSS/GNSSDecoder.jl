@@ -1105,7 +1105,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Decode GNSS navigation message soft symbols, **overwriting** the storage `state`
+Decode the soft bits of a GNSS navigation message, **overwriting** the storage `state`
 holds, and return the updated state. Allocates nothing.
 
 `decode!` writes straight into the buffers that `state` was constructed with —
@@ -1130,13 +1130,19 @@ end
     after the call. Take a [`copy`](@ref Base.copy(::GNSSDecoderState)) first if
     a snapshot is needed.
 
-Processes incoming soft symbols from a GNSS signal, detecting preambles and
+Processes incoming soft bits from a GNSS signal, detecting preambles and
 decoding sync units to extract navigation data. The function
 handles both normal and 180-degree phase-shifted signals automatically.
 
-# Soft-symbol convention
+# Soft-bit convention
 
-`soft_symbols` is an `AbstractVector{<:Real}`; `Float32` is canonical. The sign
+`soft_bits` are what a tracking loop hands over, such as TrackingLoops'
+`get_soft_bits`: one per navigation bit as tracked, that is per channel symbol,
+before any error-correction decoding — the bits GNSSSignals' `get_bit_rate` counts.
+On a signal with forward error correction they are not the message's bits: the
+decoded message bits exist only inside this package.
+
+`soft_bits` is an `AbstractVector{<:Real}`; `Float32` is canonical. The sign
 carries the bit decision and the magnitude carries confidence (standard LLR
 convention):
 
@@ -1157,15 +1163,15 @@ convention):
     scale (`≈ 2·r/σ²`) for best performance at marginal SNR — but still need not
     be normalized to a fixed range.
 
-Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
-amplitude-weighted soft bits) for every signal. See `CONTEXT.md` for the full
-glossary.
+Glue from a tracking loop: feed its `get_soft_bits` (TrackingLoops' or
+`Tracking.jl`'s polarity-corrected, amplitude-weighted soft bits) for every
+signal. See `CONTEXT.md` for the full glossary.
 
 # Arguments
 
   - `state::GNSSDecoderState`: Current decoder state
-  - `soft_symbols::AbstractVector{<:Real}`: Soft symbols to consume, oldest first
-  - `num_symbols::Int`: Number of leading entries of `soft_symbols` to process
+  - `soft_bits::AbstractVector{<:Real}`: Soft bits to consume, oldest first
+  - `num_bits::Int`: Number of leading entries of `soft_bits` to process
 
 # Keywords
 
@@ -1186,17 +1192,17 @@ glossary.
 """
 function decode!(
     state::GNSSDecoderState,
-    soft_symbols::AbstractVector{<:Real},
-    num_symbols::Int;
+    soft_bits::AbstractVector{<:Real},
+    num_bits::Int;
     decode_once::Bool = false,
 )
-    num_symbols <= length(soft_symbols) ||
-        throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
+    num_bits <= length(soft_bits) ||
+        throw(ArgumentError("num_bits exceeds length(soft_bits)"))
     num_bits_since_sync = state.num_bits_since_sync
     next = 1
-    while next <= num_symbols
+    while next <= num_bits
         next, buffer, num_bits_since_sync =
-            push_until_sync!(state, soft_symbols, next, num_symbols, num_bits_since_sync)
+            push_until_sync!(state, soft_bits, next, num_bits, num_bits_since_sync)
         isnothing(buffer) && break
         state = with_symbol_counter(state, num_bits_since_sync)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
