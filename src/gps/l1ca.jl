@@ -247,6 +247,12 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     WN_a::Union{Nothing,Int64} = nothing
 end
 
+# The UTC reference week `WN_0t` and the leap-second week `WN_LSF` are each
+# broadcast in 8 bits (IS-GPS-200N Figure 20-1, subframe 4 page 18), against a
+# 10-bit `WN` that is itself truncated: see `get_utc_parameters`.
+const LNAV_UTC_WN_MODULUS = 256
+const LNAV_LSF_WN_MODULUS = 256
+
 @inline function GPSL1CAData(
     data::GPSL1CAData;
     last_subframe_id = data.last_subframe_id,

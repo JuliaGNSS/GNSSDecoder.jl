@@ -61,6 +61,12 @@ export decode!,
     get_klobuchar_parameters,
     get_nequick_g_parameters,
     get_bdgim_parameters,
+    UTCParameters,
+    LeapSecondParameters,
+    GGTOParameters,
+    get_utc_parameters,
+    get_leap_second_parameters,
+    get_ggto_parameters,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -112,5 +118,6 @@ include("beidou/b2a.jl")
 include("beidou/b2b.jl")
 include("ephemeris.jl")
 include("ionosphere.jl")
+include("time_parameters.jl")
 include("precompile.jl")
 end

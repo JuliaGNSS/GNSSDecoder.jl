@@ -244,6 +244,11 @@ beidou_bdt_utc_block(word::Unsigned, word_length::Int, start::Int) = (;
     Δt_LSF = Int64(get_twos_complement_num(word, word_length, start + 89, 8)),
 )
 
+# The B-CNAV `WN_0t` and `WN_LSF` are each broadcast in 13 bits (BDS-SIS-ICD-B1C-1.0
+# Table 7-20), the width of `WN`: see `get_utc_parameters`.
+const BEIDOU_CNAV_UTC_WN_MODULUS = 8192
+const BEIDOU_CNAV_LSF_WN_MODULUS = 8192
+
 """
 Earth orientation parameter block, 138 bits: `t_EOP`(16, LSB 2⁴ s), `PM_X`(21,
 2⁻²⁰ arcsec), `PM_X_dot`(15, 2⁻²¹), `PM_Y`(21, 2⁻²⁰), `PM_Y_dot`(15, 2⁻²¹),

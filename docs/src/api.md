@@ -244,6 +244,40 @@ get_nequick_g_parameters
 get_bdgim_parameters
 ```
 
+## UTC, Leap Seconds and GGTO
+
+The time parameters a navigation file records beside the ephemeris: the
+broadcast offset of the system's time from UTC, its leap seconds, and Galileo's
+offset from GPS time. Every message truncates their reference weeks — to 6, 8 or
+13 bits — so each accessor lifts them to the week nearest the decoder's own
+[`get_broadcast_week`](@ref), on the same count,
+and a consumer needs no field widths. The UTC and leap-second accessors take
+`get_broadcast_week`'s `approximate_year` for that reason; Galileo's weeks are full, so the
+GGTO accessor needs none.
+
+| Accessor | Answers on | `nothing` when |
+|:---|:---|:---|
+| [`get_utc_parameters`](@ref) | GPS LNAV, CNAV, CNAV-2; Galileo I/NAV, F/NAV; BeiDou D1/D2 (without a reference epoch) and B-CNAV | not yet decoded, or on Galileo E6-B |
+| [`get_leap_second_parameters`](@ref) | the same | not yet decoded, or on Galileo E6-B |
+| [`get_ggto_parameters`](@ref) | Galileo I/NAV and F/NAV | not yet decoded, marked unavailable, or on any other decoder |
+
+```julia
+using GNSSDecoder
+utc = get_utc_parameters(state; approximate_year = 2026)
+if !isnothing(utc)
+    utc.WN_0t  # a full week number, not the 8 or 13 bits broadcast
+end
+```
+
+```@docs
+UTCParameters
+LeapSecondParameters
+GGTOParameters
+get_utc_parameters
+get_leap_second_parameters
+get_ggto_parameters
+```
+
 ## Data Types
 
 Every concrete per-signal data type subtypes the abstract supertype of its

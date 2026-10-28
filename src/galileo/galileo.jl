@@ -262,11 +262,15 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
 )
 
 # The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits
-# 123-128, F/NAV page type 4), against a 12-bit `WN`. It is the one reference
-# week in this package whose field is narrower than the week it is subtracted
-# from, so it is the one that is wrong rather than merely rollover-fragile if
-# left as broadcast — see `resolve_reference_week`.
+# 123-128, F/NAV page type 4), against a 12-bit `WN`, so it is wrong rather than
+# merely rollover-fragile if left as broadcast — see `resolve_reference_week`.
 const GALILEO_GGTO_WN_MODULUS = 64
+
+# The UTC reference week `WN_0t` and the leap-second week `WN_LSF` are each
+# broadcast in 8 bits (I/NAV word type 6, F/NAV page type 4), against a 12-bit
+# `WN`: see `get_utc_parameters`.
+const GALILEO_UTC_WN_MODULUS = 256
+const GALILEO_LSF_WN_MODULUS = 256
 
 # A single-frequency user on the second band of the clock's ionosphere-free pair
 # scales the BGD by `(f_E1/f)²`: 1.79 on E5a, 1.70 on E5b, exactly 1 on E1 (OS

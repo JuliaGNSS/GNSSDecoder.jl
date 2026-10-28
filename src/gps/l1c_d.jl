@@ -466,6 +466,11 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     num_sf3_pages_received::Int = 0
 end
 
+# `WN_0t` and `WN_LSF` are each broadcast in 13 bits (IS-GPS-800J Figure 3.5-2,
+# subframe 3 page 1), the width of `WN`: see `get_utc_parameters`.
+const CNAV2_UTC_WN_MODULUS = 8192
+const CNAV2_LSF_WN_MODULUS = 8192
+
 @inline function GPSL1C_DData(
     data::GPSL1C_DData;
     toi = data.toi,

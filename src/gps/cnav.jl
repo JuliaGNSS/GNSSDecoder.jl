@@ -525,6 +525,11 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
 end
 
+# `WN_0t` and `WN_LSF` are each broadcast in 13 bits (IS-GPS-705J Figure 20-10,
+# message type 33), the width of `WN`: see `get_utc_parameters`.
+const CNAV_UTC_WN_MODULUS = 8192
+const CNAV_LSF_WN_MODULUS = 8192
+
 @inline function GPSCNAVData(
     data::GPSCNAVData;
     last_message_type = data.last_message_type,

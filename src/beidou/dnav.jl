@@ -425,6 +425,10 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     DN::Union{Nothing,Int64} = nothing
 end
 
+# D1/D2 broadcasts no UTC reference week, and the leap-second week `WN_LSF` in
+# 8 bits (BDS-SIS-ICD-B1I-3.0 §5.2.4.18): see `get_leap_second_parameters`.
+const DNAV_LSF_WN_MODULUS = 256
+
 @inline function BeiDouDNAVData(
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
