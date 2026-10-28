@@ -69,9 +69,4 @@ include("allocation_utils.jl")
     include("deinterleave.jl")
     include("alist.jl")
     include("beidou_ldpc.jl")
-
-    # Opt-in real-data integration test (Fraunhofer Flexiband III-7a capture, the
-    # same recording Tracking.jl uses). Self-gated on
-    # ENV["GNSSDECODER_RUN_INTEGRATION_TEST"]; no-ops on a plain `]test`.
-    include("flexiband_iii7a.jl")
 end

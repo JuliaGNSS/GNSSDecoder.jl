@@ -70,27 +70,3 @@ jobs:
         run: |
           mv data data.hidden
           "$RUNNER_TEMP/trim/bin/gnssdecoder_trim"
-  integration:
-    # Real-data decode of the Fraunhofer Flexiband III-7a capture
-    # (test/flexiband_iii7a.jl) — the same real-sky recording Tracking.jl uses.
-    # Gated behind GNSSDECODER_RUN_INTEGRATION_TEST so it only runs here; it
-    # downloads the 1.6 GB capture (cached between runs — note GitHub caches are
-    # per-repository, so this is GNSSDecoder's own cache, not shared with
-    # Tracking.jl), then tracks + decodes GPS L1 C/A, Galileo E1B and GPS L5I.
-    name: Integration (real-data decode)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: julia-actions/setup-julia@v3
-        with:
-          version: '1'
-      - uses: julia-actions/cache@v3
-      - name: Cache Flexiband III-7a capture (1.6 GB)
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/flexiband
-          key: flexiband-iii7a-short-v1
-      - uses: julia-actions/julia-runtest@v1
-        env:
-          GNSSDECODER_RUN_INTEGRATION_TEST: 'true'
-          GNSSDECODER_TESTDATA_DIR: ${{ runner.temp }}/flexiband

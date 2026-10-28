@@ -15,32 +15,24 @@ StaticStrings = "4db0a0c5-418a-4e1d-8806-cb305fe13294"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
-Acquisition = "2.6.4"
 Aff3ct = "1"
 Aqua = "0.8"
 BitIntegers = "0.2.6, 0.3.5"
 DataStructures = "0.18, 0.19"
 Dictionaries = "0.4"
 DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
-Downloads = "1"
 GNSSSignals = "4.1"
 PrecompileTools = "1.2"
 Random = "1"
 StaticStrings = "0.3.0"
 Test = "1"
-Tracking = "8.1"
 Unitful = "1"
-ZipFile = "0.10"
 julia = "1.10"
 
 [extras]
-Acquisition = "d4bbf60b-102b-5ffb-8f97-a7ea5817e69f"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
-Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Tracking = "10b2438b-ffd4-5096-aa58-44041d5c8f3b"
-ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 
 [targets]
-test = ["Acquisition", "Aqua", "Downloads", "Random", "Test", "Tracking", "ZipFile"]
+test = ["Aqua", "Random", "Test"]
