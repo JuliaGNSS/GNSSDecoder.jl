@@ -225,6 +225,19 @@ take the correction as zero or to wait.
 get_group_delay
 ```
 
+## Range Accuracy
+
+Every message broadcasts the accuracy of the satellite's ranging signal as an
+index — GPS's user range accuracy (URA), Galileo's signal-in-space accuracy
+(SISA), BeiDou's URA — and each ICD states the metres an index stands for.
+[`get_range_accuracy`](@ref) returns those metres, `Inf` where the satellite
+broadcasts no accuracy prediction, so a positioning engine can weight its
+measurements by it and a navigation file can record it.
+
+```@docs
+get_range_accuracy
+```
+
 ## Ionospheric Parameters
 
 Each constellation broadcasts the coefficients of its own ionospheric model:

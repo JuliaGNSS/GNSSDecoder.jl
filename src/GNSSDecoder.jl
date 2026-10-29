@@ -67,6 +67,7 @@ export decode!,
     get_utc_parameters,
     get_leap_second_parameters,
     get_ggto_parameters,
+    get_range_accuracy,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -119,5 +120,6 @@ include("beidou/b2b.jl")
 include("ephemeris.jl")
 include("ionosphere.jl")
 include("time_parameters.jl")
+include("range_accuracy.jl")
 include("precompile.jl")
 end
