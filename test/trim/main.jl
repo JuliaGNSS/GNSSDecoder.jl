@@ -23,12 +23,12 @@ function pseudo_random_symbols(n)
     out
 end
 
-function run_decoder(name, system, prn, symbols)
+function run_decoder(name, make_decoder, prn, symbols)
     # `copy` and `reset_decoder_state!` go into the trimmed image as well: the
     # copy of a decoded state is reset, then decodes the stream afresh (a
     # replay without the reset would, rightly, fail the time-of-week
     # plausibility screens).
-    state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
+    state = decode!(make_decoder(prn), symbols)
     decode!(reset_decoder_state!(copy(state)), symbols, length(symbols))
     println(
         Core.stdout,
@@ -44,28 +44,42 @@ function run_decoder(name, system, prn, symbols)
 end
 
 function (@main)(args::Vector{String})::Cint
+    # Construct decoders without allocating spreading-code lookup tables.
+    # Generic construction from signal instances is covered by the unit suite.
     symbols = pseudo_random_symbols(8000)
     gps_l1ca =
         GNSSDecoder._precompile_soft_symbols(GNSSDecoder._PRECOMPILE_GPS_L1CA_SYMBOLS)
     galileo_e1b =
         GNSSDecoder._precompile_soft_symbols(GNSSDecoder._PRECOMPILE_GALILEO_E1B_SYMBOLS)
 
-    l1ca = run_decoder("GPS L1 C/A", GPSL1CA(), 25, gps_l1ca)
-    run_decoder("GPS L1C-D", GPSL1C_D(), 7, symbols)
-    run_decoder("GPS L2C", GPSL2CM(), 25, symbols)
-    run_decoder("GPS L5I", GPSL5I(), 25, symbols)
-    run_decoder("Galileo E1B", GalileoE1B(), 2, galileo_e1b)
-    run_decoder("Galileo E5a", GalileoE5aI(), 21, symbols)
-    run_decoder("Galileo E5b", GalileoE5bI(), 2, galileo_e1b)
-    run_decoder("Galileo E6B", GalileoE6B(), 2, symbols)
-    run_decoder("BeiDou B1I", BeiDouB1I(), 7, symbols)
-    run_decoder("BeiDou B1C", BeiDouB1C_D(), 7, symbols)
-    run_decoder("BeiDou B2a", BeiDouB2aI(), 7, symbols)
-    run_decoder("BeiDou B2b", BeiDouB2bI(), 7, symbols)
-    run_decoder("BeiDou B3I", BeiDouB3I(), 7, symbols)
+    l1ca = run_decoder("GPS L1 C/A", GPSL1CADecoderState, 25, gps_l1ca)
+    run_decoder("GPS L1C-D", GPSL1C_DDecoderState, 7, symbols)
+    run_decoder("GPS L2C", GPSL2CMDecoderState, 25, symbols)
+    run_decoder("GPS L5I", GPSL5IDecoderState, 25, symbols)
+    run_decoder("Galileo E1B", GalileoE1BDecoderState, 2, galileo_e1b)
+    run_decoder("Galileo E5a", GalileoE5aDecoderState, 21, symbols)
+    run_decoder("Galileo E5b", GalileoE5bDecoderState, 2, galileo_e1b)
+    run_decoder("Galileo E6B", GalileoE6BDecoderState, 2, symbols)
+    run_decoder("BeiDou B1I", BeiDouB1IDecoderState, 7, symbols)
+    run_decoder("BeiDou B1C", BeiDouB1CDecoderState, 7, symbols)
+    run_decoder("BeiDou B2a", BeiDouB2aDecoderState, 7, symbols)
+    run_decoder("BeiDou B2b", BeiDouB2bDecoderState, 7, symbols)
+    run_decoder("BeiDou B3I", BeiDouB3IDecoderState, 7, symbols)
 
     if !has_positioning_data(l1ca) || get_broadcast_time_of_week(l1ca) != 259278
         println(Core.stderr, "GPS L1 C/A capture did not decode to its navigation fix")
+        return 1
+    end
+    if isnothing(get_decoded_time_of_week(l1ca))
+        println(Core.stderr, "GPS L1 C/A decoded time-of-week metadata is missing")
+        return 1
+    end
+    if isnothing(get_broadcast_ephemeris_validity(l1ca; approximate_year = 2020))
+        println(Core.stderr, "GPS L1 C/A ephemeris validity metadata is missing")
+        return 1
+    end
+    if !isnothing(get_broadcast_time_offset_parameters(l1ca, GST()))
+        println(Core.stderr, "GPS L1 C/A unexpectedly has a broadcast GST offset")
         return 1
     end
     return 0
