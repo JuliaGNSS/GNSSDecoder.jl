@@ -24,7 +24,7 @@ using GNSSSignals: get_center_frequency
 
     @testset "GPS" begin
         l1ca = complete_state(GPSL1CADecoderState(1), GPSL1CAData; T_GD)
-        @test is_decoding_completed_for_positioning(l1ca)
+        @test has_positioning_data(l1ca)
         @test get_group_delay(l1ca, GPSL1CA()) == T_GD
 
         # CNAV: T_GD less the ranging signal's ISC; the pilot has its own, and
@@ -53,11 +53,11 @@ using GNSSSignals: get_center_frequency
             ISC_L5I5 = nothing,
             ISC_L5Q5 = nothing,
         )
-        @test is_decoding_completed_for_positioning(partial)
+        @test has_positioning_data(partial)
         @test isnothing(get_group_delay(partial, GPSL5I()))
         @test something(get_group_delay(partial, GPSL5I()), 0.0) == 0.0
         no_T_GD = complete_state(GPSL5IDecoderState(1), GPSCNAVData; T_GD = nothing)
-        @test is_decoding_completed_for_positioning(no_T_GD)
+        @test has_positioning_data(no_T_GD)
         @test isnothing(get_group_delay(no_T_GD, GPSL5I()))
 
         # CNAV-2 carries the L1 set: L1C-D, L1C-P and C/A.
@@ -143,7 +143,7 @@ using GNSSSignals: get_center_frequency
             T_GD_B2ap = T_GD,
             ISC_B2ad = ISC,
         )
-        @test is_decoding_completed_for_positioning(b2a)
+        @test has_positioning_data(b2a)
         @test get_group_delay(b2a, BeiDouB2aI()) == T_GD + ISC
         @test get_group_delay(b2a, BeiDouB2aQ()) == T_GD
         b2a_partial = complete_state(
@@ -153,7 +153,7 @@ using GNSSSignals: get_center_frequency
             T_GD_B2ap = T_GD,
             ISC_B2ad = nothing,
         )
-        @test is_decoding_completed_for_positioning(b2a_partial)
+        @test has_positioning_data(b2a_partial)
         # The data component needs both terms, the pilot only its own.
         @test isnothing(get_group_delay(b2a_partial, BeiDouB2aI()))
         @test get_group_delay(b2a_partial, BeiDouB2aQ()) == T_GD

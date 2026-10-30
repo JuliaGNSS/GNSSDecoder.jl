@@ -52,7 +52,7 @@ end
         IOD_nav3 = 0x0000000000000030,
         IOD_nav4 = 0x0000000000000030,
         num_pages_after_last_TOW = 12,
-        num_bits_since_last_TOW = 2510,
+        tow_anchor_bit_count = 2510,
         E1B_SHS = GNSSDecoder.signal_ok,
         E5b_SHS = GNSSDecoder.signal_ok,
         E1B_DVS = GNSSDecoder.navigation_data_valid,
@@ -164,7 +164,7 @@ end
     )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == false
-    @test state.num_bits_since_sync == 3500
+    @test state.num_bits_since_time_reference == 3500
     @test is_sat_healthy(state) == true
 
     decoder2 = GalileoE1BDecoderState(21)
@@ -176,7 +176,7 @@ end
     )
     @test state.data == test_data
     @test state.is_shifted_by_180_degrees == true
-    @test state.num_bits_since_sync == 3500
+    @test state.num_bits_since_time_reference == 3500
     @test is_sat_healthy(state) == true
 
     state = reset_decoder_state!(state)
@@ -184,7 +184,7 @@ end
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
     @test GNSSDecoder.num_symbols_buffered(state) == 0
-    @test isnothing(state.num_bits_since_sync)
+    @test isnothing(state.num_bits_since_time_reference)
 end
 
 @testset "Galileo E1B decode! is allocation-free" begin
@@ -197,14 +197,14 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
     @test !isnothing(allocations.state.data.reduced_ced.ΔA_red)
 
     # A `copy` is independent: decoding into it leaves the original untouched.
     state = GalileoE1BDecoderState(21)
     decoded = decode!(copy(state), symbols, length(symbols))
-    @test is_decoding_completed_for_positioning(decoded)
+    @test has_positioning_data(decoded)
     @test state == GalileoE1BDecoderState(21)
     @test isnothing(state.raw_data.almanacs)
     @test GNSSDecoder.num_symbols_buffered(state) == 0

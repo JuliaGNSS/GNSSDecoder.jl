@@ -141,7 +141,7 @@ each CRC-gated message is atomic.
   - `WN::Int64`: BDT week number at the current frame's epoch (Table 7-2).
   - `t_0c::Int64`: Clock correction reference time (s, LSB 300).
   - `a_f0::Float64`: Clock bias (s). `a_f1::Float64`: drift (s/s). `a_f2::Float64`: drift rate (s/s²). (Table 7-3; the ICD names them a0/a1/a2, and writes `toc` for `t_0c`.)
-  - `T_GD_B2bI::Float64`: Group delay differential of the B2b_I signal relative to B3I (s, Table 7-4). Required, not optional: `a_f0` is referenced to B3I (§7.6), so a B2b_I receiver must add this to reach its own component. It arrives in the same MT30 as the clock, so `is_decoding_completed_for_positioning` gates on it at no cost in time to first fix.
+  - `T_GD_B2bI::Float64`: Group delay differential of the B2b_I signal relative to B3I (s, Table 7-4). Required, not optional: `a_f0` is referenced to B3I (§7.6), so a B2b_I receiver must add this to reach its own component. It arrives in the same MT30 as the clock, so `has_positioning_data` gates on it at no cost in time to first fix.
   - `α_bdgim_1 … α_bdgim_9::Float64`: BDGIM ionospheric model parameters (TECu, Table 7-8; α_bdgim_5 is broadcast unsigned and the decoder applies its negative scale factor, -2⁻³). The ICD names them `α_1` … `α_9`; see `b1c.jl` for why the `bdgim` qualifier is added.
   - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²; Table 7-18).
   - `Δt_LS::Int64`: Current or past leap-second count (s). `Δt_LSF::Int64`: current or future leap-second count (s).
@@ -605,7 +605,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDou
     # `b2a.jl`, for the same reason): `get_broadcast_time_of_week` reads the *validated*
     # `data.SOW`, so the counter must anchor to the last frame `validate_data`
     # promoted, not to the last frame that passed CRC. Re-arming per frame while
-    # the published SOW stands still makes `tow + num_bits_since_sync/rate` read a whole
+    # the published SOW stands still makes `tow + num_bits_since_time_reference/rate` read a whole
     # frame low whenever the completeness gate skips a frame — on B2b the gate
     # normally holds once MT10 and MT30 are in, so this is defensive here where
     # on B2a (whose MT10/MT11 adjacency gate skips one frame per message cycle)
@@ -774,7 +774,7 @@ get_broadcast_week(data::BeiDouB2bData; approximate_year::Integer) = data.WN
 
 # B-CNAV3 carries only its own: B2b-I has no pilot and no sibling ISC.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB2bData}, ::BeiDouB2bI)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     something(state.data.T_GD_B2bI)
 end
 
@@ -788,7 +788,7 @@ tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 broadcast_time_offset(state::GNSSDecoderState{<:BeiDouB2bData}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::BeiDouB2bData)
+function has_positioning_data(data::BeiDouB2bData)
     !isnothing(data.SOW) &&
         !isnothing(data.WN) &&
         is_ephemeris_decoded(data) &&
@@ -807,13 +807,13 @@ Every frame carries its own SOW, so each validated frame re-arms the
 streaming symbol counter: the SOW stamps the *current* frame's leading edge
 (ICD Table 7-2), and by validation time that whole frame (1000 symbols) plus
 the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
-`SOW + num_bits_since_sync / 1000 Hz` is the current time.
+`SOW + num_bits_since_time_reference / 1000 Hz` is the current time.
 
 Promotion overwrites the preallocated validated almanac stores with the raw
 ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         # Promotion publishes this frame's SOW; the symbol counter re-anchors to
         # this frame's sync epoch with it, so the pair `data.SOW` + counter that
         # `get_broadcast_time_of_week` consumers combine always describes one frame. Runs
@@ -822,7 +822,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_since_sync = state.constants.sync_unit_length +
+            num_bits_since_time_reference = state.constants.sync_unit_length +
                                   state.constants.preamble_length,
         )
     end
@@ -835,7 +835,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2bData})
         state;
         raw_data = BeiDouB2bData(state.raw_data; SOW = nothing),
         data = BeiDouB2bData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end

@@ -185,7 +185,7 @@ const GALILEO_ALMANAC_SLOTS = 64
 # `GalileoE6BData` is an `AbstractGalileoData` but deliberately *not* an
 # `AbstractGalileoEphemerisData`: E6-B's C/NAV broadcasts HAS corrections *to*
 # another signal's ephemeris and has no orbital fields, so it defines
-# `is_decoding_completed_for_positioning` itself. Dispatching these on the wider
+# `has_positioning_data` itself. Dispatching these on the wider
 # supertype would give it methods that raise a `FieldError` on its own subtype.
 # The health-status and positioning-readiness checks genuinely differ per signal
 # and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.

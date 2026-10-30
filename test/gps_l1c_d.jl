@@ -279,7 +279,7 @@ end
         @test reset.raw_data.toi === nothing               # in-flight TOI cleared
         @test reset.raw_data.ITOW === nothing              # paired with the TOI
         @test isempty(reset.cache.soft_buffer)             # soft-symbol deque drained
-        @test reset.num_bits_since_sync === nothing
+        @test reset.num_bits_since_time_reference === nothing
         @test reset.is_shifted_by_180_degrees == false
     end
 
@@ -849,7 +849,7 @@ end
 
         # The stream actually exercised every store.
         state = decode!(GPSL1C_DDecoderState(1), symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         # The cold start at TOI ≥ 256 comes after the reset with subframe 2
         # unchanged in `raw_data` — the complement retry must still settle it.
         @test state.data.toi == 303

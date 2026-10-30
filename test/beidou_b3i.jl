@@ -75,7 +75,7 @@
         state = BeiDouB3IDecoderState(25)
         symbols = dnav_test_soft_symbols(cycle(0)..., cycle(18)...)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
         @test state.data.WN == 900
         @test state.data.t_0c == 7200
@@ -86,7 +86,7 @@
         @test state.data.URAI == 0
         # The shared core's SOW epoch handling reaches B3I too: 311 symbols
         # (one subframe + the trailing preamble) past the last SOW.
-        @test state.num_bits_since_sync == 311
+        @test state.num_bits_since_time_reference == 311
         @test state.data.SOW == SOW0 + 30
 
         @testset "D1 decode! is allocation-free (PRN 25)" begin
@@ -103,7 +103,7 @@
             @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
             @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
             @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-            @test is_decoding_completed_for_positioning(allocations.state)
+            @test has_positioning_data(allocations.state)
             @test allocations.state.data.SOW == SOW0 + 66
             @test allocations.state.data.ω == -6789 * PI / 2.0^31
         end

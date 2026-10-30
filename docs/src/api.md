@@ -70,14 +70,14 @@ is_sat_healthy
 
 ## Positioning Readiness
 
-Pair [`is_decoding_completed_for_positioning`](@ref) with [`is_sat_healthy`](@ref)
+Pair [`has_positioning_data`](@ref) with [`is_sat_healthy`](@ref)
 to gate use of a satellite in a fix: the first confirms the required navigation
 data set has been decoded and validated, the second that the satellite is
 broadcasting healthy. See the docstring for what it deliberately does *not*
 gate on (ephemeris freshness, second-order corrections, the alert flag).
 
 ```@docs
-is_decoding_completed_for_positioning
+has_positioning_data
 ```
 
 ## Signal Metadata
@@ -153,7 +153,7 @@ give the current time on every signal with one expression:
 using GNSSDecoder, GNSSSignals
 using Unitful: Hz, ustrip
 tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_sync / ustrip(Hz, get_bit_rate(state))
+now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
 ```
 
 `get_broadcast_time_offset` folds away the five shapes the same quantity is

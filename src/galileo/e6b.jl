@@ -1008,7 +1008,7 @@ Use `state.data.orbit_corrections`, `.clock_corrections`, `.code_biases` and
 `.phase_biases` (each with its own validity interval and `IOD_set_id`) together
 with the corresponding ephemeris decoder instead.
 """
-is_decoding_completed_for_positioning(data::GalileoE6BData) = false
+has_positioning_data(data::GalileoE6BData) = false
 
 # C/NAV stamps each HAS correction block with a time *of hour*, not a time of
 # week, and broadcasts no week number to place it in — see the type docstring on
@@ -1557,7 +1557,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
         state;
         raw_data,
         data = GalileoE6BData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
     )
 end
 
@@ -1572,7 +1572,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData}, prn::In
     GNSSDecoderState(
         state;
         prn,
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -2449,7 +2449,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::Galil
     # stay `nothing` forever on E6-B, since `decode` only ever increments a
     # counter that is already armed. `preamble_length` is the trailing next-page
     # sync `drain_after_sync!` leaves buffered (cf. `gps/cnav.jl`).
-    state = GNSSDecoderState(state; num_bits_since_sync = state.constants.preamble_length)
+    state = GNSSDecoderState(state; num_bits_since_time_reference = state.constants.preamble_length)
 
     header = UInt32(get_bits(page, E6B_PAGE_BITS, E6B_HEADER_START, 24))
     # Dummy pages carry no HAS data at all (ICD §2.4.1); their header fields are

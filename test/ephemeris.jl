@@ -143,7 +143,7 @@
         end
         # The reserved orbit type has no reference axis; the gate keeps it out.
         @test_throws ArgumentError GNSSDecoder.beidou_cnav_reference_semi_major_axis(0)
-        @test !is_decoding_completed_for_positioning(
+        @test !has_positioning_data(
             complete_state(BeiDouB1CDecoderState(20), BeiDouB1CData; sat_type = Int64(0)),
         )
     end

@@ -187,7 +187,7 @@ OS SIS ICD, Issue 2.2.
   - `IOD_nav3::UInt`: Issue of Data from word type 3 (10-bit)
   - `IOD_nav4::UInt`: Issue of Data from word type 4 (10-bit)
   - `num_pages_after_last_TOW::Int`: Pages decoded since last TOW update
-  - `num_bits_since_last_TOW::Int`: Bit-counter value when `TOW` was decoded
+  - `tow_anchor_bit_count::Int`: Bit-counter value when `TOW` was decoded
 
 # Signal Health and Data Validity (Word Type 5)
 
@@ -286,7 +286,7 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     IOD_nav3::Union{Nothing,UInt} = nothing
     IOD_nav4::Union{Nothing,UInt} = nothing
     num_pages_after_last_TOW::Int = 0
-    num_bits_since_last_TOW::Union{Nothing,Int} = nothing
+    tow_anchor_bit_count::Union{Nothing,Int} = nothing
 
     E1B_SHS::Union{Nothing,SignalHealth} = nothing
     E5b_SHS::Union{Nothing,SignalHealth} = nothing
@@ -355,7 +355,7 @@ end
     IOD_nav3 = data.IOD_nav3,
     IOD_nav4 = data.IOD_nav4,
     num_pages_after_last_TOW = data.num_pages_after_last_TOW,
-    num_bits_since_last_TOW = data.num_bits_since_last_TOW,
+    tow_anchor_bit_count = data.tow_anchor_bit_count,
     E1B_SHS = data.E1B_SHS,
     E5b_SHS = data.E5b_SHS,
     E1B_DVS = data.E1B_DVS,
@@ -415,7 +415,7 @@ end
         IOD_nav3,
         IOD_nav4,
         num_pages_after_last_TOW,
-        num_bits_since_last_TOW,
+        tow_anchor_bit_count,
         E1B_SHS,
         E5b_SHS,
         E1B_DVS,
@@ -616,7 +616,7 @@ function get_group_delay(
         GalileoE5bQ,
     },
 )
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     galileo_group_delay_scaling(signal) * something(state.data.BGD_E1_E5b)
 end
 
@@ -630,7 +630,7 @@ See `galileo_ggto_offset`.
 broadcast_time_offset(state::GNSSDecoderState{<:GalileoINAVData}, target::TimeSystem) =
     galileo_ggto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::GalileoINAVData)
+function has_positioning_data(data::GalileoINAVData)
     !isnothing(data.TOW) &&
         !isnothing(data.WN) &&
         !isnothing(data.BGD_E1_E5a) &&
@@ -693,10 +693,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoINAVData})
         raw_data = GalileoINAVData(
             state.raw_data;
             TOW = nothing,
-            num_bits_since_last_TOW = nothing,
+            tow_anchor_bit_count = nothing,
         ),
         data = GalileoINAVData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
     )
 end
 
@@ -780,7 +780,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     WN = get_bits(data, 128, 97, 12)
                     TOW = get_bits(data, 128, 109, 20)
                     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-                    TOW_anchor = state.num_bits_since_sync
+                    TOW_anchor = state.num_bits_since_time_reference
                     state = @split_nothing TOW_anchor GNSSDecoderState(
                         state;
                         raw_data = GalileoINAVData(
@@ -788,7 +788,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                             WN,
                             TOW,
                             num_pages_after_last_TOW = 1,
-                            num_bits_since_last_TOW = TOW_anchor,
+                            tow_anchor_bit_count = TOW_anchor,
                         ),
                     )
                 end
@@ -890,7 +890,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 WN = get_bits(data, 128, 74, 12)
                 TOW = get_bits(data, 128, 86, 20)
                 # split: a Union keyword value takes the allocating kw path on Julia 1.10
-                TOW_anchor = state.num_bits_since_sync
+                TOW_anchor = state.num_bits_since_time_reference
                 state = @split_nothing TOW_anchor GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
@@ -912,7 +912,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                         WN,
                         TOW,
                         num_pages_after_last_TOW = 1,
-                        num_bits_since_last_TOW = TOW_anchor,
+                        tow_anchor_bit_count = TOW_anchor,
                     ),
                 )
             elseif data_type == 6
@@ -926,7 +926,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 Δt_LSF = Int(get_twos_complement_num(data, 128, 98, 8))
                 TOW = get_bits(data, 128, 106, 20)
                 # split: a Union keyword value takes the allocating kw path on Julia 1.10
-                TOW_anchor = state.num_bits_since_sync
+                TOW_anchor = state.num_bits_since_time_reference
                 state = @split_nothing TOW_anchor GNSSDecoderState(
                     state;
                     raw_data = GalileoINAVData(
@@ -941,7 +941,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                         Δt_LSF,
                         TOW,
                         num_pages_after_last_TOW = 1,
-                        num_bits_since_last_TOW = TOW_anchor,
+                        tow_anchor_bit_count = TOW_anchor,
                     ),
                 )
             elseif data_type == 7
@@ -1139,27 +1139,27 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
 end
 
 function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
-    if is_decoding_completed_for_positioning(state.raw_data) &&
+    if has_positioning_data(state.raw_data) &&
        state.raw_data.IOD_nav1 ==
        state.raw_data.IOD_nav2 ==
        state.raw_data.IOD_nav3 ==
        state.raw_data.IOD_nav4
         # Read the optional counters into locals: Julia 1.10 does not narrow a
         # field access through `isnothing`, so the arithmetic would dispatch dynamically.
-        now = state.num_bits_since_sync
-        TOW_anchor = state.raw_data.num_bits_since_last_TOW
-        num_bits_since_sync = 0
+        now = state.num_bits_since_time_reference
+        TOW_anchor = state.raw_data.tow_anchor_bit_count
+        num_bits_since_time_reference = 0
         if state.data.TOW == state.raw_data.TOW
-            num_bits_since_sync = now
+            num_bits_since_time_reference = now
         elseif TOW_anchor !== nothing
             # `now` is set whenever a TOW anchor is: both are cleared together on reset.
-            num_bits_since_sync =
+            num_bits_since_time_reference =
                 (now::Int) - (
                     TOW_anchor - 2 * state.constants.sync_unit_length -
                     state.constants.preamble_length
                 )
         else # first succesful decoding
-            num_bits_since_sync =
+            num_bits_since_time_reference =
                 state.constants.preamble_length +
                 (state.raw_data.num_pages_after_last_TOW + 1) *
                 state.constants.sync_unit_length
@@ -1169,10 +1169,10 @@ function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
         # written into `raw_data` do not leak into `data` before the next promotion.
         data = publish_data(state.cache.storage, state.raw_data)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
-        state = @split_nothing num_bits_since_sync GNSSDecoderState(
+        state = @split_nothing num_bits_since_time_reference GNSSDecoderState(
             state;
             data,
-            num_bits_since_sync,
+            num_bits_since_time_reference,
         )
     end
     return state

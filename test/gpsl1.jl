@@ -22,7 +22,7 @@ const GPSL1DATA = [
           state_1.raw_data == state_2.raw_data &&
           state_1.data == state_2.data &&
           state_1.constants == state_2.constants &&
-          state_1.num_bits_since_sync == state_2.num_bits_since_sync &&
+          state_1.num_bits_since_time_reference == state_2.num_bits_since_time_reference &&
           state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
 end
 
@@ -30,13 +30,13 @@ end
     decoder = GPSL1CADecoderState(1)
     @test decoder.prn == 1
     @test GNSSDecoder.num_symbols_buffered(decoder) == 0
-    @test isnothing(decoder.num_bits_since_sync)
+    @test isnothing(decoder.num_bits_since_time_reference)
     @test GNSSDecoder.calc_preamble_mask(decoder.constants) == 0b11111111
 
     # Push one soft symbol (positive ⇒ bit 0)
     state = GNSSDecoder.push_soft_symbol!(decoder, 1.0f0)
     @test GNSSDecoder.num_symbols_buffered(state) == 1
-    @test isnothing(state.num_bits_since_sync)
+    @test isnothing(state.num_bits_since_time_reference)
     @test GNSSDecoder.is_enough_buffered_symbols_to_decode(state) == false
 
     constants = GNSSDecoder.GPSL1CAConstants()
@@ -265,7 +265,7 @@ end
         alert_flag = false,
         anti_spoof_flag = false,
         # Rebased to preamble_length at every data promotion (see promote_data)
-        num_bits_since_last_TOW = 8,
+        tow_anchor_bit_count = 8,
         WN = 58,
         code_on_L2 = 1,
         URA_index = 0,
@@ -613,9 +613,9 @@ end
             raw_data = GNSSDecoder.GPSL1CAData(
                 state.raw_data;
                 TOW,
-                num_bits_since_last_TOW = anchor,
+                tow_anchor_bit_count = anchor,
             ),
-            num_bits_since_sync = num_bits,
+            num_bits_since_time_reference = num_bits,
         )
 
     fresh = GPSL1CADecoderState(1)
@@ -637,7 +637,7 @@ end
     held = with_TOW(fresh, 43333 * 6)
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334))
     @test state.raw_data.TOW == 43334 * 6
-    @test isnothing(state.raw_data.num_bits_since_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     # ...an implausible in-week jump is rejected...
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(93334))
     @test isnothing(state.raw_data.TOW)
@@ -655,11 +655,11 @@ end
     anchored = with_TOW(fresh, 43333 * 6; anchor = 8, num_bits = 308)
     state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43334))
     @test state.raw_data.TOW == 43334 * 6
-    @test state.raw_data.num_bits_since_last_TOW == 308
+    @test state.raw_data.tow_anchor_bit_count == 308
     # ...a small jump the fallback tier would have accepted is now rejected...
     state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43335))
     @test isnothing(state.raw_data.TOW)
-    @test isnothing(state.raw_data.num_bits_since_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     # ...while a day-long decode gap with tracking maintained (e.g. a
     # concealed satellite in a vector-tracking receiver) is accepted on the
     # first reappearing subframe.
@@ -673,12 +673,12 @@ end
     for bad_how in (make_buffer(43334; break_parity = true), make_buffer(43335))
         rejected = GNSSDecoder.read_tlm_and_how_words(anchored, bad_how)
         @test isnothing(rejected.raw_data.TOW)
-        @test isnothing(rejected.raw_data.num_bits_since_last_TOW)
-        recovery = GNSSDecoder.GNSSDecoderState(rejected; num_bits_since_sync = 608)
+        @test isnothing(rejected.raw_data.tow_anchor_bit_count)
+        recovery = GNSSDecoder.GNSSDecoderState(rejected; num_bits_since_time_reference = 608)
         recovered = GNSSDecoder.read_tlm_and_how_words(recovery, make_buffer(43335))
         @test recovered.raw_data.TOW == 43335 * 6
-        @test recovered.raw_data.num_bits_since_last_TOW == 608
-        @test recovered.num_bits_since_sync == 608
+        @test recovered.raw_data.tow_anchor_bit_count == 608
+        @test recovered.num_bits_since_time_reference == 608
     end
 end
 
@@ -695,10 +695,10 @@ end
     state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
-    @test isnothing(state.raw_data.num_bits_since_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     @test isnothing(state.data.TOW)
     @test GNSSDecoder.num_symbols_buffered(state) == 0
-    @test isnothing(state.num_bits_since_sync)
+    @test isnothing(state.num_bits_since_time_reference)
 end
 
 @testset "GPS L1 C/A data equality is structural" begin
@@ -751,7 +751,7 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test !isnothing(allocations.state.data.almanacs)
     @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0 skip =
         !CHECK_ALLOCATIONS
@@ -759,7 +759,7 @@ end
     # A `copy` is independent: decoding into it leaves the original untouched.
     state = GPSL1CADecoderState(25)
     decoded = decode!(copy(state), symbols, length(symbols))
-    @test is_decoding_completed_for_positioning(decoded)
+    @test has_positioning_data(decoded)
     @test state == GPSL1CADecoderState(25)
     @test GNSSDecoder.num_symbols_buffered(state) == 0
 end

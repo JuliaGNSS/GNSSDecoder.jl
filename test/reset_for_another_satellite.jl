@@ -24,7 +24,7 @@ struct CacheWithoutMethod <: GNSSDecoder.AbstractGNSSCache end
                 state;
                 raw_data = complete_data(D),
                 data = complete_data(D),
-                num_bits_since_sync = 5,
+                num_bits_since_time_reference = 5,
                 is_shifted_by_180_degrees = true,
             )
             push!(used.cache.soft_buffer, 1.0f0)
@@ -38,7 +38,7 @@ struct CacheWithoutMethod <: GNSSDecoder.AbstractGNSSCache end
                 @test moved.raw_data == D()
                 @test moved.data == D()
             end
-            @test isnothing(moved.num_bits_since_sync)
+            @test isnothing(moved.num_bits_since_time_reference)
             @test !moved.is_shifted_by_180_degrees
             @test isempty(moved.cache.soft_buffer)
             # The buffers are kept, not allocated anew.

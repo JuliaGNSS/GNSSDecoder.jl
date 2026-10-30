@@ -138,13 +138,13 @@ take a [`copy`](@ref Base.copy(::GNSSDecoderState)) if a snapshot is needed. The
 preamble matching is **not** stored here; it is computed as a local value at
 sync time and threaded through the sync path (see `pack_buffer` / `try_sync`).
 
-Of the fields, `prn`, `raw_data`, `data`, `num_bits_since_sync` and
+Of the fields, `prn`, `raw_data`, `data`, `num_bits_since_time_reference` and
 `is_shifted_by_180_degrees` are part of the API: a receiver reads them, and
-`num_bits_since_sync` together with
+`num_bits_since_time_reference` together with
 [`get_broadcast_time_of_week`](@ref) and
 `get_bit_rate` dates the latest symbol (see `get_broadcast_time_of_week`). A tracking
 loop that counts symbols itself may move the counter with the keyword
-constructor, `GNSSDecoderState(state; num_bits_since_sync = n)`. The
+constructor, `GNSSDecoderState(state; num_bits_since_time_reference = n)`. The
 `constants` and the `cache` are internal.
 
 # Construction
@@ -201,7 +201,7 @@ Base.@kwdef struct GNSSDecoderState{
     """
     Number of symbols received after the last valid sync unit, or `nothing` if not yet synchronized
     """
-    num_bits_since_sync::Union{Nothing,Int} = 0
+    num_bits_since_time_reference::Union{Nothing,Int} = 0
     """
     Whether the signal phase is inverted by 180 degrees
     """
@@ -214,7 +214,7 @@ end
     raw_data = state.raw_data,
     data = state.data,
     cache = state.cache,
-    num_bits_since_sync = state.num_bits_since_sync,
+    num_bits_since_time_reference = state.num_bits_since_time_reference,
     is_shifted_by_180_degrees = state.is_shifted_by_180_degrees,
 )
     GNSSDecoderState(
@@ -223,7 +223,7 @@ end
         data,
         state.constants,
         cache,
-        num_bits_since_sync,
+        num_bits_since_time_reference,
         is_shifted_by_180_degrees,
     )
 end
@@ -336,8 +336,8 @@ can be checked together without a separate `nothing` guard.
         only; a receiver that wants to honour the L1 C/A alert flag (or
         equivalent) must check it separately.
 """
-is_decoding_completed_for_positioning(state::GNSSDecoderState) =
-    is_decoding_completed_for_positioning(state.data)
+has_positioning_data(state::GNSSDecoderState) =
+    has_positioning_data(state.data)
 
 # ---- Signal metadata --------------------------------------------------------
 #
@@ -561,7 +561,7 @@ on the blocks that own them (see [`GalileoHASCorrectionBlock`](@ref)).
 # The epoch it denotes, and reading the current time
 
 Every signal's value is the time of the epoch that
-[`num_bits_since_sync`](@ref GNSSDecoderState) is anchored to —
+[`num_bits_since_time_reference`](@ref GNSSDecoderState) is anchored to —
 which is why the anchor is set per signal at promotion time, to the frame the
 broadcast field actually stamps (the *next* subframe for GPS LNAV, CNAV and
 L1C-D; the *current* frame for the BeiDou signals). So the current time of week
@@ -570,13 +570,13 @@ is the same expression on every signal:
 ```julia
 using Unitful: Hz, ustrip
 tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_sync / ustrip(Hz, get_bit_rate(state))
+now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
 ```
 
 Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this
 returns a time only once the message set has passed CRC/parity and the
 cross-subframe consistency check — the same gate
-[`is_decoding_completed_for_positioning`](@ref) reports. Call it on
+[`has_positioning_data`](@ref) reports. Call it on
 `state.raw_data` directly to see an unvalidated time.
 
 # See Also
@@ -929,7 +929,7 @@ Group delay (s) of the ranging `signal` against the reference the broadcast
 satellite clock is stated for, from the decoder's validated data: subtract it
 from the clock polynomial's offset `Δt_SV` to get the clock offset on `signal`,
 `Δt_SV(signal) = Δt_SV - get_group_delay(state, signal)`. `nothing` until
-[`is_decoding_completed_for_positioning`](@ref), and until every term of the
+[`has_positioning_data`](@ref), and until every term of the
 signal's correction has been decoded (see below).
 
 !!! note "Combining signals"
@@ -977,7 +977,7 @@ Most terms ride with the clock and are there once the gate passes, CNAV-2's
 GPS CNAV's `T_GD` and ISCs (message type 30), CNAV-2's ISCs of the other civil
 signals (`ISC_L1CA` and the L2/L5 ones, subframe 3 page 1) and B2a's `T_GD_B2ap`
 and `ISC_B2ad` (message type 30) arrive on their own cadence, so the gate does
-not wait for them (see [`is_decoding_completed_for_positioning`](@ref)), and
+not wait for them (see [`has_positioning_data`](@ref)), and
 this returns `nothing` until they have. What to do meanwhile is the caller's choice: a single-frequency
 fix that takes the correction as zero, `something(get_group_delay(state, signal), 0.0)`,
 is off by about a metre, and an ionosphere-free combination scales that by the
@@ -1360,29 +1360,29 @@ function decode!(
     num_bits >= 0 || throw(ArgumentError("num_bits must be nonnegative"))
     num_bits <= length(soft_bits) ||
         throw(ArgumentError("num_bits exceeds length(soft_bits)"))
-    num_bits_since_sync = state.num_bits_since_sync
+    num_bits_since_time_reference = state.num_bits_since_time_reference
     next = 1
     while next <= num_bits
-        next, buffer, num_bits_since_sync =
-            push_until_sync!(state, soft_bits, next, num_bits, num_bits_since_sync)
+        next, buffer, num_bits_since_time_reference =
+            push_until_sync!(state, soft_bits, next, num_bits, num_bits_since_time_reference)
         isnothing(buffer) && break
-        state = with_symbol_counter(state, num_bits_since_sync)
+        state = with_symbol_counter(state, num_bits_since_time_reference)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
         state = decode_sync_unit(state, resolved_buffer)
         state = validate_data(state)
         state = drain_after_sync!(state)
-        num_bits_since_sync = state.num_bits_since_sync
+        num_bits_since_time_reference = state.num_bits_since_time_reference
     end
-    return with_symbol_counter(state, num_bits_since_sync)
+    return with_symbol_counter(state, num_bits_since_time_reference)
 end
 
 """
-    push_until_sync!(state, soft_symbols, first, last, num_bits_since_sync)
-        -> (next, buffer, num_bits_since_sync)
+    push_until_sync!(state, soft_symbols, first, last, num_bits_since_time_reference)
+        -> (next, buffer, num_bits_since_time_reference)
 
 The per-symbol half of [`decode!`](@ref): push `soft_symbols[first:last]` onto
 `state`'s soft-symbol buffer (overwriting its oldest entries) one at a time,
-counting them in `num_bits_since_sync` (the state's running counter, or
+counting them in `num_bits_since_time_reference` (the state's running counter, or
 `nothing` before the first sync), until `try_sync` finds a sync. Returns the
 index of the next unconsumed symbol, the sync buffer (`nothing` if the symbols
 ran out first) and the updated count.
@@ -1397,27 +1397,27 @@ function push_until_sync!(
     soft_symbols::AbstractVector{<:Real},
     first::Int,
     last::Int,
-    num_bits_since_sync::Union{Nothing,Int},
+    num_bits_since_time_reference::Union{Nothing,Int},
 )
     for i = first:last
         push_soft_symbol!(state, soft_symbols[i])
-        if num_bits_since_sync !== nothing
-            num_bits_since_sync += 1
+        if num_bits_since_time_reference !== nothing
+            num_bits_since_time_reference += 1
         end
         if is_enough_buffered_symbols_to_decode(state)
             buffer = try_sync(state)
-            isnothing(buffer) || return (i + 1, buffer, num_bits_since_sync)
+            isnothing(buffer) || return (i + 1, buffer, num_bits_since_time_reference)
         end
     end
-    return (last + 1, nothing, num_bits_since_sync)
+    return (last + 1, nothing, num_bits_since_time_reference)
 end
 
 # Split on the counter being set, so each rebuild has a concretely typed keyword
 # (a `Union` keyword value takes the allocating keyword path on Julia 1.10).
-with_symbol_counter(state::GNSSDecoderState, num_bits_since_sync) =
-    num_bits_since_sync === nothing ?
-    GNSSDecoderState(state; num_bits_since_sync = nothing) :
-    GNSSDecoderState(state; num_bits_since_sync)
+with_symbol_counter(state::GNSSDecoderState, num_bits_since_time_reference) =
+    num_bits_since_time_reference === nothing ?
+    GNSSDecoderState(state; num_bits_since_time_reference = nothing) :
+    GNSSDecoderState(state; num_bits_since_time_reference)
 
 """
     copy(state::GNSSDecoderState) -> GNSSDecoderState
@@ -1434,7 +1434,7 @@ Base.copy(state::GNSSDecoderState) = GNSSDecoderState(
     duplicate(state.data),
     state.constants,
     duplicate(state.cache),
-    state.num_bits_since_sync,
+    state.num_bits_since_time_reference,
     state.is_shifted_by_180_degrees,
 )
 
@@ -1482,7 +1482,7 @@ function reset_decoder_state!(state::GNSSDecoderState{D}, prn::Integer) where {D
         raw_data = D(),
         data = D(),
         cache = clear_satellite_cache(state.cache),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1532,7 +1532,7 @@ increment_voting(old_vote, max_vote) = min(max_vote, old_vote + 1)
     elapsed_symbols(anchor, now) -> Union{Nothing,Int64}
 
 Symbols counted between the decoder's symbol-counter reading `anchor` and its
-current reading `now` (both `num_bits_since_sync` values), or
+current reading `now` (both `num_bits_since_time_reference` values), or
 `nothing` if either reading is missing.
 """
 elapsed_symbols(anchor, now) = isnothing(anchor) || isnothing(now) ? nothing : now - anchor

@@ -358,7 +358,7 @@ These fields are carried **only** by message type 30, which is broadcast far
 less often than the clock/ephemeris (max interval 288 s on L2C / 144 s on L5,
 vs 48 s / 24 s — IS-GPS-200 Table 30-XII, IS-GPS-705J Table 20-XII). They may
 therefore still be `nothing` even once positioning is otherwise ready:
-`is_decoding_completed_for_positioning` deliberately does not wait for them, so
+`has_positioning_data` deliberately does not wait for them, so
 code that applies these corrections must handle `nothing` (treat as 0).
 
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
@@ -844,7 +844,7 @@ get_broadcast_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
 # the gate passes; then there is no group delay yet.
 function cnav_group_delay(state, ISC)
     T_GD = state.data.T_GD
-    (is_decoding_completed_for_positioning(state) && !isnothing(T_GD) && !isnothing(ISC)) ||
+    (has_positioning_data(state) && !isnothing(T_GD) && !isnothing(ISC)) ||
         return nothing
     something(T_GD) - something(ISC)
 end
@@ -868,7 +868,7 @@ broadcasting one for `target`.
 broadcast_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target, state.data.GNSS_ID)
 
-function is_decoding_completed_for_positioning(data::GPSCNAVData)
+function has_positioning_data(data::GPSCNAVData)
     !isnothing(data.TOW) && is_ephemeris_decoded(data) && is_clock_correction_decoded(data)
 end
 
@@ -903,7 +903,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSCNAVData})
         state;
         raw_data = GPSCNAVData(state.raw_data; TOW = nothing),
         data = GPSCNAVData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1709,11 +1709,11 @@ Promotion **overwrites** the preallocated validated stores in
 shares a container with `raw_data`, which later messages keep writing into.
 """
 function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_since_sync = state.constants.preamble_length,
+            num_bits_since_time_reference = state.constants.preamble_length,
         )
     end
     return state

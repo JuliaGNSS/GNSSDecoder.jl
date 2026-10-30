@@ -96,9 +96,9 @@
     @test !(BeiDouDNAVData <: GNSSDecoder.AbstractBeiDouCNAVData)
     @test !hasmethod(GNSSDecoder.is_ephemeris_decoded, (GalileoE6BData,))
     @test !hasmethod(GNSSDecoder.is_clock_correction_decoded, (GalileoE6BData,))
-    @test !is_decoding_completed_for_positioning(GalileoE6BData())
-    @test which(is_decoding_completed_for_positioning, (GalileoE6BData,)).sig ==
-          Tuple{typeof(is_decoding_completed_for_positioning),GalileoE6BData}
+    @test !has_positioning_data(GalileoE6BData())
+    @test which(has_positioning_data, (GalileoE6BData,)).sig ==
+          Tuple{typeof(has_positioning_data),GalileoE6BData}
 
     # Containers shared by two signals were renamed away from the first signal
     # that happened to implement them — `GPSL5I*` → `GPSCNAV*` when L2C joined,

@@ -277,7 +277,7 @@ are in seconds of BeiDou Time (BDT).
   - `last_subframe_id::Int`: FraID of the last decoded subframe (1-5)
   - `SOW::Int64`: Seconds of week at the leading edge of the current subframe's
     preamble (D1) or of subframe 1 of the current frame (D2), §5.2.4.3/§5.3.3.1
-  - `num_bits_since_last_SOW::Int`: Bit-counter
+  - `sow_anchor_bit_count::Int`: Bit-counter
     value when `SOW` was decoded (drives the SOW plausibility screen)
 
 # Subframe 1 (D1) / Subframe 1 Pages 1-4 (D2) - Clock, Health, Iono
@@ -360,7 +360,7 @@ BDS-SIS-ICD-B1I-3.0 §5.2.4, §5.3.3 (and identically BDS-SIS-ICD-B3I-1.0 §5)
 Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     last_subframe_id::Int = 0
     SOW::Union{Nothing,Int64} = nothing
-    num_bits_since_last_SOW::Union{Nothing,Int} = nothing
+    sow_anchor_bit_count::Union{Nothing,Int} = nothing
 
     # Fundamental navigation information: health, clock, group delay, iono
     SatH1::Union{Nothing,Bool} = nothing
@@ -433,7 +433,7 @@ const DNAV_LSF_WN_MODULUS = 256
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
     SOW = data.SOW,
-    num_bits_since_last_SOW = data.num_bits_since_last_SOW,
+    sow_anchor_bit_count = data.sow_anchor_bit_count,
     SatH1 = data.SatH1,
     AODC = data.AODC,
     URAI = data.URAI,
@@ -492,7 +492,7 @@ const DNAV_LSF_WN_MODULUS = 256
     BeiDouDNAVData(
         last_subframe_id,
         SOW,
-        num_bits_since_last_SOW,
+        sow_anchor_bit_count,
         SatH1,
         AODC,
         URAI,
@@ -678,7 +678,7 @@ packed_buffer_type(::GNSSDecoderState{<:BeiDouDNAVData}) = UInt320
 # ---- Completeness checks ------------------------------------------------------
 
 # `T_GD1` is required and `T_GD2` is not, which is the package-wide group-delay
-# rule (`is_decoding_completed_for_positioning` in src/gnss.jl) read onto this
+# rule (`has_positioning_data` in src/gnss.jl) read onto this
 # message. The broadcast clock polynomial is referenced to B3I on both signals
 # (§5.2.4.10), so a B1I user must apply `T_GD1` to reach its own signal — a
 # metre-scale bias, not a refinement — and it rides in the same subframe 1
@@ -785,11 +785,11 @@ get_broadcast_week(data::BeiDouDNAVData; approximate_year::Integer) = data.WN
 # D1/D2 states its clock for B3I, which so needs no group delay, and T_GD1 for
 # B1I. Its T_GD2 is for BDS-2's B2I, which this package does not decode.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouDNAVData}, ::BeiDouB1I)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     something(state.data.T_GD1)
 end
 get_group_delay(state::GNSSDecoderState{<:BeiDouDNAVData}, ::BeiDouB3I) =
-    is_decoding_completed_for_positioning(state) ? 0.0 : nothing
+    has_positioning_data(state) ? 0.0 : nothing
 
 """
 $(TYPEDSIGNATURES)
@@ -833,7 +833,7 @@ function broadcast_time_offset(
     )
 end
 
-function is_decoding_completed_for_positioning(data::BeiDouDNAVData)
+function has_positioning_data(data::BeiDouDNAVData)
     # Klobuchar ionosphere is deliberately *not* gated on: `src/gnss.jl` states
     # that second-order corrections are excluded from readiness and should be
     # applied when present rather than waited for. It happens to ride in the
@@ -857,7 +857,7 @@ end
 
 const DNAV_MAX_SOW_GAP = 600
 
-# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_since_sync)`,
+# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_since_time_reference)`,
 # folded by the caller so the call carries two `Union{Nothing,Int64}` arguments
 # rather than three — within inference's union-split limit, so the call resolves
 # statically (see `is_plausible_TOW`).
@@ -891,16 +891,16 @@ end
 function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     SOW_count = Int64(dnav_bits(content, 19, 20))
     prev_SOW = state.raw_data.SOW
-    num_bits_since_sync = state.num_bits_since_sync
-    elapsed = elapsed_symbols(state.raw_data.num_bits_since_last_SOW, num_bits_since_sync)
+    num_bits_since_time_reference = state.num_bits_since_time_reference
+    elapsed = elapsed_symbols(state.raw_data.sow_anchor_bit_count, num_bits_since_time_reference)
     is_plausible =
         is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, Int(get_bit_rate(state) / Hz))
     is_plausible || return state
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    raw_data = @split_nothing num_bits_since_sync BeiDouDNAVData(
+    raw_data = @split_nothing num_bits_since_time_reference BeiDouDNAVData(
         state.raw_data;
         SOW = SOW_count,
-        num_bits_since_last_SOW = num_bits_since_sync,
+        sow_anchor_bit_count = num_bits_since_time_reference,
     )
     GNSSDecoderState(
         state;
@@ -1402,7 +1402,7 @@ dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
 # the epoch the SOW stamps, so that a consumer reads the current time as
-# `SOW + num_bits_since_sync / get_bit_rate(state)`.
+# `SOW + num_bits_since_time_reference / get_bit_rate(state)`.
 #
 # That epoch is the *leading edge of this subframe's preamble*
 # (BDS-SIS-ICD-B1I-3.0 §5.2.4.3 for D1, §5.3.3.1(2) for D2), and at promotion
@@ -1424,12 +1424,12 @@ dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 # containers do not leak into `data` before they are voted on.
 function dnav_promote_data(state)
     anchor = state.constants.sync_unit_length + state.constants.preamble_length
-    promoted = BeiDouDNAVData(state.raw_data; num_bits_since_last_SOW = anchor)
+    promoted = BeiDouDNAVData(state.raw_data; sow_anchor_bit_count = anchor)
     GNSSDecoderState(
         state;
         raw_data = promoted,
         data = publish_data(state.cache.storage, promoted),
-        num_bits_since_sync = anchor,
+        num_bits_since_time_reference = anchor,
     )
 end
 
@@ -1454,10 +1454,10 @@ function dnav_confirm_data(state, max_vote = 20)
     # mis-corrects silently; one such accepted SOW then fails every honest
     # subframe against the elapsed-symbol prediction until an external reset.
     SOW = state.raw_data.SOW
-    anchor = state.raw_data.num_bits_since_last_SOW
+    anchor = state.raw_data.sow_anchor_bit_count
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
     cleared =
-        @split_nothing (SOW, anchor) BeiDouDNAVData(; SOW, num_bits_since_last_SOW = anchor)
+        @split_nothing (SOW, anchor) BeiDouDNAVData(; SOW, sow_anchor_bit_count = anchor)
 
     if isnothing(matching_idx)
         # First sighting of this dataset — stage it and wait for the broadcast
@@ -1508,7 +1508,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouDNAVData})
     # `decode!` calls this hook after *every* sync, including the D2 subframes
     # 2-5 that carry no SOW at all.
     is_dnav_SOW_from_this_subframe(state) || return state
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         state = dnav_confirm_data(state)
     end
     return state
@@ -1541,10 +1541,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouDNAVData})
         raw_data = BeiDouDNAVData(
             state.raw_data;
             SOW = nothing,
-            num_bits_since_last_SOW = nothing,
+            sow_anchor_bit_count = nothing,
         ),
         data = BeiDouDNAVData(),
         cache = BeiDouDNAVCache(state.cache; sow_is_fresh = false),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
     )
 end

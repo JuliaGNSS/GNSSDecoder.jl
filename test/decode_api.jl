@@ -6,7 +6,7 @@
         defaulted = decode!(GPSL2CMDecoderState(9), stream)
         explicit = decode!(GPSL2CMDecoderState(9), stream, length(stream))
         @test defaulted == explicit
-        @test GNSSDecoder.is_decoding_completed_for_positioning(defaulted)
+        @test GNSSDecoder.has_positioning_data(defaulted)
     end
 
     @testset "explicit count consumes only the leading symbols" begin

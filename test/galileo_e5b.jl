@@ -136,7 +136,7 @@ inav_symbol_stream(parts::Vector{Vector{Bool}}) =
     @test get_time_system(decoder) == get_time_system(GalileoE1BDecoderState(21))
     @test hasmethod(GNSSDecoderState, Tuple{GalileoE5bI,Int})
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE5bQ,Int})
-    @test !is_decoding_completed_for_positioning(decoder)
+    @test !has_positioning_data(decoder)
     @test !is_sat_healthy(decoder)
 end
 
@@ -158,7 +158,7 @@ end
     )
     @test e5b.data == e1b.data
     @test e5b.raw_data == e1b.raw_data
-    @test e5b.num_bits_since_sync == e1b.num_bits_since_sync
+    @test e5b.num_bits_since_time_reference == e1b.num_bits_since_time_reference
     @test e5b.is_shifted_by_180_degrees == e1b.is_shifted_by_180_degrees
     # Spot-check absolute values too, so this is not merely "equal to whatever
     # E1-B produced": these are the fixture's known TOW/WN and health.
@@ -294,7 +294,7 @@ end
     @test GNSSDecoder.num_symbols_buffered(state) == 0
     @test isnothing(state.raw_data.TOW)
     @test isnothing(state.data.TOW)
-    @test isnothing(state.num_bits_since_sync)
+    @test isnothing(state.num_bits_since_time_reference)
     # Ephemeris survives the reset, as on E1-B.
     @test !isnothing(state.raw_data.sqrt_A)
 end
@@ -308,6 +308,6 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
 end

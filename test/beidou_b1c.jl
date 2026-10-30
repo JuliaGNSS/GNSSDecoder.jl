@@ -396,11 +396,11 @@ end
         )
 
         state = BeiDouB1CDecoderState(prn)
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
         state = decode!(state, stream, length(stream))
 
         d = state.data
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
@@ -414,7 +414,7 @@ end
         # subframe 1: 1800 + 72 = 1872 symbols = 18.72 s at 100 sps. (GPS
         # L1C-D's TOI stamps the *next* frame and anchors to 52 alone; using
         # that convention here would report the time a full 18 s early.)
-        @test state.num_bits_since_sync == 1872
+        @test state.num_bits_since_time_reference == 1872
         # The last decoded frame carried SOH = 60.
         @test d.soh == 60
         @test d.WN == 800
@@ -542,7 +542,7 @@ end
         @test state.is_shifted_by_180_degrees
         @test state.data.soh == 10
         @test state.data.WN == 800
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "Unhealthy satellite (HS = 1) is reported" begin
@@ -553,7 +553,7 @@ end
         )
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test state.data.HS == 1
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test !is_sat_healthy(state)
     end
 
@@ -572,7 +572,7 @@ end
         @test state.raw_data.soh == 10              # sync still locked
         @test state.raw_data.num_sf3_pages_received == 1   # SF3 decoded
         @test state.raw_data.HS == 0
-        @test !is_decoding_completed_for_positioning(state)  # promotion gated
+        @test !has_positioning_data(state)  # promotion gated
         @test !is_sat_healthy(state)
     end
 
@@ -595,7 +595,7 @@ end
         )
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test state.raw_data.soh == 52
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "HOW carries across the SOH wrap when subframe 2 is lost" begin
@@ -702,7 +702,7 @@ end
                 length(clean),
             )
             @test state.raw_data.soh == 10
-            @test is_decoding_completed_for_positioning(state)
+            @test has_positioning_data(state)
         end
         # One past either radius leaves the word closer to no codeword than the
         # radius allows, and sync is refused rather than guessed.
@@ -729,7 +729,7 @@ end
             )
             state = decode!(BeiDouB1CDecoderState(p), stream, length(stream))
             @test state.raw_data.soh == 33
-            @test is_decoding_completed_for_positioning(state)
+            @test has_positioning_data(state)
             # And inverted, since polarity is resolved from this PRN's codeword.
             flipped = decode!(BeiDouB1CDecoderState(p), -stream, length(stream))
             @test flipped.raw_data.soh == 33
@@ -747,7 +747,7 @@ end
         state = decode!(BeiDouB1CDecoderState(prn + 1), stream, length(stream))
         @test isnothing(state.raw_data.soh)
         @test state.raw_data.num_sf3_pages_received == 0
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
     end
 
     @testset "A state rebound to another PRN syncs on that PRN" begin
@@ -772,7 +772,7 @@ end
         )
         state = decode!(rebound, stream, length(stream))
         @test state.raw_data.soh == 10
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "Noisy symbols still decode (LDPC margin)" begin
@@ -796,7 +796,7 @@ end
         noisy .*= 2 / σ^2
         state = decode!(BeiDouB1CDecoderState(prn), noisy, length(noisy))
         @test state.data.WN == 800
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "Dispatch from the GNSSSignals type + reset" begin
@@ -812,7 +812,7 @@ end
             _b1c_frame_symbols(prn, 11, sf2, Bool.(_golden_sf3_page1_bits()))[1:72],
         )
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.soh)
         # `HOW` is cleared with `soh`: the two only mean a time as a pair, and an
@@ -849,7 +849,7 @@ end
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
-    @test is_decoding_completed_for_positioning(state)
+    @test has_positioning_data(state)
     @test length(state.data.reduced_almanacs) == 3
     @test length(state.data.midi_almanacs) == 1
     @test length(state.data.bgtos) == 1

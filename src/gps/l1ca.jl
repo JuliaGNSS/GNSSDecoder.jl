@@ -85,7 +85,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
-  - `num_bits_since_last_TOW::Int`: Bit-counter value when `TOW` was decoded
+  - `tow_anchor_bit_count::Int`: Bit-counter value when `TOW` was decoded
 
 # Subframe 1 - Clock Correction Parameters
 
@@ -172,9 +172,9 @@ Base.@kwdef struct GPSL1CAData <: AbstractGPSData
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing
     anti_spoof_flag::Union{Nothing,Bool} = nothing
-    # `num_bits_since_sync` when `TOW` was decoded; lets
+    # `num_bits_since_time_reference` when `TOW` was decoded; lets
     # `is_plausible_TOW` predict the next legal TOW exactly (issue #82).
-    num_bits_since_last_TOW::Union{Nothing,Int} = nothing
+    tow_anchor_bit_count::Union{Nothing,Int} = nothing
 
     WN::Union{Nothing,Int64} = nothing
     code_on_L2::Union{Nothing,Int64} = nothing
@@ -260,7 +260,7 @@ const LNAV_LSF_WN_MODULUS = 256
     TOW = data.TOW,
     alert_flag = data.alert_flag,
     anti_spoof_flag = data.anti_spoof_flag,
-    num_bits_since_last_TOW = data.num_bits_since_last_TOW,
+    tow_anchor_bit_count = data.tow_anchor_bit_count,
     WN = data.WN,
     code_on_L2 = data.code_on_L2,
     URA_index = data.URA_index,
@@ -321,7 +321,7 @@ const LNAV_LSF_WN_MODULUS = 256
         TOW,
         alert_flag,
         anti_spoof_flag,
-        num_bits_since_last_TOW,
+        tow_anchor_bit_count,
         WN,
         code_on_L2,
         URA_index,
@@ -527,11 +527,11 @@ broadcast_time_offset(::GNSSDecoderState{<:GPSL1CAData}, ::TimeSystem) = nothing
 
 # LNAV carries T_GD alone: no ISCs (see `get_group_delay`).
 function get_group_delay(state::GNSSDecoderState{<:GPSL1CAData}, ::GPSL1CA)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     something(state.data.T_GD)
 end
 
-function is_decoding_completed_for_positioning(data::GPSL1CAData)
+function has_positioning_data(data::GPSL1CAData)
     !isnothing(data.integrity_status_flag) &&
         !isnothing(data.TOW) &&
         !isnothing(data.alert_flag) &&
@@ -654,10 +654,10 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1CAData})
         raw_data = GPSL1CAData(
             state.raw_data;
             TOW = nothing,
-            num_bits_since_last_TOW = nothing,
+            tow_anchor_bit_count = nothing,
         ),
         data = GPSL1CAData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
     )
 end
 
@@ -783,14 +783,14 @@ const LNAV_SYMBOLS_PER_SUBFRAME = 300
 const LNAV_MAX_TOW_GAP = 600
 
 """
-    is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_sync)
+    is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_time_reference)
 
 Screen a truncated time-of-week count freshly decoded from a HOW against what
 a genuine frame lock can produce, before it is stored (in seconds) in
 `raw_data.TOW`. `prev_TOW` is the TOW held from an earlier subframe's HOW in
 seconds (`nothing` if none is held), `prev_TOW_anchor` the symbol-counter
 value recorded when it was decoded, and the last argument the counter's
-current value (`state.num_bits_since_sync`).
+current value (`state.num_bits_since_time_reference`).
 
 Frame sync is only a 16-bit preamble match, so a false lock on noise
 occasionally reaches this point with an arbitrary 17-bit count behind valid
@@ -810,11 +810,11 @@ parity (issue #82). The screens, strongest available first:
   - Before the counter runs there is no elapsed-time reference, so fall back
     to a bounded forward step of at most `LNAV_MAX_TOW_GAP` seconds.
 """
-is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_sync) =
+is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_time_reference) =
     is_plausible_TOW(
         TOW_count,
         prev_TOW,
-        elapsed_symbols(prev_TOW_anchor, num_bits_since_sync),
+        elapsed_symbols(prev_TOW_anchor, num_bits_since_time_reference),
     )
 
 # The decoder calls this form: three `Union{Nothing,Int64}` arguments are eight
@@ -839,7 +839,7 @@ function read_tlm_and_how_words(state, buffer)
         GPSL1CAData(state.raw_data; integrity_status_flag)
     end
     # `raw_data.TOW` must only ever hold a TOW decoded from *this* subframe's
-    # HOW: `confirm_data` re-anchors `num_bits_since_sync` to
+    # HOW: `confirm_data` re-anchors `num_bits_since_time_reference` to
     # it when promoting `raw_data`, so a TOW left over from an earlier subframe
     # would shift the reported transmit time by a multiple of 6 s. Clear it
     # (and its anchor) up front; a HOW that passes parity and the plausibility
@@ -856,7 +856,7 @@ function read_tlm_and_how_words(state, buffer)
         raw_data = GPSL1CAData(
             state.raw_data;
             TOW = nothing,
-            num_bits_since_last_TOW = nothing,
+            tow_anchor_bit_count = nothing,
         ),
     )
     state = can_decode_word(state, buffer, 2) do how_word, state
@@ -868,17 +868,17 @@ function read_tlm_and_how_words(state, buffer)
             TOW_count,
             previous_state.raw_data.TOW,
             elapsed_symbols(
-                previous_state.raw_data.num_bits_since_last_TOW,
-                previous_state.num_bits_since_sync,
+                previous_state.raw_data.tow_anchor_bit_count,
+                previous_state.num_bits_since_time_reference,
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        TOW_anchor = is_plausible ? previous_state.num_bits_since_sync : nothing
+        TOW_anchor = is_plausible ? previous_state.num_bits_since_time_reference : nothing
         @split_nothing (TOW, TOW_anchor) GPSL1CAData(
             state.raw_data;
             last_subframe_id,
             TOW,
-            num_bits_since_last_TOW = TOW_anchor,
+            tow_anchor_bit_count = TOW_anchor,
             alert_flag,
             anti_spoof_flag,
         )
@@ -901,7 +901,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # to a bound rather than a value, and index 15 is "no accuracy
             # prediction available"; folding that to `nothing` made it
             # indistinguishable from "subframe 1 not decoded yet" and kept such
-            # a satellite out of `is_decoding_completed_for_positioning`
+            # a satellite out of `has_positioning_data`
             # forever.
             URA_index = Int64(get_bits(word3, 30, 13, 4))
 
@@ -1488,13 +1488,13 @@ end
 function promote_data(state)
     promoted = GPSL1CAData(
         state.raw_data;
-        num_bits_since_last_TOW = state.constants.preamble_length,
+        tow_anchor_bit_count = state.constants.preamble_length,
     )
     GNSSDecoderState(
         state;
         raw_data = promoted,
         data = publish_data(state.cache.storage, promoted),
-        num_bits_since_sync = state.constants.preamble_length,
+        num_bits_since_time_reference = state.constants.preamble_length,
     )
 end
 
@@ -1557,7 +1557,7 @@ end
 
 function validate_data(state::GNSSDecoderState{<:GPSL1CAData})
     IODC = state.raw_data.IODC
-    if is_decoding_completed_for_positioning(state.raw_data) &&
+    if has_positioning_data(state.raw_data) &&
        IODC !== nothing &&
        IODC & 0xff == state.raw_data.IODE_Sub_2 == state.raw_data.IODE_Sub_3
         state = confirm_data(state)

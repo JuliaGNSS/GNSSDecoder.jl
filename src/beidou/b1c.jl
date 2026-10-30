@@ -221,7 +221,7 @@ converted to radians on decode (multiplied by π); all fields are
     the 8 LSBs of `IODC`, even inside one CRC-protected subframe 2: §7.4.3 says
     the two "may be different … during the update of the ephemeris and clock
     correction data", and a user "shall use the preceding matched pair" until
-    they agree. `is_decoding_completed_for_positioning` enforces that match.
+    they agree. `has_positioning_data` enforces that match.
 
 # Ephemeris (Figure 6-12/6-13, Table 7-8)
 
@@ -263,7 +263,7 @@ converted to radians on decode (multiplied by π); all fields are
     A B1C receiver needs both: `a_f0` is referenced to B3I (§7.6.1), so reaching
     the B1C data component means adding `T_GD_B1Cp` (B1C pilot vs B3I) and then
     `ISC_B1Cd` (B1C data vs B1C pilot). They ride in the same CRC-protected
-    subframe 2 as the clock, so `is_decoding_completed_for_positioning` requires
+    subframe 2 as the clock, so `has_positioning_data` requires
     both and a consumer never has to treat either as optional. `T_GD_B2ap` is
     the B2a pilot's delta and is not required here.
 
@@ -677,7 +677,7 @@ neither field is a time of week on its own. Both must be present; `nothing`
 until they are.
 
 The epoch is the leading edge of the *current* frame's subframe 1, which is what
-`num_bits_since_sync` is anchored to for this signal (see
+`num_bits_since_time_reference` is anchored to for this signal (see
 `validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
 otherwise identical-looking reconstruction is anchored differently.
 """
@@ -693,11 +693,11 @@ get_broadcast_week(data::BeiDouB1CData; approximate_year::Integer) = data.WN
 # in subframe 2 with the ephemeris. Its T_GD_B2ap is not used: a B2a range
 # carries a B2a decoder.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB1CData}, ::BeiDouB1C_D)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     something(state.data.T_GD_B1Cp) + something(state.data.ISC_B1Cd)
 end
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB1CData}, ::BeiDouB1C_P)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     something(state.data.T_GD_B1Cp)
 end
 
@@ -742,13 +742,13 @@ end
 # IODE equals the 8 LSBs of IODC again (same gate as `b2a.jl`).
 #
 # The group delays are required here, unlike on most signals (see the policy on
-# `is_decoding_completed_for_positioning` in src/gnss.jl): ICD §7.6 references
+# `has_positioning_data` in src/gnss.jl): ICD §7.6 references
 # the clock parameter a0 to the B3I signal, so a B1C receiver must add
 # `T_GD_B1Cp` and `ISC_B1Cd` to reach its own component — a metre-scale bias —
 # and both ride in the same CRC-protected subframe 2 as the ephemeris and
 # clock, so requiring them costs no extra time to first fix. `T_GD_B2ap` is the
 # B2a pilot's delta and is deliberately not required.
-function is_decoding_completed_for_positioning(data::BeiDouB1CData)
+function has_positioning_data(data::BeiDouB1CData)
     !isnothing(data.soh) &&
         !isnothing(data.HS) &&
         is_subframe2_decoded(data) &&
@@ -853,7 +853,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
         # whole hours in the past. Re-learning it costs one decoded subframe 2.
         raw_data = BeiDouB1CData(state.raw_data; soh = nothing, HOW = nothing),
         data = BeiDouB1CData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1270,7 +1270,7 @@ Promotion overwrites the preallocated validated containers with the raw ones
 `raw_data`, which later frames keep writing into.
 
 Sharing one CRC-protected block does not make IODE and IODC a matched pair —
-see [`is_decoding_completed_for_positioning`](@ref), which carries that gate.
+see [`has_positioning_data`](@ref), which carries that gate.
 
 The counter is armed at the epoch the SOH stamps — the leading edge of the
 *current* subframe 1 (ICD §7.3) — which at promotion time is
@@ -1280,11 +1280,11 @@ the *next* frame instead, so `gps/l1c_d.jl` anchors to `preamble_length`
 alone; using that anchor here would report the time 18 s early.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouB1CData})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_since_sync = state.constants.sync_unit_length +
+            num_bits_since_time_reference = state.constants.sync_unit_length +
                                   state.constants.preamble_length,
         )
     end

@@ -48,7 +48,7 @@ end
         @test state_a.prn == 13
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()
-        @test isnothing(state_a.num_bits_since_sync)
+        @test isnothing(state_a.num_bits_since_time_reference)
         @test !state_a.is_shifted_by_180_degrees
     end
 
@@ -107,7 +107,7 @@ end
         @test d.l2c_phasing == false
         @test !state.is_shifted_by_180_degrees
         # Positioning needs message types 11 and 30 as well.
-        @test !GNSSDecoder.is_decoding_completed_for_positioning(d)
+        @test !GNSSDecoder.has_positioning_data(d)
         @test !is_sat_healthy(state)
     end
 
@@ -131,7 +131,7 @@ end
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.data.TOW)
-        @test isnothing(state.num_bits_since_sync)
+        @test isnothing(state.num_bits_since_time_reference)
         @test !state.is_shifted_by_180_degrees
         # raw_data keeps WN, ephemeris fields, etc.
         @test state.raw_data.WN == 2345
@@ -310,7 +310,7 @@ end
         # No message type 40 in the recording.
         @test isnothing(d.ism)
 
-        @test GNSSDecoder.is_decoding_completed_for_positioning(d)
+        @test GNSSDecoder.has_positioning_data(d)
         @test is_sat_healthy(state)
     end
 
@@ -355,7 +355,7 @@ end
         state = decode!(GPSL5IDecoderState(25), stream)
         # Message 4 is MT15. Later validated messages continue to publish after
         # the decoder first has a complete positioning set.
-        @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
+        @test GNSSDecoder.has_positioning_data(state.data)
         @test state.data.last_message_type == state.raw_data.last_message_type
         @test state.data.text_mt15 == "Spirent Communications L2C te"
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"

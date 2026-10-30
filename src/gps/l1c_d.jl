@@ -787,7 +787,7 @@ CNAV carries in message type 35; see `gps_ggto_offset`.
 broadcast_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem) =
     gps_ggto_offset(state, target, state.data.GGTO_ID)
 
-function is_decoding_completed_for_positioning(data::GPSL1C_DData)
+function has_positioning_data(data::GPSL1C_DData)
     !isnothing(data.toi) && is_subframe2_decoded(data)
 end
 
@@ -881,7 +881,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
         # subframe 2.
         raw_data = GPSL1C_DData(state.raw_data; toi = nothing, ITOW = nothing),
         data = GPSL1C_DData(),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1402,14 +1402,14 @@ per-frame BCH re-check and monotonic-TOI enforcement are performed inline by
 arms the streaming counter.
 """
 function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         # `data` gets its own copy of every container: `publish_data` overwrites
         # the preallocated validated stores rather than sharing `raw_data`'s,
         # which later pages keep writing into.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_since_sync = state.constants.preamble_length,
+            num_bits_since_time_reference = state.constants.preamble_length,
         )
     end
     return state

@@ -117,7 +117,7 @@ which broadcast none.
 
 Read off `data`, like every accessor here. The set is not part of the
 positioning readiness gate (see
-[`is_decoding_completed_for_positioning`](@ref)): it is broadcast far less
+[`has_positioning_data`](@ref)): it is broadcast far less
 often, so apply it when present rather than waiting for it.
 """
 function get_klobuchar_parameters(state::GNSSDecoderState{<:AbstractGPSData})

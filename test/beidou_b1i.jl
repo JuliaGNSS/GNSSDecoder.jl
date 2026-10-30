@@ -124,7 +124,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
         check_d1_fundamental(state.data)
         @test state.is_shifted_by_180_degrees == false
@@ -137,23 +137,23 @@ using GNSSDecoder: BeiDouDNAVAlmanac
             dnav_test_soft_symbols(d1_cycle(0)...),
             length(dnav_test_soft_symbols(d1_cycle(0)...)),
         )
-        @test !is_decoding_completed_for_positioning(staged)
+        @test !has_positioning_data(staged)
         next_cycle = dnav_test_soft_symbols(d1_cycle(D1_CYCLE_SPAN)...)
 
         # Reset for the same satellite after an outage, the tally is kept, so the
         # next cycle confirms it ...
         same = decode!(reset_decoder_state!(copy(staged)), next_cycle, length(next_cycle))
-        @test is_decoding_completed_for_positioning(same)
+        @test has_positioning_data(same)
 
         # ... but for another satellite it is not: its cycle stages anew.
         other = reset_decoder_state!(copy(staged), 21)
         @test other.prn == 21
         @test other.raw_data == BeiDouDNAVData()
         @test other.data == BeiDouDNAVData()
-        @test isnothing(other.num_bits_since_sync)
+        @test isnothing(other.num_bits_since_time_reference)
         @test isempty(other.cache.old_data)
         other = decode!(other, next_cycle, length(next_cycle))
-        @test !is_decoding_completed_for_positioning(other)
+        @test !has_positioning_data(other)
 
         # A GEO decoder (D2 at 500 sps) moved to a MEO satellite decodes D1 at
         # 50 sps, as a decoder constructed for that satellite does.
@@ -164,7 +164,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         moved = decode!(moved, symbols, length(symbols))
         fresh = decode!(BeiDouB1IDecoderState(20), symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(moved)
+        @test has_positioning_data(moved)
         check_d1_fundamental(moved.data)
         @test moved.data == fresh.data
     end
@@ -176,7 +176,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_cycle(0)...)
         state = decode!(state, symbols, length(symbols))
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
         @test state.data == BeiDouDNAVData()
     end
 
@@ -232,13 +232,13 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         end
 
         state = feed!(state, 6 * 300 + 11)
-        @test is_decoding_completed_for_positioning(state)   # dataset A promoted
+        @test has_positioning_data(state)   # dataset A promoted
         @test state.data.t_0c == 43200
 
         state = feed!(state, 9 * 300 + 11)
         @test state.data.t_0c == 43200               # B staged, not yet promoted
         @test state.raw_data.SOW == SOW0 + 48        # …with the pair carried
-        @test !isnothing(state.raw_data.num_bits_since_last_SOW)
+        @test !isnothing(state.raw_data.sow_anchor_bit_count)
         @test isnothing(state.raw_data.t_0c)         # the clear itself happened
 
         # The carried pair predicts SOW0 + 54 from the elapsed 300 symbols, so
@@ -252,7 +252,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         # every one of these would fail the prediction and the decoder would be
         # wedged on dataset A until reset.
         state = feed!(state, length(stream))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.t_0c == 46800
         @test state.data.SOW == SOW0 + 72
     end
@@ -267,15 +267,15 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         state = decode!(state, symbols, length(symbols))
-        @test state.num_bits_since_sync == 311
-        @test state.data.SOW + state.num_bits_since_sync / 50 ≈ D1_LAST_SOW + 6.22
+        @test state.num_bits_since_time_reference == 311
+        @test state.data.SOW + state.num_bits_since_time_reference / 50 ≈ D1_LAST_SOW + 6.22
     end
 
     @testset "D1 decode with 180-degree phase shift" begin
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...; polarity = -1.0f0)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.is_shifted_by_180_degrees == true
         check_d1_fundamental(state.data)
     end
@@ -287,7 +287,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(sf1_err, sf2, sf3, d1_cycle(D1_CYCLE_SPAN)...)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.WN == 810
     end
 
@@ -615,7 +615,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test state.data == BeiDouDNAVData()
         state = feed_d2_cycle(state, D2_CYCLE_SPAN)
 
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
         data = state.data
         @test data.SOW == SOW_D2 + D2_CYCLE_SPAN + 27
@@ -624,8 +624,8 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         # up to four subframes old. The stream ends four filler subframes
         # after the promoting subframe 1, so the counter reads
         # 311 + 4*300 and the implied time is SOW + 1511/500 s.
-        @test state.num_bits_since_sync == 311 + 4 * 300
-        @test data.SOW + state.num_bits_since_sync / 500 ≈
+        @test state.num_bits_since_time_reference == 311 + 4 * 300
+        @test data.SOW + state.num_bits_since_time_reference / 500 ≈
               SOW_D2 + D2_CYCLE_SPAN + 27 + 3.022
         @test data.WN == WN
         @test data.AODC == 1
@@ -695,7 +695,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
             @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
             @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
             d2_state = allocations.state
-            @test is_decoding_completed_for_positioning(d2_state)
+            @test has_positioning_data(d2_state)
             @test d2_state.data.SOW == SOW_D2 + 2 * D2_CYCLE_SPAN + 27
             @test d2_state.data.ω == data.ω
             @test length(d2_state.cache.d2_pages) == 10
@@ -749,11 +749,11 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.WN == 810              # ephemeris survives the reset
         @test state.data == BeiDouDNAVData()
-        @test isnothing(state.num_bits_since_sync)
+        @test isnothing(state.num_bits_since_time_reference)
         @test isempty(state.cache.d2_pages)
         # And decoding resumes cleanly after the reset.
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.WN == 810
     end
 
@@ -891,7 +891,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
         @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
         state = allocations.state
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         check_d1_fundamental(state.data; SOW = SOW0 + 342)
         @test sort(collect(keys(state.data.almanacs))) == [1, 30, 63]
         @test state.data.almanacs[63].sqrt_A == 10_460_000 / 2.0^11

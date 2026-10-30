@@ -161,7 +161,7 @@ end
 
 The decoder's validated ephemeris and satellite clock as a
 [`BroadcastEphemeris`](@ref), or `nothing` until
-[`is_decoding_completed_for_positioning`](@ref). Galileo E6-B, which carries
+[`has_positioning_data`](@ref). Galileo E6-B, which carries
 corrections rather than an ephemeris, answers `nothing` always.
 
 It is built from `data` on each call, so it always reflects the latest
@@ -179,7 +179,7 @@ end
 ```
 """
 function get_broadcast_ephemeris(state::GNSSDecoderState)
-    is_decoding_completed_for_positioning(state) || return nothing
+    has_positioning_data(state) || return nothing
     broadcast_ephemeris(
         state.data,
         ephemeris_constants(state.data),

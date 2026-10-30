@@ -197,7 +197,7 @@ end
         )
             state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
             is_sat_healthy(state)
-            is_decoding_completed_for_positioning(state)
+            has_positioning_data(state)
         end
     end
 end

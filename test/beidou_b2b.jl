@@ -312,7 +312,7 @@ end
         @test length(d.reduced_almanacs) == 2
 
         # Promotion: SOW + WN + ephemeris (MT10) + clock (MT30) present.
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
@@ -322,7 +322,7 @@ end
         )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
-        @test state.num_bits_since_sync == 1016
+        @test state.num_bits_since_time_reference == 1016
         @test state.data.SOW == B2B_SOW_FIELD_BASE + 2
         @test state.data.last_message_type == 40
         @test is_sat_healthy(state)
@@ -338,21 +338,21 @@ end
     @testset "Only promotion arms the symbol counter" begin
         state = BeiDouB2bDecoderState(prn)
         # MT10 alone: ephemeris, but neither the clock nor the week number, so
-        # `is_decoding_completed_for_positioning` is still false.
+        # `has_positioning_data` is still false.
         state = b2b_decode_frames(
             state,
             [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5000); prn)],
         )
         @test state.raw_data.SOW == 5000                              # frame decoded ...
-        @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_since_sync)   # ... armed nothing
+        @test !has_positioning_data(state)
+        @test isnothing(state.num_bits_since_time_reference)   # ... armed nothing
         # A second decoded frame does not arm it either.
         state = b2b_decode_frames(
             state,
             [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5001); prn)],
         )
         @test state.raw_data.SOW == 5001
-        @test isnothing(state.num_bits_since_sync)
+        @test isnothing(state.num_bits_since_time_reference)
         # The MT30 that completes the set promotes, and arms the counter to the
         # frame plus next-frame preamble whose SOW it just published.
         state = b2b_decode_frames(
@@ -360,7 +360,7 @@ end
             [b2b_frame_symbols(b2b_mt30_message(; sow_field = 5002); prn)],
         )
         @test state.data.SOW == 5002
-        @test state.num_bits_since_sync == 1016
+        @test state.num_bits_since_time_reference == 1016
     end
 
     @testset "SOW stamps each frame; unhealthy satellite is flagged" begin
@@ -372,7 +372,7 @@ end
         state = b2b_decode_frames(state, frames)
         @test state.raw_data.SOW == 2001
         @test state.data.HS == 1
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test !is_sat_healthy(state)
     end
 
@@ -419,7 +419,7 @@ end
         @test state.is_shifted_by_180_degrees
         @test state.raw_data.t_0e == 1200 * 300
         @test state.raw_data.a_f0 == -400000 * 2.0^-34
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "Foreign PRN in the unencoded PRN field is rejected" begin
@@ -450,7 +450,7 @@ end
         @test state.raw_data.last_message_type == 63
         @test state.raw_data.SOW == 4000
         @test isnothing(state.raw_data.t_0e)
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
     end
 
     @testset "Noisy symbols decode through the LDPC" begin
@@ -466,7 +466,7 @@ end
         state = b2b_decode_frames(state, noisy)
         @test state.raw_data.t_0e == 1200 * 300
         @test state.raw_data.a_f0 == -400000 * 2.0^-34
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "reset_decoder_state clears SOW and validated data" begin
@@ -476,13 +476,13 @@ end
             b2b_frame_symbols(b2b_mt30_message(); prn),
         ]
         state = b2b_decode_frames(state, frames)
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)
-        @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_since_sync)
+        @test !has_positioning_data(state)
+        @test isnothing(state.num_bits_since_time_reference)
         @test GNSSDecoder.num_symbols_buffered(state) == 0
     end
 
@@ -509,7 +509,7 @@ end
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
-    @test is_decoding_completed_for_positioning(state)
+    @test has_positioning_data(state)
     @test length(state.data.reduced_almanacs) == 2
     @test haskey(state.data.midi_almanacs, 30)
     # Promotion copies the stores: `data` never shares them with `raw_data`.

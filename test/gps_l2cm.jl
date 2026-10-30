@@ -53,11 +53,11 @@ end
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()          # shared CNAV container
         @test state_a.constants isa GNSSDecoder.GPSL2CMConstants
-        @test isnothing(state_a.num_bits_since_sync)
+        @test isnothing(state_a.num_bits_since_time_reference)
         @test !state_a.is_shifted_by_180_degrees
         # A fresh decoder has no validated data, so the exported
         # state-forwarding readiness predicate is `false`.
-        @test !is_decoding_completed_for_positioning(state_a)
+        @test !has_positioning_data(state_a)
     end
 
     @testset "Shares the L5I CNAV decode path" begin
@@ -140,7 +140,7 @@ end
         state = reset_decoder_state!(state)
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
-        @test isnothing(state.num_bits_since_sync)
+        @test isnothing(state.num_bits_since_time_reference)
         @test !state.is_shifted_by_180_degrees
         @test state.raw_data.WN == 2345  # ephemeris preserved
     end
@@ -317,10 +317,10 @@ end
         # No message type 40 in the recording.
         @test isnothing(d.ism)
 
-        @test GNSSDecoder.is_decoding_completed_for_positioning(d)
+        @test GNSSDecoder.has_positioning_data(d)
         # Exported state-forwarding method: dispatches on the validated `data`,
         # so it agrees with the `data`-typed check above.
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
     end
 
@@ -366,7 +366,7 @@ end
         state = decode!(GPSL2CMDecoderState(25), stream)
         # Message 4 is MT15. Once the first positioning set is complete, later
         # validated messages must continue to publish to `data`.
-        @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
+        @test GNSSDecoder.has_positioning_data(state.data)
         @test state.data.last_message_type == state.raw_data.last_message_type
         @test state.data.text_mt15 == "Spirent Communications L2C te"
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"

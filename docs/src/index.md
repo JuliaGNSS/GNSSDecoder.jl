@@ -50,7 +50,7 @@ Process incoming soft bits and check the decoder state:
 ```jldoctest gps_example
 julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1]);  # Decode 8 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -91,7 +91,7 @@ GalileoINAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -131,7 +131,7 @@ julia> state = GNSSDecoderState(GalileoE6B(), 1);
 julia> get_bit_rate(state)   # 1000 symbols, one page, per second
 1000 Hz
 
-julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
+julia> has_positioning_data(state)   # corrections, not an ephemeris
 false
 ```
 
@@ -176,7 +176,7 @@ GPSL1C_DData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -201,7 +201,7 @@ GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -225,7 +225,7 @@ GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -247,7 +247,7 @@ BeiDouDNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -272,7 +272,7 @@ BeiDouB2aData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
-julia> isnothing(state.num_bits_since_sync)  # Buffered, not yet synchronised
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
 ```
 
@@ -292,7 +292,7 @@ julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1]);  # Some 
 
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
-julia> isnothing(state.num_bits_since_sync)  # Synchronisation is cleared
+julia> isnothing(state.num_bits_since_time_reference)  # Synchronisation is cleared
 true
 
 julia> state.prn  # PRN is preserved

@@ -872,7 +872,7 @@ get_broadcast_week(data::BeiDouB2aData; approximate_year::Integer) = data.WN
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB2aData}, ::BeiDouB2aI)
     (; T_GD_B2ap, ISC_B2ad) = state.data
     (
-        is_decoding_completed_for_positioning(state) &&
+        has_positioning_data(state) &&
         !isnothing(T_GD_B2ap) &&
         !isnothing(ISC_B2ad)
     ) || return nothing
@@ -880,7 +880,7 @@ function get_group_delay(state::GNSSDecoderState{<:BeiDouB2aData}, ::BeiDouB2aI)
 end
 function get_group_delay(state::GNSSDecoderState{<:BeiDouB2aData}, ::BeiDouB2aQ)
     T_GD_B2ap = state.data.T_GD_B2ap
-    (is_decoding_completed_for_positioning(state) && !isnothing(T_GD_B2ap)) ||
+    (has_positioning_data(state) && !isnothing(T_GD_B2ap)) ||
         return nothing
     something(T_GD_B2ap)
 end
@@ -895,7 +895,7 @@ tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 broadcast_time_offset(state::GNSSDecoderState{<:BeiDouB2aData}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::BeiDouB2aData)
+function has_positioning_data(data::BeiDouB2aData)
     !isnothing(data.SOW) &&
         is_ephemeris_decoded(data) &&
         is_clock_correction_decoded(data) &&
@@ -962,7 +962,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
         raw_data = BeiDouB2aData(state.raw_data; SOW = nothing),
         data = BeiDouB2aData(),
         cache = BeiDouB2aCache(state.cache; frame_decoded = false),
-        num_bits_since_sync = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1048,7 +1048,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
     # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
     # that carries a new ephemeris-I block until its partner arrives. Re-arming
     # on every CRC-valid frame while the published SOW stands still made
-    # `tow + num_bits_since_sync/rate` read exactly one 3-second frame low for the duration
+    # `tow + num_bits_since_time_reference/rate` read exactly one 3-second frame low for the duration
     # of every such skip — a ~9 km along-track error in every satellite position
     # propagated from it (measured on TEX-CUP: a 2.2 km position excursion once
     # per message cycle). The counter therefore keeps counting from the last
@@ -1079,16 +1079,16 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     # frame. Promoting that would publish the previous SOW against this frame's
     # sync epoch — one frame (3 s) low until the next decoded frame (#97).
     is_b2a_frame_decoded(state) || return state
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_data(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits_since_sync/rate` (see `get_broadcast_time_of_week`) to stay on the true
+        # `tow + num_bits_since_time_reference/rate` (see `get_broadcast_time_of_week`) to stay on the true
         # time through frames the gate skips. The frame was decoded (checked
         # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_since_sync = state.constants.sync_unit_length +
+            num_bits_since_time_reference = state.constants.sync_unit_length +
                                   state.constants.preamble_length,
         )
     end
