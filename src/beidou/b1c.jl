@@ -720,6 +720,7 @@ function broadcast_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, targe
     for (GNSS_ID, bgto) in pairs(bgtos)
         beidou_bgto_target(GNSS_ID) === target || continue
         return assemble_broadcast_time_offset(
+            get_time_system(state),
             target,
             bgto.A_0BGTO,
             bgto.A_1BGTO,

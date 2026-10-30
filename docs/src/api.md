@@ -186,6 +186,8 @@ get_broadcast_time_of_week
 get_decoded_time_of_week
 get_broadcast_week
 get_broadcast_time_offset
+BroadcastTimeOffsetParameters
+get_broadcast_time_offset_parameters
 get_broadcast_time_offset_epoch
 ```
 

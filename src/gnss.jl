@@ -805,35 +805,56 @@ function get_broadcast_time_offset_epoch(state::GNSSDecoderState, target::TimeSy
     isnothing(offset) && return nothing
     (; t_0, WN_0) = offset
     (isnothing(t_0) || isnothing(WN_0)) && return nothing
-    return GNSSSignals.get_week_start_epoch(get_time_system(state), WN_0) + t_0
+    return GNSSSignals.get_week_start_epoch(offset.source, WN_0) + t_0
 end
 
-# One broadcast time offset between two GNSS time scales, normalised across the five
-# shapes the ICDs state it in; `broadcast_time_offset` builds it, and
-# `get_broadcast_time_offset` evaluates it. Internal: its reference week `WN_0` is
-# resolved into the decoder's own week numbering and means something only paired with
-# that number, which is why the evaluation, not the record, is the API. `t_0` and `WN_0`
-# are `nothing` on BeiDou D1/D2, which broadcasts no reference epoch; `A_2` is zero
-# where only two terms are broadcast.
-struct BroadcastTimeOffset{T<:TimeSystem}
-    # Time scale the offset is *to*; the broadcasting satellite's own scale is
-    # `get_time_system` of the decoder state.
+"""
+    BroadcastTimeOffsetParameters
+
+Broadcast steering-residual polynomial from `source` to `target`, as returned
+by [`get_broadcast_time_offset_parameters`](@ref). The offset is
+`source_time - target_time`; the integer seconds between the time scales are
+not included.
+
+`A_0`, `A_1`, `A_2` are bias (s), drift (s/s), and quadratic coefficient
+(s/s²). `t_0` is the reference seconds of week and `WN_0` its week on the
+source system's count, resolved against the decoder's week. Together they date
+an absolute reference with `get_week_start_epoch(parameters.source, WN_0) + t_0`.
+Both are `nothing` on BeiDou D1/D2, whose polynomial argument is the source
+seconds of week itself. Terms absent from the message are zero.
+
+This is a snapshot of the coefficients; it contains no decoder storage.
+Original ICD spellings remain on the decoded message containers. Galileo's
+[`GGTOParameters`](@ref) is also available for consumers of that format.
+"""
+struct BroadcastTimeOffsetParameters{S<:TimeSystem,T<:TimeSystem}
+    source::S
     target::T
-    # Bias (s), drift (s/s) and drift-rate (s/s²) coefficients, as broadcast: the
-    # steering residual, without the leap seconds between the two scales.
     A_0::Float64
     A_1::Float64
     A_2::Float64
-    # Reference time of week (s).
     t_0::Union{Nothing,Int}
-    # Reference week, lifted out of its truncated broadcast field into the decoder's
-    # own week numbering (see `resolve_reference_week`): valid only in `WN - WN_0`,
-    # and, across a week-number rollover, possibly outside the field's range.
     WN_0::Union{Nothing,Int}
 end
 
+"""
+    get_broadcast_time_offset_parameters(state::GNSSDecoderState, target::TimeSystem)
+        -> Union{Nothing,BroadcastTimeOffsetParameters}
+
+Read a broadcast inter-system time polynomial with explicit source and target
+scales, normalized coefficient names and a resolved reference week. Returns
+`nothing` for missing, unavailable, or differently targeted offsets, using the
+same checks as [`get_broadcast_time_offset`](@ref).
+
+Use this to store or write coefficients; use `get_broadcast_time_offset` to
+evaluate the polynomial at a time of week, and
+[`get_broadcast_time_offset_epoch`](@ref) to date its reference.
+"""
+get_broadcast_time_offset_parameters(state::GNSSDecoderState, target::TimeSystem) =
+    broadcast_time_offset(state, target)
+
 # The broadcast offset from the satellite's own scale to `target` as a
-# `BroadcastTimeOffset`, or `nothing`, in the cases `get_broadcast_time_offset` lists.
+# `BroadcastTimeOffsetParameters`, or `nothing`, in the cases `get_broadcast_time_offset` lists.
 # Every signal states its own method, in its own file. There is no blanket `nothing`
 # fallback for the same reason `get_orbit_class` has none: a future signal that does
 # broadcast an offset would silently inherit "no offset available" and its
@@ -841,10 +862,10 @@ end
 function broadcast_time_offset end
 
 """
-    assemble_broadcast_time_offset(target, A_0, A_1, A_2, t_0, WN_0, WN,
-                                   WN_0_modulus) -> Union{Nothing,BroadcastTimeOffset}
+    assemble_broadcast_time_offset(source, target, A_0, A_1, A_2, t_0, WN_0, WN,
+                                   WN_0_modulus) -> Union{Nothing,BroadcastTimeOffsetParameters}
 
-Assemble a `BroadcastTimeOffset` from one message's broadcast
+Assemble a `BroadcastTimeOffsetParameters` from one message's broadcast
 coefficients, resolving the truncated reference week `WN_0` against the
 decoder's own week `WN` (see `resolve_reference_week`). Every
 `get_broadcast_time_offset` method routes through this rather than calling the
@@ -857,6 +878,7 @@ heap-allocated on every call — and `get_broadcast_time_offset` is read once pe
 satellite per navigation epoch, on a path that must stay allocation-free.
 """
 function assemble_broadcast_time_offset(
+    source::TimeSystem,
     target::TimeSystem,
     A_0::Real,
     A_1::Real,
@@ -871,7 +893,8 @@ function assemble_broadcast_time_offset(
     # numbering cannot be evaluated against, and `Δτ` needs `WN` anyway, so
     # there is no usable offset yet rather than one with an unresolved epoch.
     isnothing(reference_week) && !isnothing(WN_0) && return nothing
-    BroadcastTimeOffset(
+    BroadcastTimeOffsetParameters(
+        source,
         target,
         A_0,
         A_1,

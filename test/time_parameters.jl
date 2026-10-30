@@ -254,3 +254,28 @@ using GNSSDecoder: GPSCNAV2Data, BeiDouCNAV2Data
         @test allocations(galileo) == 0
     end
 end
+
+@testset "Generic broadcast time-offset parameters" begin
+    states_and_targets = (
+        (complete_state(GPSL5IDecoderState(1), GPSCNAVData), GST()),
+        (complete_state(GalileoE1BDecoderState(1), GalileoINAVData), GPST()),
+        (complete_state(BeiDouB2aDecoderState(20), BeiDouCNAV2Data), GPST()),
+        (complete_state(BeiDouB1IDecoderState(20), BeiDouDNAVData), GPST()),
+    )
+    for (state, target) in states_and_targets
+        parameters = get_broadcast_time_offset_parameters(state, target)
+        @test parameters isa BroadcastTimeOffsetParameters
+        @test parameters.source === get_time_system(state)
+        @test parameters.target === target
+        if state.data isa BeiDouDNAVData
+            @test isnothing(parameters.t_0) && isnothing(parameters.WN_0)
+        else
+            @test get_broadcast_time_offset_epoch(state, target) ==
+                  get_week_start_epoch(parameters.source, parameters.WN_0) + parameters.t_0
+        end
+        # Resetting the decoder cannot change a saved coefficient record.
+        saved_bias = parameters.A_0
+        reset_decoder_state!(state)
+        @test parameters.A_0 == saved_bias
+    end
+end

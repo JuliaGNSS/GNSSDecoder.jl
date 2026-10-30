@@ -822,6 +822,7 @@ function broadcast_time_offset(
     # the call below (see `galileo_ggto_offset`).
     (isnothing(A_0) || isnothing(A_1)) && return nothing
     assemble_broadcast_time_offset(
+        get_time_system(state),
         target,
         A_0,
         A_1,

@@ -279,9 +279,9 @@ galileo_group_delay_scaling(signal) =
     (get_center_frequency(GalileoE1B) / get_center_frequency(signal))^2
 
 """
-    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,BroadcastTimeOffset}
+    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,BroadcastTimeOffsetParameters}
 
-Normalise a decoded GGTO into a `BroadcastTimeOffset`, or `nothing` when the
+Normalise a decoded GGTO into a `BroadcastTimeOffsetParameters`, or `nothing` when the
 satellite is not broadcasting one or `target` is not GPS time.
 
 Galileo's GNSS Time Offset is GPS-only — the ICD defines exactly one, GST to
@@ -308,6 +308,7 @@ function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     (isnothing(A_0G) || isnothing(A_1G) || isnothing(t_0G) || isnothing(WN_0G)) &&
         return nothing
     assemble_broadcast_time_offset(
+        get_time_system(state),
         target,
         A_0G,
         A_1G,
