@@ -45,7 +45,7 @@ end
 
 function (@main)(args::Vector{String})::Cint
     # Construct decoders without allocating spreading-code lookup tables.
-    # Generic construction from signal instances is covered by the unit suite.
+    # E1B below also exercises generic construction from both tracking replicas.
     symbols = pseudo_random_symbols(8000)
     gps_l1ca =
         GNSSDecoder._precompile_soft_symbols(GNSSDecoder._PRECOMPILE_GPS_L1CA_SYMBOLS)
@@ -56,7 +56,7 @@ function (@main)(args::Vector{String})::Cint
     run_decoder("GPS L1C-D", GPSL1C_DDecoderState, 7, symbols)
     run_decoder("GPS L2C", GPSL2CMDecoderState, 25, symbols)
     run_decoder("GPS L5I", GPSL5IDecoderState, 25, symbols)
-    run_decoder("Galileo E1B", GalileoE1BDecoderState, 2, galileo_e1b)
+    e1b = run_decoder("Galileo E1B", GalileoE1BDecoderState, 2, galileo_e1b)
     run_decoder("Galileo E5a", GalileoE5aDecoderState, 21, symbols)
     run_decoder("Galileo E5b", GalileoE5bDecoderState, 2, galileo_e1b)
     run_decoder("Galileo E6B", GalileoE6BDecoderState, 2, symbols)
@@ -65,6 +65,18 @@ function (@main)(args::Vector{String})::Cint
     run_decoder("BeiDou B2a", BeiDouB2aDecoderState, 7, symbols)
     run_decoder("BeiDou B2b", BeiDouB2bDecoderState, 7, symbols)
     run_decoder("BeiDou B3I", BeiDouB3IDecoderState, 7, symbols)
+
+    # Replica construction must also trim safely. Both tracking variants feed
+    # the same decoder and retain only the broadcast component identity.
+    for signal in (GalileoE1B(), GalileoE1B_CBOC())
+        decoded = decode!(GNSSDecoderState(signal, 2), galileo_e1b)
+        if decoded != e1b ||
+           get_signal_id(decoded) !== :GalileoE1B ||
+           get_signal_name(decoded) != "Galileo E1B"
+            println(Core.stderr, "Galileo E1B replica changed decoder data or identity")
+            return 1
+        end
+    end
 
     if !has_positioning_data(l1ca) || get_broadcast_time_of_week(l1ca) != 259278
         println(Core.stderr, "GPS L1 C/A capture did not decode to its navigation fix")
