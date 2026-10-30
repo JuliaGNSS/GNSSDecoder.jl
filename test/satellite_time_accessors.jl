@@ -446,7 +446,7 @@ using GNSSDecoder:
         # The contract itself, on every decoder that answers, rather than the
         # arithmetic of any one of them: `A_0` is the coefficient as broadcast,
         # and the whole seconds between the scales, which no message carries,
-        # are left to `get_leap_second_offset`. Broadcasting zero coefficients
+        # are left to `get_time_scale_offset`. Broadcasting zero coefficients
         # isolates them: from BeiDou they are 14 s, so adding them would show.
         @testset "defined scale offset is left out" begin
             zeroed = (;

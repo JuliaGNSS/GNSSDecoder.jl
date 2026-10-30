@@ -220,7 +220,7 @@ The offset `Δt` is **the broadcasting system's time minus the target system's**
 (Galileo OS SIS ICD §5.1.8; IS-GPS-800/200 GGTO; BDS-SIS-ICD-B1C §7.13.2 Eq.
 7-30). To convert a seconds-of-week reading, *subtract* it, and add the leap
 seconds between the two scales, GNSSSignals'
-`get_leap_second_offset(get_time_system(state), target)`, which the note below
+`get_time_scale_offset(get_time_system(state), target)`, which the note below
 explains: `t_target = t_own - Δt + leap_seconds`.
 
 It is the broadcast polynomial
@@ -310,7 +310,7 @@ using Unitful: s, ustrip
 Δt = get_broadcast_time_offset(state, GPST(), t_bdt)
 if !isnothing(Δt)
     # The leap seconds between the scales are not broadcast: +14 s from BDT to GPST.
-    t_gps = t_bdt - Δt + ustrip(s, get_leap_second_offset(BDT(), GPST()))
+    t_gps = t_bdt - Δt + ustrip(s, get_time_scale_offset(BDT(), GPST()))
 end
 ```
 

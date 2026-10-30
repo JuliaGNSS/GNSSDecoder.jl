@@ -380,3 +380,44 @@ CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
 | `reduced_almanacs`, `midi_almanacs` | Per-SV almanac dictionaries (pages 3/4) |
 | `differential_corrections` | Per-SV differential corrections (page 5) |
 | `text_message` | Broadcast text (page 6) |
+
+
+## Cleanup API migration
+
+Decoded containers are named after their navigation message. Construct decoders
+by signal with `GNSSDecoderState(signal, prn)`; signal-specific constructors remain
+available. The exported container names change as follows, without aliases:
+
+| Previous name | Message-format name |
+|:---|:---|
+| `GPSL1CAData` | `GPSLNAVData` |
+| `GPSL1C_DData` | `GPSCNAV2Data` |
+| `GalileoE5aData` | `GalileoFNAVData` |
+| `BeiDouB1CData` | `BeiDouCNAV1Data` |
+| `BeiDouB2aData` | `BeiDouCNAV2Data` |
+| `BeiDouB2bData` | `BeiDouCNAV3Data` |
+
+Replace `is_decoding_completed_for_positioning` with `has_positioning_data`.
+The public counter `num_bits_since_sync` becomes
+`num_bits_since_time_reference`: its anchor is the epoch stamped by the
+validated data, rather than the most recent preamble. Stored counter readings
+`num_bits_since_last_TOW` and `num_bits_since_last_SOW` become
+`tow_anchor_bit_count` and `sow_anchor_bit_count`.
+
+PVT consumers can use [`get_decoded_time_of_week`](@ref) instead of combining
+the stamp, counter and rate themselves. Vector tracking can still adjust the
+counter through the decoder's keyword constructor. It should not be used to
+infer the age of a preamble or carrier-polarity observation.
+
+`decode!` consumes the whole vector by default; pass a third argument for the
+populated prefix of a reusable buffer. The `decode_once` keyword is removed:
+validated navigation data continues to update after the first positioning set.
+A caller can stop feeding input when it has enough data and use `copy(state)`
+to retain an independent snapshot.
+
+[`get_broadcast_ephemeris_validity`](@ref) reports absolute ephemeris and clock
+reference epochs and a fit duration where broadcast. Freshness policy remains
+with the positioning consumer. [`get_broadcast_time_offset_parameters`](@ref)
+provides generic inter-system coefficients with explicit source/target scales;
+the UTC, leap-second and Galileo GGTO records retain their broadcast conventions
+for navigation-file writers.

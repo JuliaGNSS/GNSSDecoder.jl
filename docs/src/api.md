@@ -163,8 +163,8 @@ each ICD's "not available" sentinel:
 
 ```julia
 Δt = get_broadcast_time_offset(state, GPST(), t_bdt)  # `GPST()`, `GST()` or `BDT()`
-leap_seconds = ustrip(s, get_leap_second_offset(BDT(), GPST()))  # 14 s
-t_gpst = t_bdt - Δt + leap_seconds
+scale_offset = ustrip(s, get_time_scale_offset(BDT(), GPST()))  # 14 s
+t_gpst = t_bdt - Δt + scale_offset
 ```
 
 It evaluates the broadcast polynomial at the given time of week against the
@@ -175,7 +175,7 @@ against, so a caller needs only the time of week.
 seconds between them plus a steering residual, and only the residual is on the
 air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs (on BeiDou
 D1/D2 14 bits at 0.1 ns), which cannot express a whole second. The leap seconds follow from the scales'
-definitions, GNSSSignals' `get_leap_second_offset`: zero between GPST and GST
+definitions, GNSSSignals' `get_time_scale_offset`: zero between GPST and GST
 (both TAI − 19 s) and 14 s from BDT to either, so a conversion that is only
 ever tried on Galileo never notices them missing.
 
