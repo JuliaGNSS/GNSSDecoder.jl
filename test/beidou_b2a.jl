@@ -665,19 +665,6 @@ end
         @test is_decoding_completed_for_positioning(state)
     end
 
-    @testset "decode_once stops after the positioning set" begin
-        state = BeiDouB2aDecoderState(B2A_PRN)
-        messages = [
-            build_b2a_mt10(; sow = t0),
-            build_b2a_mt11(; sow = t0 + 3),
-            build_b2a_mt30(; sow = t0 + 6),
-            build_b2a_mt32(; sow = t0 + 9),
-        ]
-        stream = vcat(reduce(vcat, b2a_frame_symbols.(messages)), b2a_trailing_preamble())
-        state = decode!(state, stream, length(stream); decode_once = true)
-        @test is_decoding_completed_for_positioning(state)
-    end
-
     @testset "Signal metadata accessors" begin
         state = BeiDouB2aDecoderState(B2A_PRN)
         @test get_signal_type(state) == BeiDouB2aI

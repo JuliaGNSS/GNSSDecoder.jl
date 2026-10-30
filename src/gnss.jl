@@ -1340,12 +1340,6 @@ signal. See `CONTEXT.md` for the full glossary.
   - `soft_bits::AbstractVector{<:Real}`: Soft bits to consume, oldest first
   - `num_bits::Int`: Number of leading entries of `soft_bits` to process
 
-# Keywords
-
-  - `decode_once::Bool=false`: If `true`, stops once all required positioning
-    data has been validated (subframes 1-3 for GPS L1 C/A; word types 1-5 for
-    Galileo E1B)
-
 # Returns
 
   - `GNSSDecoderState`: Updated decoder state with newly decoded data, sharing
@@ -1360,8 +1354,7 @@ signal. See `CONTEXT.md` for the full glossary.
 function decode!(
     state::GNSSDecoderState,
     soft_bits::AbstractVector{<:Real},
-    num_bits::Int;
-    decode_once::Bool = false,
+    num_bits::Int,
 )
     num_bits <= length(soft_bits) ||
         throw(ArgumentError("num_bits exceeds length(soft_bits)"))
@@ -1374,9 +1367,7 @@ function decode!(
         state = with_symbol_counter(state, num_bits_since_sync)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
         state = decode_sync_unit(state, resolved_buffer)
-        if !decode_once || !is_decoding_completed_for_positioning(state.data)
-            state = validate_data(state)
-        end
+        state = validate_data(state)
         state = drain_after_sync!(state)
         num_bits_since_sync = state.num_bits_since_sync
     end
