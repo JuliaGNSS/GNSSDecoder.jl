@@ -17,6 +17,13 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 - **BeiDou B2a**: Decodes the 200 sps B-CNAV2 data stream from the B2a data component
 - **BeiDou B2b**: Decodes the 1000 sps B-CNAV3 data stream from the B2b_I signal
 
+GNSSSignals uses BOC(1,1) replicas by default for Galileo E1 and the GPS L1C
+pilot. `GNSSDecoderState(GalileoE1B(), prn)` and
+`GNSSDecoderState(GalileoE1B_CBOC(), prn)` decode the same I/NAV message. Group-delay
+queries accept both Galileo E1 replica variants and both GPS L1C pilot replicas,
+`GPSL1C_P` and `GPSL1C_P_TMBOC`; the correction depends on the broadcast component,
+not the replica modulation.
+
 ## Installation
 
 ```julia

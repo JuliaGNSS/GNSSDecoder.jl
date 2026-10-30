@@ -102,7 +102,10 @@ to a compile-time constant.
 Dispatch is on the constants type, which keeps decoders that share a data
 container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and
 Galileo E1-B and E5b-I both into a `GalileoINAVData`, but each reports its own
-band, ids and symbol rates.
+band, ids and symbol rates. Tracking replica variants share one decoder:
+BOC(1,1) and full CBOC E1B both report the canonical `GalileoE1B` type. Forwarded
+names and ids follow that default replica; query the tracking signal itself to
+distinguish replica variants in a display.
 
 ```julia
 using GNSSDecoder, GNSSSignals
