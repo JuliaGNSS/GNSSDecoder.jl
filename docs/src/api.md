@@ -207,6 +207,8 @@ ephemeris = get_broadcast_ephemeris(state)  # `nothing` until decoding is comple
 ```@docs
 BroadcastEphemeris
 get_broadcast_ephemeris
+BroadcastEphemerisValidity
+get_broadcast_ephemeris_validity
 ```
 
 ## Group Delay

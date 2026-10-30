@@ -301,8 +301,9 @@ can be checked together without a separate `nothing` guard.
     no further judgement is required:
 
       - **Ephemeris freshness.** Only presence is checked, not age. The decoder
-        has no notion of "now", so the consumer must still reject ephemerides
-        outside their fit interval (`fit_interval` / `t_0e` age).
+        has no notion of "now", so the consumer must still reject stale
+        ephemerides. [`get_broadcast_ephemeris_validity`](@ref) reports the
+        absolute reference epochs and the fit duration where broadcast.
 
       - **Second-order corrections.** Klobuchar / BDGIM ionosphere and UTC
         parameters are intentionally excluded: they are broadcast far less

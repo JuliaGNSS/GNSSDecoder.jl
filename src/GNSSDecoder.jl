@@ -55,6 +55,8 @@ export decode!,
     get_group_delay,
     BroadcastEphemeris,
     get_broadcast_ephemeris,
+    BroadcastEphemerisValidity,
+    get_broadcast_ephemeris_validity,
     KlobucharParameters,
     BeiDouKlobucharParameters,
     NeQuickGParameters,
@@ -120,6 +122,7 @@ include("beidou/b2a.jl")
 include("beidou/b2b.jl")
 include("decoded_time.jl")
 include("ephemeris.jl")
+include("ephemeris_validity.jl")
 include("ionosphere.jl")
 include("time_parameters.jl")
 include("range_accuracy.jl")
