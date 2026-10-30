@@ -74,15 +74,15 @@ using GNSSDecoder:
         for (sat_type, class) in expected
             b1c = GNSSDecoderState(
                 BeiDouB1CDecoderState(20);
-                data = BeiDouB1CData(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV1Data(; sat_type = Int64(sat_type)),
             )
             b2a = GNSSDecoderState(
                 BeiDouB2aDecoderState(20);
-                data = BeiDouB2aData(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV2Data(; sat_type = Int64(sat_type)),
             )
             b2b = GNSSDecoderState(
                 BeiDouB2bDecoderState(20);
-                data = BeiDouB2bData(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV3Data(; sat_type = Int64(sat_type)),
             )
             @test get_orbit_class(b1c) === class
             @test get_orbit_class(b2a) === class
@@ -92,43 +92,43 @@ using GNSSDecoder:
 
     @testset "time of week" begin
         # The signals that broadcast seconds outright pass them through.
-        @test get_broadcast_time_of_week(GPSL1CAData(; TOW = Int64(432_006))) == 432_006
+        @test get_broadcast_time_of_week(GPSLNAVData(; TOW = Int64(432_006))) == 432_006
         @test get_broadcast_time_of_week(GalileoINAVData(; TOW = Int64(123_456))) == 123_456
-        @test get_broadcast_time_of_week(GalileoE5aData(; TOW = Int64(123_456))) == 123_456
+        @test get_broadcast_time_of_week(GalileoFNAVData(; TOW = Int64(123_456))) == 123_456
         @test get_broadcast_time_of_week(BeiDouDNAVData(; SOW = Int64(99))) == 99
-        @test get_broadcast_time_of_week(BeiDouB2aData(; SOW = Int64(300_003))) == 300_003
-        @test get_broadcast_time_of_week(BeiDouB2bData(; SOW = Int64(300_001))) == 300_001
+        @test get_broadcast_time_of_week(BeiDouCNAV2Data(; SOW = Int64(300_003))) == 300_003
+        @test get_broadcast_time_of_week(BeiDouCNAV3Data(; SOW = Int64(300_001))) == 300_001
 
         # GPS L1C-D: ITOW counts two-hour intervals, toi 18-second frames.
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 7)) ==
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(3), toi = 7)) ==
               3 * 7200 + 7 * 18
         # `toi = 0` counts against the NEXT two-hour interval (IS-GPS-800J §3.5.2:
         # the TOI is defined against "the ITOW count in the subframe 2 of the next
         # 18-second frame", range 0-399): the frame broadcasting it is the last
         # frame of the OLD interval, so its own ITOW is one behind.
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(0), toi = 0)) == 7200
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 0)) ==
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(0), toi = 0)) == 7200
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(3), toi = 0)) ==
               4 * 7200
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3), toi = 399)) ==
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(3), toi = 399)) ==
               3 * 7200 + 399 * 18
         # The last frame of the week: interval 83, frame 399 …
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 399)) ==
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(83), toi = 399)) ==
               604_800 - 18
         # … and the frame after it stamps second 0 of the following week.
-        @test get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(83), toi = 0)) == 0
+        @test get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(83), toi = 0)) == 0
         # Either field alone is not a time of week.
-        @test isnothing(get_broadcast_time_of_week(GPSL1C_DData(; ITOW = Int64(3))))
-        @test isnothing(get_broadcast_time_of_week(GPSL1C_DData(; toi = 7)))
+        @test isnothing(get_broadcast_time_of_week(GPSCNAV2Data(; ITOW = Int64(3))))
+        @test isnothing(get_broadcast_time_of_week(GPSCNAV2Data(; toi = 7)))
 
         # BeiDou B1C: HOW counts hours, soh 18-second frames.
-        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(0), soh = 0)) == 0
-        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(5), soh = 9)) ==
+        @test get_broadcast_time_of_week(BeiDouCNAV1Data(; HOW = Int64(0), soh = 0)) == 0
+        @test get_broadcast_time_of_week(BeiDouCNAV1Data(; HOW = Int64(5), soh = 9)) ==
               5 * 3600 + 9 * 18
         # The last frame of the week: hour 167, frame 199.
-        @test get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(167), soh = 199)) ==
+        @test get_broadcast_time_of_week(BeiDouCNAV1Data(; HOW = Int64(167), soh = 199)) ==
               604_800 - 18
-        @test isnothing(get_broadcast_time_of_week(BeiDouB1CData(; HOW = Int64(5))))
-        @test isnothing(get_broadcast_time_of_week(BeiDouB1CData(; soh = 9)))
+        @test isnothing(get_broadcast_time_of_week(BeiDouCNAV1Data(; HOW = Int64(5))))
+        @test isnothing(get_broadcast_time_of_week(BeiDouCNAV1Data(; soh = 9)))
 
         # E6-B stamps HAS blocks with a time of hour, not a time of week.
         @test isnothing(get_broadcast_time_of_week(GalileoE6BData()))
@@ -143,7 +143,7 @@ using GNSSDecoder:
 
         # LNAV's 10-bit week is resolved to the 1024-week cycle nearest the
         # middle of `approximate_year`.
-        l1ca(WN) = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSL1CAData(; WN))
+        l1ca(WN) = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSLNAVData(; WN))
         @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 2023) == 2248
         @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 2003) == 1224
         @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 1985) == 200
@@ -156,23 +156,23 @@ using GNSSDecoder:
                   2348
         end
         # The data form reads the same week, so raw data can be asked too.
-        @test get_broadcast_week(GPSL1CAData(; WN = Int64(200)); approximate_year = 2023) ==
+        @test get_broadcast_week(GPSLNAVData(; WN = Int64(200)); approximate_year = 2023) ==
               2248
 
         # Every other message broadcasts an absolute week; `approximate_year`
         # is ignored.
         for (state, data) in (
-            (GPSL1C_DDecoderState(1), GPSL1C_DData(; WN = Int64(2348))),
+            (GPSL1C_DDecoderState(1), GPSCNAV2Data(; WN = Int64(2348))),
             (GPSL5IDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
             (GPSL2CMDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
             (GalileoE1BDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
             (GalileoE5bDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
-            (GalileoE5aDecoderState(1), GalileoE5aData(; WN = Int64(1324))),
+            (GalileoE5aDecoderState(1), GalileoFNAVData(; WN = Int64(1324))),
             (BeiDouB1IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
             (BeiDouB3IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
-            (BeiDouB1CDecoderState(20), BeiDouB1CData(; WN = Int64(992))),
-            (BeiDouB2aDecoderState(20), BeiDouB2aData(; WN = Int64(992))),
-            (BeiDouB2bDecoderState(20), BeiDouB2bData(; WN = Int64(992))),
+            (BeiDouB1CDecoderState(20), BeiDouCNAV1Data(; WN = Int64(992))),
+            (BeiDouB2aDecoderState(20), BeiDouCNAV2Data(; WN = Int64(992))),
+            (BeiDouB2bDecoderState(20), BeiDouCNAV3Data(; WN = Int64(992))),
         )
             s = GNSSDecoderState(state; data)
             @test get_broadcast_week(s; approximate_year = 2026) == data.WN
@@ -205,7 +205,7 @@ using GNSSDecoder:
         WN_now = Int64(1234)
         for data in (
             GalileoINAVData(; WN = WN_now, scaled...),
-            GalileoE5aData(; WN = WN_now, scaled...),
+            GalileoFNAVData(; WN = WN_now, scaled...),
         )
             state = GNSSDecoderState(
                 data isa GalileoINAVData ? GalileoE1BDecoderState(1) :
@@ -253,11 +253,11 @@ using GNSSDecoder:
             for (state, data) in (
                 (
                     BeiDouB2aDecoderState(20),
-                    BeiDouB2aData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
+                    BeiDouCNAV2Data(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
                 ),
                 (
                     BeiDouB2bDecoderState(20),
-                    BeiDouB2bData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
+                    BeiDouCNAV3Data(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
                 ),
             )
                 s = GNSSDecoderState(state; data)
@@ -282,7 +282,7 @@ using GNSSDecoder:
         for GNSS_ID in (0, 3)
             s = GNSSDecoderState(
                 BeiDouB2aDecoderState(20);
-                data = BeiDouB2aData(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
+                data = BeiDouCNAV2Data(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
             )
             for target in (GPST(), GST(), BDT())
                 @test isnothing(GNSSDecoder.broadcast_time_offset(s, target))
@@ -313,7 +313,7 @@ using GNSSDecoder:
         )
         s = GNSSDecoderState(
             BeiDouB1CDecoderState(20);
-            data = BeiDouB1CData(; WN = Int64(901), bgtos),
+            data = BeiDouCNAV1Data(; WN = Int64(901), bgtos),
         )
         @test GNSSDecoder.broadcast_time_offset(s, GPST()).A_0 == 1.0e-9
         @test GNSSDecoder.broadcast_time_offset(s, GST()).A_0 == 4.0e-9
@@ -365,7 +365,7 @@ using GNSSDecoder:
             ),
             (
                 GPSL1C_DDecoderState(1),
-                id -> GPSL1C_DData(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
+                id -> GPSCNAV2Data(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
             ),
         )
             galileo = GNSSDecoderState(state; data = mk(1))
@@ -476,7 +476,7 @@ using GNSSDecoder:
                 (
                     GNSSDecoderState(
                         GPSL1C_DDecoderState(1);
-                        data = GPSL1C_DData(;
+                        data = GPSCNAV2Data(;
                             WN = Int64(2300),
                             GGTO_ID = Int64(1),
                             zeroed...,
@@ -494,28 +494,28 @@ using GNSSDecoder:
                 (
                     GNSSDecoderState(
                         GalileoE5aDecoderState(1);
-                        data = GalileoE5aData(; WN = Int64(1234), zggto...),
+                        data = GalileoFNAVData(; WN = Int64(1234), zggto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         BeiDouB2aDecoderState(20);
-                        data = BeiDouB2aData(; WN = Int64(901), zbgto...),
+                        data = BeiDouCNAV2Data(; WN = Int64(901), zbgto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         BeiDouB2bDecoderState(20);
-                        data = BeiDouB2bData(; WN = Int64(901), zbgto...),
+                        data = BeiDouCNAV3Data(; WN = Int64(901), zbgto...),
                     ),
                     GPST(),
                 ),
                 (
                     GNSSDecoderState(
                         BeiDouB1CDecoderState(20);
-                        data = BeiDouB1CData(;
+                        data = BeiDouCNAV1Data(;
                             WN = Int64(901),
                             bgtos = Dictionary([1], [BeiDouB1CBGTO(; zbgto...)]),
                         ),
@@ -544,7 +544,7 @@ using GNSSDecoder:
             # (901), and the evaluation adds that week from the decoder's own WN.
             b2b = GNSSDecoderState(
                 BeiDouB2bDecoderState(20);
-                data = BeiDouB2bData(;
+                data = BeiDouCNAV3Data(;
                     WN = Int64(901),
                     GNSS_ID = Int64(1),
                     WN_0BGTO = Int64(900),

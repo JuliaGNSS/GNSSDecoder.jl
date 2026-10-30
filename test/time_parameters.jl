@@ -3,7 +3,7 @@
 # on both sides of its field's modulus wrap, and across a week crossover, where the
 # decoded week still lags the reference week of the next one.
 
-using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
+using GNSSDecoder: GPSCNAV2Data, BeiDouCNAV2Data
 
 @testset "Broadcast time parameters" begin
     utc(state; year = 2026) = get_utc_parameters(state; approximate_year = year)
@@ -13,7 +13,7 @@ using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
         # GPS week 2304 (March 2024) is 256 as broadcast, and a multiple of 256.
         lnav(WN, WN_0t, WN_LSF = WN_0t) = GNSSDecoderState(
             GPSL1CADecoderState(1);
-            data = GPSL1CAData(;
+            data = GPSLNAVData(;
                 WN = Int64(WN),
                 A_0UTC = 1.0e-9,
                 A_1UTC = 2.0e-15,
@@ -59,7 +59,7 @@ using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
         for (decoder, Data) in (
             (GPSL5IDecoderState(1), GPSCNAVData),
             (GPSL2CMDecoderState(1), GPSCNAVData),
-            (GPSL1C_DDecoderState(1), GPSL1C_DData),
+            (GPSL1C_DDecoderState(1), GPSCNAV2Data),
         )
             state(WN, WN_0t) =
                 GNSSDecoderState(decoder; data = Data(; fields(WN, WN_0t)...))
@@ -93,7 +93,7 @@ using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
         for (decoder, Data) in (
             (GalileoE1BDecoderState(1), GalileoINAVData),
             (GalileoE5bDecoderState(1), GalileoINAVData),
-            (GalileoE5aDecoderState(1), GalileoE5aData),
+            (GalileoE5aDecoderState(1), GalileoFNAVData),
         )
             state(WN, WN_0t, WN_0G) =
                 GNSSDecoderState(decoder; data = Data(; fields(WN, WN_0t, WN_0G)...))
@@ -146,7 +146,7 @@ using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
     @testset "BeiDou B-CNAV: 13-bit weeks" begin
         b2a(WN, WN_0t) = GNSSDecoderState(
             BeiDouB2aDecoderState(20);
-            data = BeiDouB2aData(;
+            data = BeiDouCNAV2Data(;
                 WN = Int64(WN),
                 A_0UTC = 1.0e-9,
                 A_1UTC = 2.0e-15,
@@ -213,7 +213,7 @@ using GNSSDecoder: GPSL1C_DData, BeiDouB2aData
     @testset "allocation-free" begin
         lnav = GNSSDecoderState(
             GPSL1CADecoderState(1);
-            data = GPSL1CAData(;
+            data = GPSLNAVData(;
                 WN = Int64(256),
                 A_0UTC = 1.0e-9,
                 A_1UTC = 2.0e-15,

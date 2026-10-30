@@ -316,7 +316,7 @@ GNSSDecoder.AbstractBeiDouData
 ### GPS L1 C/A
 
 ```@docs
-GPSL1CAData
+GPSLNAVData
 GNSSDecoder.GPSL1CAAlmanac
 ```
 
@@ -340,7 +340,7 @@ DataValidityStatus
 ### Galileo E5a
 
 ```@docs
-GalileoE5aData
+GalileoFNAVData
 ```
 
 ### Galileo E6-B (C/NAV — High Accuracy Service)
@@ -371,7 +371,7 @@ HASStatus
 ### GPS L1C-D
 
 ```@docs
-GPSL1C_DData
+GPSCNAV2Data
 GNSSDecoder.GPSL1C_DReducedAlmanac
 GNSSDecoder.GPSL1C_DMidiAlmanac
 GNSSDecoder.GPSL1C_DDifferentialCorrection
@@ -408,20 +408,20 @@ GNSSDecoder.BeiDouDNAVAlmanac
 ### BeiDou B1C
 
 ```@docs
-BeiDouB1CData
+BeiDouCNAV1Data
 GNSSDecoder.BeiDouB1CBGTO
 ```
 
 ### BeiDou B2a
 
 ```@docs
-BeiDouB2aData
+BeiDouCNAV2Data
 ```
 
 ### BeiDou B2b
 
 ```@docs
-BeiDouB2bData
+BeiDouCNAV3Data
 ```
 
 ### BeiDou shared almanac records

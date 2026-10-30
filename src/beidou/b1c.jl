@@ -171,7 +171,7 @@ type 3 (BDS-SIS-ICD-B1C-1.0 Figure 6-20, Table 7-21).
 `Δt = t_BD - t_GNSS = A_0BGTO + A_1BGTO·Δτ + A_2BGTO·Δτ²` with
 `Δτ = t_BD - t_0BGTO + 604800(WN - WN_0BGTO)` (ICD Eq. 7-30). Different
 frames may broadcast offsets for different systems, so sets are keyed by
-`GNSS_ID` in [`BeiDouB1CData`](@ref).
+`GNSS_ID` in [`BeiDouCNAV1Data`](@ref).
 
 # Fields
 
@@ -196,7 +196,7 @@ Base.@kwdef struct BeiDouB1CBGTO
 end
 
 """
-    BeiDouB1CData
+    BeiDouCNAV1Data
 
 Decoded BeiDou B1C (B-CNAV1) navigation message data.
 
@@ -289,7 +289,7 @@ Present on every defined page type, refreshed whenever any page decodes:
   - `α_bdgim_1 .. α_bdgim_9::Float64`: BDGIM ionospheric coefficients (TECu; Table 7-10 —
     the broadcast `α_bdgim_5` carries scale factor −2⁻³, applied on decode). The ICD
     names them `α_1` … `α_9`; the `bdgim` qualifier is this package's, because the
-    Klobuchar `α_0` … `α_3` on `GPSL1CAData`, `GPSCNAVData`, `GPSL1C_DData` and
+    Klobuchar `α_0` … `α_3` on `GPSLNAVData`, `GPSCNAVData`, `GPSCNAV2Data` and
     `BeiDouDNAVData` are a different model with different units, and one name for
     both would let generic code apply the wrong one without complaint.
   - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²).
@@ -325,7 +325,7 @@ key, so a newer almanac for a PRN overwrites the older one.
 
 BDS-SIS-ICD-B1C-1.0, Figures 6-5 .. 6-21 and Tables 7-2 .. 7-23.
 """
-Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouCNAVData
+Base.@kwdef struct BeiDouCNAV1Data <: AbstractBeiDouCNAVData
     soh::Union{Nothing,Int} = nothing
     HOW::Union{Nothing,Int64} = nothing
     WN::Union{Nothing,Int64} = nothing
@@ -410,8 +410,8 @@ Base.@kwdef struct BeiDouB1CData <: AbstractBeiDouCNAVData
     num_sf3_pages_received::Int = 0
 end
 
-@inline function BeiDouB1CData(
-    data::BeiDouB1CData;
+@inline function BeiDouCNAV1Data(
+    data::BeiDouCNAV1Data;
     soh = data.soh,
     HOW = data.HOW,
     WN = data.WN,
@@ -483,7 +483,7 @@ end
     midi_almanacs = data.midi_almanacs,
     num_sf3_pages_received = data.num_sf3_pages_received,
 )
-    BeiDouB1CData(
+    BeiDouCNAV1Data(
         soh,
         HOW,
         WN,
@@ -558,12 +558,12 @@ end
 end
 
 # The default struct `==` falls back to `===` for the mutable `SlotDictionary`
-# fields; compare field-by-field (mirrors `GPSL1C_DData`).
-Base.:(==)(a::BeiDouB1CData, b::BeiDouB1CData) = fields_equal(a, b)
+# fields; compare field-by-field (mirrors `GPSCNAV2Data`).
+Base.:(==)(a::BeiDouCNAV1Data, b::BeiDouCNAV1Data) = fields_equal(a, b)
 
 # Every container field at its ICD size: one BGTO slot per 3-bit GNSS ID and
 # one almanac slot per PRN (1-63).
-preallocated_data(::Type{BeiDouB1CData}) = BeiDouB1CData(;
+preallocated_data(::Type{BeiDouCNAV1Data}) = BeiDouCNAV1Data(;
     bgtos = SlotDictionary{BeiDouB1CBGTO,8}(),
     reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
     midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
@@ -624,7 +624,7 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     Preallocated containers `raw_data` and `data` are decoded into (almanac and
     BGTO stores), overwritten in place by [`decode!`](@ref)
     """
-    storage::DataStorage{BeiDouB1CData}
+    storage::DataStorage{BeiDouCNAV1Data}
 end
 
 # Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): its buffers are FEC scratch, refilled by every frame.
@@ -639,7 +639,7 @@ function BeiDouB1CCache()
         Vector{Float32}(undef, B1C_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, B1C_SF2_SYMBOLS),
         Vector{Float32}(undef, B1C_SF3_SYMBOLS),
-        DataStorage{BeiDouB1CData}(),
+        DataStorage{BeiDouCNAV1Data}(),
     )
 end
 
@@ -649,7 +649,7 @@ function Base.:(==)(a::BeiDouB1CCache, b::BeiDouB1CCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
 
-function is_subframe2_decoded(data::BeiDouB1CData)
+function is_subframe2_decoded(data::BeiDouCNAV1Data)
     !isnothing(data.WN) &&
         !isnothing(data.HOW) &&
         !isnothing(data.IODE) &&
@@ -681,22 +681,22 @@ The epoch is the leading edge of the *current* frame's subframe 1, which is what
 `validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
 otherwise identical-looking reconstruction is anchored differently.
 """
-function get_broadcast_time_of_week(data::BeiDouB1CData)
+function get_broadcast_time_of_week(data::BeiDouCNAV1Data)
     (isnothing(data.HOW) || isnothing(data.soh)) && return nothing
     return Int(data.HOW) * 3600 + Int(data.soh) * B1C_SOH_SECONDS
 end
 
 # B-CNAV1's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_broadcast_week(data::BeiDouB1CData; approximate_year::Integer) = data.WN
+get_broadcast_week(data::BeiDouCNAV1Data; approximate_year::Integer) = data.WN
 
 # B-CNAV1: the B1C pilot's group delay, plus the data component's ISC. Both ride
 # in subframe 2 with the ephemeris. Its T_GD_B2ap is not used: a B2a range
 # carries a B2a decoder.
-function get_group_delay(state::GNSSDecoderState{<:BeiDouB1CData}, ::BeiDouB1C_D)
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV1Data}, ::BeiDouB1C_D)
     has_positioning_data(state) || return nothing
     something(state.data.T_GD_B1Cp) + something(state.data.ISC_B1Cd)
 end
-function get_group_delay(state::GNSSDecoderState{<:BeiDouB1CData}, ::BeiDouB1C_P)
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV1Data}, ::BeiDouB1C_P)
     has_positioning_data(state) || return nothing
     something(state.data.T_GD_B1Cp)
 end
@@ -714,7 +714,7 @@ every system this satellite has ever broadcast an offset for stays answerable.
 Sets tagged `GNSS_ID == 0` ("not available", §7.13.1) are dropped at decode and
 never appear here.
 """
-function broadcast_time_offset(state::GNSSDecoderState{<:BeiDouB1CData}, target::TimeSystem)
+function broadcast_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, target::TimeSystem)
     bgtos = state.data.bgtos
     isnothing(bgtos) && return nothing
     for (GNSS_ID, bgto) in pairs(bgtos)
@@ -748,7 +748,7 @@ end
 # and both ride in the same CRC-protected subframe 2 as the ephemeris and
 # clock, so requiring them costs no extra time to first fix. `T_GD_B2ap` is the
 # B2a pilot's delta and is deliberately not required.
-function has_positioning_data(data::BeiDouB1CData)
+function has_positioning_data(data::BeiDouCNAV1Data)
     !isnothing(data.soh) &&
         !isnothing(data.HS) &&
         is_subframe2_decoded(data) &&
@@ -778,7 +778,7 @@ SNR (see the soft-symbol convention note on [`decode!`](@ref)).
 
 # Returns
 
-  - `GNSSDecoderState{BeiDouB1CData}`: Initialized decoder state for BeiDou B1C.
+  - `GNSSDecoderState{BeiDouCNAV1Data}`: Initialized decoder state for BeiDou B1C.
 
 # Example
 
@@ -800,8 +800,8 @@ function BeiDouB1CDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
     GNSSDecoderState(
         prn,
-        BeiDouB1CData(),
-        BeiDouB1CData(),
+        BeiDouCNAV1Data(),
+        BeiDouCNAV1Data(),
         BeiDouB1CConstants(),
         BeiDouB1CCache(),
         nothing,
@@ -832,18 +832,18 @@ re-decoding all of subframe 2. Mirrors the GPS L1C-D implementation.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:BeiDouB1CData}`: Current BeiDou B1C decoder state.
+  - `state::GNSSDecoderState{<:BeiDouCNAV1Data}`: Current BeiDou B1C decoder state.
 
 # Returns
 
-  - `GNSSDecoderState{<:BeiDouB1CData}`: Reset decoder state with cleared buffers.
+  - `GNSSDecoderState{<:BeiDouCNAV1Data}`: Reset decoder state with cleared buffers.
 
 # See Also
 
   - [`BeiDouB1CDecoderState`](@ref): Create a fresh decoder state
   - [`decode!`](@ref): Continue decoding after reset
 """
-function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
@@ -851,8 +851,8 @@ function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB1CData})
         # an outage can span any number of hour boundaries, so a kept `HOW`
         # re-paired with a fresh `soh` would date the first re-locked frames
         # whole hours in the past. Re-learning it costs one decoded subframe 2.
-        raw_data = BeiDouB1CData(state.raw_data; soh = nothing, HOW = nothing),
-        data = BeiDouB1CData(),
+        raw_data = BeiDouCNAV1Data(state.raw_data; soh = nothing, HOW = nothing),
+        data = BeiDouCNAV1Data(),
         num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
@@ -922,7 +922,7 @@ function _match_sf1_soh(deque, start::Int, prn_codeword::UInt64, flip::Bool)
 end
 
 """
-    try_sync(state::GNSSDecoderState{<:BeiDouB1CData}) -> Union{Nothing,B1CSF1Sync}
+    try_sync(state::GNSSDecoderState{<:BeiDouCNAV1Data}) -> Union{Nothing,B1CSF1Sync}
 
 Per-signal sync hook for BeiDou B1C. Hard-slices the leading 72 and trailing
 72 soft symbols of the 1872-symbol window and requires, under a common
@@ -931,7 +931,7 @@ SOH `s` in the leading BCH(51,8) segment, and `(s+1) mod 200` in the trailing
 one. Returns the [`B1CSF1Sync`](@ref) on a match (carrying the SOH and the
 detected polarity flip) or `nothing`.
 """
-function try_sync(state::GNSSDecoderState{<:BeiDouB1CData})
+function try_sync(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     deque = soft_buffer(state)
     prn_codeword = B1C_PRN_CODEWORDS[state.prn]
     for flip in (false, true)
@@ -946,7 +946,7 @@ function try_sync(state::GNSSDecoderState{<:BeiDouB1CData})
 end
 
 """
-    complement_buffer_if_necessary(state::GNSSDecoderState{<:BeiDouB1CData}, sync)
+    complement_buffer_if_necessary(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync)
 
 Resolve the 180° polarity ambiguity for BeiDou B1C. `sync::B1CSF1Sync`
 already carries the detected polarity from [`try_sync`](@ref); record it on
@@ -954,7 +954,7 @@ the state and pass the sync object through unchanged for
 `decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
-    state::GNSSDecoderState{<:BeiDouB1CData},
+    state::GNSSDecoderState{<:BeiDouCNAV1Data},
     sync::B1CSF1Sync,
 )
     GNSSDecoderState(state; is_shifted_by_180_degrees = sync.polarity_flipped), sync
@@ -963,7 +963,7 @@ end
 # ---- Frame pipeline ----------------------------------------------------------
 
 """
-    decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync::B1CSF1Sync)
 
 Process one locked B-CNAV1 frame. Enforces a monotonic SOH (each frame's SOH
 must be `(previous + 1) mod 200`; a break resets the decoder to searching),
@@ -971,7 +971,7 @@ then deinterleaves the 1728-symbol payload (36×48 staggered block interleaver,
 ICD §6.2.2.4) and LDPC-decodes + CRC-checks subframes 2 and 3, parsing their
 fields into `raw_data`.
 """
-function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1Sync)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync::B1CSF1Sync)
     prev_soh = state.raw_data.soh
     if !isnothing(prev_soh) && (prev_soh + 1) % B1C_SOH_RANGE != sync.soh
         return reset_decoder_state!(state)
@@ -988,7 +988,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB1CData}, sync::B1CSF1
         HOW = (HOW + 1) % B1C_HOW_RANGE
     end
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    raw_data = @split_nothing HOW BeiDouB1CData(state.raw_data; soh = sync.soh, HOW)
+    raw_data = @split_nothing HOW BeiDouCNAV1Data(state.raw_data; soh = sync.soh, HOW)
     state = GNSSDecoderState(state; raw_data)
 
     # Extract the 1728-symbol interleaved SF2+SF3 payload (symbols 73..1800),
@@ -1045,7 +1045,7 @@ end
 # WN(13) HOW(8) IODC(10) IODE(8) EphemerisI(203) EphemerisII(222)
 # Clock(69) T_GD_B2ap(12) ISC_B1Cd(12) T_GD_B1Cp(12) Rev(7) CRC(24).
 
-function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symbols)
+function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sf2_symbols)
     word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state  # silently drop on CRC failure
     word_length = B1C_SF2_INFO_BITS
@@ -1083,7 +1083,7 @@ function decode_b1c_subframe2(state::GNSSDecoderState{<:BeiDouB1CData}, sf2_symb
     ISC_B1Cd = get_twos_complement_num(word, word_length, 546, 12) * 2.0^-34
     T_GD_B1Cp = get_twos_complement_num(word, word_length, 558, 12) * 2.0^-34
 
-    raw = BeiDouB1CData(
+    raw = BeiDouCNAV1Data(
         state.raw_data;
         WN,
         HOW,
@@ -1130,11 +1130,11 @@ end
 # stores (almanacs, BGTOs) are overwritten in place: their preallocated spares
 # come from `state.cache.storage.raw` (see `writable_container`).
 
-function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symbols)
+function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sf3_symbols)
     word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
-    raw = BeiDouB1CData(
+    raw = BeiDouCNAV1Data(
         state.raw_data;
         num_sf3_pages_received = state.raw_data.num_sf3_pages_received + 1,
     )
@@ -1144,7 +1144,7 @@ function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouB1CData}, sf3_symb
     # PageID 0 is invalid and > 4 reserved (Table 7-1); their layouts are
     # undefined, so only the header of the defined page types is parsed.
     if 1 <= page <= 4
-        raw = BeiDouB1CData(
+        raw = BeiDouCNAV1Data(
             raw;
             HS = Int(get_bits(word, word_length, 7, 2)),
             DIF = get_bit(word, word_length, 9),
@@ -1170,17 +1170,17 @@ end
 
 # SISAI_oc data block (Figure 6-15), 22 bits at 1-based `start`; the shared
 # parser is in `beidou/beidou.jl` because B2a and B2b carry the same block.
-_parse_b1c_sisai_oc(raw::BeiDouB1CData, word::UInt288, start::Int) =
-    BeiDouB1CData(raw; beidou_sisai_oc_block(word, B1C_SF3_INFO_BITS, start)...)
+_parse_b1c_sisai_oc(raw::BeiDouCNAV1Data, word::UInt288, start::Int) =
+    BeiDouCNAV1Data(raw; beidou_sisai_oc_block(word, B1C_SF3_INFO_BITS, start)...)
 
 """
 Subframe 3, page type 1 — SISAI + BDGIM iono + BDT-UTC (ICD Figures 6-8, 6-16, 6-17).
 """
-function parse_b1c_sf3_page1(raw::BeiDouB1CData, word::UInt288)
+function parse_b1c_sf3_page1(raw::BeiDouCNAV1Data, word::UInt288)
     word_length = B1C_SF3_INFO_BITS
-    raw = BeiDouB1CData(raw; SISAI_oe = Int(get_bits(word, word_length, 16, 5)))
+    raw = BeiDouCNAV1Data(raw; SISAI_oe = Int(get_bits(word, word_length, 16, 5)))
     raw = _parse_b1c_sisai_oc(raw, word, 21)
-    BeiDouB1CData(
+    BeiDouCNAV1Data(
         raw;
         # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10), bits 43-116:
         beidou_bdgim_block(word, word_length, 43)...,
@@ -1196,7 +1196,7 @@ Subframe 3, page type 2 — SISAI + four reduced almanacs (ICD Figures 6-9, 6-18
 Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
 while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b1c_sf3_page2!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
+function parse_b1c_sf3_page2!(raw::BeiDouCNAV1Data, word::UInt288, spare::BeiDouCNAV1Data)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     WN_a = Int(get_bits(word, word_length, 38, 13))
@@ -1212,7 +1212,7 @@ function parse_b1c_sf3_page2!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1
     # Only rebuild with a concrete store: a Union keyword value takes the
     # allocating kw path on Julia 1.10 (and `nothing` would leave `raw` as is).
     almanacs === nothing && return raw
-    BeiDouB1CData(raw; reduced_almanacs = almanacs)
+    BeiDouCNAV1Data(raw; reduced_almanacs = almanacs)
 end
 
 """
@@ -1221,9 +1221,9 @@ Subframe 3, page type 3 — SISAI + EOP + BGTO (ICD Figures 6-10, 6-19, 6-20).
 Overwrites the broadcast GNSS ID's slot of `raw.bgtos` in place — or, while that
 is still `nothing`, of the preallocated `spare.bgtos`.
 """
-function parse_b1c_sf3_page3!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
+function parse_b1c_sf3_page3!(raw::BeiDouCNAV1Data, word::UInt288, spare::BeiDouCNAV1Data)
     word_length = B1C_SF3_INFO_BITS
-    raw = BeiDouB1CData(
+    raw = BeiDouCNAV1Data(
         raw;
         SISAI_oe = Int(get_bits(word, word_length, 16, 5)),
         # EOP (Figure 6-19, Table 7-18), bits 21-158:
@@ -1236,7 +1236,7 @@ function parse_b1c_sf3_page3!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1
     bgto = BeiDouB1CBGTO(; beidou_bgto_block(word, word_length, 159)...)
     bgtos = writable_container(raw.bgtos, spare.bgtos)
     set!(bgtos, GNSS_ID, bgto)
-    BeiDouB1CData(raw; bgtos)
+    BeiDouCNAV1Data(raw; bgtos)
 end
 
 """
@@ -1245,7 +1245,7 @@ Subframe 3, page type 4 — SISAI + one midi almanac (ICD Figures 6-11, 6-21, Ta
 Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b1c_sf3_page4!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1CData)
+function parse_b1c_sf3_page4!(raw::BeiDouCNAV1Data, word::UInt288, spare::BeiDouCNAV1Data)
     word_length = B1C_SF3_INFO_BITS
     raw = _parse_b1c_sisai_oc(raw, word, 16)
     # Midi almanac (Figure 6-21), bits 38-193.
@@ -1253,11 +1253,11 @@ function parse_b1c_sf3_page4!(raw::BeiDouB1CData, word::UInt288, spare::BeiDouB1
     isnothing(alm) && return raw  # empty almanac slot
     midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
     set!(midi_almanacs, alm.PRN_a, alm)
-    BeiDouB1CData(raw; midi_almanacs)
+    BeiDouCNAV1Data(raw; midi_almanacs)
 end
 
 """
-    validate_data(state::GNSSDecoderState{<:BeiDouB1CData})
+    validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
 
 Promote `raw_data` to `data` once the positioning set is complete (SOH,
 subframe 2, and the subframe-3 health status) and the ephemeris and clock sets
@@ -1279,7 +1279,7 @@ newest buffered symbol, as in `b2a.jl` and `b2b.jl`. GPS L1C-D's TOI stamps
 the *next* frame instead, so `gps/l1c_d.jl` anchors to `preamble_length`
 alone; using that anchor here would report the time 18 s early.
 """
-function validate_data(state::GNSSDecoderState{<:BeiDouB1CData})
+function validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     if has_positioning_data(state.raw_data)
         return GNSSDecoderState(
             state;
@@ -1300,7 +1300,7 @@ Examines the 2-bit satellite health status (HS) broadcast in every subframe-3
 page (BDS-SIS-ICD-B1C-1.0 §7.14, Table 7-22): a satellite is healthy iff
 `HS == 0` (the satellite provides services). The B1C integrity status flags
 (`DIF`/`SIF`/`AIF`, §7.15) are reported separately on
-[`BeiDouB1CData`](@ref) and are deliberately not folded in here — they flag
+[`BeiDouCNAV1Data`](@ref) and are deliberately not folded in here — they flag
 message/signal integrity for precision users, not the satellite's service
 state.
 
@@ -1311,13 +1311,13 @@ state.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:BeiDouB1CData}`: BeiDou B1C decoder state.
+  - `state::GNSSDecoderState{<:BeiDouCNAV1Data}`: BeiDou B1C decoder state.
 
 # Returns
 
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB1CData})
+function is_sat_healthy(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     # `HS` is stored as Int64; compare against a typed zero so the egal check
     # cannot fail on a platform where the literal `0` is Int32.
     state.data.HS === Int64(0)

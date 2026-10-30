@@ -50,7 +50,7 @@ struct CacheWithoutMethod <: GNSSDecoder.AbstractGNSSCache end
 
     @testset "the GPS L1 C/A vote tally is cleared" begin
         state = GPSL1CADecoderState(1)
-        push!(state.cache.old_data, GNSSDecoder.VotedGPSL1CAData(1, GPSL1CAData()))
+        push!(state.cache.old_data, GNSSDecoder.VotedGPSLNAVData(1, GPSLNAVData()))
         # Kept for the same satellite, for a fast recovery ...
         @test !isempty(reset_decoder_state!(copy(state)).cache.old_data)
         # ... and cleared for another one.

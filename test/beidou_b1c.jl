@@ -404,9 +404,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = 0))
+        @test !GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = 0))
         @test all(
-            GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = t)) for t = 1:3
         )
         @test !state.is_shifted_by_180_degrees
         # The SOH stamps the leading edge of *this* subframe 1 (ICD §7.3), so
@@ -763,8 +763,8 @@ end
         old = BeiDouB1CDecoderState(prn)
         rebound = GNSSDecoderState(
             prn + 1,
-            BeiDouB1CData(),
-            BeiDouB1CData(),
+            BeiDouCNAV1Data(),
+            BeiDouCNAV1Data(),
             old.constants,
             old.cache,
             nothing,

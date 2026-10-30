@@ -196,11 +196,11 @@ get_ggto_parameters(
 
 # Each family names the moduli of its own fields, beside them in its file; the sets
 # are built alike from there.
-utc_parameters(data::GPSL1CAData, week::Int) =
+utc_parameters(data::GPSLNAVData, week::Int) =
     utc_parameters(data, week, 0.0, LNAV_UTC_WN_MODULUS)
 utc_parameters(data::GPSCNAVData, week::Int) =
     utc_parameters(data, week, data.A_2UTC, CNAV_UTC_WN_MODULUS)
-utc_parameters(data::GPSL1C_DData, week::Int) =
+utc_parameters(data::GPSCNAV2Data, week::Int) =
     utc_parameters(data, week, data.A_2UTC, CNAV2_UTC_WN_MODULUS)
 utc_parameters(data::AbstractGalileoEphemerisData, week::Int) =
     utc_parameters(data, week, 0.0, GALILEO_UTC_WN_MODULUS)
@@ -212,11 +212,11 @@ function utc_parameters(data::BeiDouDNAVData, week::Int)
     UTCParameters(something(data.A_0UTC), something(data.A_1UTC), 0.0, nothing, nothing)
 end
 
-leap_second_parameters(data::GPSL1CAData, week::Int) =
+leap_second_parameters(data::GPSLNAVData, week::Int) =
     leap_second_parameters(data, week, LNAV_LSF_WN_MODULUS)
 leap_second_parameters(data::GPSCNAVData, week::Int) =
     leap_second_parameters(data, week, CNAV_LSF_WN_MODULUS)
-leap_second_parameters(data::GPSL1C_DData, week::Int) =
+leap_second_parameters(data::GPSCNAV2Data, week::Int) =
     leap_second_parameters(data, week, CNAV2_LSF_WN_MODULUS)
 leap_second_parameters(data::AbstractGalileoEphemerisData, week::Int) =
     leap_second_parameters(data, week, GALILEO_LSF_WN_MODULUS)

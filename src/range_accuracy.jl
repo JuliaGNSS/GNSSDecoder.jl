@@ -32,9 +32,9 @@ update (BDS-SIS-ICD-B1C-1.0 §7.16). Their indices stay on the decoded data.
 """
 get_range_accuracy(state::GNSSDecoderState) = range_accuracy(state.data)
 
-range_accuracy(data::GPSL1CAData) = gps_ura_metres(data.URA_index)
+range_accuracy(data::GPSLNAVData) = gps_ura_metres(data.URA_index)
 range_accuracy(data::GalileoINAVData) = galileo_sisa_metres(data.SISA_E1_E5b)
-range_accuracy(data::GalileoE5aData) = galileo_sisa_metres(data.SISA_E1_E5a)
+range_accuracy(data::GalileoFNAVData) = galileo_sisa_metres(data.SISA_E1_E5a)
 range_accuracy(data::BeiDouDNAVData) = beidou_ura_metres(data.URAI)
 range_accuracy(::Union{GalileoE6BData,AbstractGPSCNAVData,AbstractBeiDouCNAVData}) = nothing
 

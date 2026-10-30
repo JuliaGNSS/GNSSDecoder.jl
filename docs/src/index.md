@@ -42,7 +42,7 @@ julia> state.prn  # Access PRN
 1
 
 julia> typeof(state.data)
-GPSL1CAData
+GPSLNAVData
 ```
 
 Process incoming soft bits and check the decoder state:
@@ -172,7 +172,7 @@ julia> state.prn
 1
 
 julia> typeof(state.data)
-GPSL1C_DData
+GPSCNAV2Data
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
@@ -268,7 +268,7 @@ julia> using GNSSDecoder, GNSSSignals
 julia> state = GNSSDecoderState(BeiDouB2aI(), 30);  # Initialize decoder for PRN 30
 
 julia> typeof(state.data)
-BeiDouB2aData
+BeiDouCNAV2Data
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
@@ -368,7 +368,7 @@ C/NAV carries corrections rather than an ephemeris — see
 ### GPS L1C-D Data
 
 CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
-[`GPSL1C_DData`](@ref) for the full field list:
+[`GPSCNAV2Data`](@ref) for the full field list:
 
 | Field | Description |
 |-------|-------------|

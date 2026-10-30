@@ -168,7 +168,7 @@ end
 # container field names — which the three containers agree on, that being what
 # the package-wide naming rule bought. Callers splat it into their container:
 #
-#     BeiDouB2bData(raw; beidou_clock_block(word, word_length, 44)...)
+#     BeiDouCNAV3Data(raw; beidou_clock_block(word, word_length, 44)...)
 #
 # References are given per block; the B1C figure/table numbers are cited, with the
 # B2a-1.0 and B2b-1.0 counterparts named at each call site.

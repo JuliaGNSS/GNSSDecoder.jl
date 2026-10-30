@@ -316,9 +316,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = 0))
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = 0))
         @test all(
-            GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = t)) for t = 1:3
         )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
@@ -488,7 +488,7 @@ end
 
     @testset "GNSSDecoderState(::BeiDouB2bI, prn) dispatch" begin
         state = GNSSDecoderState(BeiDouB2bI(), prn)
-        @test state isa GNSSDecoderState{BeiDouB2bData}
+        @test state isa GNSSDecoderState{BeiDouCNAV3Data}
         @test state.prn == prn
     end
 end

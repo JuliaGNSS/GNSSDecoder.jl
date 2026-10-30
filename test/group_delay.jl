@@ -23,7 +23,7 @@ using GNSSSignals: get_center_frequency
     end
 
     @testset "GPS" begin
-        l1ca = complete_state(GPSL1CADecoderState(1), GPSL1CAData; T_GD)
+        l1ca = complete_state(GPSL1CADecoderState(1), GPSLNAVData; T_GD)
         @test has_positioning_data(l1ca)
         @test get_group_delay(l1ca, GPSL1CA()) == T_GD
 
@@ -63,7 +63,7 @@ using GNSSSignals: get_center_frequency
         # CNAV-2 carries the L1 set: L1C-D, L1C-P and C/A.
         cnav2 = complete_state(
             GPSL1C_DDecoderState(1),
-            GPSL1C_DData;
+            GPSCNAV2Data;
             T_GD,
             ISC_L1CD = ISC,
             ISC_L1CP = ISC_pilot,
@@ -76,7 +76,7 @@ using GNSSSignals: get_center_frequency
             get_group_delay(
                 complete_state(
                     GPSL1C_DDecoderState(1),
-                    GPSL1C_DData;
+                    GPSCNAV2Data;
                     T_GD,
                     ISC_L1CD = nothing,
                 ),
@@ -108,7 +108,7 @@ using GNSSSignals: get_center_frequency
         @test_throws MethodError get_group_delay(inav, GalileoE5aI())
 
         # F/NAV: E5a scaled by (f_E1/f_E5a)² ≈ 1.79.
-        fnav = complete_state(GalileoE5aDecoderState(1), GalileoE5aData; BGD_E1_E5a)
+        fnav = complete_state(GalileoE5aDecoderState(1), GalileoFNAVData; BGD_E1_E5a)
         for signal in (GalileoE5aI(), GalileoE5aQ(), GalileoE5aQP())
             @test get_group_delay(fnav, signal) ≈ 1.79 * BGD_E1_E5a rtol = 1e-2
         end
@@ -128,7 +128,7 @@ using GNSSSignals: get_center_frequency
         # B-CNAV1: the pilot's delay, plus the data component's ISC.
         b1c = complete_state(
             BeiDouB1CDecoderState(20),
-            BeiDouB1CData;
+            BeiDouCNAV1Data;
             T_GD_B1Cp = T_GD,
             ISC_B1Cd = ISC,
         )
@@ -138,7 +138,7 @@ using GNSSSignals: get_center_frequency
         # B-CNAV2 mirrors it, with its terms ungated.
         b2a = complete_state(
             BeiDouB2aDecoderState(20),
-            BeiDouB2aData;
+            BeiDouCNAV2Data;
             SOW_mt11 = Int64(4),   # broadcast in the frame after MT10's
             T_GD_B2ap = T_GD,
             ISC_B2ad = ISC,
@@ -148,7 +148,7 @@ using GNSSSignals: get_center_frequency
         @test get_group_delay(b2a, BeiDouB2aQ()) == T_GD
         b2a_partial = complete_state(
             BeiDouB2aDecoderState(20),
-            BeiDouB2aData;
+            BeiDouCNAV2Data;
             SOW_mt11 = Int64(4),
             T_GD_B2ap = T_GD,
             ISC_B2ad = nothing,
@@ -158,12 +158,12 @@ using GNSSSignals: get_center_frequency
         @test isnothing(get_group_delay(b2a_partial, BeiDouB2aI()))
         @test get_group_delay(b2a_partial, BeiDouB2aQ()) == T_GD
 
-        b2b = complete_state(BeiDouB2bDecoderState(20), BeiDouB2bData; T_GD_B2bI = T_GD)
+        b2b = complete_state(BeiDouB2bDecoderState(20), BeiDouCNAV3Data; T_GD_B2bI = T_GD)
         @test get_group_delay(b2b, BeiDouB2bI()) == T_GD
     end
 
     @testset "the ranging signal is an instance" begin
-        l1ca = complete_state(GPSL1CADecoderState(1), GPSL1CAData; T_GD)
+        l1ca = complete_state(GPSL1CADecoderState(1), GPSLNAVData; T_GD)
         @test get_group_delay(l1ca, GPSL1CA()) == T_GD
         # A type is refused rather than dispatched on dynamically.
         @test_throws MethodError get_group_delay(l1ca, GPSL1CA)
@@ -176,11 +176,11 @@ using GNSSSignals: get_center_frequency
             get_group_delay(state, signal)
             @allocated get_group_delay(state, signal)
         end
-        @test allocations(complete_state(GPSL1CADecoderState(1), GPSL1CAData), GPSL1CA()) ==
+        @test allocations(complete_state(GPSL1CADecoderState(1), GPSLNAVData), GPSL1CA()) ==
               0
         @test allocations(complete_state(GPSL5IDecoderState(1), GPSCNAVData), GPSL5I()) == 0
         @test allocations(
-            complete_state(GalileoE5aDecoderState(1), GalileoE5aData),
+            complete_state(GalileoE5aDecoderState(1), GalileoFNAVData),
             GalileoE5aQ(),
         ) == 0
     end

@@ -302,7 +302,7 @@ CNAV message is identical on both signals).
 Holds the parameters decoded from CNAV message types 10, 11, 12, 13, 14, 15,
 30-37, and 40 (IS-GPS-705J §20.3.3 ≡ IS-GPS-200N §30.3.3). The decoder fills
 fields incrementally as the corresponding message types are received.
-Field-naming follows [`GPSL1C_DData`](@ref) (CNAV-2 broadcasts nearly the same
+Field-naming follows [`GPSCNAV2Data`](@ref) (CNAV-2 broadcasts nearly the same
 parameter set): semi-circle quantities are converted to radians on decode
 (multiplied by π), all `Union{Nothing,…}` until first decoded.
 
@@ -701,7 +701,7 @@ end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `SlotDictionary` fields even when their contents match. Compare
-# field-by-field (mirrors `GPSL1C_DData`).
+# field-by-field (mirrors `GPSCNAV2Data`).
 Base.:(==)(a::GPSCNAVData, b::GPSCNAVData) = fields_equal(a, b)
 
 """

@@ -439,7 +439,7 @@ end
         state = BeiDouB2aDecoderState(B2A_PRN)
         state = decode_b2a_frames(state, [build_b2a_mt10(; sow = t0)])
         @test !has_positioning_data(state)
-        @test state.data == BeiDouB2aData()
+        @test state.data == BeiDouCNAV2Data()
 
         # + adjacent MT11: ephemeris paired, but still no clock.
         state = decode_b2a_frames(state, [build_b2a_mt11(; sow = t0 + 3)])
@@ -449,7 +449,7 @@ end
         state =
             decode_b2a_frames(state, [build_b2a_mt30(; sow = t0 + 6, iodc = B2A_IODC + 1)])
         @test !has_positioning_data(state)
-        @test state.data == BeiDouB2aData()
+        @test state.data == BeiDouCNAV2Data()
 
         # + MT30 with the matching IODC: validated.
         state = decode_b2a_frames(state, [build_b2a_mt30(; sow = t0 + 9)])
@@ -459,9 +459,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouB2aData(state.data; sat_type = 0))
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; sat_type = 0))
         @test all(
-            GNSSDecoder.is_ephemeris_decoded(BeiDouB2aData(state.data; sat_type = t)) for
+            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; sat_type = t)) for
             t = 1:3
         )
     end
@@ -654,7 +654,7 @@ end
         state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.IODE == B2A_IODE   # ephemeris survives reset
-        @test state.data == BeiDouB2aData()
+        @test state.data == BeiDouCNAV2Data()
         @test isnothing(state.num_bits_since_time_reference)
         @test length(GNSSDecoder.soft_buffer(state)) == 0
         # And the decoder re-locks from scratch.
@@ -673,7 +673,7 @@ end
         @test get_constellation_name(state) == "BeiDou"
         # The pilot component does not map to a decoder; only the data
         # component does.
-        @test GNSSDecoderState(BeiDouB2aI(), B2A_PRN) isa GNSSDecoderState{BeiDouB2aData}
+        @test GNSSDecoderState(BeiDouB2aI(), B2A_PRN) isa GNSSDecoderState{BeiDouCNAV2Data}
     end
 
     @testset "Unhealthy satellite (HS = 1)" begin

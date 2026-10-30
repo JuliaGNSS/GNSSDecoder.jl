@@ -62,9 +62,9 @@
     @testset "Keplerian messages" begin
         keplerian = (; shared..., sqrt_A = 5153.6, Δn = 4.0e-9, Ω_dot = -8.0e-9)
         for (state, D) in (
-            (GPSL1CADecoderState(1), GPSL1CAData),
+            (GPSL1CADecoderState(1), GPSLNAVData),
             (GalileoE1BDecoderState(1), GalileoINAVData),
-            (GalileoE5aDecoderState(1), GalileoE5aData),
+            (GalileoE5aDecoderState(1), GalileoFNAVData),
             (BeiDouB1IDecoderState(20), BeiDouDNAVData),
         )
             s = complete_state(state, D; keplerian...)
@@ -94,7 +94,7 @@
         for (state, D) in (
             (GPSL5IDecoderState(1), GPSCNAVData),
             (GPSL2CMDecoderState(1), GPSCNAVData),
-            (GPSL1C_DDecoderState(1), GPSL1C_DData),
+            (GPSL1C_DDecoderState(1), GPSCNAV2Data),
         )
             s = complete_state(state, D; quasi...)
             ephemeris = get_broadcast_ephemeris(s)
@@ -118,9 +118,9 @@
             Ω_dot = -7.0e-9,
         )
         for (state, D, overrides) in (
-            (BeiDouB1CDecoderState(20), BeiDouB1CData, (;)),
-            (BeiDouB2aDecoderState(20), BeiDouB2aData, (; SOW_mt11 = Int64(4))),
-            (BeiDouB2bDecoderState(20), BeiDouB2bData, (;)),
+            (BeiDouB1CDecoderState(20), BeiDouCNAV1Data, (;)),
+            (BeiDouB2aDecoderState(20), BeiDouCNAV2Data, (; SOW_mt11 = Int64(4))),
+            (BeiDouB2bDecoderState(20), BeiDouCNAV3Data, (;)),
         )
             # The reference semi-major axis follows the orbit class: MEO (3),
             # IGSO (2) and GEO (1).
@@ -144,16 +144,16 @@
         # The reserved orbit type has no reference axis; the gate keeps it out.
         @test_throws ArgumentError GNSSDecoder.beidou_cnav_reference_semi_major_axis(0)
         @test !has_positioning_data(
-            complete_state(BeiDouB1CDecoderState(20), BeiDouB1CData; sat_type = Int64(0)),
+            complete_state(BeiDouB1CDecoderState(20), BeiDouCNAV1Data; sat_type = Int64(0)),
         )
     end
 
     @testset "a bits type, compared by value, built without allocating" begin
         @test isbitstype(BroadcastEphemeris)
-        a = complete_state(GPSL1CADecoderState(1), GPSL1CAData)
-        b = complete_state(GPSL1CADecoderState(1), GPSL1CAData)
+        a = complete_state(GPSL1CADecoderState(1), GPSLNAVData)
+        b = complete_state(GPSL1CADecoderState(1), GPSLNAVData)
         @test get_broadcast_ephemeris(a) == get_broadcast_ephemeris(b)
-        c = complete_state(GPSL1CADecoderState(1), GPSL1CAData; M_0 = 0.5)
+        c = complete_state(GPSL1CADecoderState(1), GPSLNAVData; M_0 = 0.5)
         @test get_broadcast_ephemeris(a) != get_broadcast_ephemeris(c)
 
         function allocations(state)
@@ -163,7 +163,7 @@
         @test allocations(a) == 0
         @test allocations(complete_state(GPSL5IDecoderState(1), GPSCNAVData)) == 0
         @test allocations(
-            complete_state(BeiDouB2aDecoderState(20), BeiDouB2aData; SOW_mt11 = Int64(4)),
+            complete_state(BeiDouB2aDecoderState(20), BeiDouCNAV2Data; SOW_mt11 = Int64(4)),
         ) == 0
     end
 end

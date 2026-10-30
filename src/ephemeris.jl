@@ -200,7 +200,7 @@ ephemeris_constants(::AbstractBeiDouData) =
 
 # The Keplerian messages: `√A`, a constant `Δn` and the absolute `Ω̇`.
 function broadcast_ephemeris(
-    data::Union{GPSL1CAData,AbstractGalileoEphemerisData,BeiDouDNAVData},
+    data::Union{GPSLNAVData,AbstractGalileoEphemerisData,BeiDouDNAVData},
     ephemeris_constants,
     is_geostationary,
 )

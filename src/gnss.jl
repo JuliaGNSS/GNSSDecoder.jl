@@ -6,7 +6,7 @@ abstract type AbstractGNSSCache end
     AbstractGPSData <: AbstractGNSSData
 
 Abstract supertype for the decoded navigation data of a signal transmitted by
-the GPS constellation, e.g. `GPSL1CAData`, `GPSCNAVData`.
+the GPS constellation, e.g. `GPSLNAVData`, `GPSCNAVData`.
 
 Its purpose is to carry the constellation-level facts every GPS signal's data
 shares, so they can be stated once (on the supertype, via subtype dispatch)
@@ -22,9 +22,9 @@ abstract type AbstractGPSData <: AbstractGNSSData end
     AbstractGPSCNAVData <: AbstractGPSData
 
 Abstract supertype for the modern GPS civil navigation messages: CNAV
-(`GPSCNAVData`, on L2C and L5) and CNAV-2 (`GPSL1C_DData`, on L1C).
+(`GPSCNAVData`, on L2C and L5) and CNAV-2 (`GPSCNAV2Data`, on L1C).
 
-What the two messages share — and legacy LNAV (`GPSL1CAData`) does not — is a
+What the two messages share — and legacy LNAV (`GPSLNAVData`) does not — is a
 full-width 13-bit week number and the quasi-Keplerian ephemeris broadcast as
 deltas off the fixed reference values `A_REF` and `Ω̇_REF` (IS-GPS-200N
 §30.3.3.1.1, IS-GPS-800J §3.5.3), which [`get_broadcast_ephemeris`](@ref)
@@ -37,7 +37,7 @@ abstract type AbstractGPSCNAVData <: AbstractGPSData end
     AbstractGalileoData <: AbstractGNSSData
 
 Abstract supertype for the decoded navigation data of a signal transmitted by
-the Galileo constellation, e.g. `GalileoINAVData` (E1-B, E5b-I), `GalileoE5aData`,
+the Galileo constellation, e.g. `GalileoINAVData` (E1-B, E5b-I), `GalileoFNAVData`,
 `GalileoE6BData`.
 
 The Galileo counterpart to [`AbstractGPSData`](@ref): it carries the facts every
@@ -58,7 +58,7 @@ abstract type AbstractGalileoData <: AbstractGNSSData end
 
 Abstract supertype for the Galileo signals whose navigation message carries an
 ephemeris and clock of its own: `GalileoINAVData` (E1-B, E5b-I) and
-`GalileoE5aData` (E5a-I).
+`GalileoFNAVData` (E5a-I).
 
 This exists so `is_ephemeris_decoded` and `is_clock_correction_decoded` — which
 check the same orbital and clock fields for I/NAV and F/NAV, and so are stated
@@ -74,8 +74,8 @@ abstract type AbstractGalileoEphemerisData <: AbstractGalileoData end
     AbstractBeiDouData <: AbstractGNSSData
 
 Abstract supertype for the decoded navigation data of a signal transmitted by
-the BeiDou constellation, e.g. `BeiDouDNAVData` (B1I/B3I), `BeiDouB1CData`,
-`BeiDouB2aData`, `BeiDouB2bData`.
+the BeiDou constellation, e.g. `BeiDouDNAVData` (B1I/B3I), `BeiDouCNAV1Data`,
+`BeiDouCNAV2Data`, `BeiDouCNAV3Data`.
 
 The BeiDou counterpart to [`AbstractGPSData`](@ref) and
 [`AbstractGalileoData`](@ref): it carries the constellation-level facts every
@@ -90,8 +90,8 @@ abstract type AbstractBeiDouData <: AbstractGNSSData end
     AbstractBeiDouCNAVData <: AbstractBeiDouData
 
 Abstract supertype for the BDS-3 B-CNAV navigation messages: B-CNAV1
-(`BeiDouB1CData`, on B1C), B-CNAV2 (`BeiDouB2aData`, on B2a) and B-CNAV3
-(`BeiDouB2bData`, on B2b).
+(`BeiDouCNAV1Data`, on B1C), B-CNAV2 (`BeiDouCNAV2Data`, on B2a) and B-CNAV3
+(`BeiDouCNAV3Data`, on B2b).
 
 What the three messages share — and the legacy D1/D2 message (`BeiDouDNAVData`,
 on B1I/B3I) does not — is the quasi-Keplerian ephemeris broadcast as `ΔA` off a

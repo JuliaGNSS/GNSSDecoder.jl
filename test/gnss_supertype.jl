@@ -8,11 +8,11 @@
     # the orbital fields.
     @test GNSSDecoder.AbstractGalileoEphemerisData <: GNSSDecoder.AbstractGalileoData
 
-    gps_data = [GNSSDecoder.GPSL1CAData, GNSSDecoder.GPSL1C_DData, GNSSDecoder.GPSCNAVData]
+    gps_data = [GNSSDecoder.GPSLNAVData, GNSSDecoder.GPSCNAV2Data, GNSSDecoder.GPSCNAVData]
     # The Galileo data types that carry an ephemeris. `GalileoINAVData` is shared
     # by E1-B and E5b; `GalileoE6BData` deliberately sits outside this list (see
     # below).
-    galileo_data = [GNSSDecoder.GalileoINAVData, GNSSDecoder.GalileoE5aData]
+    galileo_data = [GNSSDecoder.GalileoINAVData, GNSSDecoder.GalileoFNAVData]
 
     # Constellation membership is encoded at each struct's definition site.
     for D in gps_data
@@ -88,11 +88,11 @@
     @test GNSSDecoder.AbstractGPSCNAVData <: GNSSDecoder.AbstractGPSData
     @test GNSSDecoder.AbstractBeiDouCNAVData <: GNSSDecoder.AbstractBeiDouData
     @test GNSSDecoder.GPSCNAVData <: GNSSDecoder.AbstractGPSCNAVData
-    @test GNSSDecoder.GPSL1C_DData <: GNSSDecoder.AbstractGPSCNAVData
-    @test !(GNSSDecoder.GPSL1CAData <: GNSSDecoder.AbstractGPSCNAVData)
-    @test BeiDouB1CData <: GNSSDecoder.AbstractBeiDouCNAVData
-    @test BeiDouB2aData <: GNSSDecoder.AbstractBeiDouCNAVData
-    @test BeiDouB2bData <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test GNSSDecoder.GPSCNAV2Data <: GNSSDecoder.AbstractGPSCNAVData
+    @test !(GNSSDecoder.GPSLNAVData <: GNSSDecoder.AbstractGPSCNAVData)
+    @test BeiDouCNAV1Data <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test BeiDouCNAV2Data <: GNSSDecoder.AbstractBeiDouCNAVData
+    @test BeiDouCNAV3Data <: GNSSDecoder.AbstractBeiDouCNAVData
     @test !(BeiDouDNAVData <: GNSSDecoder.AbstractBeiDouCNAVData)
     @test !hasmethod(GNSSDecoder.is_ephemeris_decoded, (GalileoE6BData,))
     @test !hasmethod(GNSSDecoder.is_clock_correction_decoded, (GalileoE6BData,))
@@ -121,7 +121,7 @@
     # Every Galileo data container is exported, as the GPS CNAV and BeiDou ones
     # are — a caller naming `GNSSDecoderState{GalileoINAVData}` should not have to
     # qualify it.
-    for D in (:GalileoINAVData, :GalileoE5aData, :GalileoE6BData)
+    for D in (:GalileoINAVData, :GalileoFNAVData, :GalileoE6BData)
         @test D in names(GNSSDecoder)
     end
 end

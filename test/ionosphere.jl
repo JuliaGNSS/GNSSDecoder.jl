@@ -50,9 +50,9 @@
 
     @testset "Klobuchar on GPS and BeiDou D1/D2" begin
         for (state, D) in (
-            (GPSL1CADecoderState(1), GPSL1CAData),
+            (GPSL1CADecoderState(1), GPSLNAVData),
             (GPSL5IDecoderState(1), GPSCNAVData),
-            (GPSL1C_DDecoderState(1), GPSL1C_DData),
+            (GPSL1C_DDecoderState(1), GPSCNAV2Data),
         )
             s = GNSSDecoderState(state; data = D(; klobuchar...))
             parameters = get_klobuchar_parameters(s)
@@ -75,7 +75,7 @@
         for (state, D) in (
             (GalileoE1BDecoderState(1), GalileoINAVData),
             (GalileoE5bDecoderState(1), GalileoINAVData),
-            (GalileoE5aDecoderState(1), GalileoE5aData),
+            (GalileoE5aDecoderState(1), GalileoFNAVData),
         )
             parameters =
                 get_nequick_g_parameters(GNSSDecoderState(state; data = D(; nequick_g...)))
@@ -91,9 +91,9 @@
 
     @testset "BDGIM on BeiDou B-CNAV" begin
         for (state, D) in (
-            (BeiDouB1CDecoderState(20), BeiDouB1CData),
-            (BeiDouB2aDecoderState(20), BeiDouB2aData),
-            (BeiDouB2bDecoderState(20), BeiDouB2bData),
+            (BeiDouB1CDecoderState(20), BeiDouCNAV1Data),
+            (BeiDouB2aDecoderState(20), BeiDouCNAV2Data),
+            (BeiDouB2bDecoderState(20), BeiDouCNAV3Data),
         )
             parameters = get_bdgim_parameters(GNSSDecoderState(state; data = D(; bdgim...)))
             @test parameters ==
@@ -110,14 +110,14 @@
             read(state)
             @allocated read(state)
         end
-        gps = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSL1CAData(; klobuchar...))
+        gps = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSLNAVData(; klobuchar...))
         @test allocations(get_klobuchar_parameters, gps) == 0
         galileo = GNSSDecoderState(
             GalileoE1BDecoderState(1);
             data = GalileoINAVData(; nequick_g...),
         )
         @test allocations(get_nequick_g_parameters, galileo) == 0
-        b1c = GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouB1CData(; bdgim...))
+        b1c = GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouCNAV1Data(; bdgim...))
         @test allocations(get_bdgim_parameters, b1c) == 0
     end
 end

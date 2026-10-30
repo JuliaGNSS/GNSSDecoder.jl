@@ -2,18 +2,18 @@
 # value of every index, `Inf` where no prediction is broadcast, and `nothing` until
 # decoded and where no single figure is broadcast.
 
-using GNSSDecoder: GPSL1C_DData
+using GNSSDecoder: GPSCNAV2Data
 
 @testset "Broadcast range accuracy" begin
     lnav(N) =
-        GNSSDecoderState(GPSL1CADecoderState(1); data = GPSL1CAData(; URA_index = Int64(N)))
+        GNSSDecoderState(GPSL1CADecoderState(1); data = GPSLNAVData(; URA_index = Int64(N)))
     inav(index) = GNSSDecoderState(
         GalileoE1BDecoderState(1);
         data = GalileoINAVData(; SISA_E1_E5b = index),
     )
     fnav(index) = GNSSDecoderState(
         GalileoE5aDecoderState(1);
-        data = GalileoE5aData(; SISA_E1_E5a = index),
+        data = GalileoFNAVData(; SISA_E1_E5a = index),
     )
     dnav(N) = GNSSDecoderState(
         BeiDouB1IDecoderState(20);
@@ -127,7 +127,7 @@ using GNSSDecoder: GPSL1C_DData
             get_range_accuracy(
                 GNSSDecoderState(
                     GPSL1C_DDecoderState(1);
-                    data = GPSL1C_DData(;
+                    data = GPSCNAV2Data(;
                         ura_ed_index = Int64(0),
                         ura_ned0_index = Int64(0),
                     ),

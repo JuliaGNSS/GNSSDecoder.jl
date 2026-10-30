@@ -67,7 +67,7 @@ end
 @testset "Galileo E5a constructor" begin
     decoder = GalileoE5aDecoderState(21)
     @test decoder.prn == 21
-    @test decoder.data isa GNSSDecoder.GalileoE5aData
+    @test decoder.data isa GNSSDecoder.GalileoFNAVData
     @test decoder.constants.sync_unit_length == 500
     @test decoder.constants.preamble_length == 12
     @test decoder.constants.preamble == 0b101101110000
@@ -116,7 +116,7 @@ end
 
     # Expected first-frame navigation data (Spirent PRN 21, IODnav 48, TOW 259230).
     # Every value cross-checked against the Spirent text dump (word types 1-4).
-    expected = GNSSDecoder.GalileoE5aData(;
+    expected = GNSSDecoder.GalileoFNAVData(;
         WN = 1082,
         TOW = 259230,
         SVID = 21,

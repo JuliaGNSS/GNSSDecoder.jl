@@ -2,7 +2,7 @@ using Test
 using Random
 import Aff3ct
 using GNSSDecoder
-using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData, sync_bch_toi
+using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSCNAV2Data, sync_bch_toi
 
 # ---------------------------------------------------------------------------
 # Synthetic CNAV-2 frame generator (test-only, mirrors the transmit chain).
@@ -264,7 +264,7 @@ end
         state = decode!(state, build_stream(90, 4, bad_payload), 4 * 1800)
         # SF2 fields never populated; data never validated; no exception thrown.
         @test state.raw_data.WN === nothing
-        @test state.data == GPSL1C_DData()
+        @test state.data == GPSCNAV2Data()
         # SF3 page still counted (CRC of SF3 is independent of the SF2 corruption).
         @test state.raw_data.num_sf3_pages_received >= 1
     end
@@ -274,7 +274,7 @@ end
         @test state.data.WN == golden.WN
 
         reset = reset_decoder_state!(state)
-        @test reset.data == GPSL1C_DData()                 # validated data cleared
+        @test reset.data == GPSCNAV2Data()                 # validated data cleared
         @test reset.raw_data.WN == golden.WN               # long-lived CED preserved
         @test reset.raw_data.toi === nothing               # in-flight TOI cleared
         @test reset.raw_data.ITOW === nothing              # paired with the TOI
@@ -300,7 +300,7 @@ end
             crashed = true
         end
         @test !crashed                                     # regression: no BoundsError
-        @test state.data == GPSL1C_DData()                 # validated data cleared by reset
+        @test state.data == GPSCNAV2Data()                 # validated data cleared by reset
         @test state.raw_data.toi === nothing               # in-flight TOI cleared
         @test state.raw_data.WN == golden.WN               # long-lived CED preserved
 
@@ -380,7 +380,7 @@ end
 
         # The carry wraps with the week: ITOW 83 is followed by ITOW 0.
         state = decode!(GPSL1C_DDecoderState(7), stream[1:(3*1800+52)], 3 * 1800 + 52)
-        state = GNSSDecoderState(state; raw_data = GPSL1C_DData(state.raw_data; ITOW = 83))
+        state = GNSSDecoderState(state; raw_data = GPSCNAV2Data(state.raw_data; ITOW = 83))
         state = decode!(state, stream[(3*1800+53):(4*1800+52)], 1800)
         @test state.raw_data.toi == 1
         @test state.raw_data.ITOW == 0
@@ -405,7 +405,7 @@ end
     # Hand-pack a 274-bit SF3 info block (250 message bits + 24-bit CRC) with a
     # known page number + golden fields, LDPC-encode it alongside a valid SF2,
     # interleave, and round-trip through `decode`, then assert the decoded
-    # `GPSL1C_DData` fields equal the known values with the ICD scale factors.
+    # `GPSCNAV2Data` fields equal the known values with the ICD scale factors.
 
     """
     Finalise a 274-bit SF3 block: append CRC over bits 1-250 and return Int32 vector.

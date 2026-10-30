@@ -100,7 +100,7 @@ end
 # ---- Decoded data container --------------------------------------------------
 
 """
-    BeiDouB2bData <: AbstractBeiDouCNAVData
+    BeiDouCNAV3Data <: AbstractBeiDouCNAVData
 
 Decoded BeiDou B-CNAV3 navigation data (BDS-SIS-ICD-B2b-1.0 §6.2.3 / §7).
 
@@ -169,7 +169,7 @@ each CRC-gated message is atomic.
 
 BDS-SIS-ICD-B2b-1.0, Figures 6-3 through 6-15 and Tables 7-1 through 7-21.
 """
-Base.@kwdef struct BeiDouB2bData <: AbstractBeiDouCNAVData
+Base.@kwdef struct BeiDouCNAV3Data <: AbstractBeiDouCNAVData
     last_message_type::Int = 0
     SOW::Union{Nothing,Int64} = nothing
 
@@ -252,16 +252,16 @@ end
 
 # Field-by-field equality: the almanac `SlotDictionary` fields otherwise compare
 # by identity through the default struct `==`.
-Base.:(==)(a::BeiDouB2bData, b::BeiDouB2bData) = fields_equal(a, b)
+Base.:(==)(a::BeiDouCNAV3Data, b::BeiDouCNAV3Data) = fields_equal(a, b)
 
 # Every container field at its ICD size: one almanac slot per PRN (1-63).
-preallocated_data(::Type{BeiDouB2bData}) = BeiDouB2bData(;
+preallocated_data(::Type{BeiDouCNAV3Data}) = BeiDouCNAV3Data(;
     midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
     reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
 )
 
-@inline function BeiDouB2bData(
-    data::BeiDouB2bData;
+@inline function BeiDouCNAV3Data(
+    data::BeiDouCNAV3Data;
     last_message_type = data.last_message_type,
     SOW = data.SOW,
     sat_type = data.sat_type,
@@ -335,7 +335,7 @@ preallocated_data(::Type{BeiDouB2bData}) = BeiDouB2bData(;
     WN_a = data.WN_a,
     t_0a = data.t_0a,
 )
-    BeiDouB2bData(
+    BeiDouCNAV3Data(
         last_message_type,
         SOW,
         sat_type,
@@ -442,7 +442,7 @@ struct BeiDouB2bCache <: AbstractGNSSCache
     Preallocated almanac stores `raw_data` and `data` are decoded into,
     overwritten in place by [`decode!`](@ref)
     """
-    storage::DataStorage{BeiDouB2bData}
+    storage::DataStorage{BeiDouCNAV3Data}
 end
 
 # Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): its buffers are FEC scratch, refilled by every message.
@@ -452,7 +452,7 @@ BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
     committed_ldpc_scratch("bcnv3.alist"),
-    DataStorage{BeiDouB2bData}(),
+    DataStorage{BeiDouCNAV3Data}(),
 )
 
 # The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
@@ -490,7 +490,7 @@ struct BeiDouB2bSync
 end
 
 """
-    try_sync(state::GNSSDecoderState{<:BeiDouB2bData}) -> Union{Nothing,BeiDouB2bSync}
+    try_sync(state::GNSSDecoderState{<:BeiDouCNAV3Data}) -> Union{Nothing,BeiDouB2bSync}
 
 B-CNAV3 frame sync (BDS-SIS-ICD-B2b-1.0 §6.2.1). Three gates, cheapest first:
 
@@ -506,7 +506,7 @@ Only then is the frame handed to `decode_sync_unit`, so a corrupted or
 foreign frame can never update `raw_data` (and, via `validate_data`, can
 never re-arm the SOW symbol counter with stale time).
 """
-function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
+function try_sync(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     deque = soft_buffer(state)
     # Gate 1, read straight from the deque via the shared `find_preamble_in_deque`.
     # The default `pack_buffer` path would shift a 1016-bit integer once per
@@ -540,14 +540,14 @@ function try_sync(state::GNSSDecoderState{<:BeiDouB2bData})
 end
 
 """
-    complement_buffer_if_necessary(state::GNSSDecoderState{<:BeiDouB2bData}, sync)
+    complement_buffer_if_necessary(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync)
 
 Record the polarity resolved by `try_sync` on the state and pass the
 [`BeiDouB2bSync`](@ref) through unchanged (its message bits are already
 polarity-resolved and CRC-validated).
 """
 function complement_buffer_if_necessary(
-    state::GNSSDecoderState{<:BeiDouB2bData},
+    state::GNSSDecoderState{<:BeiDouCNAV3Data},
     sync::BeiDouB2bSync,
 )
     GNSSDecoderState(state; is_shifted_by_180_degrees = sync.polarity_flipped), sync
@@ -562,7 +562,7 @@ end
 # data-block layouts of Figures 6-6 through 6-15.
 
 """
-    decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDouB2bSync)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync::BeiDouB2bSync)
 
 Parse one CRC-validated B-CNAV3 message into `raw_data`. The 20-bit SOW
 (LSB 1 s — the Chinese-language ICD Table 7-2 is authoritative here; see the
@@ -570,7 +570,7 @@ provenance note in the body before "correcting" it) stamps the rising edge of
 the current frame's preamble. Message types other than 10, 30, and 40 are reserved (Table 7-1)
 and contribute only the header.
 """
-function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDouB2bSync)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync::BeiDouB2bSync)
     word = sync.word
     word_length = B2B_MESSAGE_BITS
     message_type = Int(get_bits(word, word_length, 1, 6))
@@ -589,7 +589,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouB2bData}, sync::BeiDou
     # and is unreachable under a 3 s LSB. Do not "fix" this back to the
     # English table's literal value.
     SOW = Int64(get_bits(word, word_length, 7, 20))
-    raw = BeiDouB2bData(state.raw_data; last_message_type = message_type, SOW)
+    raw = BeiDouCNAV3Data(state.raw_data; last_message_type = message_type, SOW)
 
     raw = if message_type == 10
         parse_b2b_mt10(raw, word)
@@ -616,9 +616,9 @@ end
 """
 Message type 10 — complete ephemeris + integrity flags (Figures 6-3, 6-6, 6-7).
 """
-function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512)
+function parse_b2b_mt10(raw::BeiDouCNAV3Data, word::UInt512)
     word_length = B2B_MESSAGE_BITS
-    BeiDouB2bData(
+    BeiDouCNAV3Data(
         raw;
         # bits 27-30 reserved. Ephemeris I (bits 31-233, Figure 6-6):
         t_0e = Int64(get_bits(word, word_length, 31, 11)) * 300,
@@ -655,9 +655,9 @@ end
 Message type 30 — clock, T_GD, BDGIM ionosphere, BDT-UTC, EOP, SISAI, health
 (Figures 6-4, 6-8 through 6-11, 6-13).
 """
-function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512)
+function parse_b2b_mt30(raw::BeiDouCNAV3Data, word::UInt512)
     word_length = B2B_MESSAGE_BITS
-    BeiDouB2bData(
+    BeiDouCNAV3Data(
         raw;
         WN = Int64(get_bits(word, word_length, 27, 13)),
         # bits 40-43 reserved. Clock correction (bits 44-112, Figure 6-8):
@@ -687,14 +687,14 @@ Overwrites each broadcast PRN's slot of `raw.midi_almanacs` /
 `raw.reduced_almanacs` in place — or, while a store is still `nothing`, of the
 preallocated one in `spare`.
 """
-function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, spare::BeiDouB2bData)
+function parse_b2b_mt40!(raw::BeiDouCNAV3Data, word::UInt512, spare::BeiDouCNAV3Data)
     word_length = B2B_MESSAGE_BITS
     # Almanac reference week/time for the five reduced almanacs (bits 251-271,
     # Table 7-15) — kept on the data container as the raw broadcast and copied
     # into every reduced-almanac record so each record is complete in itself.
     WN_a_reduced = Int64(get_bits(word, word_length, 251, 13))
     t_0a_reduced = Int64(get_bits(word, word_length, 264, 8)) * 4096
-    raw = BeiDouB2bData(
+    raw = BeiDouCNAV3Data(
         raw;
         # BGTO (bits 27-94, Figure 6-14, Table 7-19):
         beidou_bgto_block(word, word_length, 27)...,
@@ -708,7 +708,7 @@ function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, spare::BeiDouB2bData
     if !isnothing(alm)
         midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
         set!(midi_almanacs, alm.PRN_a, alm)
-        raw = BeiDouB2bData(raw; midi_almanacs)
+        raw = BeiDouCNAV3Data(raw; midi_almanacs)
     end
     # Five 38-bit reduced almanacs (bits 272-461, Figure 6-12, Table 7-14).
     reduced = raw.reduced_almanacs
@@ -722,12 +722,12 @@ function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, spare::BeiDouB2bData
     # Only rebuild with a concrete store: a Union keyword value takes the
     # allocating kw path on Julia 1.10 (and `nothing` would leave `raw` as is).
     reduced === nothing && return raw
-    BeiDouB2bData(raw; reduced_almanacs = reduced)
+    BeiDouCNAV3Data(raw; reduced_almanacs = reduced)
 end
 
 # ---- Validation --------------------------------------------------------------
 
-function is_ephemeris_decoded(data::BeiDouB2bData)
+function is_ephemeris_decoded(data::BeiDouCNAV3Data)
     # Message type 10 carries the complete ephemeris in one CRC-gated frame.
     !isnothing(data.t_0e) &&
         is_known_sat_type(data.sat_type) &&
@@ -750,7 +750,7 @@ function is_ephemeris_decoded(data::BeiDouB2bData)
         !isnothing(data.C_uc)
 end
 
-function is_clock_correction_decoded(data::BeiDouB2bData)
+function is_clock_correction_decoded(data::BeiDouCNAV3Data)
     # Message type 30, and `T_GD_B2bI` with it. It is required rather than
     # optional for the B1C reason (see `b1c.jl`): ICD §7.6 references a0 to the
     # B3I signal, so a B2b_I receiver must add `T_GD_B2bI` to reach its own
@@ -767,13 +767,13 @@ end
 
 # B-CNAV3 broadcasts the seconds of week as a 20-bit count with LSB 1 s (see
 # `decode_sync_unit` on why the English Table 7-2 scale of 3 is a misprint).
-get_broadcast_time_of_week(data::BeiDouB2bData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouCNAV3Data) = data.SOW
 
 # B-CNAV3's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
-get_broadcast_week(data::BeiDouB2bData; approximate_year::Integer) = data.WN
+get_broadcast_week(data::BeiDouCNAV3Data; approximate_year::Integer) = data.WN
 
 # B-CNAV3 carries only its own: B2b-I has no pilot and no sibling ISC.
-function get_group_delay(state::GNSSDecoderState{<:BeiDouB2bData}, ::BeiDouB2bI)
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV3Data}, ::BeiDouB2bI)
     has_positioning_data(state) || return nothing
     something(state.data.T_GD_B2bI)
 end
@@ -785,10 +785,10 @@ The BDT-to-`target` offset from message type 40, or `nothing` when this
 satellite is not currently broadcasting one for `target`. One set at a time,
 tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 """
-broadcast_time_offset(state::GNSSDecoderState{<:BeiDouB2bData}, target::TimeSystem) =
+broadcast_time_offset(state::GNSSDecoderState{<:BeiDouCNAV3Data}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function has_positioning_data(data::BeiDouB2bData)
+function has_positioning_data(data::BeiDouCNAV3Data)
     !isnothing(data.SOW) &&
         !isnothing(data.WN) &&
         is_ephemeris_decoded(data) &&
@@ -796,7 +796,7 @@ function has_positioning_data(data::BeiDouB2bData)
 end
 
 """
-    validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
+    validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
 
 Promote `raw_data` to `data` once the minimum positioning set (the message
 type 10 ephemeris plus the message type 30 clock and week number) has been
@@ -812,7 +812,7 @@ the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
 Promotion overwrites the preallocated validated almanac stores with the raw
 ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
-function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
+function validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     if has_positioning_data(state.raw_data)
         # Promotion publishes this frame's SOW; the symbol counter re-anchors to
         # this frame's sync epoch with it, so the pair `data.SOW` + counter that
@@ -829,12 +829,12 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     return state
 end
 
-function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2bData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        raw_data = BeiDouB2bData(state.raw_data; SOW = nothing),
-        data = BeiDouB2bData(),
+        raw_data = BeiDouCNAV3Data(state.raw_data; SOW = nothing),
+        data = BeiDouCNAV3Data(),
         num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
@@ -855,7 +855,7 @@ symbols against `prn`, LDPC-decodes the 972 encoded symbols through the
 binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 486-bit message with CRC-24Q before dispatching it to the per-type parsers
 (message types 10, 30, and 40). Decoded fields land in a
-[`BeiDouB2bData`](@ref).
+[`BeiDouCNAV3Data`](@ref).
 
 # Arguments
 
@@ -865,7 +865,7 @@ binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 
 # Returns
 
-  - `GNSSDecoderState{BeiDouB2bData}`: Initialized decoder state for BeiDou B2b
+  - `GNSSDecoderState{BeiDouCNAV3Data}`: Initialized decoder state for BeiDou B2b
 
 # Example
 
@@ -888,8 +888,8 @@ function BeiDouB2bDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
     GNSSDecoderState(
         prn,
-        BeiDouB2bData(),
-        BeiDouB2bData(),
+        BeiDouCNAV3Data(),
+        BeiDouCNAV3Data(),
         BeiDouB2bConstants(),
         BeiDouB2bCache(),
         nothing,
@@ -925,12 +925,12 @@ means unhealthy or in test, 2-3 are reserved.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:BeiDouB2bData}`: BeiDou B2b decoder state.
+  - `state::GNSSDecoderState{<:BeiDouCNAV3Data}`: BeiDou B2b decoder state.
 
 # Returns
 
   - `Bool`: `true` iff the health status word indicates a healthy satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB2bData})
+function is_sat_healthy(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     state.data.HS === Int64(0)
 end

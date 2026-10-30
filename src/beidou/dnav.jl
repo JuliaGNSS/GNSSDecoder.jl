@@ -289,7 +289,7 @@ health, accuracy and Klobuchar coefficients, `a_0` arrives on page 3 and
   - `SatH1::Bool`: Autonomous satellite health flag (0 = good, §5.2.4.6)
   - `AODC::Int64`: Age of data, clock (§5.2.4.8)
   - `URAI::Int64`: User range accuracy index, the raw 4-bit broadcast value
-    (§5.2.4.5, Table 5-4). Not converted to metres — see `GPSL1CAData.URA_index`
+    (§5.2.4.5, Table 5-4). Not converted to metres — see `GPSLNAVData.URA_index`
     for why; index 15 is "no accuracy prediction".
   - `WN::Int64`: BDT week number (0-8191, weeks since 2006-01-01, §5.2.4.4)
   - `t_0c::Int64`: Clock correction reference time (s, scale 2³; the ICD writes `toc`)
@@ -552,7 +552,7 @@ end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `almanacs` and `health` `SlotDictionary` fields even when their
-# contents match. Compare field-by-field (mirrors `GPSL1CAData`, the LNAV
+# contents match. Compare field-by-field (mirrors `GPSLNAVData`, the LNAV
 # decoder this one is modelled on).
 #
 # This is equality of the *published* data only. Subframe voting compares
