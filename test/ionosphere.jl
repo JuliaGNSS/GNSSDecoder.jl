@@ -117,7 +117,8 @@
             data = GalileoINAVData(; nequick_g...),
         )
         @test allocations(get_nequick_g_parameters, galileo) == 0
-        b1c = GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouCNAV1Data(; bdgim...))
+        b1c =
+            GNSSDecoderState(BeiDouB1CDecoderState(20); data = BeiDouCNAV1Data(; bdgim...))
         @test allocations(get_bdgim_parameters, b1c) == 0
     end
 end

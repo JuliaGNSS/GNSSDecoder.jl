@@ -871,17 +871,13 @@ get_broadcast_week(data::BeiDouCNAV2Data; approximate_year::Integer) = data.WN
 # passes; then there is no group delay yet.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aI)
     (; T_GD_B2ap, ISC_B2ad) = state.data
-    (
-        has_positioning_data(state) &&
-        !isnothing(T_GD_B2ap) &&
-        !isnothing(ISC_B2ad)
-    ) || return nothing
+    (has_positioning_data(state) && !isnothing(T_GD_B2ap) && !isnothing(ISC_B2ad)) ||
+        return nothing
     something(T_GD_B2ap) + something(ISC_B2ad)
 end
 function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aQ)
     T_GD_B2ap = state.data.T_GD_B2ap
-    (has_positioning_data(state) && !isnothing(T_GD_B2ap)) ||
-        return nothing
+    (has_positioning_data(state) && !isnothing(T_GD_B2ap)) || return nothing
     something(T_GD_B2ap)
 end
 
@@ -1089,7 +1085,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
             state;
             data = publish_data(state.cache.storage, state.raw_data),
             num_bits_since_time_reference = state.constants.sync_unit_length +
-                                  state.constants.preamble_length,
+                                            state.constants.preamble_length,
         )
     end
     return state

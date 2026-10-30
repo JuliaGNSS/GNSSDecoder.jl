@@ -893,7 +893,8 @@ function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     SOW_count = Int64(dnav_bits(content, 19, 20))
     prev_SOW = state.raw_data.SOW
     num_bits_since_time_reference = state.num_bits_since_time_reference
-    elapsed = elapsed_symbols(state.raw_data.sow_anchor_bit_count, num_bits_since_time_reference)
+    elapsed =
+        elapsed_symbols(state.raw_data.sow_anchor_bit_count, num_bits_since_time_reference)
     is_plausible =
         is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, Int(get_bit_rate(state) / Hz))
     is_plausible || return state

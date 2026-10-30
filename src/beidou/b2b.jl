@@ -823,7 +823,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
             state;
             data = publish_data(state.cache.storage, state.raw_data),
             num_bits_since_time_reference = state.constants.sync_unit_length +
-                                  state.constants.preamble_length,
+                                            state.constants.preamble_length,
         )
     end
     return state

@@ -64,8 +64,7 @@ function (@main)(args::Vector{String})::Cint
     run_decoder("BeiDou B2b", BeiDouB2bI(), 7, symbols)
     run_decoder("BeiDou B3I", BeiDouB3I(), 7, symbols)
 
-    if !has_positioning_data(l1ca) ||
-       get_broadcast_time_of_week(l1ca) != 259278
+    if !has_positioning_data(l1ca) || get_broadcast_time_of_week(l1ca) != 259278
         println(Core.stderr, "GPS L1 C/A capture did not decode to its navigation fix")
         return 1
     end

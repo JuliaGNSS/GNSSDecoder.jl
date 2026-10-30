@@ -12,10 +12,8 @@
     @test get_decoded_time_of_week(gps) == 604_801.5
 
     # Decoding rate, not the ranging pilot's rate; two signals share CNAV data.
-    for (state, expected) in (
-        (GPSL5IDecoderState(1), 100.5),
-        (GPSL2CMDecoderState(1), 101.0),
-    )
+    for (state, expected) in
+        ((GPSL5IDecoderState(1), 100.5), (GPSL2CMDecoderState(1), 101.0))
         state = complete_state(state, GPSCNAVData; TOW = Int64(100))
         state = GNSSDecoderState(state; num_bits_since_time_reference = 50)
         @test get_decoded_time_of_week(state) == expected

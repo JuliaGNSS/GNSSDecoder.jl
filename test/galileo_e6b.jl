@@ -881,7 +881,8 @@ end
 
 @testset "Galileo E6-B PRN handover preserves shared HAS state" begin
     pages = e6b_example_pages(HAS_EXAMPLE_1)
-    decoder = e6b_decode_stream(GalileoE6BDecoderState(1), e6b_symbol_stream(pages[1:end-1]))
+    decoder =
+        e6b_decode_stream(GalileoE6BDecoderState(1), e6b_symbol_stream(pages[1:(end-1)]))
     message_id = HAS_EXAMPLE_1.message_id
     @test length(decoder.cache.page_groups[message_id].page_ids) == length(pages) - 1
     old_counter = decoder.cache.page_counter[]
@@ -914,10 +915,8 @@ end
     pending = reset_decoder_state!(pending, 4)
     @test pending.prn == 4
     @test pending.cache.pending_message[] === held
-    pending = e6b_decode_stream(
-        pending,
-        e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_1)),
-    )
+    pending =
+        e6b_decode_stream(pending, e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_1)))
     @test isnothing(pending.cache.pending_message[])
     @test !isnothing(pending.data.clock_corrections)
 end

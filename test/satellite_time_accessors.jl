@@ -282,7 +282,11 @@ using GNSSDecoder:
         for GNSS_ID in (0, 3)
             s = GNSSDecoderState(
                 BeiDouB2aDecoderState(20);
-                data = BeiDouCNAV2Data(; WN = Int64(901), GNSS_ID = Int64(GNSS_ID), bgto...),
+                data = BeiDouCNAV2Data(;
+                    WN = Int64(901),
+                    GNSS_ID = Int64(GNSS_ID),
+                    bgto...,
+                ),
             )
             for target in (GPST(), GST(), BDT())
                 @test isnothing(get_broadcast_time_offset_parameters(s, target))

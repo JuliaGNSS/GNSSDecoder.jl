@@ -674,7 +674,8 @@ end
         rejected = GNSSDecoder.read_tlm_and_how_words(anchored, bad_how)
         @test isnothing(rejected.raw_data.TOW)
         @test isnothing(rejected.raw_data.tow_anchor_bit_count)
-        recovery = GNSSDecoder.GNSSDecoderState(rejected; num_bits_since_time_reference = 608)
+        recovery =
+            GNSSDecoder.GNSSDecoderState(rejected; num_bits_since_time_reference = 608)
         recovered = GNSSDecoder.read_tlm_and_how_words(recovery, make_buffer(43335))
         @test recovered.raw_data.TOW == 43335 * 6
         @test recovered.raw_data.tow_anchor_bit_count == 608

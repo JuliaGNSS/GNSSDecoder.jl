@@ -714,7 +714,10 @@ every system this satellite has ever broadcast an offset for stays answerable.
 Sets tagged `GNSS_ID == 0` ("not available", §7.13.1) are dropped at decode and
 never appear here.
 """
-function broadcast_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, target::TimeSystem)
+function broadcast_time_offset(
+    state::GNSSDecoderState{<:BeiDouCNAV1Data},
+    target::TimeSystem,
+)
     bgtos = state.data.bgtos
     isnothing(bgtos) && return nothing
     for (GNSS_ID, bgto) in pairs(bgtos)
@@ -1286,7 +1289,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
             state;
             data = publish_data(state.cache.storage, state.raw_data),
             num_bits_since_time_reference = state.constants.sync_unit_length +
-                                  state.constants.preamble_length,
+                                            state.constants.preamble_length,
         )
     end
     return state

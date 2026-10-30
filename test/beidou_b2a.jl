@@ -525,7 +525,8 @@ end
         # buffered, so the stream is cut at those sync instants: after the first
         # step each `decode` call below feeds exactly one frame, 600 symbols = 3 s.
         b2a_now(state) =
-            get_broadcast_time_of_week(state.data) + state.num_bits_since_time_reference / 200
+            get_broadcast_time_of_week(state.data) +
+            state.num_bits_since_time_reference / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])
@@ -579,7 +580,8 @@ end
             build_b2a_mt30(; sow = t0 + 15),                      # promotes again
         ])
         b2a_now(state) =
-            get_broadcast_time_of_week(state.data) + state.num_bits_since_time_reference / 200
+            get_broadcast_time_of_week(state.data) +
+            state.num_bits_since_time_reference / 200
 
         state = BeiDouB2aDecoderState(B2A_PRN)
         head = vcat(frames[1], frames[2], frames[3], frames[4][1:24])

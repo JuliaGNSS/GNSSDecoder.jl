@@ -32,33 +32,23 @@
         week = get_broadcast_week(state; approximate_year = 2020)
         week_start = get_week_start_epoch(state, week)
 
-        @test validity.ephemeris_reference ==
-              week_start + GNSSSignals.SECONDS_PER_WEEK + 8
+        @test validity.ephemeris_reference == week_start + GNSSSignals.SECONDS_PER_WEEK + 8
         @test validity.clock_reference == week_start + 604_780
     end
 
     @testset "incomplete data and ephemeris-free messages" begin
-        for state in (
-            GPSL1CADecoderState(1),
-            GalileoE6BDecoderState(1),
-        )
+        for state in (GPSL1CADecoderState(1), GalileoE6BDecoderState(1))
             @test isnothing(
                 get_broadcast_ephemeris_validity(state; approximate_year = 2020),
             )
         end
 
-        missing_stamp = complete_state(
-            GPSL1CADecoderState(1), GPSLNAVData;
-            TOW = nothing,
-        )
+        missing_stamp = complete_state(GPSL1CADecoderState(1), GPSLNAVData; TOW = nothing)
         @test isnothing(
             get_broadcast_ephemeris_validity(missing_stamp; approximate_year = 2020),
         )
 
-        missing_week = complete_state(
-            GPSL1CADecoderState(1), GPSLNAVData;
-            WN = nothing,
-        )
+        missing_week = complete_state(GPSL1CADecoderState(1), GPSLNAVData; WN = nothing)
         @test isnothing(
             get_broadcast_ephemeris_validity(missing_week; approximate_year = 2020),
         )
@@ -67,14 +57,12 @@
     @testset "LNAV fit duration follows flag and IODC" begin
         function fit_seconds(flag, iodc)
             state = complete_state(
-                GPSL1CADecoderState(1), GPSLNAVData;
+                GPSL1CADecoderState(1),
+                GPSLNAVData;
                 fit_interval = flag,
                 IODC = Int64(iodc),
             )
-            validity = get_broadcast_ephemeris_validity(
-                state;
-                approximate_year = 2020,
-            )
+            validity = get_broadcast_ephemeris_validity(state; approximate_year = 2020)
             validity.fit_interval_seconds
         end
 
@@ -86,14 +74,17 @@
         @test fit_seconds(true, 500) == 26 * 3600
         @test fit_seconds(true, 1022) == 26 * 3600
         for reserved_iodc in (504, 511, 752, 767, 1008, 1020)
-            @test isnothing(get_broadcast_ephemeris_validity(
-                complete_state(
-                    GPSL1CADecoderState(1), GPSLNAVData;
-                    fit_interval = true,
-                    IODC = Int64(reserved_iodc),
-                );
-                approximate_year = 2020,
-            ).fit_interval_seconds)
+            @test isnothing(
+                get_broadcast_ephemeris_validity(
+                    complete_state(
+                        GPSL1CADecoderState(1),
+                        GPSLNAVData;
+                        fit_interval = true,
+                        IODC = Int64(reserved_iodc),
+                    );
+                    approximate_year = 2020,
+                ).fit_interval_seconds,
+            )
         end
 
         galileo = complete_state(GalileoE1BDecoderState(1), GalileoINAVData)
@@ -102,10 +93,7 @@
 
         function allocations(state)
             get_broadcast_ephemeris_validity(state; approximate_year = 2020)
-            @allocated get_broadcast_ephemeris_validity(
-                state;
-                approximate_year = 2020,
-            )
+            @allocated get_broadcast_ephemeris_validity(state; approximate_year = 2020)
         end
         complete = complete_state(GPSL1CADecoderState(1), GPSLNAVData)
         @test allocations(complete) == 0

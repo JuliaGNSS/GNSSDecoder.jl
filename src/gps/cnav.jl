@@ -844,8 +844,7 @@ get_broadcast_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
 # the gate passes; then there is no group delay yet.
 function cnav_group_delay(state, ISC)
     T_GD = state.data.T_GD
-    (has_positioning_data(state) && !isnothing(T_GD) && !isnothing(ISC)) ||
-        return nothing
+    (has_positioning_data(state) && !isnothing(T_GD) && !isnothing(ISC)) || return nothing
     something(T_GD) - something(ISC)
 end
 get_group_delay(state::GNSSDecoderState{<:GPSCNAVData}, ::GPSL5I) =

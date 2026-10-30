@@ -873,7 +873,8 @@ function read_tlm_and_how_words(state, buffer)
             ),
         )
         TOW = is_plausible ? Int64(TOW_count) * 6 : nothing
-        TOW_anchor = is_plausible ? previous_state.num_bits_since_time_reference : nothing
+        TOW_anchor =
+            is_plausible ? previous_state.num_bits_since_time_reference : nothing
         @split_nothing (TOW, TOW_anchor) GPSLNAVData(
             state.raw_data;
             last_subframe_id,
@@ -1486,10 +1487,8 @@ end
 # preallocated validated ones), so later subframes written into `raw_data`'s
 # containers do not leak into `data` before they are voted on.
 function promote_data(state)
-    promoted = GPSLNAVData(
-        state.raw_data;
-        tow_anchor_bit_count = state.constants.preamble_length,
-    )
+    promoted =
+        GPSLNAVData(state.raw_data; tow_anchor_bit_count = state.constants.preamble_length)
     GNSSDecoderState(
         state;
         raw_data = promoted,

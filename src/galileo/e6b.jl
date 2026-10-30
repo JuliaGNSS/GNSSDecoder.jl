@@ -2449,7 +2449,10 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::Galil
     # stay `nothing` forever on E6-B, since `decode` only ever increments a
     # counter that is already armed. `preamble_length` is the trailing next-page
     # sync `drain_after_sync!` leaves buffered (cf. `gps/cnav.jl`).
-    state = GNSSDecoderState(state; num_bits_since_time_reference = state.constants.preamble_length)
+    state = GNSSDecoderState(
+        state;
+        num_bits_since_time_reference = state.constants.preamble_length,
+    )
 
     header = UInt32(get_bits(page, E6B_PAGE_BITS, E6B_HEADER_START, 24))
     # Dummy pages carry no HAS data at all (ICD §2.4.1); their header fields are
