@@ -1561,6 +1561,22 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
     )
 end
 
+# HAS is broadcast across Galileo satellites: every page group, a completed
+# message waiting for its mask, and the decoded masks/corrections remain useful
+# when this channel is handed to a different PRN. The ordinary one-argument
+# reset still drops in-flight assembly after a signal gap; only a PRN handover
+# keeps the shared HAS state. The soft symbols and polarity belong to this
+# channel and must be reacquired.
+function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData}, prn::Integer)
+    empty!(state.cache.soft_buffer)
+    GNSSDecoderState(
+        state;
+        prn,
+        num_bits_since_sync = nothing,
+        is_shifted_by_180_degrees = false,
+    )
+end
+
 # No `packed_buffer_type` method: E6-B overrides `try_sync` and reads the 32
 # sync bits straight from the soft buffer, so the 1016-bit packed window the
 # default would build (once per symbol, at 1000 sps) is never needed.

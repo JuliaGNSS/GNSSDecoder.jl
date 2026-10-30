@@ -879,6 +879,49 @@ end
     @test !isnothing(decoder.data.clock_corrections)
 end
 
+@testset "Galileo E6-B PRN handover preserves shared HAS state" begin
+    pages = e6b_example_pages(HAS_EXAMPLE_1)
+    decoder = e6b_decode_stream(GalileoE6BDecoderState(1), e6b_symbol_stream(pages[1:end-1]))
+    message_id = HAS_EXAMPLE_1.message_id
+    @test length(decoder.cache.page_groups[message_id].page_ids) == length(pages) - 1
+    old_counter = decoder.cache.page_counter[]
+    masks = decoder.raw_data.masks
+
+    decoder = reset_decoder_state!(decoder, 2)
+    @test decoder.prn == 2
+    @test decoder.cache.page_counter[] == old_counter
+    @test isempty(decoder.cache.soft_buffer)
+    @test isnothing(decoder.num_bits_since_sync)
+    @test !decoder.is_shifted_by_180_degrees
+    @test length(decoder.cache.page_groups[message_id].page_ids) == length(pages) - 1
+    @test decoder.raw_data.masks === masks
+
+    # The final encoded page can come from a different satellite and completes
+    # the HAS message assembled from the first satellite's pages.
+    decoder = e6b_decode_stream(decoder, e6b_symbol_stream(pages[end:end]))
+    @test isempty(decoder.cache.page_groups)
+    @test decoder.data.message.message_id == message_id
+    @test haskey(decoder.raw_data.masks, 0)
+
+    # An orphaned, reassembled message also survives handover and is released
+    # when its missing mask subsequently arrives.
+    pending = e6b_decode_stream(
+        GalileoE6BDecoderState(3),
+        e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_2)),
+    )
+    held = pending.cache.pending_message[]
+    @test !isnothing(held)
+    pending = reset_decoder_state!(pending, 4)
+    @test pending.prn == 4
+    @test pending.cache.pending_message[] === held
+    pending = e6b_decode_stream(
+        pending,
+        e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_1)),
+    )
+    @test isnothing(pending.cache.pending_message[])
+    @test !isnothing(pending.data.clock_corrections)
+end
+
 @testset "Galileo E6-B decode! is allocation-free" begin
     octets = hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1])
     header(; kwargs...) = e6b_header(; has_status = 1, message_type = 1, kwargs...)

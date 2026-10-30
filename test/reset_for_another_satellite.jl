@@ -30,8 +30,14 @@ struct CacheWithoutMethod <: GNSSDecoder.AbstractGNSSCache end
             push!(used.cache.soft_buffer, 1.0f0)
             moved = reset_decoder_state!(used, 9)
             @test moved.prn == 9
-            @test moved.raw_data == D()
-            @test moved.data == D()
+            if D === GalileoE6BData
+                # HAS service data belongs to the shared message, not the PRN.
+                @test moved.raw_data == used.raw_data
+                @test moved.data == used.data
+            else
+                @test moved.raw_data == D()
+                @test moved.data == D()
+            end
             @test isnothing(moved.num_bits_since_sync)
             @test !moved.is_shifted_by_180_degrees
             @test isempty(moved.cache.soft_buffer)

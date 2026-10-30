@@ -1466,8 +1466,10 @@ This is how a receiver moves a channel's decoder to another satellite instead
 of constructing a new state, whose buffers would be allocated anew. Everything a
 decoder does differently per satellite follows `state.prn`, so it changes with
 it: BeiDou B1I and B3I switch between the D1 and D2 formats and their symbol
-rates, and B1C syncs on the new satellite's code word. Galileo E6-B keeps the
-HAS pages it holds, as a HAS message is assembled from pages of any satellite.
+rates, and B1C syncs on the new satellite's code word. Galileo E6-B retains
+its HAS assembly, masks and corrections: these belong to the shared service,
+whose messages can be assembled from pages of any satellite. It clears only
+the channel's soft-symbol buffer, time counter and polarity.
 
 As with [`decode!`](@ref), treat the return value as the live decoder and do not
 use `state` afterwards.
