@@ -38,11 +38,11 @@ pkg> add GNSSDecoder
 ## Usage
 
 ```julia
-using GNSSDecoder
+using GNSSDecoder, GNSSSignals
 
-state = GPSL1CADecoderState(25)   # every buffer is allocated here, once
+state = GNSSDecoderState(GPSL1CA(), 25)   # every buffer is allocated here, once
 for chunk in soft_symbol_chunks   # e.g. `get_soft_bits` from Tracking.jl
-    state = decode!(state, chunk, length(chunk))
+    state = decode!(state, chunk)
 end
 is_decoding_completed_for_positioning(state) && is_sat_healthy(state)
 ```

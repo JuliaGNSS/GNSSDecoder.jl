@@ -8,6 +8,16 @@ GNSSDecoderState
 
 ## Constructors
 
+Construct a decoder from its GNSSSignals signal and satellite PRN:
+
+```julia
+using GNSSDecoder, GNSSSignals
+state = GNSSDecoderState(GPSL1CA(), 25)
+state = decode!(state, soft_bits)
+```
+
+The signal-specific constructors below are conveniences for the same states.
+
 ```@docs
 GPSL1CADecoderState
 GalileoE1BDecoderState
