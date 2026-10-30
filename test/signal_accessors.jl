@@ -75,6 +75,7 @@
         # every forwarded accessor — must stay keyed on the constants.
         l5 = GPSL5IDecoderState(1)
         l2c = GPSL2CMDecoderState(1)
+        @test get_signal_id(l5) != get_signal_id(l2c)
         @test get_signal_type(l5) !== get_signal_type(l2c)
         @test get_bit_rate(l5) != get_bit_rate(l2c)
         @test get_band_id(l5) == :L5
@@ -107,14 +108,19 @@
     end
 
     @testset "E1B replica-independent metadata" begin
-        # Both tracking replicas map to the same canonical data component.
-        # Its display name follows the default replica, not the tracking input.
+        # Tracking replicas differ, but the decoder reports their shared
+        # broadcast component without retaining either replica identity.
+        @test get_replica_id(GalileoE1B) != get_replica_id(GalileoE1B_CBOC)
+        @test get_replica_name(GalileoE1B) != get_replica_name(GalileoE1B_CBOC)
         for signal in (GalileoE1B(), GalileoE1B_CBOC())
             state = GNSSDecoderState(signal, 1)
             @test get_signal_type(state) === GalileoE1B
             @test get_signal_id(state) === :GalileoE1B
+            @test get_signal_name(state) == "Galileo E1B"
+            @test !applicable(get_replica_id, state)
+            @test !applicable(get_replica_name, state)
             for accessor in forwarded_accessors
-                @test accessor(state) == accessor(GalileoE1B)
+                @test accessor(state) == accessor(signal)
             end
         end
     end

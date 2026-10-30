@@ -79,9 +79,10 @@ end
 # `GalileoINAVData`, so the signal is keyed on the constants type
 # (`GalileoINAVConstants{:GalileoE1B}` vs `{:GalileoE5bI}`) — the only thing that
 # tells the two decoders apart. Both the full CBOC E1B and its BOC(1,1)
-# approximation report the canonical default replica `GalileoE1B`; the decoder
-# does not retain which tracking replica produced the I/NAV stream. Signal
-# metadata is forwarded through this mapping (see `src/signal_metadata.jl`).
+# approximation report the canonical data-component type `GalileoE1B`; the decoder
+# does not retain which tracking replica produced the I/NAV stream. Forwarded
+# signal identity describes the broadcast component for both replicas (see
+# `src/signal_metadata.jl`); replica identity remains with the tracking signal.
 get_signal_type(::GalileoE1BConstants) = GalileoE1B
 
 """

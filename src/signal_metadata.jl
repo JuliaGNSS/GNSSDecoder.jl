@@ -33,9 +33,11 @@ what carries the navigation message: `GPSL2CM` (not the `GPSL2CL` pilot) and
 `GalileoE5aI` (not the `GalileoE5aQ` pilot). Replica variants map to the same
 canonical data-component type: both `GalileoE1B` (the default BOC(1,1) replica)
 and `GalileoE1B_CBOC` construct a decoder reporting `GalileoE1B`. The decoder
-does not retain which tracking replica supplied its symbols. Consequently,
-forwarded names and ids describe that canonical type; use the tracking signal
-itself when a display must distinguish BOC(1,1) from full CBOC.
+does not retain which tracking replica supplied its symbols. Forwarded
+`get_signal_id` and `get_signal_name` identify the broadcast component, so both
+E1B replicas report `:GalileoE1B` and `"Galileo E1B"`. Replica identity belongs
+to the tracking signal: query GNSSSignals' `get_replica_id` or
+`get_replica_name` there. These replica queries are not forwarded for a decoder.
 
 # Examples
 

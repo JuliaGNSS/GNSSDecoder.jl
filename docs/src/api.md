@@ -104,8 +104,10 @@ container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and
 Galileo E1-B and E5b-I both into a `GalileoINAVData`, but each reports its own
 band, ids and symbol rates. Tracking replica variants share one decoder:
 BOC(1,1) and full CBOC E1B both report the canonical `GalileoE1B` type. Forwarded
-names and ids follow that default replica; query the tracking signal itself to
-distinguish replica variants in a display.
+signal names and ids identify the broadcast component (`"Galileo E1B"` and
+`:GalileoE1B`), independently of the tracking replica. Query GNSSSignals'
+`get_replica_id` or `get_replica_name` on the tracking signal to distinguish
+replicas; a decoder does not retain or expose replica identity.
 
 ```julia
 using GNSSDecoder, GNSSSignals
