@@ -41,6 +41,7 @@ include("allocation_utils.jl")
     # Decoder states whose data passes the readiness gate, for the accessors
     # that answer only once it does.
     include("complete_data.jl")
+    include("decoded_time.jl")
     include("group_delay.jl")
     include("ephemeris.jl")
     include("ionosphere.jl")

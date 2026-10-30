@@ -199,7 +199,7 @@ Base.@kwdef struct GNSSDecoderState{
     """
     cache::CA
     """
-    Number of symbols received after the last valid sync unit, or `nothing` if not yet synchronized
+    Number of channel symbols since the epoch stamped by `data`, or `nothing` without a time anchor
     """
     num_bits_since_time_reference::Union{Nothing,Int} = 0
     """
@@ -565,12 +565,11 @@ Every signal's value is the time of the epoch that
 which is why the anchor is set per signal at promotion time, to the frame the
 broadcast field actually stamps (the *next* subframe for GPS LNAV, CNAV and
 L1C-D; the *current* frame for the BeiDou signals). So the current time of week
-is the same expression on every signal:
+is available through [`get_decoded_time_of_week`](@ref):
 
 ```julia
 using Unitful: Hz, ustrip
-tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
+time_of_week = get_decoded_time_of_week(state)
 ```
 
 Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this

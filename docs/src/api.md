@@ -146,14 +146,13 @@ defines — so it is done here, once per signal, rather than in every consumer.
 
 `get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
 or `SOW` on most signals, `ITOW·7200 + toi·18` on GPS L1C-D, and
-`HOW·3600 + soh·18` on BeiDou B1C — and pairs with the state's symbol counter to
-give the current time on every signal with one expression:
+`HOW·3600 + soh·18` on BeiDou B1C — and pairs with the state's symbol counter in `get_decoded_time_of_week`, which
+returns the uncorrected time at the last consumed symbol:
 
 ```julia
 using GNSSDecoder, GNSSSignals
 using Unitful: Hz, ustrip
-tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
+time_of_week = get_decoded_time_of_week(state)
 ```
 
 `get_broadcast_time_offset` folds away the five shapes the same quantity is
@@ -184,6 +183,7 @@ ever tried on Galileo never notices them missing.
 OrbitClass
 get_orbit_class
 get_broadcast_time_of_week
+get_decoded_time_of_week
 get_broadcast_week
 get_broadcast_time_offset
 get_broadcast_time_offset_epoch

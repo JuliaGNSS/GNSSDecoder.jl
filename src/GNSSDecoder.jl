@@ -3,7 +3,7 @@ module GNSSDecoder
 using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructures
 using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: SECONDS_PER_WEEK
-using Unitful: Hz
+using Unitful: Hz, ustrip
 using Dates: Dates, Date
 import Aff3ct
 
@@ -48,6 +48,7 @@ export decode!,
     OrbitClass,
     get_orbit_class,
     get_broadcast_time_of_week,
+    get_decoded_time_of_week,
     get_broadcast_week,
     get_broadcast_time_offset,
     get_broadcast_time_offset_epoch,
@@ -117,6 +118,7 @@ include("beidou/b3i.jl")
 include("beidou/b1c.jl")
 include("beidou/b2a.jl")
 include("beidou/b2b.jl")
+include("decoded_time.jl")
 include("ephemeris.jl")
 include("ionosphere.jl")
 include("time_parameters.jl")

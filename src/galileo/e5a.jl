@@ -106,7 +106,7 @@ the decoder multiplies by π), matching the convention used by
   - `IOD_nav3::UInt`: Issue of Data from page type 3 (10-bit)
   - `IOD_nav4::UInt`: Issue of Data from page type 4 (10-bit)
   - `num_pages_after_last_TOW::Int`: Pages decoded since last TOW update
-  - `tow_anchor_bit_count::Int`: Bits since last TOW sync
+  - `tow_anchor_bit_count::Int`: Time-reference counter reading when TOW was decoded
 
 # Signal Health and Data Validity (Page Type 1)
 
