@@ -363,7 +363,7 @@ end
     @testset "validated data continues to follow the message stream" begin
         messages = load_l2c_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode!(GPSL2CMDecoderState(25), stream, length(stream))
+        state = decode!(GPSL2CMDecoderState(25), stream)
         # Message 4 is MT15. Once the first positioning set is complete, later
         # validated messages must continue to publish to `data`.
         @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
@@ -372,6 +372,8 @@ end
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
 end
+
+include("decode_api.jl")
 
 @testset "GPS L2C decode! is allocation-free" begin
     # The full recording (every message type 10-15, 30-37, with the reduced /

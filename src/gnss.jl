@@ -1338,7 +1338,8 @@ signal. See `CONTEXT.md` for the full glossary.
 
   - `state::GNSSDecoderState`: Current decoder state
   - `soft_bits::AbstractVector{<:Real}`: Soft bits to consume, oldest first
-  - `num_bits::Int`: Number of leading entries of `soft_bits` to process
+  - `num_bits::Int=length(soft_bits)`: Number of leading symbols to process;
+    pass an explicit count when the vector contains unused trailing entries.
 
 # Returns
 
@@ -1354,8 +1355,9 @@ signal. See `CONTEXT.md` for the full glossary.
 function decode!(
     state::GNSSDecoderState,
     soft_bits::AbstractVector{<:Real},
-    num_bits::Int,
+    num_bits::Int = length(soft_bits),
 )
+    num_bits >= 0 || throw(ArgumentError("num_bits must be nonnegative"))
     num_bits <= length(soft_bits) ||
         throw(ArgumentError("num_bits exceeds length(soft_bits)"))
     num_bits_since_sync = state.num_bits_since_sync

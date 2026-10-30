@@ -352,7 +352,7 @@ end
     @testset "validated data continues to follow the message stream" begin
         messages = load_l5i_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode!(GPSL5IDecoderState(25), stream, length(stream))
+        state = decode!(GPSL5IDecoderState(25), stream)
         # Message 4 is MT15. Later validated messages continue to publish after
         # the decoder first has a complete positioning set.
         @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
