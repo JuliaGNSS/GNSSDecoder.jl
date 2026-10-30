@@ -3,7 +3,7 @@
 # GPS decoders.
 
 # WGS-84 constants (IS-GPS-200N §20.3.3.4.3; identical in IS-GPS-705J and
-# IS-GPS-800J). Each GPS `*Constants` struct exposes them as field defaults.
+# IS-GPS-800J). The normalized broadcast ephemeris carries these values.
 const GPS_μ = 3.986005e14        # Earth gravitational parameter (m³/s²)
 const GPS_F = -4.442807633e-10   # relativistic correction constant (s/√m)
 

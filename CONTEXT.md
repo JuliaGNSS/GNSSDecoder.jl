@@ -344,7 +344,7 @@ constellation, bit rate as tracked (`get_bit_rate`, the channel symbol rate),
 time scale — as opposed to the
 navigation *data* it decodes. All of it lives in GNSSSignals and none of it is
 restated here: each signal file states the constants → signal mapping
-(`get_signal_type`) and `src/gnss.jl` forwards GNSSSignals' accessors for a
+(`get_signal_type`) and `src/signal_metadata.jl` forwards GNSSSignals' accessors for a
 `GNSSDecoderState` through it.
 
 The mapping names the data-bearing component of a signal pair, since that is

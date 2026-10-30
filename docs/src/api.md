@@ -307,7 +307,7 @@ get_ggto_parameters
 
 ## Data Types
 
-Every concrete per-signal data type subtypes the abstract supertype of its
+Every concrete message data type subtypes the abstract supertype of its
 constellation, so a caller can dispatch on the constellation of a decoder's data
 without enumerating its signals.
 

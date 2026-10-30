@@ -76,9 +76,12 @@ export decode!,
     GNSSDecoderState,
     reset_decoder_state!
 
-# Shared decode framework and cross-signal accessors, then the generic
-# bit-extraction helpers.
+# Shared types, decoder lifecycle, and signal/broadcast metadata. Storage and
+# bit-extraction helpers are defined before the concrete message decoders.
 include("gnss.jl")
+include("decoder.jl")
+include("signal_metadata.jl")
+include("broadcast_metadata.jl")
 include("storage.jl")
 include("bit_fiddling.jl")
 
