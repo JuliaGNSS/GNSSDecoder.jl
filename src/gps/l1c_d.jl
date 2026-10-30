@@ -769,7 +769,7 @@ get_broadcast_week(data::GPSCNAV2Data; approximate_year::Integer) = data.WN
 # CNAV-2 carries the full L1 ISC set: L1C-D, L1C-P or C/A, each against T_GD.
 get_group_delay(state::GNSSDecoderState{<:GPSCNAV2Data}, ::GPSL1C_D) =
     cnav_group_delay(state, state.data.ISC_L1CD)
-get_group_delay(state::GNSSDecoderState{<:GPSCNAV2Data}, ::GPSL1C_P) =
+get_group_delay(state::GNSSDecoderState{<:GPSCNAV2Data}, ::Union{GPSL1C_P,GPSL1C_P_TMBOC}) =
     cnav_group_delay(state, state.data.ISC_L1CP)
 get_group_delay(state::GNSSDecoderState{<:GPSCNAV2Data}, ::GPSL1CA) =
     cnav_group_delay(state, state.data.ISC_L1CA)

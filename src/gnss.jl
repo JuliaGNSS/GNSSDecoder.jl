@@ -152,7 +152,7 @@ constructor, `GNSSDecoderState(state; num_bits_since_time_reference = n)`. The
 `GNSSDecoderState(signal, prn)` creates the decoder for satellite `prn` on a
 GNSSSignals signal: `GNSSDecoderState(GPSL1CA(), 1)` is `GPSL1CADecoderState(1)`.
 Every decoded signal has both forms: GPS L1 C/A, L1C-D, L2C-M and L5-I; Galileo E1-B
-(and its BOC(1,1) approximation), E5a-I, E5b-I and E6-B; BeiDou B1I, B3I, B1C-D,
+(both the default BOC(1,1) and full CBOC replicas), E5a-I, E5b-I and E6-B; BeiDou B1I, B3I, B1C-D,
 B2a-I and B2b-I. A signal without a decoder, such as a dataless pilot, is a
 `MethodError`.
 

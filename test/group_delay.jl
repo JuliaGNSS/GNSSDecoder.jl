@@ -70,7 +70,17 @@ using GNSSSignals: get_center_frequency
             ISC_L1CA = 4.0e-9,
         )
         @test get_group_delay(cnav2, GPSL1C_D()) == T_GD - ISC
-        @test get_group_delay(cnav2, GPSL1C_P()) == T_GD - ISC_pilot
+        for pilot in (GPSL1C_P(), GPSL1C_P_TMBOC())
+            @test get_group_delay(cnav2, pilot) == T_GD - ISC_pilot
+            without_isc = complete_state(
+                GPSL1C_DDecoderState(1),
+                GPSCNAV2Data;
+                T_GD,
+                ISC_L1CP = nothing,
+            )
+            @test isnothing(get_group_delay(without_isc, pilot))
+            @test isnothing(get_group_delay(GPSL1C_DDecoderState(1), pilot))
+        end
         @test get_group_delay(cnav2, GPSL1CA()) == T_GD - 4.0e-9
         @test isnothing(
             get_group_delay(
@@ -96,7 +106,7 @@ using GNSSSignals: get_center_frequency
             BGD_E1_E5a,
             BGD_E1_E5b,
         )
-        for signal in (GalileoE1B(), GalileoE1C(), GalileoE1B_BOC11(), GalileoE1C_BOC11())
+        for signal in (GalileoE1B(), GalileoE1C(), GalileoE1B_CBOC(), GalileoE1C_CBOC())
             @test get_group_delay(inav, signal) == BGD_E1_E5b
         end
         e5b = GNSSDecoderState(GalileoE5bDecoderState(1); data = inav.data)

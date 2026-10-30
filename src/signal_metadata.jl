@@ -30,10 +30,12 @@ container still answer their own signal: GPS L5-I and L2C-M both decode into a
 
 The mapping names the data-bearing component of a signal pair, since that is
 what carries the navigation message: `GPSL2CM` (not the `GPSL2CL` pilot) and
-`GalileoE5aI` (not the `GalileoE5aQ` pilot). A decoder built from an
-approximation of a signal reports the signal it approximates — the E1B BOC(1,1)
-decoder state is a `GalileoE1B`, since the approximation is a
-tracking/acquisition concern and the I/NAV stream it decodes is identical.
+`GalileoE5aI` (not the `GalileoE5aQ` pilot). Replica variants map to the same
+canonical data-component type: both `GalileoE1B` (the default BOC(1,1) replica)
+and `GalileoE1B_CBOC` construct a decoder reporting `GalileoE1B`. The decoder
+does not retain which tracking replica supplied its symbols. Consequently,
+forwarded names and ids describe that canonical type; use the tracking signal
+itself when a display must distinguish BOC(1,1) from full CBOC.
 
 # Examples
 

@@ -106,15 +106,16 @@
               get_tai_offset(GalileoE1BDecoderState(1))
     end
 
-    @testset "E1B BOC(1,1) approximation" begin
-        # The BOC(1,1) approximation decodes the identical I/NAV stream, so its
-        # decoder *is* an E1B decoder and reports E1B throughout — the
-        # approximation is a tracking/acquisition concern and leaves no trace in
-        # the symbol domain.
-        boc11 = GNSSDecoder.GNSSDecoderState(GalileoE1B_BOC11(), 1)
-        @test get_signal_type(boc11) === GalileoE1B
-        for accessor in forwarded_accessors
-            @test accessor(boc11) == accessor(GalileoE1B)
+    @testset "E1B replica-independent metadata" begin
+        # Both tracking replicas map to the same canonical data component.
+        # Its display name follows the default replica, not the tracking input.
+        for signal in (GalileoE1B(), GalileoE1B_CBOC())
+            state = GNSSDecoderState(signal, 1)
+            @test get_signal_type(state) === GalileoE1B
+            @test get_signal_id(state) === :GalileoE1B
+            for accessor in forwarded_accessors
+                @test accessor(state) == accessor(GalileoE1B)
+            end
         end
     end
 

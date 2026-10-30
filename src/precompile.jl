@@ -180,7 +180,7 @@ end
         for (system, prn, symbols) in (
             (GPSL1CA(), 25, gps_l1ca),
             (GalileoE1B(), 2, galileo_e1b),
-            (GalileoE1B_BOC11(), 2, galileo_e1b),
+            (GalileoE1B_CBOC(), 2, galileo_e1b),
             (GPSL2CM(), 25, gps_l2c),
             (GPSL5I(), 25, gps_l5i),
             (GalileoE5aI(), 21, galileo_e5a),

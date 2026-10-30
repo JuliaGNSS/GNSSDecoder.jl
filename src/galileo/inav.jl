@@ -610,8 +610,8 @@ function get_group_delay(
     signal::Union{
         GalileoE1B,
         GalileoE1C,
-        GalileoE1B_BOC11,
-        GalileoE1C_BOC11,
+        GalileoE1B_CBOC,
+        GalileoE1C_CBOC,
         GalileoE5bI,
         GalileoE5bQ,
     },

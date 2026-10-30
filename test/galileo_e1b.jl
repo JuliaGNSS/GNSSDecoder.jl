@@ -10,13 +10,11 @@ const GALILEO_E1B_DATA = [
     @test GalileoE1BDecoderState(21) == GNSSDecoderState(galileo_e1b, 21)
 end
 
-@testset "Galileo E1B BOC(1,1) constructor" begin
-    # The BOC(1,1) approximation carries the identical I/NAV message, so it
-    # dispatches to the same decoder state as full-CBOC Galileo E1B.
-    galileo_e1b_boc11 = GalileoE1B_BOC11()
-
-    @test GalileoE1BDecoderState(21) == GNSSDecoderState(galileo_e1b_boc11, 21)
-    @test GNSSDecoderState(GalileoE1B(), 21) == GNSSDecoderState(galileo_e1b_boc11, 21)
+@testset "Galileo E1B full CBOC constructor" begin
+    # Modulation belongs to tracking; both replicas carry the same I/NAV stream.
+    full_cboc = GalileoE1B_CBOC()
+    @test GalileoE1BDecoderState(21) == GNSSDecoderState(full_cboc, 21)
+    @test GNSSDecoderState(GalileoE1B(), 21) == GNSSDecoderState(full_cboc, 21)
 end
 
 @testset "Galileo E1B test data decoding" begin
