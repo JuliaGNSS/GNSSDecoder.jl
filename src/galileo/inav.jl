@@ -557,6 +557,16 @@ get_broadcast_time_of_week(data::GalileoINAVData) = data.TOW
 # I/NAV's week number is 12 bits from GST's 1999 origin, absolute until 2078.
 get_broadcast_week(data::GalileoINAVData; approximate_year::Integer) = data.WN
 
+# I/NAV's clock is for the E1/E5b pair, so E1 and E5b ranges use BGD_E1_E5b. Its
+# BGD_E1_E5a is not used: an E5a range carries an F/NAV decoder.
+function get_group_delay(
+    state::GNSSDecoderState{<:GalileoINAVData},
+    signal::Union{GalileoE1B,GalileoE1C,GalileoE5bI,GalileoE5bQ},
+)
+    has_positioning_messages(state.data) || return nothing
+    galileo_group_delay_scaling(signal) * something(state.data.BGD_E1_E5b)
+end
+
 """
 $(TYPEDSIGNATURES)
 
