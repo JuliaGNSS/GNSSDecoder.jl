@@ -168,7 +168,7 @@ end
 end
 
 # Slots of the per-SVID almanac store that I/NAV (`GalileoINAVData.almanacs`)
-# and F/NAV (`GalileoE5aData.almanacs`) decode into, a
+# and F/NAV (`GalileoFNAVData.almanacs`) decode into, a
 # `SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}`. Nominal SVIDs are
 # 1-36, but the almanac SVID field is 6 bits wide (OS SIS ICD Tables 51-54 and
 # 34-35), so a CRC-valid page can carry any key 1-63. One slot per 6-bit value
@@ -180,7 +180,7 @@ const GALILEO_ALMANAC_SLOTS = 64
 # F/NAV (E5a-I) broadcast the same orbital and clock parameters, so the "all
 # present?" checks are identical and are stated once — on
 # `AbstractGalileoEphemerisData`, the supertype of exactly the Galileo data types
-# that have these fields (`GalileoINAVData`, `GalileoE5aData`).
+# that have these fields (`GalileoINAVData`, `GalileoFNAVData`).
 #
 # `GalileoE6BData` is an `AbstractGalileoData` but deliberately *not* an
 # `AbstractGalileoEphemerisData`: E6-B's C/NAV broadcasts HAS corrections *to*

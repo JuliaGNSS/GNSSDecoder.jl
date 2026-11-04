@@ -43,7 +43,7 @@ the L5 health bit, L2C the L2 health bit). The per-signal aliases
 [`GPSL5IConstants`](@ref) and [`GPSL2CMConstants`](@ref) fix `S`.
 
 The message is modelled through the generic streaming framework:
-`syncro_sequence_length` is the 600-symbol message that is drained once
+`sync_unit_length` is the 600-symbol message that is drained once
 decoded, and `preamble_length` is the 16-symbol encoding of the *next*
 message's preamble retained at the tail of the sync window.
 
@@ -61,7 +61,7 @@ Base.@kwdef struct GPSCNAVConstants{S} <: AbstractGNSSConstants
     """
     Message length drained after each decoded message (600 symbols)
     """
-    syncro_sequence_length::Int = CNAV_MESSAGE_SYMBOLS
+    sync_unit_length::Int = CNAV_MESSAGE_SYMBOLS
     """
     Trailing next-message preamble segment retained for sync (16 symbols)
     """
@@ -302,7 +302,7 @@ CNAV message is identical on both signals).
 Holds the parameters decoded from CNAV message types 10, 11, 12, 13, 14, 15,
 30-37, and 40 (IS-GPS-705J §20.3.3 ≡ IS-GPS-200N §30.3.3). The decoder fills
 fields incrementally as the corresponding message types are received.
-Field-naming follows [`GPSL1C_DData`](@ref) (CNAV-2 broadcasts nearly the same
+Field-naming follows [`GPSCNAV2Data`](@ref) (CNAV-2 broadcasts nearly the same
 parameter set): semi-circle quantities are converted to radians on decode
 (multiplied by π), all `Union{Nothing,…}` until first decoded.
 
@@ -317,8 +317,8 @@ parameter set): semi-circle quantities are converted to radians on decode
 
   - `l1_health::Bool`, `l2_health::Bool`, `l5_health::Bool`: per-band signal
     health (false = OK).
-  - `ura_ed_index::Int64`: Ephemeris URA index (signed).
-  - `ura_ned0_index::Int64`, `ura_ned1_index::Int64`, `ura_ned2_index::Int64`:
+  - `URA_ED_index::Int64`: Ephemeris URA index (signed).
+  - `URA_NED0_index::Int64`, `URA_NED1_index::Int64`, `URA_NED2_index::Int64`:
     Non-elevation-dependent accuracy indices — NED Accuracy, NED Accuracy
     Change, and NED Accuracy Change Rate. Not three interchangeable clock URAs:
     they are the terms of one time-dependent NED bound.
@@ -429,10 +429,10 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     l1_health::Union{Nothing,Bool} = nothing
     l2_health::Union{Nothing,Bool} = nothing
     l5_health::Union{Nothing,Bool} = nothing
-    ura_ed_index::Union{Nothing,Int64} = nothing
-    ura_ned0_index::Union{Nothing,Int64} = nothing
-    ura_ned1_index::Union{Nothing,Int64} = nothing
-    ura_ned2_index::Union{Nothing,Int64} = nothing
+    URA_ED_index::Union{Nothing,Int64} = nothing
+    URA_NED0_index::Union{Nothing,Int64} = nothing
+    URA_NED1_index::Union{Nothing,Int64} = nothing
+    URA_NED2_index::Union{Nothing,Int64} = nothing
 
     WN::Union{Nothing,Int64} = nothing
     t_op::Union{Nothing,Int64} = nothing
@@ -533,10 +533,10 @@ end
     l1_health = data.l1_health,
     l2_health = data.l2_health,
     l5_health = data.l5_health,
-    ura_ed_index = data.ura_ed_index,
-    ura_ned0_index = data.ura_ned0_index,
-    ura_ned1_index = data.ura_ned1_index,
-    ura_ned2_index = data.ura_ned2_index,
+    URA_ED_index = data.URA_ED_index,
+    URA_NED0_index = data.URA_NED0_index,
+    URA_NED1_index = data.URA_NED1_index,
+    URA_NED2_index = data.URA_NED2_index,
     WN = data.WN,
     t_op = data.t_op,
     t_0e = data.t_0e,
@@ -616,10 +616,10 @@ end
         l1_health,
         l2_health,
         l5_health,
-        ura_ed_index,
-        ura_ned0_index,
-        ura_ned1_index,
-        ura_ned2_index,
+        URA_ED_index,
+        URA_NED0_index,
+        URA_NED1_index,
+        URA_NED2_index,
         WN,
         t_op,
         t_0e,
@@ -696,7 +696,7 @@ end
 
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `SlotDictionary` fields even when their contents match. Compare
-# field-by-field (mirrors `GPSL1C_DData`).
+# field-by-field (mirrors `GPSCNAV2Data`).
 Base.:(==)(a::GPSCNAVData, b::GPSCNAVData) = fields_equal(a, b)
 
 """
@@ -836,7 +836,7 @@ broadcasting one for `target`.
 1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI); see `gps_ggto_offset`.
 """
 get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
-    gps_ggto_offset(state, target, state.data.GNSS_ID)
+    gps_ggto_offset(state, target)
 
 function is_decoding_completed_for_positioning(data::GPSCNAVData)
     !isnothing(data.TOW) && is_ephemeris_decoded(data) && is_clock_correction_decoded(data)
@@ -873,7 +873,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GPSCNAVData})
         state;
         raw_data = GPSCNAVData(state.raw_data; TOW = nothing),
         data = GPSCNAVData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -1105,7 +1105,7 @@ end
 Resolve the 180° polarity ambiguity for a GPS CNAV message. `sync::GPSCNAVSync` already
 carries the polarity-resolved message bits from `try_sync`; record the
 polarity on the state and pass the sync object through unchanged for
-`decode_syncro_sequence`.
+`decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GPSCNAVData},
@@ -1117,7 +1117,7 @@ end
 # ---- Message pipeline -------------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
 
 Process one CRC-validated 300-bit CNAV message: parse the common header
 (message type ID at bits 15-20, message TOW count at 21-37, alert flag at
@@ -1125,7 +1125,7 @@ Process one CRC-validated 300-bit CNAV message: parse the common header
 Unknown or reserved message types keep the decoded header but no further
 fields.
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
+function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
     word = sync.word
     word_length = CNAV_MESSAGE_BITS
     message_id = Int(get_bits(word, word_length, 15, 6))
@@ -1194,7 +1194,7 @@ function parse_mt10(raw::GPSCNAVData, word::UInt320)
         l2_health = get_bit(word, word_length, 53),
         l5_health = get_bit(word, word_length, 54),
         t_op = Int64(get_bits(word, word_length, 55, 11)) * 300,
-        ura_ed_index = get_twos_complement_num(word, word_length, 66, 5),
+        URA_ED_index = get_twos_complement_num(word, word_length, 66, 5),
         t_0e = Int64(get_bits(word, word_length, 71, 11)) * 300,
         ΔA = get_twos_complement_num(word, word_length, 82, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 108, 25) * 2.0^-21,
@@ -1239,9 +1239,9 @@ function parse_clock_block(raw::GPSCNAVData, word::UInt320)
     GPSCNAVData(
         raw;
         t_op = Int64(get_bits(word, word_length, 39, 11)) * 300,
-        ura_ned0_index = get_twos_complement_num(word, word_length, 50, 5),
-        ura_ned1_index = Int64(get_bits(word, word_length, 55, 3)),
-        ura_ned2_index = Int64(get_bits(word, word_length, 58, 3)),
+        URA_NED0_index = get_twos_complement_num(word, word_length, 50, 5),
+        URA_NED1_index = Int64(get_bits(word, word_length, 55, 3)),
+        URA_NED2_index = Int64(get_bits(word, word_length, 58, 3)),
         t_0c = Int64(get_bits(word, word_length, 61, 11)) * 300,
         a_f0 = get_twos_complement_num(word, word_length, 72, 26) * 2.0^-35,
         a_f1 = get_twos_complement_num(word, word_length, 98, 20) * 2.0^-48,
@@ -1683,7 +1683,7 @@ function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+            num_bits_since_time_reference = state.constants.preamble_length,
         )
     end
     return state

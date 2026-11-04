@@ -2,7 +2,7 @@ using Test
 using Random
 import Aff3ct
 using GNSSDecoder
-using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSL1C_DData, sync_bch_toi
+using GNSSDecoder: BCH_TOI_CODEWORDS, crc24q, interleave!, GPSCNAV2Data, sync_bch_toi
 
 # ---------------------------------------------------------------------------
 # Synthetic CNAV-2 frame generator (test-only, mirrors the transmit chain).
@@ -96,15 +96,15 @@ function _append_crc!(bits::BitVector, msg_len::Int)
 end
 
 """
-52 hard symbols (0/1) of the BCH(51,8) TOI codeword for `toi` (first symbol first).
+52 hard symbols (0/1) of the BCH(51,8) TOI codeword for `TOI` (first symbol first).
 """
-_toi_symbols(toi::Int) = Int[(BCH_TOI_CODEWORDS[toi+1] >> i) & UInt64(1) for i = 0:51]
+_toi_symbols(TOI::Int) = Int[(BCH_TOI_CODEWORDS[TOI+1] >> i) & UInt64(1) for i = 0:51]
 
 """
 Encode one frame to ±1 Float32 soft symbols given the TOI and the 1748-symbol interleaved payload.
 """
-function _frame_symbols(toi::Int, payload::Vector{Int})
-    bits = vcat(_toi_symbols(toi), payload)
+function _frame_symbols(TOI::Int, payload::Vector{Int})
+    bits = vcat(_toi_symbols(TOI), payload)
     Float32[b == 0 ? 1.0f0 : -1.0f0 for b in bits]
 end
 
@@ -207,7 +207,7 @@ end
         state = decode!(state, stream, length(stream))
 
         # Sync found and TOI tracked monotonically (last validated frame).
-        @test state.data.toi == (toi0 + 2) % 400
+        @test state.data.TOI == (toi0 + 2) % 400
         @test state.is_shifted_by_180_degrees == false
 
         d = state.data
@@ -215,7 +215,7 @@ end
         @test d.ITOW == golden.ITOW
         @test d.t_op == golden.top_raw * 300
         @test d.l1c_health == false
-        @test d.ura_ed_index == golden.ura_ed
+        @test d.URA_ED_index == golden.ura_ed
         @test d.t_0e == golden.toe_raw * 300
         @test d.t_0c == golden.toe_raw * 300            # CNAV-2 shares one reference time
         @test d.e ≈ golden.e_raw * 2.0^-34
@@ -252,7 +252,7 @@ end
         state = GPSL1C_DDecoderState(7)
         state = decode!(state, -stream, length(stream))  # 180° phase flip ⇒ negate all symbols
         @test state.is_shifted_by_180_degrees == true
-        @test state.data.toi == (toi0 + 2) % 400
+        @test state.data.TOI == (toi0 + 2) % 400
         @test state.data.WN == golden.WN
         @test state.data.M_0 ≈ golden.M0_raw * 2.0^-32 * GNSSDecoder.GNSS_PI
     end
@@ -264,7 +264,7 @@ end
         state = decode!(state, build_stream(90, 4, bad_payload), 4 * 1800)
         # SF2 fields never populated; data never validated; no exception thrown.
         @test state.raw_data.WN === nothing
-        @test state.data == GPSL1C_DData()
+        @test state.data == GPSCNAV2Data()
         # SF3 page still counted (CRC of SF3 is independent of the SF2 corruption).
         @test state.raw_data.num_sf3_pages_received >= 1
     end
@@ -274,18 +274,18 @@ end
         @test state.data.WN == golden.WN
 
         reset = reset_decoder_state!(state)
-        @test reset.data == GPSL1C_DData()                 # validated data cleared
+        @test reset.data == GPSCNAV2Data()                 # validated data cleared
         @test reset.raw_data.WN == golden.WN               # long-lived CED preserved
-        @test reset.raw_data.toi === nothing               # in-flight TOI cleared
+        @test reset.raw_data.TOI === nothing               # in-flight TOI cleared
         @test reset.raw_data.ITOW === nothing              # paired with the TOI
         @test isempty(reset.cache.soft_buffer)             # soft-symbol deque drained
-        @test reset.num_bits_after_valid_syncro_sequence === nothing
+        @test reset.num_bits_since_time_reference === nothing
         @test reset.is_shifted_by_180_degrees == false
     end
 
     @testset "TOI discontinuity mid-stream resets without crashing" begin
         # A locked frame establishes a decoded TOI (137); a later frame whose
-        # TOI does not follow by +1 (200) makes `decode_syncro_sequence` reset
+        # TOI does not follow by +1 (200) makes `decode_sync_unit` reset
         # the decoder mid-stream, which empties the soft-symbol deque. The
         # generic `decode` loop then runs `drain_after_sync!` unconditionally —
         # before the drain was clamped to `length(deque)` this `popfirst!`'d an
@@ -300,8 +300,8 @@ end
             crashed = true
         end
         @test !crashed                                     # regression: no BoundsError
-        @test state.data == GPSL1C_DData()                 # validated data cleared by reset
-        @test state.raw_data.toi === nothing               # in-flight TOI cleared
+        @test state.data == GPSCNAV2Data()                 # validated data cleared by reset
+        @test state.raw_data.TOI === nothing               # in-flight TOI cleared
         @test state.raw_data.WN == golden.WN               # long-lived CED preserved
 
         # And the decoder recovers: a subsequent run of consecutive frames
@@ -309,21 +309,21 @@ end
         # depends on residual buffer alignment after the reset, so only assert
         # that sync was re-acquired and the golden fields decode.)
         state = decode!(state, build_stream(300, 4, payload), 4 * 1800)
-        @test state.data.toi !== nothing
+        @test state.data.TOI !== nothing
         @test state.data.WN == golden.WN
         @test state.data.M_0 ≈ golden.M0_raw * 2.0^-32 * GNSSDecoder.GNSS_PI
     end
 
     @testset "Cold start at TOI ≥ 256 resolves the BCH complement branch" begin
         # The BCH(51,8) construction XORs the TOI's MSB over the whole codeword,
-        # so `sync_bch_toi` cannot tell (toi, pol) from (toi + 256, !pol) and
+        # so `sync_bch_toi` cannot tell (TOI, pol) from (TOI + 256, !pol) and
         # always reports the *low* branch. An unflipped stream whose true TOI is
         # ≥ 256 — 43 minutes of every two-hour interval — therefore reaches
-        # `decode_syncro_sequence` mislabelled as (toi − 256, flipped), and the
+        # `decode_sync_unit` mislabelled as (TOI − 256, flipped), and the
         # decoder has to undo that or publish a time 256·18 s = 76.8 min early.
         toi0 = 300
         sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])
-        @test sync.toi == toi0 - 256 && sync.polarity_flipped   # the premise
+        @test sync.TOI == toi0 - 256 && sync.polarity_flipped   # the premise
 
         # A frame that fails CRC-24Q under either branch: the retry cannot help,
         # so whatever TOI comes out of the second frame is continuity's alone.
@@ -338,7 +338,7 @@ end
         # settled by retrying subframe 2's LDPC+CRC under the complement — the
         # only in-band oracle for the pair.
         state = decode!(GPSL1C_DDecoderState(7), stream, 1800 + 52)
-        @test state.data.toi == toi0
+        @test state.data.TOI == toi0
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
         @test state.data.ITOW == golden.ITOW
@@ -348,15 +348,15 @@ end
         # continuity resolves on its own — here it must, its subframe 2 being
         # undecodable in both polarities.
         state = decode!(state, stream[1853:end], length(stream) - 1852)
-        @test state.data.toi == toi0 + 1
+        @test state.data.TOI == toi0 + 1
         @test state.is_shifted_by_180_degrees == false
         @test state.raw_data.WN == golden.WN   # kept from the previous frame
         @test get_broadcast_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 1) * 18
     end
 
     @testset "ITOW carries across the interval boundary when subframe 2 fails" begin
-        # The frame at `toi = 0` still broadcasts the old interval's ITOW; the
-        # one at `toi = 1` is the first with the new one. When subframe 2 fails
+        # The frame at `TOI = 0` still broadcasts the old interval's ITOW; the
+        # one at `TOI = 1` is the first with the new one. When subframe 2 fails
         # from that frame on, the held ITOW is the old interval's, so the
         # decoder must carry it or publish a time exactly 7200 s low.
         undecodable = build_payload(build_sf2_bits(corrupt = true), sf3_info)
@@ -369,32 +369,32 @@ end
             _frame_symbols(3, payload)[1:52],
         )
         state = decode!(GPSL1C_DDecoderState(7), stream, 3 * 1800 + 52)
-        @test state.data.toi == 0
+        @test state.data.TOI == 0
         @test state.data.ITOW == golden.ITOW
         @test get_broadcast_time_of_week(state) == (golden.ITOW + 1) * 7200
 
         state = decode!(state, stream[(3*1800+53):end], length(stream) - (3 * 1800 + 52))
-        @test state.data.toi == 2
+        @test state.data.TOI == 2
         @test state.data.ITOW == golden.ITOW + 1
         @test get_broadcast_time_of_week(state) == (golden.ITOW + 1) * 7200 + 2 * 18
 
         # The carry wraps with the week: ITOW 83 is followed by ITOW 0.
         state = decode!(GPSL1C_DDecoderState(7), stream[1:(3*1800+52)], 3 * 1800 + 52)
-        state = GNSSDecoderState(state; raw_data = GPSL1C_DData(state.raw_data; ITOW = 83))
+        state = GNSSDecoderState(state; raw_data = GPSCNAV2Data(state.raw_data; ITOW = 83))
         state = decode!(state, stream[(3*1800+53):(4*1800+52)], 1800)
-        @test state.raw_data.toi == 1
+        @test state.raw_data.TOI == 1
         @test state.raw_data.ITOW == 0
     end
 
     @testset "Control: an unambiguous TOI ≤ 143 decodes on the first branch" begin
-        # Below 256 an unflipped stream is reported as (toi, unflipped) and
+        # Below 256 an unflipped stream is reported as (TOI, unflipped) and
         # subframe 2 clears on the first attempt — the complement retry must not
         # disturb the case it was added for the sake of.
         toi0 = 100
         sync = sync_bch_toi(BCH_TOI_CODEWORDS[toi0+1], BCH_TOI_CODEWORDS[toi0+2])
-        @test sync.toi == toi0 && !sync.polarity_flipped
+        @test sync.TOI == toi0 && !sync.polarity_flipped
         state = decode!(GPSL1C_DDecoderState(7), build_stream(toi0, 4, payload), 4 * 1800)
-        @test state.data.toi == toi0 + 2
+        @test state.data.TOI == toi0 + 2
         @test state.is_shifted_by_180_degrees == false
         @test state.data.WN == golden.WN
         @test get_broadcast_time_of_week(state) == golden.ITOW * 7200 + (toi0 + 2) * 18
@@ -405,7 +405,7 @@ end
     # Hand-pack a 274-bit SF3 info block (250 message bits + 24-bit CRC) with a
     # known page number + golden fields, LDPC-encode it alongside a valid SF2,
     # interleave, and round-trip through `decode`, then assert the decoded
-    # `GPSL1C_DData` fields equal the known values with the ICD scale factors.
+    # `GPSCNAV2Data` fields equal the known values with the ICD scale factors.
 
     """
     Finalise a 274-bit SF3 block: append CRC over bits 1-250 and return Int32 vector.
@@ -498,7 +498,7 @@ end
         st = decode_with_sf3(build_sf3_page(7, 2) do b
             # GGTO — synthetic non-zero values (the capture carries no GGTO data:
             # GNSS ID = 0, all coefficients 0), kept to exercise the GGTO scaling.
-            _setbits!(b, 15, 3, 1)             # GGTO_ID = Galileo
+            _setbits!(b, 15, 3, 1)             # GNSS_ID = Galileo
             _setbits!(b, 18, 16, 50)           # tGGTO (scale 2^4)
             _setbits!(b, 34, 13, 2100)         # WNGGTO
             _setbits!(b, 47, 16, 800)          # A0GGTO
@@ -514,7 +514,7 @@ end
             _setbits!(b, 202, 19, -15502)      # ΔUT_GPS_dot  -> -0.00046199560165405273
         end)
         d = st.data
-        @test d.GGTO_ID == 1
+        @test d.GNSS_ID == 1
         @test d.t_GGTO == 50 * 16
         @test d.WN_GGTO == 2100
         @test d.A_0GGTO ≈ 800 * 2.0^-35
@@ -773,7 +773,7 @@ end
         # The recording starts at TOI 1; the 69th frame cannot complete (its
         # validation needs the next frame's 52 BCH symbols), so the last
         # completed subframe carries TOI 68.
-        @test state.data.toi == 68
+        @test state.data.TOI == 68
 
         # Polarity-inverted stream must decode identically with the
         # 180°-flip flag set.
@@ -795,7 +795,7 @@ end
         @test d2.WN == 2106
         @test d2.ITOW == 36
         @test d2.t_0e == 264600
-        @test d2.toi == 68
+        @test d2.TOI == 68
         @test is_sat_healthy(state2)
         @test d2.Ω_0 != d1.Ω_0  # PRN 2 broadcasts its own ephemeris ...
         # ... consistent (at almanac quantisation) with PRN 2's midi-almanac
@@ -852,7 +852,7 @@ end
         @test is_decoding_completed_for_positioning(state)
         # The cold start at TOI ≥ 256 comes after the reset with subframe 2
         # unchanged in `raw_data` — the complement retry must still settle it.
-        @test state.data.toi == 303
+        @test state.data.TOI == 303
         @test !state.is_shifted_by_180_degrees
         d = state.raw_data
         @test length(d.reduced_almanacs) == 31

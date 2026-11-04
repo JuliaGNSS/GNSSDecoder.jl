@@ -48,7 +48,7 @@ end
         @test state_a.prn == 13
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()
-        @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state_a.num_bits_since_time_reference)
         @test !state_a.is_shifted_by_180_degrees
     end
 
@@ -95,7 +95,7 @@ end
         @test d.l2_health == false
         @test d.l5_health == false
         @test d.t_op == 30_000
-        @test d.ura_ed_index == 0
+        @test d.URA_ED_index == 0
         @test d.t_0e == 30_000
         @test d.ΔA == 0.0
         @test d.A_dot == 0.0
@@ -131,7 +131,7 @@ end
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.data.TOW)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_bits_since_time_reference)
         @test !state.is_shifted_by_180_degrees
         # raw_data keeps WN, ephemeris fields, etc.
         @test state.raw_data.WN == 2345
@@ -156,7 +156,7 @@ end
         @test d.l2_health == false
         @test d.l5_health == false
         @test d.t_op == 259200
-        @test d.ura_ed_index == 0
+        @test d.URA_ED_index == 0
         @test d.t_0e == 264600
         @test d.ΔA ≈ 922.048828125
         @test d.A_dot ≈ 0.0
@@ -181,9 +181,9 @@ end
         @test d.C_uc ≈ 1.0002404451370239e-6
 
         # Message types 30-37 — shared clock block.
-        @test d.ura_ned0_index == 0
-        @test d.ura_ned1_index == 0
-        @test d.ura_ned2_index == 0
+        @test d.URA_NED0_index == 0
+        @test d.URA_NED1_index == 0
+        @test d.URA_NED2_index == 0
         @test d.t_0c == 264600
         @test d.a_f0 ≈ 6.4874766394495964e-6
         @test d.a_f1 ≈ 1.0324008314910316e-9

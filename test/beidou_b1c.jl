@@ -36,11 +36,11 @@ Hard bits (first-transmitted first) of a packed codeword.
 _cw_bits(cw::UInt64, len::Int) = [Int((cw >> i) & 1) for i = 0:(len-1)]
 
 """
-72 subframe-1 bits for (prn, soh): BCH(21,6) PRN codeword then BCH(51,8) SOH codeword.
+72 subframe-1 bits for (prn, SOH): BCH(21,6) PRN codeword then BCH(51,8) SOH codeword.
 """
-_b1c_sf1_bits(prn::Int, soh::Int) = vcat(
+_b1c_sf1_bits(prn::Int, SOH::Int) = vcat(
     _cw_bits(GNSSDecoder.b1c_prn_codeword(prn), 21),
-    _cw_bits(GNSSDecoder.b1c_soh_codeword(soh), 51),
+    _cw_bits(GNSSDecoder.b1c_soh_codeword(SOH), 51),
 )
 
 """
@@ -107,13 +107,13 @@ One 1800-symbol frame as ±1 Float32 soft symbols.
 """
 function _b1c_frame_symbols(
     prn::Int,
-    soh::Int,
+    SOH::Int,
     sf2_bits::AbstractVector{Bool},
     sf3_bits::AbstractVector{Bool},
 )
     sf2_enc = _b1c_ldpc_encode_bits(BEIDOU_LDPC_CODES.bcnv1_sf2, sf2_bits)
     sf3_enc = _b1c_ldpc_encode_bits(BEIDOU_LDPC_CODES.bcnv1_sf3, sf3_bits)
-    bits = vcat(_b1c_sf1_bits(prn, soh), _b1c_interleave(sf2_enc, sf3_enc))
+    bits = vcat(_b1c_sf1_bits(prn, SOH), _b1c_interleave(sf2_enc, sf3_enc))
     Float32[b == 0 ? 1.0f0 : -1.0f0 for b in bits]
 end
 
@@ -339,9 +339,9 @@ end
             bits = _cw_bits(GNSSDecoder.b1c_prn_codeword(p), 21)
             @test foldl((a, b) -> 2a + b, bits[1:6]) == p
         end
-        for soh = 0:199
-            bits = _cw_bits(GNSSDecoder.b1c_soh_codeword(soh), 51)
-            @test foldl((a, b) -> 2a + b, bits[1:8]) == soh
+        for SOH = 0:199
+            bits = _cw_bits(GNSSDecoder.b1c_soh_codeword(SOH), 51)
+            @test foldl((a, b) -> 2a + b, bits[1:8]) == SOH
         end
         # LFSR recurrence with the ICD characteristic polynomials: for
         # g21,6 = x⁶+x⁴+x²+x+1, c[i+6] = c[i+4] ⊻ c[i+2] ⊻ c[i+1] ⊻ c[i];
@@ -351,8 +351,8 @@ end
             c = _cw_bits(GNSSDecoder.b1c_prn_codeword(p), 21)
             @test all(c[i+7] == c[i+5] ⊻ c[i+3] ⊻ c[i+2] ⊻ c[i+1] for i = 0:14)
         end
-        for soh = 0:199
-            c = _cw_bits(GNSSDecoder.b1c_soh_codeword(soh), 51)
+        for SOH = 0:199
+            c = _cw_bits(GNSSDecoder.b1c_soh_codeword(SOH), 51)
             @test all(
                 c[i+9] == c[i+8] ⊻ c[i+5] ⊻ c[i+4] ⊻ c[i+3] ⊻ c[i+2] ⊻ c[i+1] for i = 0:42
             )
@@ -404,9 +404,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = 0))
+        @test !GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = 0))
         @test all(
-            GNSSDecoder.is_subframe2_decoded(BeiDouB1CData(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = t)) for t = 1:3
         )
         @test !state.is_shifted_by_180_degrees
         # The SOH stamps the leading edge of *this* subframe 1 (ICD §7.3), so
@@ -414,9 +414,9 @@ end
         # subframe 1: 1800 + 72 = 1872 symbols = 18.72 s at 100 sps. (GPS
         # L1C-D's TOI stamps the *next* frame and anchors to 52 alone; using
         # that convention here would report the time a full 18 s early.)
-        @test state.num_bits_after_valid_syncro_sequence == 1872
+        @test state.num_bits_since_time_reference == 1872
         # The last decoded frame carried SOH = 60.
-        @test d.soh == 60
+        @test d.SOH == 60
         @test d.WN == 800
         @test d.HOW == 101
         @test d.IODC == 517
@@ -540,7 +540,7 @@ end
         )
         state = decode!(BeiDouB1CDecoderState(prn), -stream, length(stream))
         @test state.is_shifted_by_180_degrees
-        @test state.data.soh == 10
+        @test state.data.SOH == 10
         @test state.data.WN == 800
         @test is_decoding_completed_for_positioning(state)
     end
@@ -569,7 +569,7 @@ end
         )
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test isnothing(state.raw_data.WN)          # SF2 dropped
-        @test state.raw_data.soh == 10              # sync still locked
+        @test state.raw_data.SOH == 10              # sync still locked
         @test state.raw_data.num_sf3_pages_received == 1   # SF3 decoded
         @test state.raw_data.HS == 0
         @test !is_decoding_completed_for_positioning(state)  # promotion gated
@@ -594,13 +594,13 @@ end
             _b1c_frame_symbols(prn, 53, sf2, sf3)[1:72],
         )
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
-        @test state.raw_data.soh == 52
+        @test state.raw_data.SOH == 52
         @test is_decoding_completed_for_positioning(state)
     end
 
     @testset "HOW carries across the SOH wrap when subframe 2 is lost" begin
-        # `soh` advances with every locked frame, but `HOW` only refreshes when
-        # a subframe 2 clears LDPC+CRC. The one frame in 200 that wraps `soh`
+        # `SOH` advances with every locked frame, but `HOW` only refreshes when
+        # a subframe 2 clears LDPC+CRC. The one frame in 200 that wraps `SOH`
         # 199 → 0 with a noisy subframe 2 therefore has to carry the hour
         # itself, or `get_broadcast_time_of_week` publishes a time exactly 3600 s low.
         sf2 = Bool.(_golden_sf2_bits())
@@ -615,7 +615,7 @@ end
             _b1c_frame_symbols(prn, 0, lost_sf2, sf3)[1:72],
         )
         state = decode!(BeiDouB1CDecoderState(prn), head, length(head))
-        @test state.data.soh == 199
+        @test state.data.SOH == 199
         @test state.data.HOW == _B1C_G.HOW
         @test get_broadcast_time_of_week(state) == _B1C_G.HOW * 3600 + 199 * 18
 
@@ -627,7 +627,7 @@ end
             _b1c_frame_symbols(prn, 1, sf2, sf3)[1:72],
         )
         state = decode!(state, rest, length(rest))
-        @test state.data.soh == 0
+        @test state.data.SOH == 0
         @test state.data.HOW == _B1C_G.HOW + 1
         # One frame is 18 s: the wrap must step the time forward by 18 s, not
         # back by 3582 s to the start of the hour just left.
@@ -701,7 +701,7 @@ end
                 corrupt_sf1(clean, n_prn, n_soh),
                 length(clean),
             )
-            @test state.raw_data.soh == 10
+            @test state.raw_data.SOH == 10
             @test is_decoding_completed_for_positioning(state)
         end
         # One past either radius leaves the word closer to no codeword than the
@@ -712,7 +712,7 @@ end
                 corrupt_sf1(clean, n_prn, n_soh),
                 length(clean),
             )
-            @test isnothing(state.raw_data.soh)
+            @test isnothing(state.raw_data.SOH)
         end
     end
 
@@ -728,11 +728,11 @@ end
                 _b1c_frame_symbols(p, 34, sf2, sf3)[1:72],
             )
             state = decode!(BeiDouB1CDecoderState(p), stream, length(stream))
-            @test state.raw_data.soh == 33
+            @test state.raw_data.SOH == 33
             @test is_decoding_completed_for_positioning(state)
             # And inverted, since polarity is resolved from this PRN's codeword.
             flipped = decode!(BeiDouB1CDecoderState(p), -stream, length(stream))
-            @test flipped.raw_data.soh == 33
+            @test flipped.raw_data.SOH == 33
             @test flipped.is_shifted_by_180_degrees
         end
     end
@@ -745,7 +745,7 @@ end
             _b1c_frame_symbols(prn, 11, sf2, sf3)[1:72],
         )
         state = decode!(BeiDouB1CDecoderState(prn + 1), stream, length(stream))
-        @test isnothing(state.raw_data.soh)
+        @test isnothing(state.raw_data.SOH)
         @test state.raw_data.num_sf3_pages_received == 0
         @test !is_decoding_completed_for_positioning(state)
     end
@@ -763,15 +763,15 @@ end
         old = BeiDouB1CDecoderState(prn)
         rebound = GNSSDecoderState(
             prn + 1,
-            BeiDouB1CData(),
-            BeiDouB1CData(),
+            BeiDouCNAV1Data(),
+            BeiDouCNAV1Data(),
             old.constants,
             old.cache,
             nothing,
             false,
         )
         state = decode!(rebound, stream, length(stream))
-        @test state.raw_data.soh == 10
+        @test state.raw_data.SOH == 10
         @test is_decoding_completed_for_positioning(state)
     end
 
@@ -814,15 +814,15 @@ end
         state = decode!(BeiDouB1CDecoderState(prn), stream, length(stream))
         @test is_decoding_completed_for_positioning(state)
         state = reset_decoder_state!(state)
-        @test isnothing(state.raw_data.soh)
-        # `HOW` is cleared with `soh`: the two only mean a time as a pair, and an
+        @test isnothing(state.raw_data.SOH)
+        # `HOW` is cleared with `SOH`: the two only mean a time as a pair, and an
         # outage can span any number of hour boundaries, so a kept `HOW` re-paired
-        # with a fresh `soh` would date the first re-locked frames hours in the past.
+        # with a fresh `SOH` would date the first re-locked frames hours in the past.
         @test isnothing(state.raw_data.HOW)
         @test isnothing(get_broadcast_time_of_week(state.raw_data))
         @test state.raw_data.WN == 800   # ephemeris survives for warm re-lock
         @test isnothing(state.data.WN)   # validated data cleared
-        @test GNSSDecoder.num_bits_buffered(state) == 0
+        @test GNSSDecoder.num_symbols_buffered(state) == 0
     end
 end
 

@@ -40,7 +40,7 @@ const TOI_RANGE = 400  # 9-bit modulo-400 counter
 # The BCH(51,8) construction XORs the TOI's MSB (weight 256) over the whole
 # codeword, so `codeword(t + 256) == ~codeword(t)`: a hard-decision match cannot
 # tell (TOI, polarity) from (TOI + 256, flipped polarity) whenever both are in
-# range. The consumer resolves the pair — see `decode_syncro_sequence` in
+# range. The consumer resolves the pair — see `decode_sync_unit` in
 # `src/gps/l1c_d.jl`.
 const TOI_COMPLEMENT_OFFSET = 256
 
@@ -107,15 +107,15 @@ const BCH_TOI_CODEWORDS = ntuple(i -> _toi_codeword(i - 1), TOI_RANGE)
 # ---- Sync detector ----------------------------------------------------------
 
 """
-    BCHToiSync(toi::Int, polarity_flipped::Bool)
+    BCHToiSync(TOI::Int, polarity_flipped::Bool)
 
-Result of a successful multi-subframe BCH(51,8) sync. `toi` is the TOI value
+Result of a successful multi-subframe BCH(51,8) sync. `TOI` is the TOI value
 of the *first* of the two subframes that matched. `polarity_flipped == true`
 means the receiver is Costas-locked 180° off and every bit must be
 inverted before downstream processing.
 """
 struct BCHToiSync
-    toi::Int
+    TOI::Int
     polarity_flipped::Bool
 end
 
@@ -155,10 +155,10 @@ the receiver passes, via `pack_bits_lsb_first` (`src/gnss.jl`) — or an iterabl
 *Soft* symbols are not accepted: hard-slicing them is the deque reader's job,
 one step earlier.
 
-Returns a [`BCHToiSync`](@ref) for the *lowest* `toi ∈ 0..399` that makes
+Returns a [`BCHToiSync`](@ref) for the *lowest* `TOI ∈ 0..399` that makes
 either:
 
-  - `first52 == BCH_TOI_CODEWORDS[toi]` and `next52 == BCH_TOI_CODEWORDS[(toi+1) mod 400]`
+  - `first52 == BCH_TOI_CODEWORDS[TOI]` and `next52 == BCH_TOI_CODEWORDS[(TOI+1) mod 400]`
     — reported as `polarity_flipped == false`, or
   - the bitwise complement of `first52` and `next52` matching the same
     pair — reported as `polarity_flipped == true` (Costas-lock 180° off).
@@ -171,7 +171,7 @@ is the bitwise complement of the codeword for `t` (whenever both are in
 range). The receiver therefore cannot tell apart "TOI=`t`, no flip" from
 "TOI=`t + 256`, with flip" for `t ∈ 0..143`, and this function always
 reports the *low* branch (following PocketSDR's `sync_CNV2_frame` match
-order). The caller must resolve the pair: `decode_syncro_sequence` in
+order). The caller must resolve the pair: `decode_sync_unit` in
 `src/gps/l1c_d.jl` does it by TOI continuity with the previous frame
 when one is held, and otherwise by trying subframe 2's LDPC+CRC under
 both branches — the CRC is the only in-band oracle. A consumer that
@@ -186,14 +186,14 @@ function sync_bch_toi(first52, next52)
     next_word = _as_hard_codeword(next52)
     first_word_inverted = first_word ⊻ TOI_BCH_MASK52
     next_word_inverted = next_word ⊻ TOI_BCH_MASK52
-    @inbounds for toi = 0:(TOI_RANGE-1)
-        codeword_toi = BCH_TOI_CODEWORDS[toi+1]
-        codeword_next_toi = BCH_TOI_CODEWORDS[((toi+1)%TOI_RANGE)+1]
+    @inbounds for TOI = 0:(TOI_RANGE-1)
+        codeword_toi = BCH_TOI_CODEWORDS[TOI+1]
+        codeword_next_toi = BCH_TOI_CODEWORDS[((TOI+1)%TOI_RANGE)+1]
         if first_word == codeword_toi && next_word == codeword_next_toi
-            return BCHToiSync(toi, false)
+            return BCHToiSync(TOI, false)
         elseif first_word_inverted == codeword_toi &&
                next_word_inverted == codeword_next_toi
-            return BCHToiSync(toi, true)
+            return BCHToiSync(TOI, true)
         end
     end
     return nothing

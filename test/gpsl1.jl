@@ -22,29 +22,28 @@ const GPSL1DATA = [
           state_1.raw_data == state_2.raw_data &&
           state_1.data == state_2.data &&
           state_1.constants == state_2.constants &&
-          state_1.num_bits_after_valid_syncro_sequence ==
-          state_2.num_bits_after_valid_syncro_sequence &&
+          state_1.num_bits_since_time_reference == state_2.num_bits_since_time_reference &&
           state_1.is_shifted_by_180_degrees == state_2.is_shifted_by_180_degrees
 end
 
 @testset "GPS L1 C/A sync primitives" begin
     decoder = GPSL1CADecoderState(1)
     @test decoder.prn == 1
-    @test GNSSDecoder.num_bits_buffered(decoder) == 0
-    @test isnothing(decoder.num_bits_after_valid_syncro_sequence)
+    @test GNSSDecoder.num_symbols_buffered(decoder) == 0
+    @test isnothing(decoder.num_bits_since_time_reference)
     @test GNSSDecoder.calc_preamble_mask(decoder.constants) == 0b11111111
 
     # Push one soft symbol (positive ⇒ bit 0)
     state = GNSSDecoder.push_soft_symbol!(decoder, 1.0f0)
-    @test GNSSDecoder.num_bits_buffered(state) == 1
-    @test isnothing(state.num_bits_after_valid_syncro_sequence)
-    @test GNSSDecoder.is_enough_buffered_bits_to_decode(state) == false
+    @test GNSSDecoder.num_symbols_buffered(state) == 1
+    @test isnothing(state.num_bits_since_time_reference)
+    @test GNSSDecoder.is_enough_buffered_symbols_to_decode(state) == false
 
     constants = GNSSDecoder.GPSL1CAConstants()
     @test constants.preamble == 0b10001011
     @test constants.preamble_length == 8
     @test constants.word_length == 30
-    @test constants.syncro_sequence_length == 300
+    @test constants.sync_unit_length == 300
 
     # Build a 308-symbol soft buffer: preamble | 292 zeros | preamble.
     # Use the package's UInt320 directly to avoid promotion mismatches against
@@ -57,7 +56,7 @@ end
         s -> GNSSDecoder.push_soft_symbol!(decoder, s),
         to_soft_symbols(raw_buffer, 308),
     )
-    @test GNSSDecoder.is_enough_buffered_bits_to_decode(decoder) == true
+    @test GNSSDecoder.is_enough_buffered_symbols_to_decode(decoder) == true
     # try_sync returns the packed buffer on a match (or nothing), rather than
     # stashing it in mutable cache state.
     buffer = GNSSDecoder.try_sync(decoder)
@@ -80,7 +79,7 @@ end
     @test state.is_shifted_by_180_degrees == true
     @test resolved_buffer == ~raw_buffer
 
-    # get_word reads the polarity-resolved buffer that decode_syncro_sequence
+    # get_word reads the polarity-resolved buffer that decode_sync_unit
     # sees after sync. Pass a known buffer and check the word extraction.
     decoder = GPSL1CADecoderState(1)
     buffer =
@@ -259,14 +258,14 @@ end
             ) for prn in prns
         ],
     )
-    test_data = GNSSDecoder.GPSL1CAData(;
+    test_data = GNSSDecoder.GPSLNAVData(;
         last_subframe_id = 3,
         integrity_status_flag = false,
         TOW = 43333 * 6,
         alert_flag = false,
         anti_spoof_flag = false,
         # Rebased to preamble_length at every data promotion (see promote_data)
-        num_bits_after_valid_syncro_sequence_after_last_TOW = 8,
+        tow_anchor_bit_count = 8,
         WN = 58,
         code_on_L2 = 1,
         URA_index = 0,
@@ -278,7 +277,7 @@ end
         a_f2 = 2.9976021664879227e-15,
         a_f1 = 1.0431904229335487e-9,
         a_f0 = 8.355360478162766e-6,
-        IODE_Sub_2 = 1,
+        IODE_subframe2 = 1,
         C_rs = 6,
         Δn = 1.1702987476403108e-8,
         M_0 = 0.7425089733705321,
@@ -296,7 +295,7 @@ end
         C_rc = 5,
         ω = -1.2294114827458582,
         Ω_dot = 3.1415915741848384e-7,
-        IODE_Sub_3 = 1,
+        IODE_subframe3 = 1,
         i_dot = 3.142988060925545e-10,
         α_0 = 4.6566128730773926e-9,
         α_1 = 1.4901161193847656e-8,
@@ -332,7 +331,7 @@ end
     )
     @test all(
         field -> getfield(state.data, field) == getfield(test_data, field),
-        fieldnames(GNSSDecoder.GPSL1CAData),
+        fieldnames(GNSSDecoder.GPSLNAVData),
     )
     @test is_sat_healthy(state) == true
 
@@ -346,7 +345,7 @@ end
     )
     @test all(
         field -> getfield(state.data, field) == getfield(test_data, field),
-        fieldnames(GNSSDecoder.GPSL1CAData),
+        fieldnames(GNSSDecoder.GPSLNAVData),
     )
     @test is_sat_healthy(state) == true
 
@@ -355,19 +354,19 @@ end
     state = GNSSDecoder.confirm_data(state, max_vote)
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
+        raw_data = GNSSDecoder.GPSLNAVData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
+        raw_data = GNSSDecoder.GPSLNAVData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic # erroneous data not accepted
     state = GNSSDecoder.GNSSDecoderState(
         state;
-        raw_data = GNSSDecoder.GPSL1CAData(state.data, C_ic = state.data.C_ic+1),
+        raw_data = GNSSDecoder.GPSLNAVData(state.data, C_ic = state.data.C_ic+1),
     )
     state = GNSSDecoder.confirm_data(state, max_vote)
     @test state.data.C_ic == test_data.C_ic+1 # erroneous data accepted as it has been provided more often than true data
@@ -391,7 +390,7 @@ end
             state;
             cache = GNSSDecoder.GPSL1CACache(),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_empty_cache)
         @test result.data == base_data  # data is used
@@ -402,18 +401,18 @@ end
 
     # Branch 2: Same IODC but different data - adds to cache, doesn't use data yet
     @testset "same IODC different data - adds to cache, doesn't use" begin
-        existing_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
+        existing_data = GNSSDecoder.GPSLNAVData(base_data; C_ic = base_data.C_ic + 1.0)
         state_with_cache = GNSSDecoder.GNSSDecoderState(
             state;
             cache = GNSSDecoder.GPSL1CACache([
-                GNSSDecoder.VotedGPSL1CAData(5, existing_data),
+                GNSSDecoder.VotedGPSLNAVData(5, existing_data),
             ]),
             raw_data = base_data,  # different data, same IODC
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_with_cache)
-        @test result.data == GNSSDecoder.GPSL1CAData()  # data NOT used (empty)
-        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
+        @test result.data == GNSSDecoder.GPSLNAVData()  # data NOT used (empty)
+        @test result.raw_data == GNSSDecoder.GPSLNAVData()  # raw_data reset
         @test length(result.cache.old_data) == 2  # new entry added
         @test result.cache.old_data[2].vote == 0  # new entry has vote 0
         @test result.cache.old_data[2].data == base_data
@@ -421,20 +420,20 @@ end
 
     # Branch 3: Matching entry exists but another entry has higher score - rejects data
     @testset "matching entry with lower score than best - rejects data" begin
-        high_score_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
+        high_score_data = GNSSDecoder.GPSLNAVData(base_data; C_ic = base_data.C_ic + 1.0)
         low_score_data = base_data
         state_with_competing = GNSSDecoder.GNSSDecoderState(
             state;
             cache = GNSSDecoder.GPSL1CACache([
-                GNSSDecoder.VotedGPSL1CAData(10, high_score_data),  # higher score
-                GNSSDecoder.VotedGPSL1CAData(2, low_score_data),    # lower score, matches raw_data
+                GNSSDecoder.VotedGPSLNAVData(10, high_score_data),  # higher score
+                GNSSDecoder.VotedGPSLNAVData(2, low_score_data),    # lower score, matches raw_data
             ]),
             raw_data = base_data,  # matches low_score_data
             data = high_score_data,  # currently using high score data
         )
         result = GNSSDecoder.confirm_data(state_with_competing)
         @test result.data == high_score_data  # data NOT changed (still high score data)
-        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
+        @test result.raw_data == GNSSDecoder.GPSLNAVData()  # raw_data reset
         @test result.cache.old_data[2].vote == 3  # vote incremented from 2 to 3
     end
 
@@ -442,9 +441,9 @@ end
     @testset "matching entry with best score - uses data" begin
         state_with_match = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(5, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSLNAVData(5, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_with_match)
         @test result.data == base_data  # data is used
@@ -453,15 +452,15 @@ end
 
     # Branch 5: Matching entry at max_vote - removes other entries
     @testset "max_vote reached - removes other entries" begin
-        other_data = GNSSDecoder.GPSL1CAData(base_data; C_ic = base_data.C_ic + 1.0)
+        other_data = GNSSDecoder.GPSLNAVData(base_data; C_ic = base_data.C_ic + 1.0)
         state_at_max = GNSSDecoder.GNSSDecoderState(
             state;
             cache = GNSSDecoder.GPSL1CACache([
-                GNSSDecoder.VotedGPSL1CAData(20, base_data),  # already at max_vote (20)
-                GNSSDecoder.VotedGPSL1CAData(5, other_data),  # should be removed
+                GNSSDecoder.VotedGPSLNAVData(20, base_data),  # already at max_vote (20)
+                GNSSDecoder.VotedGPSLNAVData(5, other_data),  # should be removed
             ]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_at_max)
         @test result.data == base_data  # data is used
@@ -474,9 +473,9 @@ end
     @testset "max_vote reached with single entry - keeps entry" begin
         state_single_max = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(19, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSLNAVData(19, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_single_max)
         @test result.data == base_data
@@ -488,9 +487,9 @@ end
     @testset "vote capped at max_vote" begin
         state_at_max = GNSSDecoder.GNSSDecoderState(
             state;
-            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSL1CAData(20, base_data)]),
+            cache = GNSSDecoder.GPSL1CACache([GNSSDecoder.VotedGPSLNAVData(20, base_data)]),
             raw_data = base_data,
-            data = GNSSDecoder.GPSL1CAData(),
+            data = GNSSDecoder.GPSLNAVData(),
         )
         result = GNSSDecoder.confirm_data(state_at_max)
         @test result.cache.old_data[1].vote == 20  # stays at max, doesn't overflow
@@ -498,19 +497,19 @@ end
 
     # Edge case: Different IODC added to non-empty cache
     @testset "different IODC added to existing cache" begin
-        existing_data = GNSSDecoder.GPSL1CAData(base_data; IODC = 1023)
+        existing_data = GNSSDecoder.GPSLNAVData(base_data; IODC = 1023)
         new_data = base_data  # has different IODC
         state_diff_iodc = GNSSDecoder.GNSSDecoderState(
             state;
             cache = GNSSDecoder.GPSL1CACache([
-                GNSSDecoder.VotedGPSL1CAData(20, existing_data),
+                GNSSDecoder.VotedGPSLNAVData(20, existing_data),
             ]),
             raw_data = new_data,
             data = existing_data,
         )
         result = GNSSDecoder.confirm_data(state_diff_iodc)
         @test result.data == existing_data  # data NOT changed (still high score data)
-        @test result.raw_data == GNSSDecoder.GPSL1CAData()  # raw_data reset
+        @test result.raw_data == GNSSDecoder.GPSLNAVData()  # raw_data reset
         @test length(result.cache.old_data) == 2  # both entries kept
         @test result.cache.old_data[1].data.IODC == 1023  # old entry preserved
         @test result.cache.old_data[2].data == new_data  # new entry added
@@ -611,12 +610,12 @@ end
     with_TOW(state, TOW; anchor = nothing, num_bits = nothing) =
         GNSSDecoder.GNSSDecoderState(
             state;
-            raw_data = GNSSDecoder.GPSL1CAData(
+            raw_data = GNSSDecoder.GPSLNAVData(
                 state.raw_data;
                 TOW,
-                num_bits_after_valid_syncro_sequence_after_last_TOW = anchor,
+                tow_anchor_bit_count = anchor,
             ),
-            num_bits_after_valid_syncro_sequence = num_bits,
+            num_bits_since_time_reference = num_bits,
         )
 
     fresh = GPSL1CADecoderState(1)
@@ -638,7 +637,7 @@ end
     held = with_TOW(fresh, 43333 * 6)
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(43334))
     @test state.raw_data.TOW == 43334 * 6
-    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     # ...an implausible in-week jump is rejected...
     state = GNSSDecoder.read_tlm_and_how_words(held, make_buffer(93334))
     @test isnothing(state.raw_data.TOW)
@@ -656,11 +655,11 @@ end
     anchored = with_TOW(fresh, 43333 * 6; anchor = 8, num_bits = 308)
     state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43334))
     @test state.raw_data.TOW == 43334 * 6
-    @test state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW == 308
+    @test state.raw_data.tow_anchor_bit_count == 308
     # ...a small jump the fallback tier would have accepted is now rejected...
     state = GNSSDecoder.read_tlm_and_how_words(anchored, make_buffer(43335))
     @test isnothing(state.raw_data.TOW)
-    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     # ...while a day-long decode gap with tracking maintained (e.g. a
     # concealed satellite in a vector-tracking receiver) is accepted on the
     # first reappearing subframe.
@@ -674,17 +673,13 @@ end
     for bad_how in (make_buffer(43334; break_parity = true), make_buffer(43335))
         rejected = GNSSDecoder.read_tlm_and_how_words(anchored, bad_how)
         @test isnothing(rejected.raw_data.TOW)
-        @test isnothing(
-            rejected.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW,
-        )
-        recovery = GNSSDecoder.GNSSDecoderState(
-            rejected;
-            num_bits_after_valid_syncro_sequence = 608,
-        )
+        @test isnothing(rejected.raw_data.tow_anchor_bit_count)
+        recovery =
+            GNSSDecoder.GNSSDecoderState(rejected; num_bits_since_time_reference = 608)
         recovered = GNSSDecoder.read_tlm_and_how_words(recovery, make_buffer(43335))
         @test recovered.raw_data.TOW == 43335 * 6
-        @test recovered.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW == 608
-        @test recovered.num_bits_after_valid_syncro_sequence == 608
+        @test recovered.raw_data.tow_anchor_bit_count == 608
+        @test recovered.num_bits_since_time_reference == 608
     end
 end
 
@@ -701,17 +696,17 @@ end
     state = reset_decoder_state!(state)
     @test length(state.cache.soft_buffer) == 0
     @test isnothing(state.raw_data.TOW)
-    @test isnothing(state.raw_data.num_bits_after_valid_syncro_sequence_after_last_TOW)
+    @test isnothing(state.raw_data.tow_anchor_bit_count)
     @test isnothing(state.data.TOW)
-    @test GNSSDecoder.num_bits_buffered(state) == 0
-    @test isnothing(state.num_bits_after_valid_syncro_sequence)
+    @test GNSSDecoder.num_symbols_buffered(state) == 0
+    @test isnothing(state.num_bits_since_time_reference)
 end
 
 @testset "GPS L1 C/A data equality is structural" begin
-    # `GPSL1CAData` carries `Vector` and `Dictionary` fields, so the default
+    # `GPSLNAVData` carries `Vector` and `Dictionary` fields, so the default
     # struct `==` would be reference equality and two decoders fed the same
     # subframes would never compare equal once an almanac page had been decoded.
-    mk(M_0) = GNSSDecoder.GPSL1CAData(;
+    mk(M_0) = GNSSDecoder.GPSLNAVData(;
         IODC = 42,
         sv_config = Int64[1, 2, 3],
         sv_health_sf4_25 = [0, 1],
@@ -719,17 +714,17 @@ end
     )
     @test mk(0.1) == mk(0.1)
     @test mk(0.1) != mk(0.2)
-    @test GNSSDecoder.GPSL1CAData() == GNSSDecoder.GPSL1CAData()
+    @test GNSSDecoder.GPSLNAVData() == GNSSDecoder.GPSLNAVData()
 
     # The voting wrapper needs its own method rather than inheriting that one:
     # Julia's default struct `==` is `===`, which compares fields with `===`
     # instead of dispatching to their `==`. Without it the cache's `old_data`
     # vector — and so the whole state — stays reference-compared.
-    voted(M_0) = [GNSSDecoder.VotedGPSL1CAData(3, mk(M_0))]
+    voted(M_0) = [GNSSDecoder.VotedGPSLNAVData(3, mk(M_0))]
     @test voted(0.1) == voted(0.1)
     @test voted(0.1) != voted(0.2)
-    @test GNSSDecoder.VotedGPSL1CAData(4, mk(0.1)) !=
-          GNSSDecoder.VotedGPSL1CAData(3, mk(0.1))
+    @test GNSSDecoder.VotedGPSLNAVData(4, mk(0.1)) !=
+          GNSSDecoder.VotedGPSLNAVData(3, mk(0.1))
     @test GNSSDecoder.GPSL1CACache(voted(0.1)) == GNSSDecoder.GPSL1CACache(voted(0.1))
     @test GNSSDecoder.GPSL1CACache(voted(0.1)) != GNSSDecoder.GPSL1CACache(voted(0.2))
 
@@ -767,5 +762,5 @@ end
     decoded = decode!(copy(state), symbols, length(symbols))
     @test is_decoding_completed_for_positioning(decoded)
     @test state == GPSL1CADecoderState(25)
-    @test GNSSDecoder.num_bits_buffered(state) == 0
+    @test GNSSDecoder.num_symbols_buffered(state) == 0
 end

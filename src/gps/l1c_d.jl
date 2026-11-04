@@ -34,7 +34,7 @@ const L1C_D_WINDOW_LENGTH = L1C_D_FRAME_LENGTH + L1C_D_SUBFRAME1_LENGTH  # 1852
 
 # Time-of-week reconstruction (IS-GPS-800J §3.2.3.1, Figure 3.5-1): the week is
 # divided into 84 two-hour intervals counted by the subframe-2 `ITOW`, and each
-# interval into 400 18-second frames counted by the subframe-1 `toi`.
+# interval into 400 18-second frames counted by the subframe-1 `TOI`.
 const L1C_D_ITOW_SECONDS = 7200
 const L1C_D_ITOW_RANGE = 84  # two-hour intervals per week
 const L1C_D_FRAME_SECONDS = 18
@@ -84,7 +84,7 @@ CNAV-2 message structure parameters for GPS L1C-D decoding.
 
 The frame is modelled through the generic streaming framework: `preamble_length`
 is the 52-symbol subframe-1 BCH segment of the *next* frame retained at the tail
-of the sync window, and `syncro_sequence_length` is the 1800-symbol frame that is
+of the sync window, and `sync_unit_length` is the 1800-symbol frame that is
 drained once a subframe is decoded.
 
 # Fields
@@ -99,7 +99,7 @@ Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded subframe (1800 symbols)
     """
-    syncro_sequence_length::Int = L1C_D_FRAME_LENGTH
+    sync_unit_length::Int = L1C_D_FRAME_LENGTH
     """
     Trailing next-frame subframe-1 BCH segment retained for sync (52 symbols)
     """
@@ -116,7 +116,7 @@ The reduced almanac gives a very coarse ephemeris for satellite selection. Each
 page-3 carries six 33-bit packets; this struct holds one decoded packet plus the
 page-level almanac reference week/time. A reduced almanac is *complete in a
 single page* — there is no IOD-driven multi-page chaining like Galileo's word
-types 7-10 — so `GPSL1C_DData.reduced_almanacs` entries are inserted
+types 7-10 — so `GPSCNAV2Data.reduced_almanacs` entries are inserted
 whole, keyed by `PRN_a`. Reduced and Midi almanacs use *separate* structs (their
 field sets barely overlap); they share the keyed `SlotDictionary` pattern.
 
@@ -162,7 +162,7 @@ Table 3.5-7).
 
 The Midi almanac is a medium-precision single-SV almanac. Each page-4 carries
 exactly one SV's almanac, complete in that single page (no multi-page chaining),
-so `GPSL1C_DData.midi_almanacs` entries are inserted whole, keyed by
+so `GPSCNAV2Data.midi_almanacs` entries are inserted whole, keyed by
 `PRN_a`. Inclination is `δi` relative to `i₀ = 0.30 semi-circles` (54°);
 semi-circle fields are converted to radians on decode.
 
@@ -252,20 +252,20 @@ Base.@kwdef struct GPSL1C_DDifferentialCorrection
 end
 
 """
-    GPSL1C_DData
+    GPSCNAV2Data
 
 Decoded GPS L1C-D (CNAV-2) navigation message data.
 
 Holds the subframe-2 clock, ephemeris, and accuracy parameters (IS-GPS-800J
 Figure 3.5-1 / Table 3.5-1). Subframe-3 page contents are not parsed in this
 slice (issue #39); only the count of CRC-valid subframe-3 pages received is
-tracked. Field-naming follows [`GPSL1CAData`](@ref): semi-circle quantities are
+tracked. Field-naming follows [`GPSLNAVData`](@ref): semi-circle quantities are
 converted to radians on decode (multiplied by π), all `Union{Nothing,…}` until
 first decoded.
 
 # Sync / timing
 
-  - `toi::Int`: Last validated Time-Of-Interval count (0..399), or `nothing`.
+  - `TOI::Int`: Last validated Time-Of-Interval count (0..399), or `nothing`.
   - `ITOW::Int64`: Interval time of week — number of two-hour epochs since the
     start of the week (subframe 2 bits 14-21).
   - `WN::Int64`: Transmission week number, modulo-8192 (subframe 2 bits 1-13).
@@ -275,7 +275,7 @@ first decoded.
 # Health / accuracy
 
   - `l1c_health::Bool`: L1C signal health bit (false = OK, true = bad/unavailable).
-  - `ura_ed_index::Int64`: Ephemeris URA index (signed).
+  - `URA_ED_index::Int64`: Ephemeris URA index (signed).
   - `integrity_status_flag::Bool`: Level of integrity assurance the URA carries
     (bit 566; 3.5.3.10.1). `false` is the legacy level, `true` the enhanced one
     — "URA is integrity assured to the enhanced level only when the integrity
@@ -283,7 +283,7 @@ first decoded.
   - `WN_op::Int64`: CEI data sequence propagation week number (bits 567-574,
     modulo 256). Pairs with `t_op` in the integrity-assured URA_NED expression
     of 3.5.3.10, which needs both.
-  - `ura_ned0_index::Int64`, `ura_ned1_index::Int64`, `ura_ned2_index::Int64`:
+  - `URA_NED0_index::Int64`, `URA_NED1_index::Int64`, `URA_NED2_index::Int64`:
     Non-elevation-dependent accuracy indices — NED Accuracy, NED Accuracy
     Change, and NED Accuracy Change Rate. Not three interchangeable clock URAs:
     they are the terms of one time-dependent NED bound.
@@ -339,7 +339,7 @@ CRC-valid SF3 page regardless of whether its page format is parsed.
   - `A_0GGTO,A_1GGTO,A_2GGTO::Float64`: GPS/GNSS time-offset polynomial (the ICD
     writes `A0GGTO`/`A1GGTO`/`A2GGTO`).
   - `t_GGTO::Int64`, `WN_GGTO::Int64`: GGTO reference time/week.
-  - `GGTO_ID::Int64`: GNSS the time offset refers to — 0 none, 1 Galileo,
+  - `GNSS_ID::Int64`: GNSS the time offset refers to — 0 none, 1 Galileo,
     2 GLONASS, 3-7 reserved. (Named "GNSS ID" in IS-GPS-800 ≤ Rev J; renamed
     "GGTO ID" by IRN-IS-800J-003.)
   - `t_EOP::Int64`: EOP reference time of week (s).
@@ -369,19 +369,19 @@ Keyed by the 8-bit `PRN_a` field, one preallocated slot per possible value
 
 IS-GPS-800J, Figures 3.5-1 through 3.5-9 and Tables 3.5-1, 3.5-3 … 3.5-8.
 """
-Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
-    toi::Union{Nothing,Int} = nothing
+Base.@kwdef struct GPSCNAV2Data <: AbstractGPSCNAVData
+    TOI::Union{Nothing,Int} = nothing
     ITOW::Union{Nothing,Int64} = nothing
     WN::Union{Nothing,Int64} = nothing
     t_op::Union{Nothing,Int64} = nothing
 
     l1c_health::Union{Nothing,Bool} = nothing
-    ura_ed_index::Union{Nothing,Int64} = nothing
+    URA_ED_index::Union{Nothing,Int64} = nothing
     integrity_status_flag::Union{Nothing,Bool} = nothing
     WN_op::Union{Nothing,Int64} = nothing
-    ura_ned0_index::Union{Nothing,Int64} = nothing
-    ura_ned1_index::Union{Nothing,Int64} = nothing
-    ura_ned2_index::Union{Nothing,Int64} = nothing
+    URA_NED0_index::Union{Nothing,Int64} = nothing
+    URA_NED1_index::Union{Nothing,Int64} = nothing
+    URA_NED2_index::Union{Nothing,Int64} = nothing
 
     t_0e::Union{Nothing,Int64} = nothing
     ΔA::Union{Nothing,Float64} = nothing
@@ -439,7 +439,7 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     A_2GGTO::Union{Nothing,Float64} = nothing
     t_GGTO::Union{Nothing,Int64} = nothing
     WN_GGTO::Union{Nothing,Int64} = nothing
-    GGTO_ID::Union{Nothing,Int64} = nothing
+    GNSS_ID::Union{Nothing,Int64} = nothing
     t_EOP::Union{Nothing,Int64} = nothing
     PM_X::Union{Nothing,Float64} = nothing
     PM_X_dot::Union{Nothing,Float64} = nothing
@@ -466,19 +466,19 @@ Base.@kwdef struct GPSL1C_DData <: AbstractGPSCNAVData
     num_sf3_pages_received::Int = 0
 end
 
-@inline function GPSL1C_DData(
-    data::GPSL1C_DData;
-    toi = data.toi,
+@inline function GPSCNAV2Data(
+    data::GPSCNAV2Data;
+    TOI = data.TOI,
     ITOW = data.ITOW,
     WN = data.WN,
     t_op = data.t_op,
     l1c_health = data.l1c_health,
-    ura_ed_index = data.ura_ed_index,
+    URA_ED_index = data.URA_ED_index,
     integrity_status_flag = data.integrity_status_flag,
     WN_op = data.WN_op,
-    ura_ned0_index = data.ura_ned0_index,
-    ura_ned1_index = data.ura_ned1_index,
-    ura_ned2_index = data.ura_ned2_index,
+    URA_NED0_index = data.URA_NED0_index,
+    URA_NED1_index = data.URA_NED1_index,
+    URA_NED2_index = data.URA_NED2_index,
     t_0e = data.t_0e,
     ΔA = data.ΔA,
     A_dot = data.A_dot,
@@ -530,7 +530,7 @@ end
     A_2GGTO = data.A_2GGTO,
     t_GGTO = data.t_GGTO,
     WN_GGTO = data.WN_GGTO,
-    GGTO_ID = data.GGTO_ID,
+    GNSS_ID = data.GNSS_ID,
     t_EOP = data.t_EOP,
     PM_X = data.PM_X,
     PM_X_dot = data.PM_X_dot,
@@ -544,18 +544,18 @@ end
     text_message = data.text_message,
     num_sf3_pages_received = data.num_sf3_pages_received,
 )
-    GPSL1C_DData(
-        toi,
+    GPSCNAV2Data(
+        TOI,
         ITOW,
         WN,
         t_op,
         l1c_health,
-        ura_ed_index,
+        URA_ED_index,
         integrity_status_flag,
         WN_op,
-        ura_ned0_index,
-        ura_ned1_index,
-        ura_ned2_index,
+        URA_NED0_index,
+        URA_NED1_index,
+        URA_NED2_index,
         t_0e,
         ΔA,
         A_dot,
@@ -607,7 +607,7 @@ end
         A_2GGTO,
         t_GGTO,
         WN_GGTO,
-        GGTO_ID,
+        GNSS_ID,
         t_EOP,
         PM_X,
         PM_X_dot,
@@ -626,7 +626,7 @@ end
 # The default struct `==` falls back to `===` (reference equality), which fails
 # for the mutable `SlotDictionary` fields even when their contents match. Compare
 # field-by-field (mirrors `GalileoINAVData`).
-Base.:(==)(a::GPSL1C_DData, b::GPSL1C_DData) = fields_equal(a, b)
+Base.:(==)(a::GPSCNAV2Data, b::GPSCNAV2Data) = fields_equal(a, b)
 
 """
 $(TYPEDEF)
@@ -674,7 +674,7 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     Preallocated containers `raw_data` and `data` are decoded into (the
     PRN-keyed subframe-3 stores), overwritten in place
     """
-    storage::DataStorage{GPSL1C_DData}
+    storage::DataStorage{GPSCNAV2Data}
 end
 
 function GPSL1C_DCache()
@@ -688,12 +688,12 @@ function GPSL1C_DCache()
         committed_ldpc_scratch("cnv2_sf3.alist"),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
         Vector{Float32}(undef, L1C_D_PAYLOAD_SYMBOLS),
-        DataStorage{GPSL1C_DData}(),
+        DataStorage{GPSCNAV2Data}(),
     )
 end
 
 # Every container field at its ICD size: one slot per 8-bit `PRN_a` value.
-preallocated_data(::Type{GPSL1C_DData}) = GPSL1C_DData(;
+preallocated_data(::Type{GPSCNAV2Data}) = GPSCNAV2Data(;
     reduced_almanacs = SlotDictionary{GPSL1C_DReducedAlmanac,L1C_D_PRN_SLOTS}(),
     midi_almanacs = SlotDictionary{GPSL1C_DMidiAlmanac,L1C_D_PRN_SLOTS}(),
     differential_corrections = SlotDictionary{
@@ -708,7 +708,7 @@ function Base.:(==)(a::GPSL1C_DCache, b::GPSL1C_DCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
 
-function is_subframe2_decoded(data::GPSL1C_DData)
+function is_subframe2_decoded(data::GPSCNAV2Data)
     !isnothing(data.WN) &&
         !isnothing(data.ITOW) &&
         !isnothing(data.t_0e) &&
@@ -726,31 +726,31 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Seconds of week of the epoch the TOI stamps: `ITOW·7200 + toi·18`, with `toi = 0`
+Seconds of week of the epoch the TOI stamps: `ITOW·7200 + TOI·18`, with `TOI = 0`
 counted into the *next* two-hour interval.
 
 CNAV-2 splits the time of week across two message parts and two rates — the
 subframe-2 `ITOW` counts the two-hour intervals since the start of the week
-(IS-GPS-800 §3.5.3.2) and the subframe-1 `toi` counts the 18-second frames within
+(IS-GPS-800 §3.5.3.2) and the subframe-1 `TOI` counts the 18-second frames within
 the interval (§3.5.2) — so neither field is a time of week on its own. Both must
 be present; `nothing` until they are.
 
-The `toi = 0` special case is the ICD's, not ours. §3.5.2 defines the TOI count
+The `TOI = 0` special case is the ICD's, not ours. §3.5.2 defines the TOI count
 relative to "the two-hour period represented by ITOW count in the subframe 2 of
 the *next* 18-second frame", with a range of 0–399: the frame broadcasting
-`toi = 0` is the last frame of the old two-hour interval, so its own subframe-2
+`TOI = 0` is the last frame of the old two-hour interval, so its own subframe-2
 `ITOW` is one interval behind the one its TOI counts against. Without the
 carry, that one frame in every 400 stamps a time two hours in the past. The
-week wrap (`ITOW = 83`, `toi = 0` stamps second 0 of the *following* week, while
+week wrap (`ITOW = 83`, `TOI = 0` stamps second 0 of the *following* week, while
 the paired `WN` is still the old week) is folded by the `mod`; a consumer
 combining this with `WN` inherits that one-frame-per-week ambiguity, which is
 also the ICD's.
 """
-function get_broadcast_time_of_week(data::GPSL1C_DData)
-    (isnothing(data.ITOW) || isnothing(data.toi)) && return nothing
-    itow = Int(data.ITOW) + (data.toi == 0)
+function get_broadcast_time_of_week(data::GPSCNAV2Data)
+    (isnothing(data.ITOW) || isnothing(data.TOI)) && return nothing
+    itow = Int(data.ITOW) + (data.TOI == 0)
     return mod(
-        itow * L1C_D_ITOW_SECONDS + Int(data.toi) * L1C_D_FRAME_SECONDS,
+        itow * L1C_D_ITOW_SECONDS + Int(data.TOI) * L1C_D_FRAME_SECONDS,
         SECONDS_PER_WEEK,
     )
 end
@@ -761,15 +761,15 @@ $(TYPEDSIGNATURES)
 The GPS/GNSS time offset from subframe 3 page 2, if this satellite is currently
 broadcasting one for `target`.
 
-`GGTO_ID` names the system the single broadcast set refers to — 0 none,
+`GNSS_ID` names the system the single broadcast set refers to — 0 none,
 1 Galileo, 2 GLONASS, 3-7 reserved (IS-GPS-800J §3.5.4.2.1) — the same table
 CNAV carries in message type 35; see `gps_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GPSL1C_DData}, target::TimeSystem) =
-    gps_ggto_offset(state, target, state.data.GGTO_ID)
+get_time_offset(state::GNSSDecoderState{<:GPSCNAV2Data}, target::TimeSystem) =
+    gps_ggto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::GPSL1C_DData)
-    !isnothing(data.toi) && is_subframe2_decoded(data)
+function is_decoding_completed_for_positioning(data::GPSCNAV2Data)
+    !isnothing(data.TOI) && is_subframe2_decoded(data)
 end
 
 """
@@ -788,7 +788,7 @@ parity matrices in `data/`.
 
 # Returns
 
-  - `GNSSDecoderState{GPSL1C_DData}`: Initialized decoder state for GPS L1C-D.
+  - `GNSSDecoderState{GPSCNAV2Data}`: Initialized decoder state for GPS L1C-D.
 
 # Example
 
@@ -809,8 +809,8 @@ end
 function GPSL1C_DDecoderState(prn)
     GNSSDecoderState(
         prn,
-        GPSL1C_DData(),
-        GPSL1C_DData(),
+        GPSCNAV2Data(),
+        GPSCNAV2Data(),
         GPSL1C_DConstants(),
         GPSL1C_DCache(),
         nothing,
@@ -840,29 +840,29 @@ implementations.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:GPSL1C_DData}`: Current GPS L1C-D decoder state.
+  - `state::GNSSDecoderState{<:GPSCNAV2Data}`: Current GPS L1C-D decoder state.
 
 # Returns
 
-  - `GNSSDecoderState{<:GPSL1C_DData}`: Reset decoder state with cleared buffers.
+  - `GNSSDecoderState{<:GPSCNAV2Data}`: Reset decoder state with cleared buffers.
 
 # See Also
 
   - [`GPSL1C_DDecoderState`](@ref): Create a fresh decoder state
   - [`decode!`](@ref): Continue decoding after reset
 """
-function reset_decoder_state!(state::GNSSDecoderState{<:GPSL1C_DData})
+function reset_decoder_state!(state::GNSSDecoderState{<:GPSCNAV2Data})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        # `ITOW` is cleared with `toi`: the pair only means a time as a pair, and
+        # `ITOW` is cleared with `TOI`: the pair only means a time as a pair, and
         # an outage can span any number of interval boundaries, so a kept `ITOW`
-        # re-paired with a fresh `toi` would date the first re-locked frames
+        # re-paired with a fresh `TOI` would date the first re-locked frames
         # whole two-hour intervals in the past. Re-learning it costs one decoded
         # subframe 2.
-        raw_data = GPSL1C_DData(state.raw_data; toi = nothing, ITOW = nothing),
-        data = GPSL1C_DData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        raw_data = GPSCNAV2Data(state.raw_data; TOI = nothing, ITOW = nothing),
+        data = GPSCNAV2Data(),
+        num_bits_since_time_reference = nothing,
         is_shifted_by_180_degrees = false,
     )
 end
@@ -871,18 +871,18 @@ end
 #
 # Override the generic packed-buffer sync. L1C-D sync runs the BCH(51,8) TOI
 # match directly on the soft-symbol deque: the first 52 symbols must equal the
-# codeword for some `toi`, and the last 52 the codeword for `(toi+1) mod 400`,
+# codeword for some `TOI`, and the last 52 the codeword for `(TOI+1) mod 400`,
 # in either polarity. `sync_bch_toi` (src/coding/bch_toi.jl) implements exactly this.
 
 """
-    try_sync(state::GNSSDecoderState{<:GPSL1C_DData}) -> Union{Nothing,BCHToiSync}
+    try_sync(state::GNSSDecoderState{<:GPSCNAV2Data}) -> Union{Nothing,BCHToiSync}
 
 Per-signal sync hook for GPS L1C-D. Hard-slices the leading 52 and trailing 52
 soft symbols of the 1852-symbol window and runs the multi-subframe BCH(51,8)
 match (`sync_bch_toi`). Returns the [`BCHToiSync`](@ref) on a match (carrying
 the TOI and the detected polarity flip) or `nothing`.
 """
-function try_sync(state::GNSSDecoderState{<:GPSL1C_DData})
+function try_sync(state::GNSSDecoderState{<:GPSCNAV2Data})
     deque = soft_buffer(state)
     # `pack_bits_lsb_first` (src/gnss.jl) hard-slices straight off the deque in
     # `pack_hard_codeword`'s bit order: this runs once per symbol, so
@@ -893,14 +893,14 @@ function try_sync(state::GNSSDecoderState{<:GPSL1C_DData})
 end
 
 """
-    complement_buffer_if_necessary(state::GNSSDecoderState{<:GPSL1C_DData}, sync)
+    complement_buffer_if_necessary(state::GNSSDecoderState{<:GPSCNAV2Data}, sync)
 
 Resolve the 180° polarity ambiguity for L1C-D. `sync::BCHToiSync` already
 carries the detected polarity from `sync_bch_toi`; record it on the state and
-pass the sync object through unchanged for `decode_syncro_sequence`.
+pass the sync object through unchanged for `decode_sync_unit`.
 """
 function complement_buffer_if_necessary(
-    state::GNSSDecoderState{<:GPSL1C_DData},
+    state::GNSSDecoderState{<:GPSCNAV2Data},
     sync::BCHToiSync,
 )
     GNSSDecoderState(state; is_shifted_by_180_degrees = sync.polarity_flipped), sync
@@ -909,7 +909,7 @@ end
 # ---- Subframe pipeline -----------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GPSCNAV2Data}, sync::BCHToiSync)
 
 Process one locked CNAV-2 frame. Enforces a monotonic TOI (each frame's TOI must
 be `(previous + 1) mod 400`; a break resets the decoder to searching), then
@@ -917,28 +917,28 @@ deinterleaves and LDPC-decodes subframes 2 and 3 from the 1748-symbol payload,
 CRC-checking each. Subframe 2 fields are parsed into `raw_data`; subframe 3 is
 recorded as a received page (issue #39 will parse it).
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::BCHToiSync)
+function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAV2Data}, sync::BCHToiSync)
     # `sync` always carries the *low* branch of the BCH complement ambiguity
-    # (`sync_bch_toi` cannot tell (toi, polarity) from (toi + 256, !polarity)
+    # (`sync_bch_toi` cannot tell (TOI, polarity) from (TOI + 256, !polarity)
     # when both are in range, and reports the lower TOI). Resolve it by TOI
     # continuity when a previous frame is held — a locked frame's TOI follows
     # the previous one by exactly +1 (mod 400) on whichever branch that frame
     # settled — and treat any other step as loss of frame lock.
-    toi = sync.toi
+    TOI = sync.TOI
     flipped = sync.polarity_flipped
-    prev_toi = state.raw_data.toi
+    prev_toi = state.raw_data.TOI
     if !isnothing(prev_toi)
         expected = (prev_toi + 1) % TOI_RANGE
-        if expected == toi + TOI_COMPLEMENT_OFFSET
-            toi += TOI_COMPLEMENT_OFFSET
+        if expected == TOI + TOI_COMPLEMENT_OFFSET
+            TOI += TOI_COMPLEMENT_OFFSET
             flipped = !flipped
-        elseif expected != toi
+        elseif expected != TOI
             return reset_decoder_state!(state)
         end
     end
-    # `toi` advances with every locked frame, but `ITOW` only refreshes when a
-    # subframe 2 clears LDPC+CRC. The frame at `toi = 1` is the first to
-    # broadcast the new interval's `ITOW` (the one at `toi = 0` still carries
+    # `TOI` advances with every locked frame, but `ITOW` only refreshes when a
+    # subframe 2 clears LDPC+CRC. The frame at `TOI = 1` is the first to
+    # broadcast the new interval's `ITOW` (the one at `TOI = 0` still carries
     # the old one; see `get_broadcast_time_of_week`), so carry the interval across here,
     # or a noisy subframe 2 from that frame on promotes a time of week exactly
     # 7200 s low. A later decoded subframe 2 overwrites this with the broadcast
@@ -946,11 +946,11 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     # rollover (ITOW 83 → 0 while `WN` still awaits its subframe 2) inherits
     # the same one-frame ambiguity every WN-carrying signal has at that instant.
     ITOW = state.raw_data.ITOW
-    if !isnothing(prev_toi) && toi == 1 && !isnothing(ITOW)
+    if !isnothing(prev_toi) && TOI == 1 && !isnothing(ITOW)
         ITOW = (ITOW + 1) % L1C_D_ITOW_RANGE
     end
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    raw_data = @split_nothing ITOW GPSL1C_DData(state.raw_data; toi, ITOW)
+    raw_data = @split_nothing ITOW GPSCNAV2Data(state.raw_data; TOI, ITOW)
     state = GNSSDecoderState(state; is_shifted_by_180_degrees = flipped, raw_data)
 
     # Extract the 1748-symbol interleaved SF2+SF3 payload (symbols 53..1800),
@@ -977,8 +977,8 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     # reset), wrongly sending the frame down the complement retry.
     decoded, sf2_ok = decode_subframe2(state, sf2_symbols)
     complement =
-        toi < TOI_COMPLEMENT_OFFSET ? toi + TOI_COMPLEMENT_OFFSET :
-        toi - TOI_COMPLEMENT_OFFSET
+        TOI < TOI_COMPLEMENT_OFFSET ? TOI + TOI_COMPLEMENT_OFFSET :
+        TOI - TOI_COMPLEMENT_OFFSET
     if !sf2_ok && complement < TOI_RANGE
         # Subframe 2 failed under this branch of the ambiguity. Its CRC is the
         # only in-band oracle for the pair, so try the complement branch —
@@ -991,7 +991,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
         alt_state = GNSSDecoderState(
             state;
             is_shifted_by_180_degrees = !flipped,
-            raw_data = GPSL1C_DData(state.raw_data; toi = complement),
+            raw_data = GPSCNAV2Data(state.raw_data; TOI = complement),
         )
         alt_decoded, alt_ok = decode_subframe2(alt_state, sf2_symbols)
         if alt_ok
@@ -1013,7 +1013,7 @@ end
 # shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers.
 
 # Returns `(state, decoded::Bool)`; `decoded` is `false` on a CRC failure.
-function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
+function decode_subframe2(state::GNSSDecoderState{<:GPSCNAV2Data}, sf2_symbols)
     word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state, false  # silently drop on CRC failure
     word_length = L1C_D_SF2_INFO_BITS
@@ -1021,7 +1021,7 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     ITOW = Int(get_bits(word, word_length, 14, 8))
     t_op = Int(get_bits(word, word_length, 22, 11)) * 300
     l1c_health = get_bit(word, word_length, 33)
-    ura_ed_index = get_twos_complement_num(word, word_length, 34, 5)
+    URA_ED_index = get_twos_complement_num(word, word_length, 34, 5)
     t_0e = Int(get_bits(word, word_length, 39, 11)) * 300
     ΔA = get_twos_complement_num(word, word_length, 50, 26) * 2.0^-9
     A_dot = get_twos_complement_num(word, word_length, 76, 25) * 2.0^-21
@@ -1042,9 +1042,9 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     C_rc = get_twos_complement_num(word, word_length, 394, 24) * 2.0^-8
     C_us = get_twos_complement_num(word, word_length, 418, 21) * 2.0^-30
     C_uc = get_twos_complement_num(word, word_length, 439, 21) * 2.0^-30
-    ura_ned0_index = get_twos_complement_num(word, word_length, 460, 5)
-    ura_ned1_index = Int(get_bits(word, word_length, 465, 3))
-    ura_ned2_index = Int(get_bits(word, word_length, 468, 3))
+    URA_NED0_index = get_twos_complement_num(word, word_length, 460, 5)
+    URA_NED1_index = Int(get_bits(word, word_length, 465, 3))
+    URA_NED2_index = Int(get_bits(word, word_length, 468, 3))
     a_f0 = get_twos_complement_num(word, word_length, 471, 26) * 2.0^-35
     a_f1 = get_twos_complement_num(word, word_length, 497, 20) * 2.0^-48
     a_f2 = get_twos_complement_num(word, word_length, 517, 10) * 2.0^-60
@@ -1057,13 +1057,13 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     integrity_status_flag = get_bit(word, word_length, 566)
     WN_op = Int(get_bits(word, word_length, 567, 8))
 
-    raw = GPSL1C_DData(
+    raw = GPSCNAV2Data(
         state.raw_data;
         WN,
         ITOW,
         t_op,
         l1c_health,
-        ura_ed_index,
+        URA_ED_index,
         integrity_status_flag,
         WN_op,
         t_0e,
@@ -1084,9 +1084,9 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
         C_rc,
         C_us,
         C_uc,
-        ura_ned0_index,
-        ura_ned1_index,
-        ura_ned2_index,
+        URA_NED0_index,
+        URA_NED1_index,
+        URA_NED2_index,
         t_0c = t_0e,  # CNAV-2 shares one reference time for clock and ephemeris
         a_f0,
         a_f1,
@@ -1111,12 +1111,12 @@ end
 # base PDF rendered as question marks; the four ISC fields at bits 177/190/203/216
 # are in base Rev J already (Figure 3.5-2, Table 6.2-18).
 
-function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
+function decode_subframe3(state::GNSSDecoderState{<:GPSCNAV2Data}, sf3_symbols)
     word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
     isnothing(word) && return state  # silently drop on CRC failure
 
     # CRC-valid page received: count it, then dispatch on the page number.
-    raw = GPSL1C_DData(
+    raw = GPSCNAV2Data(
         state.raw_data;
         num_sf3_pages_received = state.raw_data.num_sf3_pages_received + 1,
     )
@@ -1145,9 +1145,9 @@ end
 """
 Subframe 3, page 1 — UTC + Klobuchar iono + ISC (IS-GPS-800J Fig 3.5-2, Table 3.5-3).
 """
-function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288)
+function parse_sf3_page1(raw::GPSCNAV2Data, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
-    GPSL1C_DData(
+    GPSCNAV2Data(
         raw;
         # UTC polynomial (Table 3.5-3).
         A_0UTC = get_twos_complement_num(word, word_length, 15, 16) * 2.0^-35,
@@ -1180,9 +1180,9 @@ end
 """
 Subframe 3, page 2 — GGTO + EOP (IS-GPS-800J Fig 3.5-3, Tables 3.5-4/3.5-5).
 """
-function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288)
+function parse_sf3_page2(raw::GPSCNAV2Data, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
-    GPSL1C_DData(
+    GPSCNAV2Data(
         raw;
         # GGTO (Table 3.5-4). Field order in Fig 3.5-3: tGGTO, WNGGTO, A0, A1, A2.
         t_GGTO = Int(get_bits(word, word_length, 18, 16)) * 2^4,
@@ -1190,7 +1190,7 @@ function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288)
         A_0GGTO = get_twos_complement_num(word, word_length, 47, 16) * 2.0^-35,
         A_1GGTO = get_twos_complement_num(word, word_length, 63, 13) * 2.0^-51,
         A_2GGTO = get_twos_complement_num(word, word_length, 76, 7) * 2.0^-68,
-        GGTO_ID = Int(get_bits(word, word_length, 15, 3)),
+        GNSS_ID = Int(get_bits(word, word_length, 15, 3)),
         # EOP (Table 3.5-5). All fields are contiguous in the info block; Figure
         # 3.5-3 only *draws* PM_X across its 100-bit row boundary — the 2 MSBs end
         # row 1 (bits 99-100) and the 19 LSBs begin row 2 (bits 101-119) — so the
@@ -1234,7 +1234,7 @@ Subframe 3, page 3 — six reduced-almanac packets (IS-GPS-800J Fig 3.5-4).
 Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` in place,
 or — on the first page 3 — of the preallocated `storage.reduced_almanacs`.
 """
-function parse_sf3_page3(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
+function parse_sf3_page3(raw::GPSCNAV2Data, storage::GPSCNAV2Data, word::UInt288)
     almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
     word_length = L1C_D_SF3_INFO_BITS
     WN_a = Int(get_bits(word, word_length, 15, 13))
@@ -1245,7 +1245,7 @@ function parse_sf3_page3(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288
         isnothing(packet) && break  # PRNa==0 ⇒ rest of page is filler (§3.5.4.3.5.1.1)
         # Overwrites this PRN's slot of the preallocated store in place.
         set!(almanacs, packet.PRN_a, packet)
-        raw = GPSL1C_DData(raw; reduced_almanacs = almanacs)
+        raw = GPSCNAV2Data(raw; reduced_almanacs = almanacs)
     end
     return raw
 end
@@ -1256,7 +1256,7 @@ Subframe 3, page 4 — one Midi almanac (IS-GPS-800J Fig 3.5-5, Table 3.5-7).
 The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` in place, or —
 on the first page 4 — of the preallocated `storage.midi_almanacs`.
 """
-function parse_sf3_page4(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
+function parse_sf3_page4(raw::GPSCNAV2Data, storage::GPSCNAV2Data, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, 36, 8))
     PRN_a == 0 && return raw  # empty almanac
@@ -1279,7 +1279,7 @@ function parse_sf3_page4(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288
     )
     midi_almanacs = writable_container(raw.midi_almanacs, storage.midi_almanacs)
     set!(midi_almanacs, PRN_a, alm)
-    GPSL1C_DData(raw; midi_almanacs)
+    GPSCNAV2Data(raw; midi_almanacs)
 end
 
 """
@@ -1289,7 +1289,7 @@ The packet **overwrites** its PRN's slot of `raw.differential_corrections` in
 place, or — on the first page 5 — of the preallocated
 `storage.differential_corrections`.
 """
-function parse_sf3_page5(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
+function parse_sf3_page5(raw::GPSCNAV2Data, storage::GPSCNAV2Data, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     # Page-level fields precede the 126-bit CDC+EDC packet. Layout (Fig 3.5-6):
     # bit 15 t_op-D (11, scale 300), bit 26 t_OD (11, scale 300),
@@ -1342,7 +1342,7 @@ function parse_sf3_page5(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288
     differential_corrections =
         writable_container(raw.differential_corrections, storage.differential_corrections)
     set!(differential_corrections, PRN_a, differential_correction)
-    GPSL1C_DData(raw; differential_corrections)
+    GPSCNAV2Data(raw; differential_corrections)
 end
 
 # Character `k` (0-based) of a page-6 text message, and whether it is printable.
@@ -1365,24 +1365,24 @@ end
 """
 Subframe 3, page 6 — 29 ASCII characters at bits 19-250 (IS-GPS-800J Fig 3.5-7).
 """
-function parse_sf3_page6(raw::GPSL1C_DData, word::UInt288)
+function parse_sf3_page6(raw::GPSCNAV2Data, word::UInt288)
     # Built inline (a `CStaticString`, not a heap `String`), so no allocation.
     # Printable ASCII is kept; NUL/control padding is skipped so the message is
     # clean, which moves each kept character to the `i`-th printable position.
     # The tail past the last one stays NUL, where a `CStaticString` ends.
     units = ntuple(i -> _text_printable_char(word, i), Val(L1C_D_TEXT_LENGTH))
-    GPSL1C_DData(raw; text_message = CStaticString(units))
+    GPSCNAV2Data(raw; text_message = CStaticString(units))
 end
 
 """
-    validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
+    validate_data(state::GNSSDecoderState{<:GPSCNAV2Data})
 
 Promote `raw_data` to `data` once subframe 2 has been fully decoded. The
 per-frame BCH re-check and monotonic-TOI enforcement are performed inline by
-[`decode_syncro_sequence`](@ref); this hook only publishes validated data and
+[`decode_sync_unit`](@ref); this hook only publishes validated data and
 arms the streaming counter.
 """
-function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
+function validate_data(state::GNSSDecoderState{<:GPSCNAV2Data})
     if is_decoding_completed_for_positioning(state.raw_data)
         # `data` gets its own copy of every container: `publish_data` overwrites
         # the preallocated validated stores rather than sharing `raw_data`'s,
@@ -1390,7 +1390,7 @@ function validate_data(state::GNSSDecoderState{<:GPSL1C_DData})
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+            num_bits_since_time_reference = state.constants.preamble_length,
         )
     end
     return state
@@ -1410,12 +1410,12 @@ Examines the 1-bit L1C signal health flag from subframe 2 (IS-GPS-800J
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:GPSL1C_DData}`: GPS L1C-D decoder state.
+  - `state::GNSSDecoderState{<:GPSCNAV2Data}`: GPS L1C-D decoder state.
 
 # Returns
 
   - `Bool`: `true` iff the L1C signal-health bit indicates OK.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:GPSL1C_DData})
+function is_sat_healthy(state::GNSSDecoderState{<:GPSCNAV2Data})
     state.data.l1c_health === false
 end
