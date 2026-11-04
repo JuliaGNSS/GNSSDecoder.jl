@@ -648,6 +648,9 @@ function get_broadcast_time_of_week(data::BeiDouCNAV1Data)
     return Int(data.HOW) * 3600 + Int(data.SOH) * B1C_SOH_SECONDS
 end
 
+# B-CNAV1's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouCNAV1Data; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -659,13 +662,15 @@ B1C keys its offsets by system: each set is filed under its `GNSS_ID` in `data.b
 so every system ever broadcast stays answerable. Sets with `GNSS_ID == 0` ("not
 available", §7.13.1) are dropped at decode.
 """
-function get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, target::TimeSystem)
+function time_offset_parameters(
+    state::GNSSDecoderState{<:BeiDouCNAV1Data},
+    target::TimeSystem,
+)
     bgtos = state.data.bgtos
     isnothing(bgtos) && return nothing
     for (GNSS_ID, bgto) in pairs(bgtos)
         beidou_bgto_target(GNSS_ID) === target || continue
-        return broadcast_time_offset(
-            state,
+        return assemble_time_offset_parameters(
             target,
             bgto.A_0BGTO,
             bgto.A_1BGTO,

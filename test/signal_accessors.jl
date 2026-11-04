@@ -86,14 +86,19 @@
     @testset "time system" begin
         # The decoded week numbers and times of week are counted in the
         # constellation's time system; a consumer turning them into an absolute
-        # instant needs its TAI offset, and gets it from the state.
+        # instant needs its epoch and TAI offset, and gets both from the state.
         for (state, signal) in signal_of_state
             is_gps = state.data isa GNSSDecoder.AbstractGPSData
             @test get_time_system(state) == (is_gps ? GPST() : GST())
             @test get_time_system_id(state) == (is_gps ? :GPST : :GST)
+            @test get_week_start_epoch(state, 0) == get_week_start_epoch(signal, 0)
         end
         @test get_time_system_name(GPSL1CADecoderState(1)) == "GPS Time"
         @test get_time_system_name(GalileoE1BDecoderState(1)) == "Galileo System Time"
+        # The Galileo epoch is 13 s shy of a UTC midnight, so it is worth
+        # sourcing rather than restating — the two epochs genuinely differ.
+        @test get_week_start_epoch(GPSL1CADecoderState(1), 0) !=
+              get_week_start_epoch(GalileoE1BDecoderState(1), 0)
         # Both currently modelled scales run 19 s behind TAI.
         @test get_tai_offset(GPSL1CADecoderState(1)) ==
               get_tai_offset(GalileoE1BDecoderState(1))

@@ -213,6 +213,11 @@ beidou_bdt_utc_block(word::Unsigned, word_length::Int, start::Int) = (;
     Δt_LSF = Int64(get_twos_complement_num(word, word_length, start + 89, 8)),
 )
 
+# B-CNAV `WN_0t` and `WN_LSF` are 13 bits, the width of `WN` (BDS-SIS-ICD-B1C-1.0
+# Table 7-20): see `get_utc_parameters`.
+const BEIDOU_CNAV_UTC_WN_MODULUS = 8192
+const BEIDOU_CNAV_LSF_WN_MODULUS = 8192
+
 """
 Earth orientation parameter block, 138 bits: `t_EOP`(16, LSB 2⁴ s), `PM_X`(21,
 2⁻²⁰ arcsec), `PM_X_dot`(15, 2⁻²¹), `PM_Y`(21, 2⁻²⁰), `PM_Y_dot`(15, 2⁻²¹),
@@ -261,15 +266,15 @@ Map a broadcast BGTO `GNSS_ID` onto the time system the offset refers to: 1 GPS,
 
 GLONASS, code 0 and an undecoded `nothing` report `nothing`: `GNSSSignals` defines no
 GLONASS `TimeSystem`, so a GLONASS offset is read off the data fields directly. See
-[`get_time_offset`](@ref).
+[`get_broadcast_time_offset`](@ref).
 """
 beidou_bgto_target(GNSS_ID) = GNSS_ID == 1 ? GPST() : GNSS_ID == 2 ? GST() : nothing
 
 """
-    beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
+    beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,TimeOffsetParameters}
 
 Normalise the flat BGTO parameter set that B2a (message type 33) and B2b (message
-type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when the set is absent,
+type 40) broadcast into a `TimeOffsetParameters`, or `nothing` when the set is absent,
 marked unavailable, or refers to a system other than `target`.
 
 Both signals carry one set at a time, tagged with its system, unlike B1C, which keys a
@@ -290,8 +295,7 @@ function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
         isnothing(t_0BGTO) ||
         isnothing(WN_0BGTO)
     ) && return nothing
-    broadcast_time_offset(
-        state,
+    assemble_time_offset_parameters(
         target,
         A_0BGTO,
         A_1BGTO,

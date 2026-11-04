@@ -969,11 +969,12 @@ has_positioning_messages(::GalileoE6BData) = false
 # C/NAV stamps blocks with a time *of hour* and broadcasts no week number; see the
 # `GalileoE6BData` docstring on why times stay on the blocks.
 get_broadcast_time_of_week(::GalileoE6BData) = nothing
+get_broadcast_week(::GalileoE6BData; approximate_year::Integer) = nothing
 
 # HAS carries orbit, clock and bias corrections; inter-system time offsets are
 # not among them. The `GNSS_ID` fields in the satellite masks are constellation
 # indices, not time-offset identifiers.
-get_time_offset(::GNSSDecoderState{<:GalileoE6BData}, ::TimeSystem) = nothing
+time_offset_parameters(::GNSSDecoderState{<:GalileoE6BData}, ::TimeSystem) = nothing
 
 # ---- Page store (ICD §6.4) ---------------------------------------------------
 

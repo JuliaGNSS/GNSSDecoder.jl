@@ -448,6 +448,11 @@ Base.@kwdef struct GPSCNAV2Data <: AbstractGPSCNAVData
     num_sf3_pages_received::Int = 0
 end
 
+# `WN_0t` and `WN_LSF` are 13 bits (IS-GPS-800J Figure 3.5-2, subframe 3 page 1), like
+# `WN`: see `get_utc_parameters`.
+const CNAV2_UTC_WN_MODULUS = 8192
+const CNAV2_LSF_WN_MODULUS = 8192
+
 @inline function GPSCNAV2Data(
     data::GPSCNAV2Data;
     TOI = data.TOI,
@@ -731,6 +736,9 @@ function get_broadcast_time_of_week(data::GPSCNAV2Data)
     )
 end
 
+# CNAV-2's week number is 13 bits, absolute until 2137.
+get_broadcast_week(data::GPSCNAV2Data; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -741,7 +749,7 @@ broadcasting one for `target`.
 3-7 reserved; IS-GPS-800J §3.5.4.2.1), as in CNAV message type 35; see
 `gps_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GPSCNAV2Data}, target::TimeSystem) =
+time_offset_parameters(state::GNSSDecoderState{<:GPSCNAV2Data}, target::TimeSystem) =
     gps_ggto_offset(state, target)
 
 function has_positioning_messages(data::GPSCNAV2Data)
