@@ -363,12 +363,14 @@ The atomic (leap-second-free) scale a constellation counts its broadcast time
 in: GPS Time (`GPST`) for GPS, Galileo System Time (`GST`) for Galileo, BeiDou
 Time (`BDT`) for BeiDou. Every decoded week number and time of week is in this
 scale, so turning a decoded WN/TOW pair into an absolute instant needs the
-scale's epoch (`get_system_start_time`) and its offset from TAI
-(`get_tai_offset`) — both available from the decoder state, both sourced from
-GNSSSignals. The Galileo epoch is not a UTC midnight: it is 13 s before it
+week's start on TAI (`get_week_start_epoch(state, WN)`) plus its time of week,
+sourced from GNSSSignals. `get_system_start_time` labels the origin in UTC;
+it is not a continuous timestamp for cross-scale arithmetic. The Galileo epoch is not a UTC midnight: it is 13 s before it
 (`1999-08-21T23:59:47`). GPST and GST are both TAI − 19 s and so count alike;
 BDT is TAI − 33 s, so a BDT seconds-of-week reads 14 s below the GPS time of
-week for the same instant — the defined offset `GNSSTimeOffset.A_0` folds in.
+week for the same instant: the leap seconds UTC gained between 1980 and 2006.
+No message broadcasts them:
+`get_broadcast_inter_system_time_offset` gives the steering residual alone.
 
 ## Decoder state vs cache
 

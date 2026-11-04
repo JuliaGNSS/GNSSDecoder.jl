@@ -499,6 +499,11 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
 end
 
+# `WN_0t` and `WN_LSF` are 13 bits (IS-GPS-705J Figure 20-10, MT33), as `WN`: see
+# `get_utc_parameters`.
+const CNAV_UTC_WN_MODULUS = 8192
+const CNAV_LSF_WN_MODULUS = 8192
+
 @inline function GPSCNAVData(
     data::GPSCNAVData;
     last_message_type = data.last_message_type,
@@ -791,6 +796,9 @@ end
 # CNAV's `TOW` is already seconds (the 17-bit count is scaled by 6 at parse).
 get_broadcast_time_of_week(data::GPSCNAVData) = data.TOW
 
+# CNAV's week number is 13 bits, absolute until 2137.
+get_broadcast_week(data::GPSCNAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -800,7 +808,10 @@ broadcasting one for `target`.
 `GNSS_ID` names the system the single broadcast set refers to: 0 no data, 1 Galileo,
 2 GLONASS, 3-7 reserved (unusable; IS-GPS-705J §20.3.3.8.2); see `gps_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
+inter_system_time_offset_parameters(
+    state::GNSSDecoderState{<:GPSCNAVData},
+    target::TimeSystem,
+) =
     gps_ggto_offset(state, target)
 
 function has_positioning_messages(data::GPSCNAVData)

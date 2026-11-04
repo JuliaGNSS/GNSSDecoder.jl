@@ -4,6 +4,7 @@ using DocStringExtensions, GNSSSignals, BitIntegers, Dictionaries, DataStructure
 using StaticStrings: AbstractStaticString, CStaticString
 using GNSSSignals: SECONDS_PER_WEEK
 using Unitful: Hz, ustrip
+using Dates: Dates, Date, DateTime
 import Aff3ct
 
 export decode!,
@@ -64,8 +65,15 @@ export decode!,
     get_orbit_class,
     get_broadcast_time_of_week,
     get_decoded_time_of_week,
-    GNSSTimeOffset,
-    get_time_offset,
+    get_broadcast_week,
+    get_broadcast_inter_system_time_offset,
+    get_broadcast_inter_system_time_offset_epoch,
+    UTCParameters,
+    LeapSecondParameters,
+    InterSystemTimeOffsetParameters,
+    get_utc_parameters,
+    get_leap_second_parameters,
+    get_inter_system_time_offset_parameters,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -109,5 +117,6 @@ include("beidou/b3i.jl")
 include("beidou/b1c.jl")
 include("beidou/b2a.jl")
 include("beidou/b2b.jl")
+include("time_parameters.jl")
 include("precompile.jl")
 end

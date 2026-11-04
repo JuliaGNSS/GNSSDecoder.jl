@@ -54,23 +54,23 @@ function copy_decode_allocations(make_state, symbols::Vector{Float32})
 end
 
 """
-    time_offset_allocations(state, target) -> Int
+    inter_system_time_offset_allocations(state, target) -> Int
 
-Bytes `get_time_offset(state, target)` allocates once compiled. Navigation
-solvers read it per satellite per epoch, so a decoder holding a usable offset
-must answer without allocating (issue #101). Unlike `decode!`, this holds on
-Julia 1.10 as well.
+Bytes `GNSSDecoder.inter_system_time_offset_parameters(state, target)` allocates once
+compiled. Navigation solvers read it per satellite per epoch, so a decoder holding a usable
+offset must answer without allocating (issue #101). Unlike `decode!`, this holds on Julia
+1.10 as well.
 
-The offset is read the way a solver reads it, inside one function. Returned
-across a call that is not inlined instead, a `GNSSTimeOffset` is boxed on 1.10:
-its `Union{Nothing,Int}` fields keep it from being a bits type.
+The offset is read the way a solver reads it, inside one function. Returned across a call
+that is not inlined instead, an `InterSystemTimeOffsetParameters` is boxed on 1.10: its
+`Union{Nothing,Int}` fields keep it from being a bits type.
 """
-function time_offset_allocations(state, target)
-    read_time_offset(state, target)
-    return @allocated read_time_offset(state, target)
+function inter_system_time_offset_allocations(state, target)
+    read_inter_system_time_offset(state, target)
+    return @allocated read_inter_system_time_offset(state, target)
 end
 
-function read_time_offset(state, target)
-    offset = get_time_offset(state, target)
+function read_inter_system_time_offset(state, target)
+    offset = GNSSDecoder.inter_system_time_offset_parameters(state, target)
     isnothing(offset) ? 0.0 : offset.A_0 + offset.A_1 + offset.A_2
 end

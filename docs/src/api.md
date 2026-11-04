@@ -97,6 +97,7 @@ to a compile-time constant.
 | `get_band` / `get_band_id` / `get_band_name` | which RF band | `L2()` / `:L2` / `"L2"` |
 | `get_bit_rate` | bit rate as tracked: the channel symbol rate, before error-correction decoding, of the satellite, a BeiDou B1I/B3I GEO satellite's D2 rate where it differs from the signal's | `50 Hz` |
 | `get_time_system` / `get_time_system_id` / `get_time_system_name` | time system the decoded week numbers and times of week are counted in | `GPST()` / `:GPST` / `"GPS Time"` |
+| `get_week_start_epoch(state, week)` | the TAI epoch a week of that scale begins at, a GNSSSignals `TAITime`: plus a decoded time of week, the instant (see [`get_broadcast_week`](@ref)) | `1980-01-06T00:00:19 TAI` for week 0 |
 
 Dispatch is on the constants type, which keeps decoders that share a data
 container distinct: GPS L5-I and L2C-M both decode into a `GPSCNAVData`, and
@@ -117,6 +118,7 @@ get_signal_name(GalileoE5bDecoderState(1))    # "Galileo E5b-I"
 get_band_id(GalileoE6BDecoderState(1))        # :E6
 get_band_id(GalileoE1BDecoderState(1))        # :L1 — bands are identified by RF
                                               #       frequency, not ICD label
+get_week_start_epoch(GalileoE1BDecoderState(1), 0)  # 1999-08-22T00:00:19 TAI
 ```
 
 Accessors describing the spreading code (`get_code_length`,
@@ -134,7 +136,7 @@ get_signal_type
 
 ## Satellite and Time Metadata
 
-Three questions a positioning engine asks of every decoder, whatever signal it
+The questions a positioning engine asks of every decoder, whatever signal it
 is on. Each is answered from broadcast data by some signals and from
 constellation structure by others, and each is reconstruction work the ICD
 defines — so it is done here, once per signal, rather than in every consumer.
@@ -143,7 +145,9 @@ defines — so it is done here, once per signal, rather than in every consumer.
 |:---|:---|:---|
 | [`get_orbit_class`](@ref) | GEO / IGSO / MEO, as an [`OrbitClass`](@ref) | the signal cannot say — see the warning in its docstring |
 | [`get_broadcast_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
-| [`get_time_offset`](@ref) | offset to another constellation's time system, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
+| [`get_broadcast_week`](@ref) | absolute week number, the GPS L1 C/A rollover resolved | no week number has been decoded and validated yet |
+| [`get_broadcast_inter_system_time_offset`](@ref) | offset to another constellation's time system at a time of week, in seconds | this satellite is not broadcasting one for that target |
+| [`get_broadcast_inter_system_time_offset_epoch`](@ref) | the reference epoch that offset is extrapolated from, to judge its age by | no such offset, or one without a reference epoch (BeiDou D1/D2) |
 
 `get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW` or
 `SOW` on most signals, `ITOW·7200 + TOI·18` on GPS L1C-D, and `HOW·3600 + SOH·18` on BeiDou
@@ -155,34 +159,73 @@ using GNSSDecoder, GNSSSignals
 time_of_week = get_decoded_time_of_week(state)
 ```
 
-`get_time_offset` folds away the five shapes the same quantity is broadcast in —
-Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
+`get_broadcast_inter_system_time_offset` folds away the five shapes the same quantity is
+broadcast in — Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
 `GNSS_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
 keyed per system, and D1/D2's three epochless pairs named per system — including
 each ICD's "not available" sentinel:
 
 ```julia
-offset = get_time_offset(state, GPST())     # `GPST()`, `GST()` or `BDT()`
-# Δτ is the time since the offset's reference epoch: `t - t_0 + 604800(WN - WN_0)`,
-# or simply `t` on BeiDou D1/D2, which broadcasts no epoch (`t_0 === nothing`).
-t_gpst = t_bdt - (offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2)
+Δt = get_broadcast_inter_system_time_offset(state, GPST(), t_bdt)  # `GPST()`, `GST()` or `BDT()`
+scale_offset = get_time_system_offset(BDT(), GPST())  # 14 s
+t_gpst = t_bdt - Δt + scale_offset
 ```
 
-It also folds in the part that is *not* broadcast. Two time systems differ by a
-defined whole-second offset plus a steering residual, and only the residual is
-on the air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs,
-which cannot express a whole second. `A_0` carries both, so the subtraction
-above is true as written. The defined part is zero between GPST and GST (both
-TAI − 19 s) and −14 s from BDT to either, so a consumer that tested only Galileo
-would never see it.
+It evaluates the broadcast polynomial at the given time of week against the
+decoder's own week number, which the truncated reference week is resolved
+against, so a caller needs only the time of week.
+
+`Δt` comes from the coefficients as broadcast. Two time systems differ by the leap
+seconds between them plus a steering residual, and only the residual is on the
+air — the bias coefficient is 16 bits at 2⁻³⁵ s, a range of ±0.95 µs (on BeiDou
+D1/D2 14 bits at 0.1 ns), which cannot express a whole second. The leap seconds follow from the scales'
+definitions, GNSSSignals' `get_time_system_offset`: zero between GPST and GST
+(both TAI − 19 s) and 14 s from BDT to either, so a conversion that is only
+ever tried on Galileo never notices them missing.
 
 ```@docs
 OrbitClass
 get_orbit_class
 get_broadcast_time_of_week
 get_decoded_time_of_week
-GNSSTimeOffset
-get_time_offset
+get_broadcast_week
+get_broadcast_inter_system_time_offset
+get_broadcast_inter_system_time_offset_epoch
+```
+
+## UTC, Leap Seconds and Inter-System Time Offsets
+
+The time parameters a navigation file records beside the ephemeris: the
+broadcast offset of the system's time from UTC, its leap seconds, and its offsets
+to the other systems' times (Galileo's and GPS's GGTO, BeiDou's BGTO). Every
+message truncates their reference weeks — to 6, 8 or 13 bits — so each accessor
+lifts them to the week nearest the decoder's own [`get_broadcast_week`](@ref), on
+the same count, and a consumer needs no field widths. The UTC and leap-second
+accessors take `get_broadcast_week`'s `approximate_year` for that reason; no
+message broadcasting an inter-system offset needs it, so the time-offset accessor
+takes none.
+
+| Accessor | Answers on | `nothing` when |
+|:---|:---|:---|
+| [`get_utc_parameters`](@ref) | GPS LNAV, CNAV, CNAV-2; Galileo I/NAV, F/NAV; BeiDou D1/D2 (without a reference epoch) and B-CNAV | not yet decoded, or on Galileo E6-B |
+| [`get_leap_second_parameters`](@ref) | the same | not yet decoded, or on Galileo E6-B |
+| [`get_inter_system_time_offset_parameters`](@ref) | Galileo I/NAV, F/NAV; GPS CNAV, CNAV-2; BeiDou D1/D2 and B-CNAV | not yet decoded, marked unavailable, for another target, or on GPS L1 C/A and Galileo E6-B |
+
+```julia
+using GNSSDecoder
+utc = get_utc_parameters(state; approximate_year = 2026)
+if !isnothing(utc)
+    utc.WN_0  # a full week number, not the 8 or 13 bits broadcast
+end
+```
+
+```@docs
+UTCParameters
+LeapSecondParameters
+InterSystemTimeOffsetParameters
+get_utc_parameters
+get_leap_second_parameters
+get_inter_system_time_offset_parameters
 ```
 
 ## Shared Utilities

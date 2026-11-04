@@ -745,6 +745,9 @@ end
 # `decode_sync_unit` on why the English Table 7-2 scale of 3 is a misprint).
 get_broadcast_time_of_week(data::BeiDouCNAV3Data) = data.SOW
 
+# B-CNAV3's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouCNAV3Data; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -752,7 +755,10 @@ The BDT-to-`target` offset from message type 40, or `nothing` when this
 satellite is not currently broadcasting one for `target`. One set at a time,
 tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV3Data}, target::TimeSystem) =
+inter_system_time_offset_parameters(
+    state::GNSSDecoderState{<:BeiDouCNAV3Data},
+    target::TimeSystem,
+) =
     beidou_bgto_offset(state, target)
 
 function has_positioning_messages(data::BeiDouCNAV3Data)
