@@ -849,7 +849,7 @@ end
 
         # The stream actually exercised every store.
         state = decode!(GPSL1C_DDecoderState(1), symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         # The cold start at TOI ≥ 256 comes after the reset with subframe 2
         # unchanged in `raw_data` — the complement retry must still settle it.
         @test state.data.TOI == 303

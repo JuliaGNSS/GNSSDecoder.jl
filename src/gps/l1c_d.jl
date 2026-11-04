@@ -744,7 +744,7 @@ broadcasting one for `target`.
 get_time_offset(state::GNSSDecoderState{<:GPSCNAV2Data}, target::TimeSystem) =
     gps_ggto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::GPSCNAV2Data)
+function has_positioning_messages(data::GPSCNAV2Data)
     !isnothing(data.TOI) && is_subframe2_decoded(data)
 end
 
@@ -1341,7 +1341,7 @@ and TOI continuity in [`decode_sync_unit`](@ref); this hook only publishes valid
 data and arms the streaming counter.
 """
 function validate_data(state::GNSSDecoderState{<:GPSCNAV2Data})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         # `data` gets its own container copies (`publish_data`), as `raw_data`'s keep
         # being written by later pages.
         return GNSSDecoderState(

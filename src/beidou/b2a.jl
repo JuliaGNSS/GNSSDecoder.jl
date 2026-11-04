@@ -848,7 +848,7 @@ currently broadcasting one for `target`. One set at a time, tagged by `GNSS_ID`;
 get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV2Data}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::BeiDouCNAV2Data)
+function has_positioning_messages(data::BeiDouCNAV2Data)
     !isnothing(data.SOW) &&
         is_ephemeris_decoded(data) &&
         is_clock_correction_decoded(data) &&
@@ -1022,7 +1022,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
     # the PRN gate and left `raw_data` holding the previous frame. Promoting that would
     # publish the previous SOW against this frame's sync epoch, one frame (3 s) low (#97).
     is_b2a_frame_decoded(state) || return state
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors with it;
         # the two must move together for `tow + num_bits_since_time_reference/rate` (see
         # `get_broadcast_time_of_week`) to stay on true time through frames the gate skips.

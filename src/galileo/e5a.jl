@@ -369,7 +369,7 @@ See `galileo_ggto_offset`.
 get_time_offset(state::GNSSDecoderState{<:GalileoFNAVData}, target::TimeSystem) =
     galileo_ggto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::GalileoFNAVData)
+function has_positioning_messages(data::GalileoFNAVData)
     !isnothing(data.TOW) &&
         !isnothing(data.WN) &&
         !isnothing(data.BGD_E1_E5a) &&
@@ -940,7 +940,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
 end
 
 function validate_data(state::GNSSDecoderState{<:GalileoFNAVData})
-    if is_decoding_completed_for_positioning(state.raw_data) &&
+    if has_positioning_messages(state.raw_data) &&
        state.raw_data.IOD_nav1 ==
        state.raw_data.IOD_nav2 ==
        state.raw_data.IOD_nav3 ==

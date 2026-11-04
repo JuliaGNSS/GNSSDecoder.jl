@@ -123,7 +123,7 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
         check_d1_fundamental(state.data)
         @test state.is_shifted_by_180_degrees == false
@@ -136,7 +136,7 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_cycle(0)...)
         state = decode!(state, symbols, length(symbols))
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
         @test state.data == BeiDouDNAVData()
     end
 
@@ -192,7 +192,7 @@ using Unitful: Hz
         end
 
         state = feed!(state, 6 * 300 + 11)
-        @test is_decoding_completed_for_positioning(state)   # dataset A promoted
+        @test has_positioning_data(state)   # dataset A promoted
         @test state.data.t_0c == 43200
 
         state = feed!(state, 9 * 300 + 11)
@@ -212,7 +212,7 @@ using Unitful: Hz
         # every one of these would fail the prediction and the decoder would be
         # wedged on dataset A until reset.
         state = feed!(state, length(stream))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.t_0c == 46800
         @test state.data.SOW == SOW0 + 72
     end
@@ -235,7 +235,7 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(d1_two_cycles...; polarity = -1.0f0)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.is_shifted_by_180_degrees == true
         check_d1_fundamental(state.data)
     end
@@ -247,7 +247,7 @@ using Unitful: Hz
         state = BeiDouB1IDecoderState(20)
         symbols = dnav_test_soft_symbols(sf1_err, sf2, sf3, d1_cycle(D1_CYCLE_SPAN)...)
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.WN == 810
     end
 
@@ -575,7 +575,7 @@ using Unitful: Hz
         @test state.data == BeiDouDNAVData()
         state = feed_d2_cycle(state, D2_CYCLE_SPAN)
 
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
         data = state.data
         @test data.SOW == SOW_D2 + D2_CYCLE_SPAN + 27
@@ -655,7 +655,7 @@ using Unitful: Hz
             @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
             @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
             d2_state = allocations.state
-            @test is_decoding_completed_for_positioning(d2_state)
+            @test has_positioning_data(d2_state)
             @test d2_state.data.SOW == SOW_D2 + 2 * D2_CYCLE_SPAN + 27
             @test d2_state.data.ω == data.ω
             @test length(d2_state.cache.d2_pages) == 10
@@ -713,7 +713,7 @@ using Unitful: Hz
         @test isempty(state.cache.d2_pages)
         # And decoding resumes cleanly after the reset.
         state = decode!(state, symbols, length(symbols))
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.WN == 810
     end
 
@@ -851,7 +851,7 @@ using Unitful: Hz
         @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
         @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
         state = allocations.state
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         check_d1_fundamental(state.data; SOW = SOW0 + 342)
         @test sort(collect(keys(state.data.almanacs))) == [1, 30, 63]
         @test state.data.almanacs[63].sqrt_A == 10_460_000 / 2.0^11

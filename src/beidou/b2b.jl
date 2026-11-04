@@ -134,7 +134,7 @@ vote is needed before promotion.
   - `WN::Int64`: BDT week number at the current frame's epoch (Table 7-2).
   - `t_0c::Int64`: Clock correction reference time (s, LSB 300).
   - `a_f0::Float64`: Clock bias (s). `a_f1::Float64`: drift (s/s). `a_f2::Float64`: drift rate (s/s²). (Table 7-3; the ICD names them a0/a1/a2, and writes `toc` for `t_0c`.)
-  - `T_GD_B2bI::Float64`: Group delay differential of the B2b_I signal relative to B3I (s, Table 7-4). Required, not optional: `a_f0` is referenced to B3I (§7.6), so a B2b_I receiver must add this to reach its own component. It arrives in the same MT30 as the clock, so `is_decoding_completed_for_positioning` gates on it at no cost in time to first fix.
+  - `T_GD_B2bI::Float64`: Group delay differential of the B2b_I signal relative to B3I (s, Table 7-4). Required, not optional: `a_f0` is referenced to B3I (§7.6), so a B2b_I receiver must add this to reach its own component. It arrives in the same MT30 as the clock, so `has_positioning_data` gates on it at no cost in time to first fix.
   - `α_bdgim_1 … α_bdgim_9::Float64`: BDGIM ionospheric model parameters (TECu, Table 7-8; α_bdgim_5 is broadcast unsigned and the decoder applies its negative scale factor, -2⁻³). The ICD names them `α_1` … `α_9`; see `b1c.jl` for why the `bdgim` qualifier is added.
   - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²; Table 7-18).
   - `Δt_LS::Int64`: Current or past leap-second count (s). `Δt_LSF::Int64`: current or future leap-second count (s).
@@ -755,7 +755,7 @@ tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV3Data}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::BeiDouCNAV3Data)
+function has_positioning_messages(data::BeiDouCNAV3Data)
     !isnothing(data.SOW) &&
         !isnothing(data.WN) &&
         is_ephemeris_decoded(data) &&
@@ -780,7 +780,7 @@ time.
 shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         # Promotion publishes this frame's SOW; the symbol counter re-anchors with it, so
         # `data.SOW` and the counter that `get_broadcast_time_of_week` consumers combine
         # always describe one frame. Runs right after `decode_sync_unit`, so `raw_data.SOW`

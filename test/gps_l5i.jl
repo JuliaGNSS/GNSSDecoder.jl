@@ -107,7 +107,7 @@ end
         @test d.l2c_phasing == false
         @test !state.is_shifted_by_180_degrees
         # Positioning needs message types 11 and 30 as well.
-        @test !GNSSDecoder.is_decoding_completed_for_positioning(d)
+        @test !GNSSDecoder.has_positioning_messages(d)
         @test !is_sat_healthy(state)
     end
 
@@ -310,7 +310,7 @@ end
         # No message type 40 in the recording.
         @test isnothing(d.ism)
 
-        @test GNSSDecoder.is_decoding_completed_for_positioning(d)
+        @test GNSSDecoder.has_positioning_messages(d)
         @test is_sat_healthy(state)
     end
 
@@ -349,19 +349,15 @@ end
         assert_spirent_golden(state_noisy)
     end
 
-    @testset "decode_once stops at the first complete positioning set" begin
+    @testset "validated data continues to follow the message stream" begin
         messages = load_l5i_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode!(GPSL5IDecoderState(25), stream, length(stream); decode_once = true)
-        # Message types 10, 11, 30 are the first three of the recording; the
-        # positioning set is complete after message 3 and decoding stops
-        # there (message 4 is type 15 — its text must not have been parsed).
-        # `decode_once` freezes the validated `data` snapshot at the first
-        # complete set (after message 3, type 30) while `raw_data` keeps
-        # following the stream.
-        @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
-        @test state.data.last_message_type == 30
-        @test isnothing(state.data.text_mt15)
+        state = decode!(GPSL5IDecoderState(25), stream)
+        # Message 4 is MT15. Later validated messages continue to publish after
+        # the decoder first has a complete positioning set.
+        @test GNSSDecoder.has_positioning_messages(state.data)
+        @test state.data.last_message_type == state.raw_data.last_message_type
+        @test state.data.text_mt15 == "Spirent Communications L2C te"
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
 end

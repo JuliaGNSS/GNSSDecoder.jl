@@ -57,7 +57,7 @@ end
         @test !state_a.is_shifted_by_180_degrees
         # A fresh decoder has no validated data, so the exported
         # state-forwarding readiness predicate is `false`.
-        @test !is_decoding_completed_for_positioning(state_a)
+        @test !has_positioning_data(state_a)
     end
 
     @testset "Shares the L5I CNAV decode path" begin
@@ -317,10 +317,10 @@ end
         # No message type 40 in the recording.
         @test isnothing(d.ism)
 
-        @test GNSSDecoder.is_decoding_completed_for_positioning(d)
-        # Exported state-forwarding method: dispatches on the validated `data`,
-        # so it agrees with the `data`-typed check above.
-        @test is_decoding_completed_for_positioning(state)
+        @test GNSSDecoder.has_positioning_messages(d)
+        # The exported check on the state also needs the time anchor, which a
+        # decoded stream has.
+        @test has_positioning_data(state)
         @test is_sat_healthy(state)
     end
 
@@ -360,20 +360,20 @@ end
         assert_l2c_spirent_golden(state_noisy)
     end
 
-    @testset "decode_once stops at the first complete positioning set" begin
+    @testset "validated data continues to follow the message stream" begin
         messages = load_l2c_fixture_messages()
         stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, messages))
-        state = decode!(GPSL2CMDecoderState(25), stream, length(stream); decode_once = true)
-        # Message types 10, 11, 30 are the first three of the recording; the
-        # positioning set is complete after message 3 (type 30) and decoding
-        # stops there (message 4 is type 15 — its text must not have been
-        # parsed into the validated `data`).
-        @test GNSSDecoder.is_decoding_completed_for_positioning(state.data)
-        @test state.data.last_message_type == 30
-        @test isnothing(state.data.text_mt15)
+        state = decode!(GPSL2CMDecoderState(25), stream)
+        # Message 4 is MT15. Once the first positioning set is complete, later
+        # validated messages must continue to publish to `data`.
+        @test GNSSDecoder.has_positioning_messages(state.data)
+        @test state.data.last_message_type == state.raw_data.last_message_type
+        @test state.data.text_mt15 == "Spirent Communications L2C te"
         @test state.raw_data.text_mt15 == "Spirent Communications L2C te"
     end
 end
+
+include("decode_api.jl")
 
 @testset "GPS L2C decode! is allocation-free" begin
     # The full recording (every message type 10-15, 30-37, with the reduced /
