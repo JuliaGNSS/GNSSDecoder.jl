@@ -85,3 +85,33 @@ function crc24q(word::Unsigned, num_bytes::Integer)
     end
     return crc & CRC24Q_MASK
 end
+
+# CRC-32Q, the ISM CRC of the GPS ISM Packet (IS-GPS-200 §30.3.3.10.1.2.2.13 as amended
+# by IRN-IS-200N-004), the polynomial of the RTCA DO-229 / DO-246 32-bit CRCs.
+#
+# Polynomial: g(X) = X^32 + X^31 + X^24 + X^22 + X^16 + X^14 + X^8 + X^7 + X^5 + X^3
+#                  + X + 1
+# Wire form: 0x1814141ab, with the leading X^32 implicit -> 0x814141ab.
+# Init: 0, no reflection, xor-out 0 (the ICD's r(X) = m(X)·X^32 mod g(X)).
+
+const CRC32Q_POLY = UInt32(0x814141ab)
+
+"""
+    crc32q(word::Unsigned, word_length::Int, start::Int, len::Int) -> UInt32
+
+CRC-32Q remainder (polynomial `0x1814141ab`, init `0`, no reflection, xor-out `0`) of
+the `len` bits starting at 1-based bit `start` of `word`, an MSB-first `word_length`-bit
+field. The first bit enters the register first (wire order), so for a field followed by
+its 32-bit checksum `crc32q(word, word_length, start, len + 32) == 0` iff they match.
+"""
+function crc32q(word::Unsigned, word_length::Int, start::Int, len::Int)
+    crc = UInt32(0)
+    for i = start:(start+len-1)
+        feedback = (crc >> 31) ⊻ UInt32(get_bit(word, word_length, i))
+        crc <<= 1
+        if feedback != 0
+            crc ⊻= CRC32Q_POLY
+        end
+    end
+    return crc
+end
