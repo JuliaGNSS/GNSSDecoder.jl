@@ -10,7 +10,7 @@
         state = BeiDouB3IDecoderState(25)
         @test get_signal_type(state) == BeiDouB3I
         @test GNSSDecoderState(BeiDouB3I(), 25) == state
-        @test get_data_frequency(state) == get_data_frequency(BeiDouB3I)
+        @test get_bit_rate(state) == get_bit_rate(BeiDouB3I)
         @test get_time_system_name(state) == "BeiDou Time"
         # B1I and B3I share the data container but stay distinct signals.
         @test typeof(state.constants) != typeof(BeiDouB1IDecoderState(25).constants)

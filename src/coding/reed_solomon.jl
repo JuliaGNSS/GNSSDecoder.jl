@@ -147,7 +147,7 @@ rows `1:k` are the identity, and rows `k+1:n` hold the parity submatrix `P`,
 with row `k + t` carrying `γ_{n-k-t}`. Reproduces the ICD's Annex B attachment
 exactly for `(n, k) = (255, 32)`.
 
-Erasure decoding (see [`rs_erasure_decode`](@ref)) needs only `G`, so this one
+Erasure decoding (see [`rs_erasure_decode!`](@ref)) needs only `G`, so this one
 function is the whole codec a receiver requires.
 """
 function rs_systematic_generator_matrix(field::GaloisField256, n::Int, k::Int)
@@ -185,22 +185,10 @@ function rs_systematic_generator_matrix(field::GaloisField256, n::Int, k::Int)
 end
 
 """
-    gf_invert(field, A) -> Union{Nothing,Matrix{UInt8}}
-
-Matrix inverse over GF(256) by Gauss-Jordan elimination. Returns `nothing` if
-`A` is singular. `A` is not modified. Allocates its result and a working copy
-of `A`; [`gf_invert!`](@ref) is the in-place form.
-"""
-function gf_invert(field::GaloisField256, A::AbstractMatrix{UInt8})
-    n = size(A, 1)
-    size(A, 2) == n || throw(DimensionMismatch("matrix must be square"))
-    return gf_invert!(zeros(UInt8, n, n), Matrix{UInt8}(A), field, n)
-end
-
-"""
     gf_invert!(inverse, M, field, n) -> Union{Nothing,typeof(inverse)}
 
-In-place [`gf_invert`](@ref) of the leading `n × n` block of `M`: **overwrites**
+Matrix inverse over GF(256), by Gauss-Jordan elimination, of the leading `n × n`
+block of `M`: **overwrites**
 the leading `n × n` block of `inverse` with the inverse and returns `inverse`,
 or returns `nothing` if that block is singular. The leading `n × n` block of `M`
 is **overwritten** too (it is eliminated to the identity), so pass a working
@@ -281,8 +269,8 @@ RSErasureScratch(dimension::Int) =
     RSErasureScratch(zeros(UInt8, dimension, dimension), zeros(UInt8, dimension, dimension))
 
 """
-    rs_erasure_decode(field, G, received_rows, received::AbstractMatrix{UInt8}, k)
-        -> Union{Nothing,Matrix{UInt8}}
+    rs_erasure_decode!(out, scratch::RSErasureScratch, field, G, received_rows, received, k)
+        -> Union{Nothing,typeof(out)}
 
 Recover the information symbols of a systematic RS code from any `k` received
 code symbols per column — the Galileo HAS HPVRS decode (HAS SIS ICD, Issue 1.0,
@@ -291,16 +279,19 @@ code symbols per column — the Galileo HAS HPVRS decode (HAS SIS ICD, Issue 1.0
   - `G` is the systematic generator matrix from [`rs_systematic_generator_matrix`](@ref).
   - `received_rows` are the 1-based code-vector indices (HAS page IDs) of the
     `k` collected symbols, in the same order as the rows of `received`.
-  - `received` is `k × J`: row `r` holds the `J` symbols of the code vector
-    indexed `received_rows[r]` (for HAS, `J = 53` octets per page).
+  - `received` holds `J` symbols per row: row `r` carries the code vector
+    indexed `received_rows[r]` (for HAS, `J = 53` octets per page). Only its
+    first `k` rows are read, so it may be a larger preallocated page store.
   - `k` is the information length actually in use. HAS transmits messages of
     `k = MS ≤ 32` pages and zero-pads the information vector to the code's
     dimension, so only the first `k` columns of `G` matter.
 
-Returns a `k × J` matrix whose row `i` is information symbol block `i` (HAS
-non-encoded page `M_i`), or `nothing` if the chosen rows are linearly dependent
-(the `k × k` submatrix is singular). Allocates its result and working
-matrices; [`rs_erasure_decode!`](@ref) is the in-place form the decoder uses.
+Writes the `k × J` information symbols into `out` **row by row** — information
+block `i` (HAS non-encoded page `M_i`), symbol `j` at `out[(i - 1) * J + j]` —
+which for HAS is exactly the reassembled message octets in page order. Only
+`out[1:k*J]` is **overwritten**, and the working matrices in `scratch` are
+overwritten too. Returns `out`, or `nothing` if the chosen rows are linearly
+dependent (the `k × k` decoding matrix is singular). Allocates nothing.
 
 !!! warning "Rows k+1 … (code dimension) carry nothing"
 
@@ -313,43 +304,6 @@ matrices; [`rs_erasure_decode!`](@ref) is the in-place form the decoder uses.
     excluded from transmission", ICD §6.3) and a caller must not collect them.
     Passing one, or the same row twice, is reported as `nothing` rather than
     silently producing garbage.
-"""
-function rs_erasure_decode(
-    field::GaloisField256,
-    G::AbstractMatrix{UInt8},
-    received_rows::AbstractVector{Int},
-    received::AbstractMatrix{UInt8},
-    k::Int,
-)
-    size(received, 1) == k ||
-        throw(DimensionMismatch("expected $k received rows, got $(size(received, 1))"))
-    J = size(received, 2)
-    out = Vector{UInt8}(undef, k * J)
-    decoded = rs_erasure_decode!(
-        out,
-        RSErasureScratch(max(k, 0)),
-        field,
-        G,
-        received_rows,
-        received,
-        k,
-    )
-    isnothing(decoded) && return nothing
-    # `out` holds the k × J result row by row.
-    return permutedims(reshape(out, J, k))
-end
-
-"""
-    rs_erasure_decode!(out, scratch::RSErasureScratch, field, G, received_rows, received, k)
-        -> Union{Nothing,typeof(out)}
-
-In-place [`rs_erasure_decode`](@ref): the same decode from the first `k` rows
-of `received` (which may have more rows — a preallocated page store), writing
-the `k × J` information symbols into `out` **row by row** — information block
-`i`, symbol `j` at `out[(i - 1) * J + j]` — which for HAS is exactly the
-reassembled message octets in page order. Only `out[1:k*J]` is **overwritten**,
-and the working matrices in `scratch` are overwritten too. Returns `out`, or
-`nothing` if the decoding matrix is singular. Allocates nothing.
 """
 function rs_erasure_decode!(
     out::AbstractVector{UInt8},

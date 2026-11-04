@@ -26,12 +26,10 @@
         get_band,
         get_band_id,
         get_band_name,
-        get_data_frequency,
+        get_bit_rate,
         get_time_system,
         get_time_system_id,
         get_time_system_name,
-        get_system_start_time,
-        get_tai_system_start_time,
         get_tai_offset,
     ]
 
@@ -75,46 +73,45 @@
         # every forwarded accessor — must stay keyed on the constants.
         l5 = GPSL5IDecoderState(1)
         l2c = GPSL2CMDecoderState(1)
+        @test get_signal_id(l5) != get_signal_id(l2c)
         @test get_signal_type(l5) !== get_signal_type(l2c)
-        @test get_data_frequency(l5) != get_data_frequency(l2c)
+        @test get_bit_rate(l5) != get_bit_rate(l2c)
         @test get_band_id(l5) == :L5
         @test get_band_id(l2c) == :L2
-        # Same constellation, same time scale, though.
+        # Same constellation, same time system, though.
         @test get_constellation_id(l5) == get_constellation_id(l2c) == :GPS
         @test get_time_system(l5) == get_time_system(l2c)
     end
 
     @testset "time system" begin
         # The decoded week numbers and times of week are counted in the
-        # constellation's time scale; a consumer turning them into an absolute
-        # instant needs its epoch and TAI offset, and gets both from the state.
+        # constellation's time system; a consumer turning them into an absolute
+        # instant needs its TAI offset, and gets it from the state.
         for (state, signal) in signal_of_state
             is_gps = state.data isa GNSSDecoder.AbstractGPSData
             @test get_time_system(state) == (is_gps ? GPST() : GST())
             @test get_time_system_id(state) == (is_gps ? :GPST : :GST)
-            @test get_system_start_time(state) == get_system_start_time(signal)
-            @test get_tai_system_start_time(state) == get_tai_system_start_time(signal)
         end
         @test get_time_system_name(GPSL1CADecoderState(1)) == "GPS Time"
         @test get_time_system_name(GalileoE1BDecoderState(1)) == "Galileo System Time"
-        # The Galileo epoch is 13 s shy of a UTC midnight, so it is worth
-        # sourcing rather than restating — the two epochs genuinely differ.
-        @test get_system_start_time(GPSL1CADecoderState(1)) !=
-              get_system_start_time(GalileoE1BDecoderState(1))
         # Both currently modelled scales run 19 s behind TAI.
         @test get_tai_offset(GPSL1CADecoderState(1)) ==
               get_tai_offset(GalileoE1BDecoderState(1))
     end
 
-    @testset "E1B BOC(1,1) approximation" begin
-        # The BOC(1,1) approximation decodes the identical I/NAV stream, so its
-        # decoder *is* an E1B decoder and reports E1B throughout — the
-        # approximation is a tracking/acquisition concern and leaves no trace in
-        # the symbol domain.
-        boc11 = GNSSDecoder.GNSSDecoderState(GalileoE1B_BOC11(), 1)
-        @test get_signal_type(boc11) === GalileoE1B
-        for accessor in forwarded_accessors
-            @test accessor(boc11) == accessor(GalileoE1B)
+    @testset "E1B replica-independent metadata" begin
+        # Tracking replicas differ, but the decoder reports their shared
+        # broadcast component without retaining either replica identity.
+        @test get_modulation(GalileoE1B()) != get_modulation(GalileoE1B(CBOC))
+        for signal in (GalileoE1B(), GalileoE1B(CBOC))
+            state = GNSSDecoderState(signal, 1)
+            @test get_signal_type(state) === GalileoE1B
+            @test get_signal_id(state) === :GalileoE1B
+            @test get_signal_name(state) == "Galileo E1B"
+            @test !applicable(get_modulation, state)
+            for accessor in forwarded_accessors
+                @test accessor(state) == accessor(signal)
+            end
         end
     end
 
@@ -126,7 +123,7 @@
         @test @inferred(get_signal_type(state)) === GPSL1CA
         @test @inferred(get_signal_id(state)) == :GPSL1CA
         @test @inferred(get_band_id(state)) == :L1
-        @test @inferred(get_data_frequency(state)) == get_data_frequency(GPSL1CA)
+        @test @inferred(get_bit_rate(state)) == get_bit_rate(GPSL1CA)
         @test @inferred(get_time_system(state)) == GPST()
     end
 end

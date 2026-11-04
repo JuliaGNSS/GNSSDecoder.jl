@@ -42,7 +42,7 @@ parsers (message types 10-15, 30-37, and 40, IS-GPS-705J §20.3.3).
 
 ```julia
 state = GPSL5IDecoderState(1)            # PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

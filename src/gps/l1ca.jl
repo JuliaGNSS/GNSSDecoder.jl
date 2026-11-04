@@ -1,10 +1,7 @@
 """
     GPSL1CAConstants
 
-WGS 84 constants and LNAV message structure parameters for GPS L1 C/A signal decoding.
-
-The physical constants are defined in IS-GPS-200 (Interface Specification) and are used
-for computing satellite positions and clock corrections from broadcast ephemeris data.
+LNAV message structure parameters for GPS L1 C/A signal decoding (IS-GPS-200).
 
 # Fields
 
@@ -12,11 +9,6 @@ for computing satellite positions and clock corrections from broadcast ephemeris
   - `preamble::UInt8`: TLM word preamble pattern (10001011 binary, 0x8B)
   - `preamble_length::Int`: Length of preamble in bits (8)
   - `word_length::Int`: Length of each LNAV word in bits (30)
-  - `PI::Float64`: Mathematical constant π = 3.1415926535898 (IS-GPS-200 Table 20-IV)
-  - `Ω_dot_e::Float64`: WGS 84 Earth rotation rate = 7.2921151467×10⁻⁵ rad/s
-  - `c::Float64`: Speed of light = 2.99792458×10⁸ m/s
-  - `μ::Float64`: WGS 84 Earth gravitational parameter = 3.986005×10¹⁴ m³/s²
-  - `F::Float64`: Relativistic correction constant = -4.442807633×10⁻¹⁰ s/√m
 
 # Reference
 
@@ -27,11 +19,6 @@ Base.@kwdef struct GPSL1CAConstants <: AbstractGNSSConstants
     preamble::UInt8 = 0b10001011
     preamble_length::Int = 8
     word_length::Int = 30
-    PI::Float64 = GNSS_PI
-    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
-    c::Float64 = SPEED_OF_LIGHT
-    μ::Float64 = GPS_μ
-    F::Float64 = GPS_F
 end
 
 """
@@ -511,38 +498,9 @@ function is_subframe3_decoded(data::GPSL1CAData)
         !isnothing(data.i_dot)
 end
 
-function is_subframe4_decoded(data::GPSL1CAData)
-    # Subframe 4 is considered decoded when we have ionospheric and UTC parameters
-    # (page 18) and SV configurations/health (page 25)
-    !isnothing(data.α_0) &&
-        !isnothing(data.α_1) &&
-        !isnothing(data.α_2) &&
-        !isnothing(data.α_3) &&
-        !isnothing(data.β_0) &&
-        !isnothing(data.β_1) &&
-        !isnothing(data.β_2) &&
-        !isnothing(data.β_3) &&
-        !isnothing(data.A_0UTC) &&
-        !isnothing(data.A_1UTC) &&
-        !isnothing(data.Δt_LS) &&
-        !isnothing(data.t_0t) &&
-        !isnothing(data.WN_0t) &&
-        !isnothing(data.WN_LSF) &&
-        !isnothing(data.DN) &&
-        !isnothing(data.Δt_LSF) &&
-        !isnothing(data.sv_config) &&
-        !isnothing(data.sv_health_sf4_25)
-end
-
-function is_subframe5_decoded(data::GPSL1CAData)
-    # Subframe 5 is considered decoded when we have SV health (page 25)
-    # and almanac reference time/week
-    !isnothing(data.sv_health_sf5_25) && !isnothing(data.t_0a) && !isnothing(data.WN_a)
-end
-
 # LNAV broadcasts the time of week as seconds outright (the 17-bit HOW count is
 # scaled by 6 at parse), so there is nothing to reconstruct.
-get_time_of_week(data::GPSL1CAData) = data.TOW
+get_broadcast_time_of_week(data::GPSL1CAData) = data.TOW
 
 # LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
 # CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
@@ -978,7 +936,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
 
         state = can_decode_word(state, buffer, 4) do word4, state
             # Mean motion difference from computed value
-            Δn = get_twos_complement_num(word4, 30, 1, 16) * state.constants.PI * 2.0^-43
+            Δn = get_twos_complement_num(word4, 30, 1, 16) * GNSS_PI * 2.0^-43
             GPSL1CAData(state.raw_data; Δn)
         end
 
@@ -986,10 +944,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # Mean anomaly at reference time
             combined_word =
                 UInt(get_bits(word4, 30, 17, 8) << 24 + get_bits(word5, 30, 1, 24))
-            M_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) *
-                state.constants.PI *
-                2.0^-31
+            M_0 = get_twos_complement_num(combined_word, 32, 1, 32) * GNSS_PI * 2.0^-31
             GPSL1CAData(state.raw_data; M_0)
         end
 
@@ -1040,10 +995,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # Longitude of Ascending Node of Orbit Plane at Weekly Epoch
             combined_word =
                 UInt(get_bits(word3, 30, 17, 8) << 24 + get_bits(word4, 30, 1, 24))
-            Ω_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) *
-                state.constants.PI *
-                2.0^-31
+            Ω_0 = get_twos_complement_num(combined_word, 32, 1, 32) * GNSS_PI * 2.0^-31
             GPSL1CAData(state.raw_data; Ω_0)
         end
 
@@ -1057,10 +1009,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # inclination Angle at reference time
             combined_word =
                 UInt(get_bits(word5, 30, 17, 8) << 24 + get_bits(word6, 30, 1, 24))
-            i_0 =
-                get_twos_complement_num(combined_word, 32, 1, 32) *
-                state.constants.PI *
-                2.0^-31
+            i_0 = get_twos_complement_num(combined_word, 32, 1, 32) * GNSS_PI * 2.0^-31
             GPSL1CAData(state.raw_data; i_0)
         end
 
@@ -1074,16 +1023,13 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # Argument of Perigee
             combined_word =
                 UInt(get_bits(word7, 30, 17, 8) << 24 + get_bits(word8, 30, 1, 24))
-            ω =
-                get_twos_complement_num(combined_word, 32, 1, 32) *
-                state.constants.PI *
-                2.0^-31
+            ω = get_twos_complement_num(combined_word, 32, 1, 32) * GNSS_PI * 2.0^-31
             GPSL1CAData(state.raw_data; ω)
         end
 
         state = can_decode_word(state, buffer, 9) do word9, state
             # Rate of right ascension
-            Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * state.constants.PI * 2.0^-43
+            Ω_dot = get_twos_complement_num(word9, 30, 1, 24) * GNSS_PI * 2.0^-43
             GPSL1CAData(state.raw_data; Ω_dot)
         end
 
@@ -1091,8 +1037,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1CAData}, buffer)
             # Issue of Ephemeris Data
             IODE_Sub_3 = Int64(get_bits(word10, 30, 1, 8))
             # Rate of Inclination Angle
-            i_dot =
-                get_twos_complement_num(word10, 30, 9, 14) * state.constants.PI * 2.0^-43
+            i_dot = get_twos_complement_num(word10, 30, 9, 14) * GNSS_PI * 2.0^-43
             GPSL1CAData(state.raw_data; IODE_Sub_3, i_dot)
         end
     elseif subframe_id == 4
@@ -1435,14 +1380,13 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSL1CAData}, buffer, sv_
     # Decode almanac parameters
     alm_e = get_bits(word3_comp, 30, 9, 16) / 1 << 21
     alm_toa = Int(get_bits(word4_comp, 30, 1, 8) << 12)
-    alm_δi = get_twos_complement_num(word4_comp, 30, 9, 16) * state.constants.PI / 1 << 19
-    alm_Ω_dot =
-        get_twos_complement_num(word5_comp, 30, 1, 16) * state.constants.PI * 2.0^-38
+    alm_δi = get_twos_complement_num(word4_comp, 30, 9, 16) * GNSS_PI / 1 << 19
+    alm_Ω_dot = get_twos_complement_num(word5_comp, 30, 1, 16) * GNSS_PI * 2.0^-38
     alm_sv_health = Int64(get_bits(word5_comp, 30, 17, 8))
     alm_sqrt_A = get_bits(word6_comp, 30, 1, 24) / 1 << 11
-    alm_Ω_0 = get_twos_complement_num(word7_comp, 30, 1, 24) * state.constants.PI / 1 << 23
-    alm_ω = get_twos_complement_num(word8_comp, 30, 1, 24) * state.constants.PI / 1 << 23
-    alm_M_0 = get_twos_complement_num(word9_comp, 30, 1, 24) * state.constants.PI / 1 << 23
+    alm_Ω_0 = get_twos_complement_num(word7_comp, 30, 1, 24) * GNSS_PI / 1 << 23
+    alm_ω = get_twos_complement_num(word8_comp, 30, 1, 24) * GNSS_PI / 1 << 23
+    alm_M_0 = get_twos_complement_num(word9_comp, 30, 1, 24) * GNSS_PI / 1 << 23
 
     # af0: 8 MSBs at bits 1-8, 3 LSBs at bits 20-22 = 11 bits total
     af0_msbs = get_bits(word10_comp, 30, 1, 8)

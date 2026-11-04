@@ -19,10 +19,10 @@ const GALILEO_VITERBI_POLY = [0o171, 0o133]
 const GALILEO_INTERLEAVER_ROWS = 8
 
 # GTRF constants specific to Galileo (Galileo OS SIS ICD, Issue 2.2, Table 68).
-# Only the two that differ from the GPS WGS-84 values live here; π, the speed of
-# light, and the Earth rotation rate are shared package-wide (`GNSS_PI`,
-# `SPEED_OF_LIGHT`, `EARTH_ROTATION_RATE` in `gnss.jl`). `GALILEO_F` follows from
-# μ via F = -2√μ/c², which is why it too differs from GPS.
+# Only the two that differ from the GPS WGS-84 values live here; π and the Earth
+# rotation rate are shared package-wide (`GNSS_PI`, `EARTH_ROTATION_RATE` in
+# `gnss.jl`). `GALILEO_F` follows from μ via F = -2√μ/c², which is why it too
+# differs from GPS.
 const GALILEO_μ = 3.986004418e14   # geocentric gravitational constant (m³/s²)
 const GALILEO_F = -4.442807309e-10 # relativistic correction constant (s/√m)
 
