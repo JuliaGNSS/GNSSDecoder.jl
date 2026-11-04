@@ -484,7 +484,7 @@ end
         @test is_decoding_completed_for_positioning(state)
     end
 
-    @testset "MT10/MT11 pairing wraps at the BDT week rollover" begin
+    @testset "MT10/MT11 pairing wraps at the BDT week crossover" begin
         # Adjacency is modular: the last frame of the week (SOW 604797)
         # followed by the first of the next (SOW 0) is a valid pair, while a
         # straddling non-adjacent gap is not.
@@ -509,7 +509,7 @@ end
         # MT10/MT11 adjacency gate and then the IODE == IODC & 0xff match, so
         # promotion is skipped for two frames; across that gap the published SOW
         # stands still and only the counter may carry the elapsed time. Re-arming
-        # it per decoded frame made `now = tow + num_bits_since_time_reference/get_bit_rate`
+        # it per decoded frame made `now = tow + num_bits/get_bit_rate`
         # (src/gnss.jl) read exactly one 3-second frame low for the whole skip.
         new_iode = B2A_IODE + 1
         new_iodc = (3 << 8) | new_iode  # 790; IODE == IODC & 0xff again

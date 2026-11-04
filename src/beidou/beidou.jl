@@ -1,41 +1,30 @@
-# Definitions shared across BeiDou signals (B1I/B3I D1-D2 NAV and the B-CNAV
-# family on B1C, B2a, and B2b): the BDCS physical constants, shared by all five
-# decoders, and the midi and reduced almanac records, shared by the three
-# B-CNAV ones. Each individual signal's framing, message layout, and parser
-# live in their own files (`dnav.jl` + `b1i.jl`/`b3i.jl`, `b1c.jl`, `b2a.jl`,
-# `b2b.jl`). This mirrors how `src/gnss.jl` holds the definitions shared across
-# *all* signals and `src/galileo/galileo.jl` those shared across Galileo.
-#
-# The test for belonging here is that no single signal file can own it. The
-# GEO-orbit PRN partition looks like it qualifies and does not: it selects
-# between the D1 and D2 *message formats*, so it is used by `dnav.jl` alone and
-# lives there.
+# Definitions shared across BeiDou signals (B1I/B3I D1-D2 NAV and the B-CNAV family on
+# B1C, B2a, and B2b): the BDCS constants (all five decoders) and the midi and reduced
+# almanac records (the three B-CNAV decoders). Per-signal framing, layout, and parsing
+# live in `dnav.jl` + `b1i.jl`/`b3i.jl`, `b1c.jl`, `b2a.jl`, `b2b.jl`.
+# Something belongs here only if no single signal file can own it: the GEO-orbit PRN
+# partition selects the D1/D2 message format, so it lives in `dnav.jl`.
 
-# BDCS (BeiDou Coordinate System) constants specific to BeiDou (BDS-SIS-ICD-
-# B1I-3.0 Table 3-1 / §5.2.4.12; identical across the B1I, B3I, B1C, B2a, and
-# B2b ICDs). Only the two that differ from the GPS WGS-84 values live here; π is
-# shared package-wide (`GNSS_PI` in `gnss.jl`). Note the Earth rotation rate
-# genuinely differs from the WGS-84/GTRF value used by GPS and Galileo
-# (7.2921151467e-5 rad/s), so the package-wide `EARTH_ROTATION_RATE` must *not*
-# be used for BeiDou.
+# BDCS (BeiDou Coordinate System) constants (BDS-SIS-ICD-B1I-3.0 Table 3-1 / §5.2.4.12;
+# identical across the B1I, B3I, B1C, B2a, and B2b ICDs). Only the ones differing from
+# the GPS WGS-84 values live here; π is `GNSS_PI` in `gnss.jl`. The Earth rotation rate
+# differs from GPS/Galileo (7.2921151467e-5 rad/s), so the package-wide
+# `EARTH_ROTATION_RATE` must *not* be used in BeiDou's ephemeris.
 const BEIDOU_μ = 3.986004418e14                # geocentric gravitational constant (m³/s²)
 const BEIDOU_EARTH_ROTATION_RATE = 7.2921150e-5 # Earth rotation rate of BDCS (rad/s)
 
-# Whether a broadcast B-CNAV satellite orbit type names an orbit class. The
-# 2-bit field encodes 1 = GEO, 2 = IGSO, 3 = MEO and reserves 0 (Table 7-6 of
-# the B1C, B2a, and B2b ICDs).
+# Whether a broadcast B-CNAV satellite orbit type names an orbit class: 1 = GEO,
+# 2 = IGSO, 3 = MEO, 0 reserved (BDS-SIS-ICD-B1C-1.0 and B2a-1.0 Table 7-8, B2b-1.0
+# Table 7-6).
 #
-# This gates positioning, because `sat_type` is what selects the reference the
-# broadcast ephemeris is expressed against: `A = A_ref + ΔA` with
-# `A_ref = 27 906 100 m` for MEO and `42 162 200 m` for IGSO/GEO, and
-# `i = i_ref + δi` in the almanacs. A satellite broadcasting the reserved code
-# leaves its own semi-major axis unknowable — the two references differ by
-# 14 256 100 m — so it must not be used rather than be positioned against a
-# guessed orbit class. B1I and B3I are unaffected: D1/D2 NAV broadcasts `sqrt_A`
-# outright and carries no orbit-type field.
+# This gates positioning: `sat_type` selects the reference of the broadcast ephemeris,
+# `A = A_ref + ΔA` with `A_ref = 27 906 100 m` (MEO) or `42 162 200 m` (IGSO/GEO), and
+# `i = i_ref + δi` in the almanacs. The references differ by 14 256 100 m, so a
+# satellite broadcasting the reserved code must not be used. B1I/B3I are unaffected:
+# D1/D2 NAV broadcasts `sqrt_A` outright and has no orbit-type field.
 #
-# The almanac records keep the raw field either way; a reserved orbit type in
-# somebody else's almanac is not a reason to discard the rest of the page.
+# The almanac records keep the raw field; a reserved type in another satellite's almanac
+# is no reason to discard the rest of the page.
 is_known_sat_type(sat_type::Integer) = sat_type in 1:3
 is_known_sat_type(::Nothing) = false
 
@@ -44,20 +33,17 @@ is_known_sat_type(::Nothing) = false
 
 Midi almanac for one BeiDou satellite.
 
-The BDS-3 midi almanac is one 156-bit block whose layout, scale factors, and
-reference values are identical across the three B-CNAV messages, so the same
-record is produced by the B1C decoder (B-CNAV1 subframe 3 page type 4,
-BDS-SIS-ICD-B1C-1.0 Figure 6-21 / Table 7-13), the B2a decoder (B-CNAV2
-message type 40, BDS-SIS-ICD-B2a-1.0 Figure 6-20 / Table 7-13), and the B2b
-decoder (B-CNAV3 message type 40, BDS-SIS-ICD-B2b-1.0 Figure 6-15 /
-Table 7-11) — mirroring how [`GalileoAlmanac`](@ref) is shared by the I/NAV
-and F/NAV decoders. Each block is complete in itself and keyed by `PRN_a` in
-the per-signal data containers.
+The BDS-3 midi almanac is one 156-bit block, identical across the three B-CNAV
+messages, so one record serves the B1C decoder (B-CNAV1 subframe 3 page type 4,
+BDS-SIS-ICD-B1C-1.0 Figure 6-21 / Table 7-13), the B2a decoder (B-CNAV2 message
+type 40, BDS-SIS-ICD-B2a-1.0 Figure 6-20 / Table 7-13), and the B2b decoder
+(B-CNAV3 message type 40, BDS-SIS-ICD-B2b-1.0 Figure 6-15 / Table 7-11), as
+[`GalileoAlmanac`](@ref) does for I/NAV and F/NAV. Each record is keyed by `PRN_a`
+in the per-signal data containers.
 
-Reference value to apply (ICD notes to the midi-almanac tables): inclination
-is `i = i_ref + δi` with `i_ref = 0.30π rad` (54°) for MEO/IGSO satellites and
-`i_ref = 0.0` for GEO satellites, selected by `sat_type`. Semi-circle fields
-are converted to radians on decode.
+Reference value (ICD notes to the midi-almanac tables): `i = i_ref + δi` with
+`i_ref = 0.30π rad` (54°) for MEO/IGSO and `0.0` for GEO, selected by `sat_type`.
+Semi-circle fields are converted to radians on decode.
 
 # Fields
 
@@ -75,9 +61,8 @@ are converted to radians on decode.
   - `ω::Float64`: Argument of perigee (rad).
   - `M_0::Float64`: Mean anomaly at reference time (rad).
   - `a_f0::Float64`, `a_f1::Float64`: Satellite clock bias / drift (s, s/s).
-    The midi-almanac terms are the one BeiDou clock pair the ICDs already spell
-    `af0`/`af1` (B2b-1.0 Table 7-11, B1C/B2a-1.0 Table 7-13) — unlike the
-    clock-correction block, which they write `a_0`/`a_1`/`a_2`.
+    The ICDs spell these `af0`/`af1` (B2b-1.0 Table 7-11, B1C/B2a-1.0 Table 7-13),
+    unlike the clock-correction block's `a_0`/`a_1`/`a_2`.
   - `health::Int`: Raw 8-bit satellite health word (BDS-SIS-ICD-B2b-1.0
     Table 7-12, the fullest definition: bit 8 (MSB) = satellite clock,
     bit 7 = B1C signal, bit 6 = B2a signal, bit 5 = B2b_I signal, bits 4-1
@@ -106,16 +91,14 @@ end
 
 Reduced almanac for one BeiDou satellite.
 
-The BDS-3 reduced almanac is one 38-bit block whose layout, scale factors,
-and reference values are identical across the three B-CNAV messages, so the
-same record is produced by the B1C decoder (B-CNAV1 subframe 3 page type 2,
-four blocks per page, BDS-SIS-ICD-B1C-1.0 Figure 6-18 / Table 7-16), the B2a
-decoder (B-CNAV2 message types 31 and 33, BDS-SIS-ICD-B2a-1.0 Figure 6-17 /
-Table 7-16), and the B2b decoder (B-CNAV3 message type 40, five blocks per
-message, BDS-SIS-ICD-B2b-1.0 Figure 6-12 / Table 7-14). The 38-bit block
-itself carries no epoch; the almanac reference week/time broadcast alongside
-it in the carrying page/message is copied into every record, so each record
-is complete in itself and keyed by `PRN_a` in the per-signal data containers.
+The BDS-3 reduced almanac is one 38-bit block, identical across the three B-CNAV
+messages, so one record serves the B1C decoder (B-CNAV1 subframe 3 page type 2, four
+blocks per page, BDS-SIS-ICD-B1C-1.0 Figure 6-18 / Table 7-16), the B2a decoder
+(B-CNAV2 message types 31 and 33, BDS-SIS-ICD-B2a-1.0 Figure 6-17 / Table 7-16), and
+the B2b decoder (B-CNAV3 message type 40, five blocks per message, BDS-SIS-ICD-B2b-1.0
+Figure 6-12 / Table 7-14). The block carries no epoch; the almanac reference week/time
+of the carrying page/message is copied into every record. Each record is keyed by
+`PRN_a` in the per-signal data containers.
 
 Reference values to apply (ICD notes to the reduced-almanac tables):
 `A = A_ref + δA` with `A_ref = 27 906 100 m` (MEO) or `42 162 200 m`
@@ -150,31 +133,24 @@ end
 
 # ---- Shared B-CNAV data blocks ----------------------------------------------
 #
-# B1C, B2a and B2b are three different messages built from the same eight data
-# blocks. Each ICD defines a block once — layout, widths, signedness, scale
-# factors — and then places it at whatever bit offset its own message needs, so
-# the only thing that differs between the three decoders is that offset.
+# B1C, B2a and B2b build their messages from the same eight data blocks, each defined
+# once per ICD (layout, widths, signedness, scale factors) and placed at a
+# message-specific bit offset. Parsing each block once keeps the decoders from
+# drifting (they had diverged in scale-factor spelling and integer types).
 #
-# Parsing each block once is what keeps the three from drifting. They already had:
-# `δA` was `* 2.0^9` in two files and `* 512.0` in the third, `t_0t` and `t_EOP`
-# were `* 2^4` in two and `* 16` in the third, and the integer conversions were
-# variously `Int`, `Int64` and `Float64` — the same numbers by luck rather than by
-# construction, in code verified against three separate ICD documents.
-#
-# Each function takes the packed message word, its logical bit length, and the
-# 1-based position of the block's first bit, and returns a `NamedTuple` keyed by
-# container field names — which the three containers agree on, that being what
-# the package-wide naming rule bought. Callers splat it into their container:
+# Each function takes the packed message word, its logical bit length, and the 1-based
+# position of the block's first bit, and returns a `NamedTuple` keyed by the container
+# field names, which the three containers share. Callers splat it into their container:
 #
 #     BeiDouCNAV3Data(raw; beidou_clock_block(word, word_length, 44)...)
 #
-# References are given per block; the B1C figure/table numbers are cited, with the
-# B2a-1.0 and B2b-1.0 counterparts named at each call site.
+# B1C figure/table numbers are cited; the B2a-1.0 and B2b-1.0 counterparts are named at
+# each call site.
 
 """
-Clock correction block, 69 bits: `t_oc`(11, LSB 300 s), `a_0`(25, 2⁻³⁴ s),
-`a_1`(22, 2⁻⁵⁰ s/s), `a_2`(11, 2⁻⁶⁶ s/s²) — BDS-SIS-ICD-B1C-1.0 Figure 6-13,
-Table 7-5.
+Clock correction block, 69 bits: `t_0c`(11, LSB 300 s), `a_f0`(25, 2⁻³⁴ s),
+`a_f1`(22, 2⁻⁵⁰ s/s), `a_f2`(11, 2⁻⁶⁶ s/s²), the ICD's `t_oc`, `a_0`, `a_1`, `a_2` —
+BDS-SIS-ICD-B1C-1.0 Figure 6-13, Table 7-5.
 """
 beidou_clock_block(word::Unsigned, word_length::Int, start::Int) = (;
     t_0c = Int64(get_bits(word, word_length, start, 11)) * 300,
@@ -188,15 +164,11 @@ SISAIoc block, 22 bits: `t_op`(11, LSB 300 s), `SISAI_ocb`(5), `SISAI_oc1`(3),
 `SISAI_oc2`(3) — Figure 6-14. The three indices are raw broadcast values: the
 ICDs defer the accuracy semantics to a future update (B1C §7.16).
 
-`t_op` is scaled to seconds, though the deferral means no BDS parameter table
-states its factor, because the ICDs *do* define the field — "top: the time of
-week for data prediction" (B2b §7.15 item 5) — and only one reading satisfies
-that definition: 11 bits in unit seconds cannot span a week, while LSB 300 s
-gives 0..614100, the exact convention of `t_oc`/`t_oe` in the same ICDs
-(11 bits, LSB 300, effective range 0..604500, Table 7-5) and of GPS CNAV's
-same-named, same-width `t_op`, which IS-GPS-705J states outright. Leaving it
-raw would be the package's only `t_op` not in seconds — the same field name in
-two units, which rule 1 of CONTEXT.md's naming doctrine exists to prevent.
+`t_op` is scaled to seconds although no BDS table states its factor. The ICDs define
+it as "the time of week for data prediction" (B2b §7.15 item 5); 11 bits in seconds
+cannot span a week, while LSB 300 s gives 0..614100, the convention of `t_0c`/`t_0e`
+(Table 7-5) and of GPS CNAV's same-named `t_op` (IS-GPS-705J). Leaving it raw would
+give the same field name in two units (CONTEXT.md naming doctrine, rule 1).
 """
 beidou_sisai_oc_block(word::Unsigned, word_length::Int, start::Int) = (;
     t_op = Int64(get_bits(word, word_length, start, 11)) * 300,
@@ -209,9 +181,8 @@ beidou_sisai_oc_block(word::Unsigned, word_length::Int, start::Int) = (;
 BDGIM ionospheric block, 74 bits: `α₁`(10) then `α₂`…`α₉`(8 each), all LSB 2⁻³
 TECu — Figure 6-16, Table 7-10.
 
-The signedness is not uniform and is easy to get wrong: `α₁`, `α₃`, `α₄` and `α₅`
-are unsigned, `α₂` and `α₆`…`α₉` are two's complement, and `α₅` carries the
-*negative* scale factor −2⁻³.
+Signedness is not uniform: `α₁`, `α₃`, `α₄` and `α₅` are unsigned, `α₂` and
+`α₆`…`α₉` are two's complement, and `α₅` carries the *negative* scale factor −2⁻³.
 """
 beidou_bdgim_block(word::Unsigned, word_length::Int, start::Int) = (;
     α_bdgim_1 = Int64(get_bits(word, word_length, start, 10)) * 2.0^-3,
@@ -263,26 +234,23 @@ beidou_eop_block(word::Unsigned, word_length::Int, start::Int) = (;
 Map a broadcast B-CNAV `sat_type` onto an [`OrbitClass`](@ref): 1 GEO, 2 IGSO,
 3 MEO, with the reserved 0 — and an undecoded `nothing` — reporting `nothing`.
 
-The same screen `is_known_sat_type` applies to positioning, in the form
-[`get_orbit_class`](@ref) answers in. B1I and B3I do not reach this: D1/D2 NAV
-broadcasts no orbit-type field (see `dnav.jl`).
+The same screen as `is_known_sat_type`, in the form [`get_orbit_class`](@ref)
+answers in. B1I/B3I do not reach this: D1/D2 NAV has no orbit-type field (see
+`dnav.jl`).
 """
 beidou_orbit_class(sat_type) =
     sat_type == 1 ? geostationary_orbit :
     sat_type == 2 ? inclined_geosynchronous_orbit :
     sat_type == 3 ? medium_earth_orbit : nothing
 
-# Orbit class from the satellite's own broadcast `sat_type` (its Ephemeris I
-# block); `nothing` until that block is decoded, and for the reserved code.
-# Dispatched on the B-CNAV family type rather than `AbstractBeiDouData` because
-# only the B-CNAV messages carry a `sat_type` field — B1I/B3I answer from the
-# GEO PRN partition instead (see `beidou/dnav.jl`).
+# Orbit class from the broadcast `sat_type` (Ephemeris I block); `nothing` until decoded
+# and for the reserved code. Dispatched on the B-CNAV family type because only B-CNAV
+# carries `sat_type`; B1I/B3I use the GEO PRN partition (see `beidou/dnav.jl`).
 get_orbit_class(state::GNSSDecoderState{<:AbstractBeiDouCNAVData}) =
     beidou_orbit_class(state.data.sat_type)
 
-# `WN_0BGTO` is 13 bits, the same width as the BDT week number it is subtracted
-# from, so resolving it changes nothing except across a week-number rollover —
-# which is exactly when it matters. See `resolve_reference_week`.
+# `WN_0BGTO` is 13 bits, the width of the BDT week number, so resolving it matters only
+# across a week-number rollover. See `resolve_reference_week`.
 const BEIDOU_BGTO_WN_MODULUS = 8192
 
 """
@@ -291,32 +259,29 @@ const BEIDOU_BGTO_WN_MODULUS = 8192
 Map a broadcast BGTO `GNSS_ID` onto the time system the offset refers to: 1 GPS,
 2 Galileo, 3 GLONASS, 0 "not available" (§7.13.1 of the B1C, B2a and B2b ICDs).
 
-GLONASS reports `nothing`, as do code 0 and an undecoded `nothing`: `GNSSSignals`
-defines no GLONASS `TimeSystem`, so a GLONASS offset has no target to be asked
-for and is read off the data fields directly. See [`get_time_offset`](@ref).
+GLONASS, code 0 and an undecoded `nothing` report `nothing`: `GNSSSignals` defines no
+GLONASS `TimeSystem`, so a GLONASS offset is read off the data fields directly. See
+[`get_time_offset`](@ref).
 """
 beidou_bgto_target(GNSS_ID) = GNSS_ID == 1 ? GPST() : GNSS_ID == 2 ? GST() : nothing
 
 """
     beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
-Normalise the single flat BGTO parameter set that B2a (message type 33) and B2b
-(message type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when
-the set is absent, marked unavailable, or refers to a system other than
-`target`.
+Normalise the flat BGTO parameter set that B2a (message type 33) and B2b (message
+type 40) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing` when the set is absent,
+marked unavailable, or refers to a system other than `target`.
 
-Both signals carry one set at a time, tagged with the system it refers to, so
-which target is answerable is the satellite's choice at the moment of asking —
-unlike B1C, which keys a set per system (see [`BeiDouB1CBGTO`](@ref)). The
-`GNSS_ID == 0` "not available" sentinel is screened here rather than at decode,
-because both decoders keep the raw field; B1C screens it at decode instead,
-since it has a keyed store and no key to file an unavailable set under.
+Both signals carry one set at a time, tagged with its system, unlike B1C, which keys a
+set per system (see [`BeiDouB1CBGTO`](@ref)). The
+`GNSS_ID == 0` "not available" sentinel is screened here because both decoders keep the
+raw field; B1C screens it at decode, having no key to file an unavailable set under.
 """
 function beidou_bgto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     beidou_bgto_target(data.GNSS_ID) === target || return nothing
-    # Decoded together from one message, so all present or all `nothing`. Each is
-    # checked anyway, to narrow it for the call below (see `galileo_ggto_offset`).
+    # Decoded together, so all present or all `nothing`; each is checked to narrow its
+    # type for the call below (see `galileo_ggto_offset`).
     (; A_0BGTO, A_1BGTO, A_2BGTO, t_0BGTO, WN_0BGTO) = data
     (
         isnothing(A_0BGTO) ||
@@ -356,9 +321,8 @@ beidou_bgto_block(word::Unsigned, word_length::Int, start::Int) = (;
 """
     beidou_midi_almanac(word, word_length, start) -> Union{Nothing,BeiDouMidiAlmanac}
 
-One 156-bit midi-almanac block (Figure 6-21, Table 7-13), or `nothing` for the
-`PRN_a == 0` encoding that marks an empty slot — no almanac was broadcast in this
-frame, and the following blocks may still be valid.
+One 156-bit midi-almanac block (Figure 6-21, Table 7-13), or `nothing` for an empty
+slot (`PRN_a == 0`); following blocks may still be valid.
 """
 function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int)
     PRN_a = Int(get_bits(word, word_length, start, 6))
@@ -392,9 +356,8 @@ end
         -> Union{Nothing,BeiDouReducedAlmanac}
 
 One 38-bit reduced-almanac block (Figure 6-18, Table 7-16), or `nothing` for the
-`PRN_a == 0` empty-slot encoding. The block carries no epoch of its own, so the
-almanac reference week and time of the carrying page are passed in and copied
-into the record.
+`PRN_a == 0` empty-slot encoding. The block has no epoch, so the almanac reference
+week and time of the carrying page are passed in and copied into the record.
 """
 function beidou_reduced_almanac(
     word::Unsigned,
@@ -421,7 +384,7 @@ end
 True when `IODE` equals the 8 LSBs of `IODC` (the B-CNAV "matched pair" rule),
 `false` while `IODC` is `nothing`.
 """
-# A function barrier: Julia 1.10 does not narrow a field read through
-# `isnothing`, so `data.IODC & 0xff` would dispatch dynamically.
+# Function barrier: Julia 1.10 does not narrow a field read through `isnothing`, so
+# `data.IODC & 0xff` would dispatch dynamically.
 beidou_iode_matches_iodc(IODE, IODC::Integer) = IODE == IODC & 0xff
 beidou_iode_matches_iodc(IODE, ::Nothing) = false

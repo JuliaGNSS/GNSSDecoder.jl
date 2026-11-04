@@ -1,41 +1,35 @@
-# BeiDou B2b (B-CNAV3) navigation message decoder — BDS-SIS-ICD-B2b-1.0
-# (2020-07).
+# BeiDou B2b (B-CNAV3) navigation message decoder — BDS-SIS-ICD-B2b-1.0 (2020-07).
 #
-# The B-CNAV3 message is broadcast on the B2b_I component (1207.14 MHz) of the
-# BDS-3 MEO/IGSO satellites at 1000 sps. Each frame is 1000 symbols = 1 s
-# (ICD Figure 6-1):
+# The B-CNAV3 message is broadcast on the B2b_I component (1207.14 MHz) of the BDS-3
+# MEO/IGSO satellites at 1000 sps. Each frame is 1000 symbols = 1 s (ICD Figure 6-1):
 #
 #     Pre (16 sym, 0xEB90) | PRN (6 sym, unencoded) | Rev (6 sym) | 972 encoded
 #
-# The 972 encoded symbols are the 64-ary LDPC(162, 81) codeword of a 486-bit
-# message `MesType(6) SOW(20) data(436) CRC(24)` (§6.2.1); MesType, SOW, and
-# data participate in the CRC-24Q. The LDPC codeword is decoded through the
-# binary image of the ICD's GF(2^6) parity-check matrix (`data/bcnv3.alist`,
-# see `scripts/generate_beidou_alist.jl`) with the shared Aff3ct BP helper.
+# The 972 encoded symbols are the 64-ary LDPC(162, 81) codeword of a 486-bit message
+# `MesType(6) SOW(20) data(436) CRC(24)` (§6.2.1); MesType, SOW, and data participate in
+# the CRC-24Q. The codeword is decoded through the binary image of the ICD's GF(2^6)
+# parity-check matrix (`data/bcnv3.alist`, see `scripts/generate_beidou_alist.jl`) with
+# the shared Aff3ct BP helper.
 #
-# Sync mirrors the shared preamble machinery (16-bit preamble at both ends of
-# the 1016-symbol window, either polarity) and is hardened twice before a
-# frame is accepted: the 6 unencoded PRN symbols following the preamble must
-# hard-decode to the decoder's own PRN (they are known a priori, ICD §6.2.1 —
-# a free 6-symbol preamble extension that rejects cross-correlation locks
-# onto another satellite), and the LDPC-decoded message must pass CRC-24Q.
-# Both gates run inside `try_sync` (mirroring the GPS CNAV window decoder),
-# so a failed frame never reaches `decode_sync_unit` and can never
-# re-arm the SOW counter with stale data.
+# Sync uses the shared preamble machinery (16-bit preamble at both ends of the 1016-symbol
+# window, either polarity) plus two more gates: the 6 unencoded PRN symbols after the
+# preamble must hard-decode to the decoder's own PRN (known a priori, ICD §6.2.1: a free
+# preamble extension that rejects cross-correlation locks onto another satellite), and the
+# LDPC-decoded message must pass CRC-24Q. Both run inside `try_sync` (as in the GPS CNAV
+# window decoder), so a failed frame never reaches `decode_sync_unit` and can never re-arm
+# the SOW counter with stale data.
 #
-# Message types (§6.2.3, Table 7-1): 10 (ephemeris + integrity flags),
-# 30 (clock, TGD, BDGIM ionosphere, BDT-UTC, EOP, SISAI, health), and
-# 40 (BGTO, one midi almanac, five reduced almanacs). `000000` is Invalid and
-# the remaining values are reserved; both are dropped the same way.
+# Message types (§6.2.3, Table 7-1): 10 (ephemeris + integrity flags), 30 (clock, TGD,
+# BDGIM ionosphere, BDT-UTC, EOP, SISAI, health), and 40 (BGTO, one midi almanac, five
+# reduced almanacs). `000000` is Invalid and the remaining values are reserved; both are
+# dropped the same way.
 #
-# B-CNAV3 is the MEO/IGSO message. The BDS-3 GEO satellites broadcast the
-# *PPP-B2b* service on the same component with the same framing (preamble, PRN,
-# LDPC block, CRC-24Q), but with its own message types 1-7 carrying precise
-# orbit/clock/code-bias corrections — a separate ICD, and not decoded here.
-# Nothing special is needed for that: such a satellite syncs and passes CRC
-# normally, its message types fall through the reserved branch, and only
-# `last_message_type` and `SOW` are published. This mirrors how the legacy D2
-# wide-area differential subframes are framed but not parsed (`dnav.jl`).
+# B-CNAV3 is the MEO/IGSO message. The BDS-3 GEO satellites broadcast the *PPP-B2b*
+# service on the same component with the same framing, but with its own message types 1-7
+# (precise orbit/clock/code-bias corrections; a separate ICD, not decoded here). Such a
+# satellite syncs and passes CRC normally, its message types fall through the reserved
+# branch, and only `last_message_type` and `SOW` are published (as the legacy D2
+# wide-area differential subframes are framed but not parsed in `dnav.jl`).
 
 # ---- Frame constants (BDS-SIS-ICD-B2b-1.0 §6.2.1) ---------------------------
 
@@ -104,11 +98,10 @@ end
 
 Decoded BeiDou B-CNAV3 navigation data (BDS-SIS-ICD-B2b-1.0 §6.2.3 / §7).
 
-Every field is `nothing` until first decoded from a CRC-validated frame.
-Message type 10 carries a complete ephemeris in one frame, message type 30 a
-complete clock set; B-CNAV3 broadcasts no issue-of-data stamps, so no
-cross-message consistency vote is needed (or possible) before promotion —
-each CRC-gated message is atomic.
+Every field is `nothing` until first decoded from a CRC-validated frame. Message type 10
+carries a complete ephemeris, message type 30 a complete clock set; B-CNAV3 broadcasts no
+issue-of-data stamps, so each CRC-gated message is atomic and no cross-message consistency
+vote is needed before promotion.
 
 # Header (every message type)
 
@@ -416,10 +409,10 @@ end
 """
 $(TYPEDEF)
 
-Mutable per-decoder scratch for BeiDou B2b: the streaming soft-symbol buffer,
-the LDPC window copied out per sync attempt, and the long-lived Aff3ct LDPC
-belief-propagation decoder handle for the B-CNAV3 binary image (972 → 486
-bits), shared by reference through the otherwise-immutable state.
+Mutable per-decoder scratch for BeiDou B2b: the soft-symbol buffer, the LDPC window
+copied out per sync attempt, and the Aff3ct LDPC belief-propagation decoder handle for
+the B-CNAV3 binary image (972 → 486 bits), shared by reference through the
+otherwise-immutable state.
 
 # Fields
 
@@ -452,17 +445,16 @@ BeiDouB2bCache() = BeiDouB2bCache(
     DataStorage{BeiDouCNAV3Data}(),
 )
 
-# The LDPC decoder handle is stateless w.r.t. equality (it is a runtime Aff3ct
-# object); two B2b caches are equal when their soft buffers match.
+# Two B2b caches are equal when their soft buffers match (the LDPC handle is a runtime
+# Aff3ct object, stateless w.r.t. equality).
 function Base.:(==)(a::BeiDouB2bCache, b::BeiDouB2bCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
 
 # ---- Sync --------------------------------------------------------------------
 
-# No `packed_buffer_type` method: B2b overrides `try_sync` and reads the few
-# bits it needs straight from the soft buffer, so the packed window this
-# would name is never built.
+# No `packed_buffer_type` method: B2b overrides `try_sync` and reads the few bits it needs
+# straight from the soft buffer, so the packed window is never built.
 
 """
 $(TYPEDEF)
@@ -491,26 +483,24 @@ end
 
 B-CNAV3 frame sync (BDS-SIS-ICD-B2b-1.0 §6.2.1). Three gates, cheapest first:
 
- 1. The 16-bit preamble `0xEB90` must appear at both ends of the 1016-symbol
-    window (start of this frame and start of the next), both upright or both
-    inverted (the shared `find_preamble_in_deque` rule).
- 2. The 6 unencoded PRN symbols following the preamble must hard-decode (in
-    the resolved polarity) to the decoder's own PRN — they are known a
-    priori, so they act as a free 6-symbol preamble extension.
+ 1. The 16-bit preamble `0xEB90` must appear at both ends of the 1016-symbol window
+    (this frame's start and the next's), both upright or both inverted (the shared
+    `find_preamble_in_deque` rule).
+ 2. The 6 unencoded PRN symbols after the preamble must hard-decode (in the resolved
+    polarity) to the decoder's own PRN; known a priori, they act as a free preamble
+    extension.
  3. The 972 encoded symbols must LDPC-decode to a message passing CRC-24Q.
 
-Only then is the frame handed to `decode_sync_unit`, so a corrupted or
-foreign frame can never update `raw_data` (and, via `validate_data`, can
-never re-arm the SOW symbol counter with stale time).
+Only then is the frame handed to `decode_sync_unit`, so a corrupted or foreign frame can
+never update `raw_data` (nor, via `validate_data`, re-arm the SOW symbol counter with
+stale time).
 """
 function try_sync(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     deque = soft_buffer(state)
-    # Gate 1, read straight from the deque via the shared `find_preamble_in_deque`.
-    # The default `pack_buffer` path would shift a 1016-bit integer once per
-    # symbol — ~16 M word-operations per second per satellite at B2b's 1000 sps —
-    # to expose 38 bits that sit at three known offsets. Slice those instead; the
-    # packed window is never needed, since the payload is consumed as soft
-    # symbols below.
+    # Gate 1, via the shared `find_preamble_in_deque`. The default `pack_buffer` path would
+    # shift a 1016-bit integer once per symbol (~16 M word-operations per second per
+    # satellite at 1000 sps) to expose 38 bits at three known offsets, so slice those
+    # instead; the payload is consumed as soft symbols below.
     polarity_flipped = find_preamble_in_deque(
         deque,
         state.constants.preamble,
@@ -552,39 +542,34 @@ end
 
 # ---- Message parsing (BDS-SIS-ICD-B2b-1.0 §6.2.3 / §7) ------------------------
 #
-# `word` is the 486-bit message packed MSB-first into a `UInt512` (bit 1 = the
-# MesType MSB). Fields are read by 1-based start bit and length through the
-# shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers. Bit
-# positions follow Figures 6-3 (MT10), 6-4 (MT30), and 6-5 (MT40) with the
+# `word` is the 486-bit message packed MSB-first into a `UInt512` (bit 1 = the MesType
+# MSB), read by 1-based start bit and length via `get_bits` / `get_twos_complement_num` /
+# `get_bit`. Bit positions follow Figures 6-3 (MT10), 6-4 (MT30), 6-5 (MT40) and the
 # data-block layouts of Figures 6-6 through 6-15.
 
 """
     decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync::BeiDouB2bSync)
 
-Parse one CRC-validated B-CNAV3 message into `raw_data`. The 20-bit SOW
-(LSB 1 s — the Chinese-language ICD Table 7-2 is authoritative here; see the
-provenance note in the body before "correcting" it) stamps the rising edge of
-the current frame's preamble. Message types other than 10, 30, and 40 are reserved (Table 7-1)
-and contribute only the header.
+Parse one CRC-validated B-CNAV3 message into `raw_data`. The 20-bit SOW (LSB 1 s; the
+Chinese-language ICD Table 7-2 is authoritative, see the note in the body) stamps the
+rising edge of the current frame's preamble. Message types other than 10, 30, and 40 are
+reserved (Table 7-1) and contribute only the header.
 """
 function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync::BeiDouB2bSync)
     word = sync.word
     word_length = B2B_MESSAGE_BITS
     message_type = Int(get_bits(word, word_length, 1, 6))
-    # 20-bit SOW count in seconds (LSB 1 s), stamping the current frame's
-    # leading edge (Table 7-2: effective range 0..604799 s). One frame is
-    # 1000 symbols = 1 s, so consecutive frames step the field by exactly 1;
-    # 2^20 = 1048576 spans the week.
+    # 20-bit SOW count in seconds (LSB 1 s) stamping the current frame's leading edge
+    # (Table 7-2: effective range 0..604799 s). One frame is 1000 symbols = 1 s, so
+    # consecutive frames step the field by exactly 1; 2^20 = 1048576 spans the week.
     #
     # The scale factor 1 is authoritative from the Chinese-language original:
-    # BDS-SIS-ICD-B2b-1.0 中文版 (2020-07) 表 7-2 prints 比例因子 (scale
-    # factor) 1. The English edition's Table 7-2 misprints it as 3 — a slip
-    # carried over from B2a's B-CNAV2, whose 18-bit SOW genuinely needs the
-    # 3 s LSB (2^18 < 604800) — and the misprint survives the silently
-    # re-uploaded 2023 English PDF. The English table is also internally
-    # inconsistent: its own effective range 0..604799 is not a multiple of 3
-    # and is unreachable under a 3 s LSB. Do not "fix" this back to the
-    # English table's literal value.
+    # BDS-SIS-ICD-B2b-1.0 中文版 (2020-07) 表 7-2 prints 比例因子 (scale factor) 1. The
+    # English edition's Table 7-2 misprints it as 3, a slip carried over from B2a's
+    # B-CNAV2 (whose 18-bit SOW genuinely needs the 3 s LSB, 2^18 < 604800), and the
+    # misprint survives the re-uploaded 2023 English PDF. The English table is also
+    # internally inconsistent: its effective range 0..604799 is not a multiple of 3. Do
+    # not "fix" this back to the English table's literal value.
     SOW = Int64(get_bits(word, word_length, 7, 20))
     raw = BeiDouCNAV3Data(state.raw_data; last_message_type = message_type, SOW)
 
@@ -597,17 +582,14 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV3Data}, sync::BeiD
     else
         raw  # reserved/invalid message type (Table 7-1): header only
     end
-    # SOW refers to the start of the frame just decoded; that epoch lies
-    # The symbol counter is deliberately NOT re-armed here (the same split as
-    # `b2a.jl`, for the same reason): `get_broadcast_time_of_week` reads the *validated*
-    # `data.SOW`, so the counter must anchor to the last frame `validate_data`
-    # promoted, not to the last frame that passed CRC. Re-arming per frame while
-    # the published SOW stands still makes
-    # `tow + num_bits_since_time_reference/rate` read a whole frame low whenever
-    # the completeness gate skips a frame — on B2b the gate normally holds once
-    # MT10 and MT30 are in, so this is defensive here where on B2a (whose
-    # MT10/MT11 adjacency gate skips one frame per message cycle) it was a live
-    # once-per-cycle 3-second error.
+    # The symbol counter is deliberately NOT re-armed here (same split as `b2a.jl`, same
+    # reason): `get_broadcast_time_of_week` reads the *validated* `data.SOW`, so the counter
+    # must anchor to the last frame `validate_data` promoted, not the last that passed CRC.
+    # Re-arming per frame while the published SOW stands still makes
+    # `tow + num_bits_since_time_reference/rate` read a whole frame low whenever the
+    # completeness gate skips a frame. On B2b the gate normally holds once MT10 and MT30
+    # are in, so this is defensive here; on B2a (one skipped frame per message cycle) it
+    # was a live once-per-cycle 3 s error.
     GNSSDecoderState(state; raw_data = raw)
 end
 
@@ -667,10 +649,9 @@ function parse_b2b_mt30(raw::BeiDouCNAV3Data, word::UInt512)
         beidou_bdt_utc_block(word, word_length, 199)...,
         # EOP (bits 296-433, Figure 6-13, Table 7-16):
         beidou_eop_block(word, word_length, 296)...,
-        # `t_op` and the SISAIoc triple occupy bits 434-455 (Figure 6-9, "Bit
-        # allocation for SISAIoc"); `SISAI_oe` at 456-460 is its own field of
-        # Figure 6-4, not part of that block. Raw broadcast values throughout —
-        # their semantics are deferred to a future ICD update (§7.15).
+        # `t_op` and the SISAIoc triple occupy bits 434-455 (Figure 6-9); `SISAI_oe` at
+        # 456-460 is its own field of Figure 6-4, not part of that block. Raw broadcast
+        # values; semantics deferred to a future ICD update (§7.15).
         beidou_sisai_oc_block(word, word_length, 434)...,
         SISAI_oe = Int64(get_bits(word, word_length, 456, 5)),
         HS = Int64(get_bits(word, word_length, 461, 2)),
@@ -687,9 +668,9 @@ preallocated one in `spare`.
 """
 function parse_b2b_mt40!(raw::BeiDouCNAV3Data, word::UInt512, spare::BeiDouCNAV3Data)
     word_length = B2B_MESSAGE_BITS
-    # Almanac reference week/time for the five reduced almanacs (bits 251-271,
-    # Table 7-15) — kept on the data container as the raw broadcast and copied
-    # into every reduced-almanac record so each record is complete in itself.
+    # Almanac reference week/time for the five reduced almanacs (bits 251-271, Table 7-15),
+    # kept on the data container and copied into every reduced-almanac record so each is
+    # complete in itself.
     WN_a_reduced = Int64(get_bits(word, word_length, 251, 13))
     t_0a_reduced = Int64(get_bits(word, word_length, 264, 8)) * 4096
     raw = BeiDouCNAV3Data(
@@ -749,13 +730,10 @@ function is_ephemeris_decoded(data::BeiDouCNAV3Data)
 end
 
 function is_clock_correction_decoded(data::BeiDouCNAV3Data)
-    # Message type 30, and `T_GD_B2bI` with it. It is required rather than
-    # optional for the B1C reason (see `b1c.jl`): ICD §7.6 references a0 to the
-    # B3I signal, so a B2b_I receiver must add `T_GD_B2bI` to reach its own
-    # component, and the field is decoded by the same constructor call as the
-    # clock out of the same CRC-24Q-protected MT30. Requiring it costs no extra
-    # wait — the alternative is a consumer treating `nothing` as zero and eating
-    # a metre-scale bias.
+    # Message type 30, and `T_GD_B2bI` with it. Required, as for B1C (see `b1c.jl`): ICD
+    # §7.6 references a0 to B3I, so a B2b_I receiver must add `T_GD_B2bI` (a metre-scale
+    # bias otherwise). It is decoded with the clock from the same CRC-24Q-protected MT30,
+    # so requiring it costs no extra wait.
     !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
@@ -787,27 +765,26 @@ end
 """
     validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
 
-Promote `raw_data` to `data` once the minimum positioning set (the message
-type 10 ephemeris plus the message type 30 clock and week number) has been
-decoded. B-CNAV3 broadcasts no issue-of-data stamps, so there is no
-cross-message consistency vote: every message is atomic behind its CRC.
+Promote `raw_data` to `data` once the minimum positioning set (the message type 10
+ephemeris plus the message type 30 clock and week number) has been decoded. B-CNAV3
+broadcasts no issue-of-data stamps, so there is no cross-message consistency vote: every
+message is atomic behind its CRC.
 
-Every frame carries its own SOW, so each validated frame re-arms the
-streaming symbol counter: the SOW stamps the *current* frame's leading edge
-(ICD Table 7-2), and by validation time that whole frame (1000 symbols) plus
-the buffered next-frame preamble (16 symbols) have elapsed since that epoch —
-`SOW + num_bits_since_time_reference / 1000 Hz` is the current time.
+Every frame carries its own SOW, so each validated frame re-arms the streaming symbol
+counter: the SOW stamps the *current* frame's leading edge (ICD Table 7-2), and by
+validation time that frame (1000 symbols) plus the buffered next-frame preamble (16
+symbols) have elapsed, so `SOW + num_bits_since_time_reference / 1000 Hz` is the current
+time.
 
-Promotion overwrites the preallocated validated almanac stores with the raw
-ones (`publish_data`), so `data` never shares a container with `raw_data`.
+`publish_data` overwrites the preallocated validated almanac stores, so `data` never
+shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouCNAV3Data})
     if is_decoding_completed_for_positioning(state.raw_data)
-        # Promotion publishes this frame's SOW; the symbol counter re-anchors to
-        # this frame's sync epoch with it, so the pair `data.SOW` + counter that
-        # `get_broadcast_time_of_week` consumers combine always describes one frame. Runs
-        # right after `decode_sync_unit`, so `raw_data.SOW` is the
-        # just-decoded frame's.
+        # Promotion publishes this frame's SOW; the symbol counter re-anchors with it, so
+        # `data.SOW` and the counter that `get_broadcast_time_of_week` consumers combine
+        # always describe one frame. Runs right after `decode_sync_unit`, so `raw_data.SOW`
+        # is the just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
@@ -836,14 +813,12 @@ $(TYPEDSIGNATURES)
 
 Create a decoder state for BeiDou B2b (B-CNAV3) navigation messages.
 
-Initializes a [`GNSSDecoderState`](@ref) configured for decoding B-CNAV3
-messages from the 1000 sps soft symbols of the B2b_I component
-(BDS-SIS-ICD-B2b-1.0). Each sync attempt matches the 16-symbol preamble
-`0xEB90` at both ends of the 1016-symbol window, checks the 6 unencoded PRN
-symbols against `prn`, LDPC-decodes the 972 encoded symbols through the
-binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
-486-bit message with CRC-24Q before dispatching it to the per-type parsers
-(message types 10, 30, and 40). Decoded fields land in a
+Initializes a [`GNSSDecoderState`](@ref) for B-CNAV3 messages from the 1000 sps soft
+symbols of the B2b_I component (BDS-SIS-ICD-B2b-1.0). Each sync attempt matches the
+16-symbol preamble `0xEB90` at both ends of the 1016-symbol window, checks the 6
+unencoded PRN symbols against `prn`, LDPC-decodes the 972 encoded symbols (binary image
+of the 64-ary LDPC(162, 81) code), and validates the 486-bit message with CRC-24Q before
+dispatching to the per-type parsers (message types 10, 30, 40). Decoded fields land in a
 [`BeiDouCNAV3Data`](@ref).
 
 # Arguments
@@ -886,15 +861,15 @@ function BeiDouB2bDecoderState(prn)
     )
 end
 
-# Dispatch from a GNSSSignals system type, mirroring `GNSSDecoderState(::GPSL5I, …)`.
-# The B2b ICD v1.0 specifies the open-service I component only, so `BeiDouB2bI`
-# is the data-bearing signal.
+# Dispatch from a GNSSSignals system type, mirroring `GNSSDecoderState(::GPSL5I, …)`. The
+# B2b ICD v1.0 specifies the open-service I component only, so `BeiDouB2bI` is the
+# data-bearing signal.
 function GNSSDecoderState(system::BeiDouB2bI, prn)
     BeiDouB2bDecoderState(prn)
 end
 
-# The signal this decoder demodulates — the B2b_I open-service data component.
-# Signal metadata is forwarded through it (see `src/gnss.jl`).
+# The signal this decoder demodulates (the B2b_I open-service data component); signal
+# metadata is forwarded through it (see `src/gnss.jl`).
 get_signal_type(::BeiDouB2bConstants) = BeiDouB2bI
 
 """

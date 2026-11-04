@@ -546,7 +546,7 @@ end
     @test is_plausible(43336, 43333 * 6, 8, 908)
     # ...a day-long decode gap (14400 subframes)...
     @test is_plausible(43333 + 14400, 43333 * 6, 8, 8 + 86400 * 50)
-    # ...and the week rollover.
+    # ...and the week crossover.
     @test is_plausible(0, 100799 * 6, 8, 308)
     # A lock off the 300-symbol frame grid cannot be the same signal...
     @test !is_plausible(43334, 43333 * 6, 8, 309)
@@ -575,7 +575,7 @@ end
         nothing,
     )
 
-    # Week rollover through the fallback: the last subframes of the week hand
+    # Week crossover through the fallback: the last subframes of the week hand
     # over to count 0, 1, …
     @test is_plausible(0, 100799 * 6, nothing, nothing)
     @test is_plausible(1, 100799 * 6, nothing, nothing)

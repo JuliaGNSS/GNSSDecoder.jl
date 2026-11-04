@@ -1,26 +1,18 @@
-# Block deinterleaver for GPS L1C-D — and a matching interleaver, kept
-# next to it for round-trip testing and for future encoders.
+# Block deinterleaver for GPS L1C-D, plus the matching interleaver (round-trip tests,
+# future encoders).
 #
-# IS-GPS-800G §3.2.3.5 specifies a 38-row by 46-column block interleaver
-# applied to the 1748-symbol payload of subframes 2 + 3 (1200 SF2 + 548
-# SF3 channel symbols). At the transmitter the row-major pre-interleaver
-# stream is written *by row* into a 38×46 matrix and read out *by column*.
-# At the receiver we reverse that: write 1748 received symbols into the
-# same shaped matrix *by column*, read out *by row*.
+# IS-GPS-800G §3.2.3.5: a 38-row by 46-column block interleaver over the 1748-symbol
+# payload of subframes 2 + 3 (1200 SF2 + 548 SF3 symbols). The transmitter writes by row
+# and reads by column; the receiver writes the 1748 symbols by column and reads by row.
 #
-# The functions below are signal-agnostic — `rows` and `cols` are
-# parameters — so a future signal that uses a different block size (e.g.
-# IRN L1 SPS) can reuse the same primitive.
+# Signal-agnostic: `rows` and `cols` are parameters.
 
 """
     deinterleave!(dst, src, rows, cols) -> dst
 
-Reverse a `rows × cols` block interleaver. `src` is the received (column-
-major-written, row-major-read) stream; `dst` receives the original
-(row-major) stream. Both must satisfy `length(dst) == length(src) == rows*cols`. `dst` and `src` may not alias.
-
-Element type `T` is preserved — works for `Float32` soft symbols, `Bool`
-hard slices, `Int8`, anything.
+Reverse a `rows × cols` block interleaver. `src` is the received stream; `dst` receives
+the original (row-major) stream. `length(dst) == length(src) == rows*cols` is required
+and `dst` and `src` may not alias. Works for any element type (soft symbols, `Bool`, ...).
 """
 function deinterleave!(
     dst::AbstractVector{T},
@@ -56,9 +48,8 @@ end
 """
     interleave!(dst, src, rows, cols) -> dst
 
-Forward (transmit-side) block interleaver. Inverse of
-[`deinterleave!`](@ref): write `src` row-major into a `rows × cols`
-matrix, read column-major into `dst`.
+Transmit-side block interleaver, inverse of [`deinterleave!`](@ref): writes `src`
+row-major into a `rows × cols` matrix and reads column-major into `dst`.
 """
 function interleave!(
     dst::AbstractVector{T},

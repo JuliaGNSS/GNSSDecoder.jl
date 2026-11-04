@@ -8,6 +8,16 @@ GNSSDecoderState
 
 ## Constructors
 
+Construct a decoder from its GNSSSignals signal and satellite PRN:
+
+```julia
+using GNSSDecoder, GNSSSignals
+state = GNSSDecoderState(GPSL1CA(), 25)
+state = decode!(state, soft_bits, length(soft_bits))
+```
+
+The signal-specific constructors below are conveniences for the same states.
+
 ```@docs
 GPSL1CADecoderState
 GalileoE1BDecoderState
@@ -142,8 +152,9 @@ give the current time on every signal with one expression:
 
 ```julia
 using GNSSDecoder, GNSSSignals
+using Unitful: Hz, ustrip
 tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_time_reference / get_bit_rate(state)
+now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
 ```
 
 `get_time_offset` folds away the five shapes the same quantity is broadcast in —

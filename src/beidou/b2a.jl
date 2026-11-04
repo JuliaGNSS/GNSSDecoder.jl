@@ -1,30 +1,26 @@
-# BeiDou B2a (B-CNAV2) navigation message decoder — BDS-SIS-ICD-B2a-1.0
-# (2017-12).
+# BeiDou B2a (B-CNAV2) navigation message decoder — BDS-SIS-ICD-B2a-1.0 (2017-12).
 #
-# The B-CNAV2 message rides on the B2a *data* component (`BeiDouB2aI` in
-# GNSSSignals; the quadrature B2aQ component is a dataless pilot). Framing
-# (ICD §6.2.1, Figure 6-1):
+# The B-CNAV2 message rides on the B2a *data* component (`BeiDouB2aI` in GNSSSignals; the
+# quadrature B2aQ component is a dataless pilot). Framing (ICD §6.2.1, Figure 6-1):
 #
 #   frame = 600 symbols / 3 s at 200 sps
 #         = 24-symbol preamble 0xE24DE8 (unencoded, MSB first)
 #         + 576 symbols of 64-ary LDPC(96,48)-encoded message
 #
-# The 288-bit message before encoding is PRN(6) MesType(6) SOW(18) data(234)
-# CRC-24Q(24); everything but the CRC participates in the CRC (ICD §6.2.1,
-# §6.1.2). The LDPC code is decoded through its exact binary image
-# (`data/bcnv2.alist`, see `scripts/generate_beidou_alist.jl`) with the shared
-# `load_ldpc_decoder` / `ldpc_decode_word` pipeline from `src/coding/ldpc.jl`, so the
-# per-frame flow is: preamble sync (both ends of the 600-symbol window, either
-# polarity) → LDPC BP decode → CRC-24Q gate → PRN check → per-message-type
-# field extraction (ICD §6.2.3 Figures 6-3..6-20 and the §7 parameter tables).
+# The 288-bit message before encoding is PRN(6) MesType(6) SOW(18) data(234) CRC-24Q(24);
+# everything but the CRC participates in the CRC (ICD §6.2.1, §6.1.2). The LDPC code is
+# decoded through its exact binary image (`data/bcnv2.alist`, see
+# `scripts/generate_beidou_alist.jl`) with the shared `load_ldpc_decoder` /
+# `ldpc_decode_word` pipeline (`src/coding/ldpc.jl`). Per-frame flow: preamble sync (both
+# ends of the 600-symbol window, either polarity) → LDPC BP decode → CRC-24Q gate → PRN
+# check → per-message-type field extraction (ICD §6.2.3 Figures 6-3..6-20, §7 tables).
 #
-# Eight message types are defined in ICD v1.0 — 10, 11, 30, 31, 32, 33, 34,
-# and 40 (§6.2.3, Table 7-1) — and all eight are parsed here. Ephemeris I
-# (MT10) and ephemeris II (MT11) form one ephemeris set identified by the
-# MT10 IODE; the ICD requires the two to be broadcast continuously together
-# (§6.2.3), which is what pairs an MT11 with the IODE of the neighbouring
-# MT10 (see `is_ephemeris_decoded`). The clock set (in MT30-34) is identified
-# by IODC, and §7.4.3 defines a matched pair as IODE == the 8 LSBs of IODC.
+# Eight message types are defined in ICD v1.0 (10, 11, 30, 31, 32, 33, 34, 40; §6.2.3,
+# Table 7-1), all parsed here. MT10 (ephemeris I) and MT11 (ephemeris II) form one
+# ephemeris set identified by the MT10 IODE; the ICD requires them to be broadcast
+# continuously together (§6.2.3), which pairs an MT11 with the IODE of the neighbouring
+# MT10 (see `is_ephemeris_decoded`). The clock set (MT30-34) is identified by IODC, and
+# §7.4.3 defines a matched pair as IODE == the 8 LSBs of IODC.
 
 # ---- Frame constants (ICD §6.2.1) -------------------------------------------
 
@@ -82,13 +78,10 @@ Angles are stored in radians (ICD semicircle values scaled by π =
 `GNSS_PI`), times in seconds, week numbers in weeks of BDT (epoch
 2006-01-01T00:00:00 UTC, §7.3).
 
-Ephemeris pairing bookkeeping: ephemeris I lives in message type 10 (with the
-set's IODE) and ephemeris II in message type 11, which carries *no* IOD of its
-own — the ICD instead requires MT10 and MT11 to be broadcast continuously
-together (§6.2.3). `SOW_mt10` / `SOW_mt11` record the SOW of the frames that
-delivered each half so `is_ephemeris_decoded` can require them to be adjacent
-frames (|ΔSOW| = 3 s), which is what "broadcast continuously together" makes
-observable on the air interface.
+Ephemeris pairing: ephemeris I is in message type 10 (with the set's IODE), ephemeris II
+in message type 11, which carries *no* IOD; the ICD requires MT10 and MT11 to be broadcast
+continuously together (§6.2.3). `SOW_mt10` / `SOW_mt11` record the SOW of the frames that
+delivered each half so `is_ephemeris_decoded` can require adjacent frames (|ΔSOW| = 3 s).
 
 # Fields
 
@@ -621,11 +614,10 @@ preallocated_data(::Type{BeiDouCNAV2Data}) = BeiDouCNAV2Data(;
 """
 $(TYPEDEF)
 
-Per-decoder cache for BeiDou B2a: the soft-symbol deque (624 = 600 frame
-symbols + 24 next-frame preamble symbols) and the Aff3ct LDPC BP decoder
-handle for the B-CNAV2 binary image (`data/bcnv2.alist`), reused across
-frames rather than reallocated. The keyword constructor rebuilds the cache
-with a new `frame_decoded`, sharing every buffer.
+Per-decoder cache for BeiDou B2a: the soft-symbol deque (624 = 600 frame symbols + 24
+next-frame preamble symbols) and the Aff3ct LDPC BP decoder handle for the B-CNAV2 binary
+image (`data/bcnv2.alist`), reused across frames. The keyword constructor rebuilds the
+cache with a new `frame_decoded`, sharing every buffer.
 
 # Fields
 
@@ -679,35 +671,31 @@ end
 """
 True when the frame that just synced was decoded into `raw_data`.
 
-`decode_sync_unit` clears the flag as it starts and sets it only once the
-frame has cleared LDPC, CRC-24Q and the PRN gate. A frame whose preambles sync
-but whose payload fails one of those gates leaves `raw_data` untouched, so
-`raw_data.SOW` still names the *previous* frame; `validate_data` must not
-promote it then, since promotion re-anchors the symbol counter to the frame
-that just synced and would freeze the time of transmission for one frame.
+`decode_sync_unit` clears the flag on entry and sets it only once the frame has cleared
+LDPC, CRC-24Q and the PRN gate. Otherwise `raw_data.SOW` still names the *previous* frame,
+and promoting it would re-anchor the symbol counter to the frame that just synced,
+freezing the time of transmission for one frame.
 """
 is_b2a_frame_decoded(state::GNSSDecoderState{<:BeiDouCNAV2Data}) = state.cache.frame_decoded
 
-# The LDPC decoder handle is stateless w.r.t. equality (a runtime Aff3ct
-# object); two B2a caches are equal when their soft buffers match.
-# `frame_decoded` is ignored too: it only carries one sync's outcome from
+# Two B2a caches are equal when their soft buffers match: the LDPC handle is stateless
+# w.r.t. equality, and `frame_decoded` only carries one sync's outcome from
+# `decode_sync_unit` to `validate_data`.
 # `decode_sync_unit` to `validate_data`.
 function Base.:(==)(a::BeiDouB2aCache, b::BeiDouB2aCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
 
-# No `packed_buffer_type` method: B2a reads the two 24-symbol preamble windows
-# straight off the soft buffer, so the 624-bit packed window the default sync
-# path would build once per symbol is never needed — the payload is consumed as
-# soft symbols by the LDPC decoder (cf. Galileo I/NAV, E5a, E6-B and BeiDou B2b).
+# No `packed_buffer_type` method: B2a reads the two preamble windows straight off the
+# soft buffer, so the packed 624-bit window the default sync path would build per symbol
+# is never needed (cf. Galileo I/NAV, E5a, E6-B and BeiDou B2b).
 
 """
     try_sync(state::GNSSDecoderState{<:BeiDouCNAV2Data}) -> Union{Nothing,Bool}
 
-B-CNAV2 frame sync: the 24-symbol preamble `0xE24DE8` must appear at both ends
-of the 624-symbol window (start of this frame and start of the next), both
-upright or both inverted. Returns the resolved polarity, or `nothing` when there
-is no sync. The LDPC + CRC-24Q + own-PRN gates then run in
+B-CNAV2 frame sync: the preamble `0xE24DE8` must appear at both ends of the 624-symbol
+window (this frame's start and the next's), both upright or both inverted. Returns the
+resolved polarity or `nothing`. The LDPC, CRC-24Q and own-PRN gates run in
 `decode_sync_unit`.
 """
 try_sync(state::GNSSDecoderState{<:BeiDouCNAV2Data}) = find_preamble_in_deque(
@@ -733,15 +721,12 @@ $(TYPEDSIGNATURES)
 
 Create a decoder state for BeiDou B2a (B-CNAV2) navigation messages.
 
-Initializes a [`GNSSDecoderState`](@ref) configured for decoding the B-CNAV2
-message from the 200 sps soft symbols of the B2a data component
-(BDS-SIS-ICD-B2a-1.0). Each sync attempt matches the 24-symbol preamble
-`0xE24DE8` at both ends of the buffered 600-symbol frame window (in either
-polarity); a matched frame is LDPC-decoded through the binary image of the
-ICD's 64-ary LDPC(96,48) code, gated on CRC-24Q and on the broadcast PRN
-matching this decoder's PRN, and dispatched to per-message-type parsers
-(message types 10, 11, 30-34, and 40). Decoded fields land in a
-[`BeiDouCNAV2Data`](@ref).
+Initializes a [`GNSSDecoderState`](@ref) for the B-CNAV2 message from the 200 sps soft
+symbols of the B2a data component (BDS-SIS-ICD-B2a-1.0). Each sync attempt matches the
+24-symbol preamble `0xE24DE8` at both ends of the 600-symbol frame window (either
+polarity); a matched frame is LDPC-decoded (64-ary LDPC(96,48) binary image), gated on
+CRC-24Q and the broadcast PRN, and dispatched to per-message-type parsers (types 10, 11,
+30-34, 40). Decoded fields land in a [`BeiDouCNAV2Data`](@ref).
 
 # Arguments
 
@@ -781,15 +766,14 @@ function BeiDouB2aDecoderState(prn)
     )
 end
 
-# Dispatch from the GNSSSignals system type. B-CNAV2 rides on the in-phase
-# B2a *data* component — `BeiDouB2aI` — while `BeiDouB2aQ` is the dataless
-# pilot (BDS-SIS-ICD-B2a-1.0 §4.2), so only `BeiDouB2aI` maps to a decoder.
+# Dispatch from the GNSSSignals type: B-CNAV2 rides on the in-phase data component
+# `BeiDouB2aI`; `BeiDouB2aQ` is the dataless pilot (BDS-SIS-ICD-B2a-1.0 §4.2).
 function GNSSDecoderState(system::BeiDouB2aI, prn)
     BeiDouB2aDecoderState(prn)
 end
 
-# The signal this decoder demodulates — the B2a data component. Signal
-# metadata is forwarded through it (see `src/gnss.jl`).
+# The signal this decoder demodulates (the B2a data component); signal metadata is
+# forwarded through it (see `src/gnss.jl`).
 get_signal_type(::BeiDouB2aConstants) = BeiDouB2aI
 
 # ---- Completeness / health -----------------------------------------------------
@@ -817,12 +801,10 @@ function is_ephemeris_decoded(data::BeiDouCNAV2Data)
         !isnothing(data.C_rc) &&
         !isnothing(data.C_us) &&
         !isnothing(data.C_uc) &&
-        # ... delivered by adjacent frames. MT11 carries no IOD of its own;
-        # the ICD pairs it with MT10 by requiring the two to be broadcast
-        # continuously together (§6.2.3), i.e. in consecutive 3-second frames
-        # (either order). Adjacency is evaluated modulo the week so a pair
-        # straddling the BDT week rollover (SOW 604797 ↔ 0) still pairs up,
-        # matching how every other SOW/TOW comparison in this package wraps.
+        # ... delivered by adjacent frames. MT11 carries no IOD; the ICD pairs it with MT10
+        # by requiring both to be broadcast continuously together (§6.2.3), i.e. in
+        # consecutive 3 s frames (either order). Adjacency is evaluated modulo the week so
+        # a pair straddling the week crossover (SOW 604797 ↔ 0) still pairs up.
         _b2a_sow_adjacent(data.SOW_mt10, data.SOW_mt11)
 end
 
@@ -837,18 +819,14 @@ _b2a_sow_adjacent(sow_a::Integer, sow_b::Integer) =
 function is_clock_correction_decoded(data::BeiDouCNAV2Data)
     # The clock block + IODC are carried identically in message types 30-34.
     #
-    # T_GD/ISC are deliberately NOT required here, and B2a is the one BeiDou
-    # signal where that is the right call. On B1C and B2b the single-band group
-    # delay rides in the very block the clock does, so requiring it costs no
-    # extra wait and both decoders do require it. Here it does not:
-    # `T_GD_B2ap`, `ISC_B2ad` and `T_GD_B1Cp` are in MT30 *only*, while the
-    # clock and IODC are in all of MT30-34. Gating on them would make a fix wait
-    # for MT30 specifically — and BDS-SIS-ICD-B2a-1.0 §6.2 declines to schedule
-    # it: "The broadcast order of the B-CNAV2 message types may be dynamically
+    # T_GD/ISC are deliberately NOT required, unlike on B1C and B2b where the single-band
+    # group delay rides in the clock's own block. Here `T_GD_B2ap`, `ISC_B2ad` and
+    # `T_GD_B1Cp` are in MT30 *only* while clock and IODC are in all of MT30-34, so gating
+    # on them would make a fix wait for MT30, and BDS-SIS-ICD-B2a-1.0 §6.2 does not
+    # schedule it: "The broadcast order of the B-CNAV2 message types may be dynamically
     # adjusted, however Message Types 10 and 11 shall be broadcast continuously
-    # together." Only the MT10/11 pair has a guaranteed cadence, so a gate on
-    # MT30 is a gate on an interval the ICD does not bound. Same reasoning as
-    # the GPS CNAV decoder's T_GD.
+    # together." Only the MT10/11 pair has a guaranteed cadence. Same reasoning as the GPS
+    # CNAV decoder's T_GD.
     !isnothing(data.IODC) &&
         !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
@@ -863,9 +841,9 @@ get_broadcast_time_of_week(data::BeiDouCNAV2Data) = data.SOW
 """
 $(TYPEDSIGNATURES)
 
-The BDT-to-`target` offset from message type 33, or `nothing` when this
-satellite is not currently broadcasting one for `target`. One set at a time,
-tagged by `GNSS_ID`; see `beidou_bgto_offset`.
+The BDT-to-`target` offset from message type 33, or `nothing` when this satellite is not
+currently broadcasting one for `target`. One set at a time, tagged by `GNSS_ID`; see
+`beidou_bgto_offset`.
 """
 get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV2Data}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
@@ -947,35 +925,29 @@ end
 """
     decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV2Data}, buffer)
 
-Process one preamble-synchronized B-CNAV2 frame: LDPC-decode the 576 encoded
-soft symbols through the binary image of the 64-ary LDPC(96,48) code, gate on
-CRC-24Q over the full 288-bit message, require the broadcast PRN (bits 1-6)
-to match this decoder's PRN (a preamble match on a cross-correlating signal
-must not corrupt this satellite's data), parse the common header (message
-type at bits 7-12, SOW at bits 13-30, ICD §6.2.1), then dispatch to the
-per-message-type parser. Unknown or reserved message types keep the decoded
-header but no further fields.
+Process one preamble-synchronized B-CNAV2 frame: LDPC-decode the 576 encoded soft symbols
+(64-ary LDPC(96,48) binary image), gate on CRC-24Q over the 288-bit message, require the
+broadcast PRN (bits 1-6) to match this decoder's (a preamble match on a cross-correlating
+signal must not corrupt this satellite's data), parse the header (message type at bits
+7-12, SOW at bits 13-30, ICD §6.2.1), then dispatch to the per-message-type parser.
+Unknown or reserved types keep the decoded header only.
 
-The 18-bit SOW field counts in 3-second units (Table 7-2: scale factor 3)
-and denotes the rising edge of the *current* frame's first preamble chip,
-which lies one frame plus one preamble (624 symbols) behind the newest
-buffered symbol. The symbol counter is not re-armed here but in
-`validate_data`, when the frame is promoted.
+The 18-bit SOW counts 3 s units (Table 7-2) and denotes the rising edge of the *current*
+frame's first preamble chip, 624 symbols (one frame plus one preamble) behind the newest
+buffered symbol. The symbol counter is re-armed in `validate_data`, on promotion.
 
-Sets the cache's `frame_decoded` flag (see `is_b2a_frame_decoded`) only when
-the frame clears every gate and is parsed into `raw_data`; a frame dropped by
-LDPC/CRC or the PRN gate leaves it false and `raw_data` untouched.
+Sets the cache's `frame_decoded` flag (see `is_b2a_frame_decoded`) only when the frame
+clears every gate and is parsed into `raw_data`; a frame dropped by LDPC/CRC or the PRN
+gate leaves it false and `raw_data` untouched.
 """
 function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::Bool)
     # Clear the flag first: every path out of this function leaves it false
     # unless the frame is parsed into `raw_data` below.
     state =
         GNSSDecoderState(state; cache = BeiDouB2aCache(state.cache; frame_decoded = false))
-    # The 576 encoded symbols sit between the leading 24-symbol preamble and
-    # the trailing preamble of the next frame (deque indices
-    # preamble_length+1 .. sync_unit_length). Resolve the 180-degree
-    # polarity ambiguity by negating the LLRs when the sync hook flagged the
-    # frame as inverted.
+    # The 576 encoded symbols sit between the leading preamble and the next frame's
+    # (deque indices preamble_length+1 .. sync_unit_length). Negate the LLRs when the sync
+    # hook flagged the frame as inverted (180° ambiguity).
     llr = copy_soft_window!(
         state.cache.llr_scratch,
         soft_buffer(state),
@@ -1019,17 +991,14 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::Bool)
     end
 
     # The symbol counter is deliberately NOT re-armed here. `get_broadcast_time_of_week`
-    # reads the *validated* `data.SOW`, which only advances when `validate_data`
-    # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
-    # that carries a new ephemeris-I block until its partner arrives. Re-arming
-    # on every CRC-valid frame while the published SOW stands still made
-    # `tow + num_bits_since_time_reference/rate` read exactly one 3-second frame
-    # low for the duration of every such skip — a ~9 km along-track error in
-    # every satellite position propagated from it (measured on TEX-CUP: a 2.2 km
-    # position excursion once per message cycle). The counter therefore keeps
-    # counting from the last *promoted* frame, which stays consistent through
-    # skipped promotions and CRC failures alike; `validate_data` re-anchors it
-    # whenever it promotes.
+    # reads the *validated* `data.SOW`, which only advances when `validate_data` promotes,
+    # and the MT10/MT11 adjacency gate skips promotion for the frame carrying a new
+    # ephemeris-I block until its partner arrives. Re-arming on every CRC-valid frame while
+    # the published SOW stood still made `tow + num_bits_since_time_reference/rate` read one
+    # 3 s frame low during every skip: a ~9 km along-track error (measured on TEX-CUP as a
+    # 2.2 km position excursion once per message cycle). The counter instead keeps counting
+    # from the last *promoted* frame, consistent through skipped promotions and CRC
+    # failures; `validate_data` re-anchors it on promotion.
     GNSSDecoderState(
         state;
         raw_data = raw,
@@ -1040,28 +1009,24 @@ end
 """
     validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
 
-Promote `raw_data` to `data` once the minimum positioning set is decoded and
-consistent: the MT10+MT11 ephemeris pair from adjacent frames, a clock set
-from any of MT30-34, and IODE == the 8 LSBs of IODC (the "matched pair" rule
-of BDS-SIS-ICD-B2a-1.0 §7.4.3). Only a frame that was actually decoded is
-promoted (see `is_b2a_frame_decoded`).
+Promote `raw_data` to `data` once the minimum positioning set is decoded and consistent:
+the MT10+MT11 ephemeris pair from adjacent frames, a clock set from any of MT30-34, and
+IODE == the 8 LSBs of IODC (BDS-SIS-ICD-B2a-1.0 §7.4.3). Only a frame that was actually
+decoded is promoted (see `is_b2a_frame_decoded`).
 
-Promotion overwrites the preallocated validated almanac stores with the raw
-ones (`publish_data`), so `data` never shares a container with `raw_data`.
+`publish_data` overwrites the preallocated validated almanac stores, so `data` never
+shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
-    # `decode!` calls this hook after *every* sync, including one whose frame
-    # failed LDPC/CRC or the PRN gate and left `raw_data` holding the previous
-    # frame. Promoting that would publish the previous SOW against this frame's
-    # sync epoch — one frame (3 s) low until the next decoded frame (#97).
+    # `decode!` calls this after *every* sync, including one whose frame failed LDPC/CRC or
+    # the PRN gate and left `raw_data` holding the previous frame. Promoting that would
+    # publish the previous SOW against this frame's sync epoch, one frame (3 s) low (#97).
     is_b2a_frame_decoded(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)
-        # Promotion publishes this frame's SOW, so the symbol counter re-anchors
-        # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits_since_time_reference/rate` (see
-        # `get_broadcast_time_of_week`) to stay on the true time through frames the
-        # gate skips. The frame was decoded (checked
-        # above), so `raw_data.SOW` is the just-decoded frame's.
+        # Promotion publishes this frame's SOW, so the symbol counter re-anchors with it;
+        # the two must move together for `tow + num_bits_since_time_reference/rate` (see
+        # `get_broadcast_time_of_week`) to stay on true time through frames the gate skips.
+        # `raw_data.SOW` is the just-decoded frame's (checked above).
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
@@ -1074,12 +1039,10 @@ end
 
 # ---- Per-message-type bit-field extraction (ICD §6.2.3, Figures 6-3..6-20) -----
 #
-# `word` is the 288-bit message packed MSB-first into a `UInt320` (bit 1 = the
-# first PRN bit). Fields are read by 1-based start bit and length through the
-# shared `get_bits` / `get_twos_complement_num` / `get_bit` helpers. All bit
-# positions below are transcribed from ICD Figures 6-3..6-20; scale factors
-# and signedness from the §7 parameter tables (Tables 7-2..7-21).
-
+# `word` is the 288-bit message packed MSB-first into a `UInt320` (bit 1 = first PRN bit),
+# read by 1-based start bit and length via `get_bits` / `get_twos_complement_num` /
+# `get_bit`. Bit positions are from ICD Figures 6-3..6-20; scale factors and signedness
+# from the §7 tables (Tables 7-2..7-21).
 """
 Message type 10 — WN, integrity flags, IODE, ephemeris I (ICD Fig 6-3 / 6-11, Table 7-8).
 """
@@ -1161,12 +1124,10 @@ function _parse_b2a_flags_block(raw::BeiDouCNAV2Data, word::UInt320)
     )
 end
 
-# Clock correction data block (Figure 6-13, Table 7-5) at 1-based bit `start`.
-# The IODC is *not* read here: its position varies with the message layout —
-# MT30/31/32 put it straight after the block at bit 112, MT33 pushes it to 218
-# behind the BGTO block and a reduced almanac, MT34 to 134 behind the SISAIoc
-# block (Figures 6-5..6-9). Each parser reads it at its own offset; only the
-# four clock parameters are shared here.
+# Clock correction data block (Figure 6-13, Table 7-5) at 1-based bit `start`. The IODC is
+# not read here since its position varies: bit 112 in MT30/31/32, 218 in MT33 (behind the
+# BGTO block and a reduced almanac), 134 in MT34 (behind the SISAIoc block; Figures
+# 6-5..6-9). Each parser reads it itself.
 _parse_b2a_clock_block(raw::BeiDouCNAV2Data, word::UInt320, start::Int) =
     BeiDouCNAV2Data(raw; beidou_clock_block(word, B2A_MESSAGE_BITS, start)...)
 

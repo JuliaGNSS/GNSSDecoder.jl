@@ -1,20 +1,17 @@
 # GPS L5I (CNAV) signal layer — IS-GPS-705J §20.3.
 #
-# The GPS L5 in-phase component carries the CNAV message at 50 bps, FEC-encoded
-# to 100 sps over 6-second 300-bit messages (IS-GPS-705J §3.3.3.1.1, §20.3).
-# The message format, FEC, CRC, sync, and per-message-type parsing are the
-# shared GPS CNAV core in `gps/cnav.jl` (the very same message is broadcast on
-# GPS L2C, IS-GPS-200N §30). This file holds only what is specific to L5I: the
-# constants type, the decoder-state constructor, and the health check (which
-# reports the L5 signal-health bit).
+# The L5 in-phase component carries CNAV at 50 bps, FEC-encoded to 100 sps, in
+# 6-second 300-bit messages (IS-GPS-705J §3.3.3.1.1, §20.3). Format, FEC, CRC, sync
+# and parsing are the shared CNAV core in `gps/cnav.jl` (same message as GPS L2C,
+# IS-GPS-200N §30). This file holds only the constants type, the constructor and
+# the L5 health check.
 
 """
     GPSL5IConstants
 
 GPS L5I specialization of [`GPSCNAVConstants`](@ref GNSSDecoder.GPSCNAVConstants) (`GPSCNAVConstants{:GPSL5I}`).
-Same field values as the GPS L2C constants — the distinct tag only selects the
-L5 health bit in [`is_sat_healthy`](@ref). Reference: IS-GPS-705J §20.3.3 /
-§20.3.4.3.
+Same field values as the L2C constants; the tag only selects the L5 health bit in
+[`is_sat_healthy`](@ref). Reference: IS-GPS-705J §20.3.3 / §20.3.4.3.
 """
 const GPSL5IConstants = GPSCNAVConstants{:GPSL5I}
 
@@ -23,12 +20,11 @@ $(TYPEDSIGNATURES)
 
 Create a decoder state for GPS L5I CNAV navigation messages.
 
-Initializes a [`GNSSDecoderState`](@ref) configured for decoding GPS L5I
-civil navigation (CNAV) messages from FEC-encoded 100 sps soft symbols. Each
-sync attempt Viterbi-decodes the buffered 616-symbol window, locates the
-8-bit preamble (`0b10001011`) at both ends of the decoded bit window,
-validates the 300-bit message with CRC-24Q, and dispatches it to per-type
-parsers (message types 10-15, 30-37, and 40, IS-GPS-705J §20.3.3).
+Initializes a [`GNSSDecoderState`](@ref) for decoding GPS L5I CNAV messages from
+FEC-encoded 100 sps soft symbols. Each sync attempt Viterbi-decodes the buffered
+616-symbol window, locates the 8-bit preamble (`0b10001011`) at both ends,
+validates the 300-bit message with CRC-24Q, and dispatches to per-type parsers
+(message types 10-15, 30-37, 40, IS-GPS-705J §20.3.3).
 
 # Arguments
 
@@ -72,12 +68,9 @@ function GNSSDecoderState(system::GPSL5I, prn)
     GPSL5IDecoderState(prn)
 end
 
-# GPS CNAV rides on both L5-I and L2C-M but decodes into a single
-# `GPSCNAVData`, so the signal is keyed on the constants type (`GPSL5IConstants`
-# vs `GPSL2CMConstants`) — the only thing that tells the two decoders apart.
-# Signal metadata is forwarded through this mapping (see `src/gps/l1ca.jl`), so
-# the two report their own band, ids and symbol rates (L5 vs L2, 100 vs 50 sps)
-# despite sharing every line of decoding.
+# L5-I and L2C-M decode into the same `GPSCNAVData`, so the signal is keyed on the
+# constants type (`GPSL5IConstants` vs `GPSL2CMConstants`). Signal metadata
+# (band, ids, symbol rate) is forwarded through this mapping (see `src/gps/l1ca.jl`).
 get_signal_type(::GPSL5IConstants) = GPSL5I
 
 """
@@ -85,9 +78,8 @@ $(TYPEDSIGNATURES)
 
 Check if the GPS L5 satellite is healthy and usable for positioning.
 
-Examines the L5 signal health bit decoded from the most recent message
-type 10 (IS-GPS-705J §20.3.3.1.1.2): a satellite is healthy iff the health
-bit is 0 (all navigation data on the L5 signal are OK).
+Examines the L5 health bit of the most recent message type 10 (IS-GPS-705J
+§20.3.3.1.1.2): healthy iff it is 0 (all navigation data on L5 are OK).
 
 !!! warning
 

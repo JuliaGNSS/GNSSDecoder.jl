@@ -1,39 +1,34 @@
 # Shared BeiDou legacy navigation message core (D1 NAV and D2 NAV), broadcast
 # identically on B1I (BDS-SIS-ICD-B1I-3.0 §5) and B3I (BDS-SIS-ICD-B3I-1.0 §5).
-# The signal layers in `b1i.jl` / `b3i.jl` are thin wrappers over this file,
-# mirroring how `gps/cnav.jl` is shared by GPS L5I and L2CM.
+# `b1i.jl` / `b3i.jl` are thin wrappers over this file.
 #
 # Message formats (BDS-SIS-ICD-B1I-3.0 §5.1.1):
 #   - MEO/IGSO satellites (PRN 6-58) broadcast **D1** at 50 bps: five 300-bit
 #     subframes per 30 s frame; subframes 1-3 carry the fundamental navigation
 #     data of the broadcasting satellite, subframes 4-5 carry 24 pages each of
 #     almanac, health, and time-offset data.
-#   - GEO satellites (PRN 1-5, 59-63) broadcast **D2** at 500 bps: the same
-#     300-bit subframe/word coding, but the fundamental navigation data is
-#     spread over pages 1-10 of subframe 1 (one page per 3 s frame,
-#     §5.3.2 Figures 5-14-1..-10). D2 subframes 2-4 carry the legacy regional
-#     augmentation service (BDS integrity and wide-area differential
-#     corrections); D2 subframe 5 is a mix — its ionospheric-grid pages belong
-#     to that same service, while pages 101/102 carry the BDT-GPS/Galileo/GLONASS
-#     and BDT-UTC offsets and other pages the almanac and satellite health
-#     (§5.3.3.1, Figures 5-18-30/-31). None of it is decoded here: none is
-#     needed for positioning readiness.
+#   - GEO satellites (PRN 1-5, 59-63) broadcast **D2** at 500 bps: the same 300-bit
+#     subframe/word coding, but the fundamental navigation data is spread over pages
+#     1-10 of subframe 1 (one page per 3 s frame, §5.3.2 Figures 5-14-1..-10). D2
+#     subframes 2-4 carry the regional augmentation service (integrity and wide-area
+#     differential corrections); subframe 5 mixes its ionospheric-grid pages with
+#     pages 101/102 (BDT-GPS/Galileo/GLONASS and BDT-UTC offsets) and other pages
+#     (almanac, health; §5.3.3.1, Figures 5-18-30/-31). None of this is decoded here:
+#     none is needed for positioning readiness.
 #
 # Word coding (§5.1.3): every 30-bit word is BCH(15,11,1)-protected with
-# g(X) = 1 + X + X⁴. Word 1 of a subframe sends its first 15 bits raw
-# (preamble + FraID region) followed by one 15-bit BCH block; words 2-10
-# interleave two BCH blocks bit-by-bit (X1¹X2¹X1²X2²…P1¹P2¹…P1⁴P2⁴), giving
-# the pre-interleave layout [22 information bits][8 parity bits] that the
-# ICD's bit-allocation figures index. The decoder de-interleaves, corrects
-# single bit errors per block, and re-packs only the information bits into a
-# 224-bit "content" word (26 bits of word 1 + 9 × 22 bits), in which every
-# multi-word ICD field becomes contiguous — the parity-split field positions
-# of the figures map 1:1 onto content positions (see `dnav_content_position`).
+# g(X) = 1 + X + X⁴. Word 1 of a subframe sends its first 15 bits raw (preamble + FraID
+# region) followed by one 15-bit BCH block; words 2-10 interleave two BCH blocks
+# bit-by-bit (X1¹X2¹X1²X2²…P1¹P2¹…P1⁴P2⁴), so the pre-interleave layout is
+# [22 information bits][8 parity bits], as the ICD's bit-allocation figures index it.
+# The decoder de-interleaves, corrects single bit errors per block, and re-packs only
+# the information bits into a 224-bit "content" word (26 bits of word 1 + 9 × 22 bits),
+# in which every multi-word ICD field is contiguous (see `dnav_content_position`).
 
 # ---- Frame geometry (BDS-SIS-ICD-B1I-3.0 §5.2.1 / §5.3.1) ------------------
 #
-# A subframe is 300 bits = 10 words of 30 bits, and the sync window is one
-# subframe plus the next subframe's 11-bit preamble.
+# A subframe is 300 bits = 10 words of 30 bits; the sync window is one subframe plus the
+# next subframe's 11-bit preamble.
 
 const DNAV_SUBFRAME_BITS = 300
 const DNAV_WORD_BITS = 30
@@ -43,12 +38,10 @@ const DNAV_WINDOW_BITS = DNAV_SUBFRAME_BITS + DNAV_PREAMBLE_BITS  # 311
 """
     BeiDouDNAVConstants{S}
 
-D1/D2 NAV message structure parameters for the BeiDou
-B1I/B3I legacy signals, parameterized on the signal tag `S`
-(`:BeiDouB1I` or `:BeiDouB3I`) like `GPSCNAVConstants`. The distinct tag
-selects the signal identity ([`get_signal_type`](@ref)) — the message
-structure and all constants are identical on both signals
-(BDS-SIS-ICD-B3I-1.0 §5 mirrors BDS-SIS-ICD-B1I-3.0 §5).
+D1/D2 NAV message structure parameters for the BeiDou B1I/B3I legacy signals,
+parameterized on the signal tag `S` (`:BeiDouB1I` or `:BeiDouB3I`) like
+`GPSCNAVConstants`. The tag selects the signal ([`get_signal_type`](@ref)); all
+constants are identical on both (BDS-SIS-ICD-B3I-1.0 §5 mirrors B1I-3.0 §5).
 
 # Fields
 
@@ -70,9 +63,8 @@ end
 
 # ---- BCH(15,11,1) (BDS-SIS-ICD-B1I-3.0 §5.1.3) -------------------------------
 
-# Generator polynomial g(X) = 1 + X + X⁴, MSB-first: 0b10011. Stored as an
-# `Int` — a bare `0b10011` literal is a `UInt8`, whose left-shifts in the
-# syndrome long division would overflow 8 bits.
+# Generator polynomial g(X) = 1 + X + X⁴, MSB-first: 0b10011. Stored as an `Int` because
+# a bare `0b10011` literal is a `UInt8`, whose shifts in the syndrome division overflow.
 const DNAV_BCH_GENERATOR = Int(0b10011)
 
 # Codewords are 15 bits, MSB (= earliest transmitted bit, coefficient of X¹⁴)
@@ -87,10 +79,9 @@ function dnav_bch_syndrome(codeword::Integer)
     r & 0xF
 end
 
-# Syndrome → 1-based error bit position (1 = MSB of the 15-bit codeword),
-# reproducing the ICD's Figure 5-4 ROM list (e.g. syndrome 0001 flips bit 15,
-# 1001 flips bit 1). Index [syndrome]; entry 0 is unused (zero syndrome =
-# error-free).
+# Syndrome → 1-based error bit position (1 = MSB of the 15-bit codeword), reproducing the
+# ICD's Figure 5-4 ROM list (e.g. syndrome 0001 flips bit 15, 1001 flips bit 1).
+# Entry 0 is unused (zero syndrome = error-free).
 const DNAV_BCH_ERROR_POSITION = let
     table = zeros(Int, 15)
     for pos = 1:15
@@ -103,11 +94,10 @@ end
 """
     dnav_bch_decode(codeword) -> corrected codeword
 
-Decode one BCH(15,11,1) block (15 bits, MSB first): correct the single bit
-error indicated by a non-zero syndrome (BDS-SIS-ICD-B1I-3.0 §5.1.3, Figure
-5-4). Two or more bit errors exceed the code's capability and are silently
-mis-corrected — the cross-subframe data voting in `validate_data` is the
-guard against such words reaching the validated data.
+Decode one BCH(15,11,1) block (15 bits, MSB first): correct the single bit error
+indicated by a non-zero syndrome (BDS-SIS-ICD-B1I-3.0 §5.1.3, Figure 5-4). Two or more
+errors are silently mis-corrected; the cross-subframe voting in `validate_data` guards
+against such words reaching the validated data.
 """
 function dnav_bch_decode(codeword::Integer)
     syndrome = dnav_bch_syndrome(codeword)
@@ -115,10 +105,9 @@ function dnav_bch_decode(codeword::Integer)
     Int(codeword) ⊻ (1 << (15 - DNAV_BCH_ERROR_POSITION[syndrome]))
 end
 
-# De-interleave one transmitted 30-bit word (words 2-10) into its two 15-bit
-# BCH blocks. Transmitted order is X1¹X2¹X1²X2²…X1¹¹X2¹¹P1¹P2¹P1²P2²P1³P2³P1⁴P2⁴
-# (§5.1.3): the 22 information bits alternate block-1/block-2, then the 8
-# parity bits alternate likewise.
+# De-interleave one transmitted 30-bit word (words 2-10) into its two 15-bit BCH blocks.
+# Transmitted order is X1¹X2¹X1²X2²…X1¹¹X2¹¹P1¹P2¹P1²P2²P1³P2³P1⁴P2⁴ (§5.1.3): the 22
+# information bits alternate block-1/block-2, then the 8 parity bits likewise.
 function dnav_deinterleave_word(word::Integer)
     block1 = 0
     block2 = 0
@@ -146,18 +135,17 @@ end
 """
     decode_dnav_subframe_content(buffer, constants) -> UInt320
 
-BCH-decode all ten words of the 300-bit subframe held in the packed sync
-buffer and concatenate the corrected *information* bits into the 224-bit
-content word (word 1 bits 1-26, then bits 1-22 of each of words 2-10),
-MSB-first and right-aligned. In the content domain every parity-split field
-of the ICD bit-allocation figures is contiguous; positions are mapped from
-the figures' 300-bit numbering by [`dnav_content_position`](@ref).
+BCH-decode all ten words of the 300-bit subframe in the packed sync buffer and
+concatenate the corrected *information* bits into the 224-bit content word (word 1
+bits 1-26, then bits 1-22 of each of words 2-10), MSB-first and right-aligned.
+Positions map from the figures' 300-bit numbering via
+[`dnav_content_position`](@ref).
 """
 function decode_dnav_subframe_content(buffer, constants::BeiDouDNAVConstants)
     content = UInt320(0)
     word1 = dnav_get_word(buffer, constants, 1)
-    # Word 1: bits 1-15 raw (preamble, Rev, FraID, SOW MSB region starts at 19),
-    # bits 16-30 one non-interleaved BCH(15,11,1) block (§5.2.2).
+    # Word 1: bits 1-15 raw (preamble, Rev, FraID), bits 16-30 one non-interleaved
+    # BCH(15,11,1) block (§5.2.2).
     corrected1 = dnav_bch_decode(word1 & 0x7FFF)
     # Content bits 1-26: 15 raw bits + the block's 11 information bits.
     content = content << 26 | UInt320(word1 >> 15) << 11 | UInt320(corrected1 >> 4)
@@ -177,11 +165,10 @@ const DNAV_CONTENT_BITS = 224
 """
     dnav_content_position(icd_position) -> Int
 
-Map a bit position from the ICD's 300-bit subframe numbering (which counts
-parity bits, BDS-SIS-ICD-B1I-3.0 Figures 5-8..5-14) to the corresponding
-position in the 224-bit content word. Word 1 contributes bits 1-26 verbatim;
-word w ≥ 2 contributes its 22 information bits. Positions inside a parity
-field have no content counterpart and are rejected.
+Map a bit position from the ICD's 300-bit subframe numbering (which counts parity
+bits, BDS-SIS-ICD-B1I-3.0 Figures 5-8..5-14) to the 224-bit content word. Word 1
+contributes bits 1-26 verbatim; word w ≥ 2 its 22 information bits. Positions in a
+parity field are rejected.
 """
 function dnav_content_position(icd_position::Int)
     word = (icd_position - 1) ÷ 30 + 1
@@ -192,10 +179,9 @@ function dnav_content_position(icd_position::Int)
     word == 1 ? offset : 26 + (word - 2) * 22 + offset
 end
 
-# Field accessors on the content word. `start` is the position in the ICD's
-# 300-bit numbering of the field's first (most significant) bit; thanks to the
-# content mapping the whole field is contiguous even when the figures split it
-# across parity boundaries.
+# Field accessors on the content word. `start` is the ICD 300-bit position of the
+# field's first (most significant) bit; the field is contiguous in content even when
+# the figures split it across parity boundaries.
 dnav_bits(content, start::Int, len::Int) =
     get_bits(content, DNAV_CONTENT_BITS, dnav_content_position(start), len)
 dnav_signed(content, start::Int, len::Int) =
@@ -209,14 +195,13 @@ dnav_bit(content, start::Int) =
     BeiDouDNAVAlmanac
 
 Almanac data for one BeiDou satellite, decoded from a single D1 almanac page
-(subframe 4 pages 1-24 for SV 1-24, subframe 5 pages 1-6 for SV 25-30, and —
-when the expanded-almanac identification `AmEpID` is `11` — subframe 5 pages
-11-23 for SV 31-63 by time sharing, BDS-SIS-ICD-B1I-3.0 §5.2.4.13-§5.2.4.15).
+(subframe 4 pages 1-24 for SV 1-24, subframe 5 pages 1-6 for SV 25-30, and, when the
+expanded-almanac identification `AmEpID` is `11`, subframe 5 pages 11-23 for SV 31-63
+by time sharing, BDS-SIS-ICD-B1I-3.0 §5.2.4.13-§5.2.4.15).
 
-Angles are stored in radians (the broadcast semicircle values scaled by the
-ICD's π). The reference inclination the broadcast `δi` corrects is
-i₀ = 0.3 semicircles for MEO/IGSO satellites and i₀ = 0 for GEO
-(Table 5-15 note).
+Angles are in radians (broadcast semicircles scaled by the ICD's π). `δi` is relative
+to the reference inclination i₀ = 0.3 semicircles for MEO/IGSO and 0 for GEO (Table 5-15
+note).
 
 # Fields
 
@@ -235,13 +220,12 @@ i₀ = 0.3 semicircles for MEO/IGSO satellites and i₀ = 0 for GEO
 
 !!! note "Use this record's own reference epoch"
 
-    `t_0a` and `WN_a` here belong to *this* entry, and `BeiDouDNAVData` also
-    carries a `t_0a`/`WN_a` pair — the global one most recently broadcast in
-    subframe 5 page 8. The almanac cycle is 24 pages spread over 12 minutes,
-    so the two can disagree across an almanac changeover; pairing an entry
-    with the global epoch would then propagate the wrong reference time.
-    Prefer the entry's own fields, as [`BeiDouReducedAlmanac`](@ref) forces
-    by construction.
+    `t_0a` and `WN_a` here belong to *this* entry. `BeiDouDNAVData` also carries a
+    `t_0a`/`WN_a` pair, the global one most recently broadcast in subframe 5 page 8.
+    The almanac cycle is 24 pages over 12 minutes, so the two can disagree across an
+    almanac changeover; pairing an entry with the global epoch would then use the wrong
+    reference time. Prefer the entry's own fields, as [`BeiDouReducedAlmanac`](@ref)
+    forces by construction.
 
 # Reference
 
@@ -264,33 +248,31 @@ end
 """
     BeiDouDNAVData
 
-Decoded BeiDou D1/D2 legacy navigation message data, shared by the B1I and
-B3I decoders (the broadcast message is structurally identical on both
-signals; see `src/beidou/b1i.jl` for the group-delay semantics that differ).
+Decoded BeiDou D1/D2 legacy navigation message data, shared by the B1I and B3I decoders
+(see `src/beidou/b1i.jl` for the group-delay semantics that differ).
 
-All parameters conform to BDS-SIS-ICD-B1I-3.0 §5.2 (D1) / §5.3 (D2). Angles
-broadcast in semicircles are stored in radians (scaled by the ICD π); times
-are in seconds of BeiDou Time (BDT).
+Parameters follow BDS-SIS-ICD-B1I-3.0 §5.2 (D1) / §5.3 (D2). Semicircle angles are
+stored in radians (scaled by the ICD π); times are in seconds of BeiDou Time (BDT).
 
 # Frame Fields
 
   - `last_subframe_id::Int`: FraID of the last decoded subframe (1-5)
   - `SOW::Int64`: Seconds of week at the leading edge of the current subframe's
     preamble (D1) or of subframe 1 of the current frame (D2), §5.2.4.3/§5.3.3.1
-  - `sow_anchor_bit_count::Int`: Symbol-counter
-    value when `SOW` was decoded (drives the SOW plausibility screen)
+  - `sow_anchor_bit_count::Int`: Bit-counter value when `SOW` was decoded (drives the
+    SOW plausibility screen)
 
 # Subframe 1 (D1) / Subframe 1 Pages 1-4 (D2) - Clock, Health, Iono
 
-The D2 page split is not one-to-one with the D1 subframe: pages 1-2 carry the
-health, accuracy and Klobuchar coefficients, `a_0` arrives on page 3 and
-`a_1`/`a_2`/`AODE` on pages 3-4 (Figures 5-14-3 and 5-14-4).
+The D2 page split differs from D1: pages 1-2 carry the health, accuracy and Klobuchar
+coefficients, `a_0` arrives on page 3 and `a_1`/`a_2`/`AODE` on pages 3-4
+(Figures 5-14-3 and 5-14-4).
 
   - `SatH1::Bool`: Autonomous satellite health flag (0 = good, §5.2.4.6)
   - `AODC::Int64`: Age of data, clock (§5.2.4.8)
   - `URAI::Int64`: User range accuracy index, the raw 4-bit broadcast value
-    (§5.2.4.5, Table 5-4). Not converted to metres — see `GPSLNAVData.URA_index`
-    for why; index 15 is "no accuracy prediction".
+    (§5.2.4.5, Table 5-4). Not converted to metres (see `GPSLNAVData.URA_index`);
+    index 15 is "no accuracy prediction".
   - `WN::Int64`: BDT week number (0-8191, weeks since 2006-01-01, §5.2.4.4)
   - `t_0c::Int64`: Clock correction reference time (s, scale 2³; the ICD writes `toc`)
   - `a_f0::Float64`: Clock bias (s, scale 2⁻³³; the ICD names it `a_0`)
@@ -306,9 +288,8 @@ health, accuracy and Klobuchar coefficients, `a_0` arrives on page 3 and
 D2 page 3 is the clock page; the ephemeris starts on page 4 with `Δn` and
 `C_uc` (Figure 5-14-4).
 
-  - `t_0e::Int64`: Ephemeris reference time (s, scale 2³; the ICD writes `toe`;
-    split across
-    subframes 2 and 3 in D1 — assembled once both parts are present)
+  - `t_0e::Int64`: Ephemeris reference time (s, scale 2³; the ICD writes `toe`; split
+    across subframes 2 and 3 in D1 and assembled once both parts are present)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m, scale 2⁻¹⁹)
   - `e::Float64`: Eccentricity (scale 2⁻³³)
   - `ω::Float64`: Argument of perigee (rad)
@@ -383,9 +364,9 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     β_3::Union{Nothing,Float64} = nothing
     AODE::Union{Nothing,Int64} = nothing
 
-    # Ephemeris. In D1 t_0e is split: 2 MSBs in subframe 2, 15 LSBs in
-    # subframe 3 (Figures 5-9/5-10); the raw staging halves live here so the
-    # assembled `t_0e` only appears once both subframes contributed.
+    # Ephemeris. In D1 t_0e is split: 2 MSBs in subframe 2, 15 LSBs in subframe 3
+    # (Figures 5-9/5-10); the staging halves live here so `t_0e` appears only once both
+    # have arrived.
     t_0e_msb2::Union{Nothing,Int64} = nothing
     t_0e_lsb15::Union{Nothing,Int64} = nothing
     t_0e::Union{Nothing,Int64} = nothing
@@ -546,14 +527,12 @@ end
     )
 end
 
-# The default struct `==` falls back to `===` (reference equality), which fails
-# for the mutable `almanacs` and `health` `SlotDictionary` fields even when their
-# contents match. Compare field-by-field (mirrors `GPSLNAVData`, the LNAV
-# decoder this one is modelled on).
+# The default struct `==` is reference equality, which fails for the mutable `almanacs`
+# and `health` `SlotDictionary` fields even when contents match, so compare
+# field-by-field (as `GPSLNAVData` does).
 #
-# This is equality of the *published* data only. Subframe voting compares
-# candidates with `dnav_compare_data` below, which weighs the ephemeris fields
-# the vote is about rather than every field, and is deliberately not this.
+# This is equality of the *published* data only; subframe voting uses
+# `dnav_compare_data` below, which weighs only the ephemeris fields.
 Base.:(==)(a::BeiDouDNAVData, b::BeiDouDNAVData) = fields_equal(a, b)
 
 struct VotedBeiDouDNAVData
@@ -561,11 +540,9 @@ struct VotedBeiDouDNAVData
     data::BeiDouDNAVData
 end
 
-# Needed on top of the `BeiDouDNAVData` method above, not implied by it: Julia's
-# default `==` for a struct is `===`, which compares fields with `===` rather
-# than dispatching to their `==`. So without this the wrapper — and hence
-# `BeiDouDNAVCache`'s `old_data` vector, and hence the whole decoder state —
-# would still compare by reference.
+# Needed on top of the `BeiDouDNAVData` method: the default struct `==` compares fields
+# with `===`, so without this the wrapper, `BeiDouDNAVCache`'s `old_data`, and hence the
+# whole decoder state would compare by reference.
 Base.:(==)(a::VotedBeiDouDNAVData, b::VotedBeiDouDNAVData) = fields_equal(a, b)
 
 # One collected D2 subframe-1 page: its SOW (frame epoch) and content word.
@@ -581,18 +558,16 @@ $(TYPEDEF)
 
 Per-decoder cache for the BeiDou B1I/B3I legacy signals.
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 300 + 11 = 311),
-the data-voting tally used by `confirm_data` (mirroring GPS L1 C/A), and —
-for GEO satellites — the D2 subframe-1 page collection: the fundamental
-navigation data of D2 is spread over pages 1-10 (one page per 3 s frame,
-BDS-SIS-ICD-B1I-3.0 §5.3.2), so decoded pages are staged here until all ten
-are present with a consistent SOW chain.
+Holds the soft-symbol `CircularDeque{Float32}` (capacity 300 + 11 = 311), the
+data-voting tally used by `confirm_data` (as for GPS L1 C/A), and, for GEO satellites,
+the D2 subframe-1 page collection: D2's fundamental navigation data spans pages 1-10
+(one per 3 s frame, BDS-SIS-ICD-B1I-3.0 §5.3.2), staged here until all ten are present
+with a consistent SOW chain.
 
-Every container here is preallocated at construction and **overwritten in
-place** by [`decode!`](@ref): the soft buffer, the voting tally (capped at
-`DNAV_MAX_VOTE_CANDIDATES` entries), the D2 page store (one slot per Pnum1)
-and the `storage` behind `raw_data` / `data`. Only `sow_is_fresh` is threaded
-through a rebuilt cache.
+Every container is preallocated at construction and **overwritten in place** by
+[`decode!`](@ref): the soft buffer, the voting tally (capped at
+`DNAV_MAX_VOTE_CANDIDATES`), the D2 page store (one slot per Pnum1) and the `storage`
+behind `raw_data` / `data`. Only `sow_is_fresh` is threaded through a rebuilt cache.
 
 # Fields
 
@@ -624,9 +599,9 @@ struct BeiDouDNAVCache <: AbstractGNSSCache
     storage::DataStorage{BeiDouDNAVData}
 end
 
-# Distinct datasets the voting tally keeps at once. The broadcast only changes
-# at an upload, so more than two live candidates means mis-corrected words;
-# eight leaves ample room before the weakest is evicted (as for GPS L1 C/A).
+# Distinct datasets the voting tally keeps at once. The broadcast changes only at an
+# upload, so more than two live candidates means mis-corrected words; eight leaves room
+# before the weakest is evicted (as for GPS L1 C/A).
 const DNAV_MAX_VOTE_CANDIDATES = 8
 
 function BeiDouDNAVCache()
@@ -649,8 +624,7 @@ function BeiDouDNAVCache(cache::BeiDouDNAVCache; sow_is_fresh = cache.sow_is_fre
     )
 end
 
-# Every container field at its ICD size: one almanac and one health slot per
-# SV ID (1-63).
+# One almanac and one health slot per SV ID (1-63).
 preallocated_data(::Type{BeiDouDNAVData}) = BeiDouDNAVData(;
     almanacs = SlotDictionary{BeiDouDNAVAlmanac,64}(),
     health = SlotDictionary{UInt16,64}(),
@@ -666,25 +640,19 @@ packed_buffer_type(::GNSSDecoderState{<:BeiDouDNAVData}) = UInt320
 
 # ---- Completeness checks ------------------------------------------------------
 
-# `T_GD1` is required and `T_GD2` is not, which is the package-wide group-delay
-# rule (`is_decoding_completed_for_positioning` in src/gnss.jl) read onto this
-# message. The broadcast clock polynomial is referenced to B3I on both signals
-# (§5.2.4.10), so a B1I user must apply `T_GD1` to reach its own signal — a
-# metre-scale bias, not a refinement — and it rides in the same subframe 1
-# (D1) / page 1 (D2) as the clock this gate already waits for, so requiring it
-# costs no time to first fix. `T_GD2` is the *B2I* differential: the field is
-# decoded and published like any other, but never gated on — the same treatment
-# B1C's `T_GD_B2ap` gets — because nothing in this stack can consume it. There is
-# no B2I signal in GNSSSignals and none is planned
-# (JuliaGNSS/GNSSSignals.jl#156, closed won't-implement): BDS-2 retired 13 of
-# its last 15 satellites in April 2026, leaving two IGSO transmitters and no
-# successor carrying the signal, so a decoded `T_GD2` has no range to correct.
+# `T_GD1` is required and `T_GD2` is not (the package-wide group-delay rule,
+# `is_decoding_completed_for_positioning` in src/gnss.jl). The clock polynomial is
+# referenced to B3I on both signals (§5.2.4.10), so a B1I user must apply `T_GD1` (a
+# metre-scale bias), and it rides in the same subframe 1 (D1) / page 1 (D2) as the clock,
+# so requiring it costs no time to first fix. `T_GD2` is the *B2I* differential: decoded
+# and published, but never gated on (like B1C's `T_GD_B2ap`), because nothing here can
+# consume it. GNSSSignals has no B2I signal and none is planned
+# (JuliaGNSS/GNSSSignals.jl#156, won't-implement); BDS-2 retired 13 of its last 15
+# satellites in April 2026.
 #
-# A B3I user needs neither (its clock is already B3I-referenced), but B1I and
-# B3I share one `BeiDouDNAVData` and this check dispatches on the data, so one
-# gate serves both. Requiring `T_GD1` on B3I too is free — same subframe — and
-# is the conservative side of the trade: the alternative would let a B1I
-# consumer see a "ready" decoder with no group delay at all.
+# A B3I user needs neither, but B1I and B3I share `BeiDouDNAVData` and this check
+# dispatches on the data, so one gate serves both; requiring `T_GD1` on B3I is free
+# (same subframe) and avoids a "ready" B1I decoder with no group delay.
 function is_dnav_clock_and_health_decoded(data::BeiDouDNAVData)
     !isnothing(data.SatH1) &&
         !isnothing(data.AODC) &&
@@ -720,17 +688,13 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Check if the BeiDou satellite is healthy and usable for positioning, from the
-legacy D1/D2 navigation message.
+Check if the BeiDou satellite is healthy and usable for positioning, from the legacy
+D1/D2 navigation message.
 
-Examines the autonomous satellite health flag (SatH1) broadcast in D1
-subframe 1 / D2 subframe 1 page 1: `0` means the broadcasting satellite is
-good, `1` means not (BDS-SIS-ICD-B1I-3.0 / -B3I-1.0 §5.2.4.6).
-
-One method covers both B1I and B3I: the two signals carry the same SatH1 bit
-of the same message, so unlike GPS L5I and L2CM — which select *different*
-health bits out of a shared CNAV container — there is nothing per-signal to
-dispatch on.
+Examines the autonomous satellite health flag (SatH1) in D1 subframe 1 / D2 subframe 1
+page 1: `0` is good, `1` is not (BDS-SIS-ICD-B1I-3.0 / -B3I-1.0 §5.2.4.6). One method
+covers B1I and B3I, which carry the same bit (unlike GPS L5I and L2CM, which select
+different health bits of a shared CNAV container).
 
 !!! warning
 
@@ -754,13 +718,10 @@ $(TYPEDSIGNATURES)
 
 [`geostationary_orbit`](@ref OrbitClass) for the GEO PRNs, `nothing` otherwise.
 
-D1/D2 NAV broadcasts `sqrt_A` outright and carries no orbit-type field, so the
-only orbit fact available on B1I and B3I is the PRN partition
-GNSSSignals' `is_beidou_geo` encodes — the one the ICD fixes to select between the
-D1 and D2 message formats (BDS-SIS-ICD-B1I-3.0 Table 4-1, §5.1.1). That
-partition separates GEO from non-GEO and no further, so an IGSO and an MEO
-satellite are indistinguishable here and both report `nothing`. The B-CNAV
-signals answer all three classes, from the broadcast `sat_type`.
+D1/D2 NAV has no orbit-type field, so the only orbit fact available is the PRN
+partition GNSSSignals' `is_beidou_geo` encodes, which the ICD uses to select D1 or D2
+(BDS-SIS-ICD-B1I-3.0 Table 4-1, §5.1.1). IGSO and MEO satellites are indistinguishable
+and both report `nothing`; the B-CNAV signals answer all three classes from `sat_type`.
 """
 get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
     GNSSSignals.is_beidou_geo(state.prn) ? geostationary_orbit : nothing
@@ -771,27 +732,27 @@ get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
 """
 $(TYPEDSIGNATURES)
 
-The BDT-to-`target` offset from D1 subframe 5 / D2 page 102, or `nothing` when
-this satellite is not broadcasting one.
+The BDT-to-`target` offset from D1 subframe 5 pages 9 and 10, or `nothing` when this
+satellite is not broadcasting one. D2 carries the offsets in subframe 5 pages 101 and
+102, which are not decoded, so a GEO satellite (D2) always answers `nothing`.
 
-D1/D2 is the one shape that identifies the target system by *field name* rather
-than by a `GNSS_ID` code — it carries all three offsets side by side
-(`A_0GPS`/`A_1GPS`, `A_0Gal`/`A_1Gal`, `A_0GLO`/`A_1GLO`; §5.2.4.19-21) — so
-more than one target can be answerable at once. It is also the one shape with no
-reference epoch: the returned record has `t_0 === nothing` and
-`WN_0 === nothing`, and its two-term polynomial reports `A_2 == 0`.
+D1/D2 identifies the target by *field name* rather than a `GNSS_ID` code, carrying all
+three offsets side by side (`A_0GPS`/`A_1GPS`, `A_0Gal`/`A_1Gal`, `A_0GLO`/`A_1GLO`;
+§5.2.4.19-21), so several targets can be answerable at once. It has no reference epoch:
+the record has `t_0 === nothing` and `WN_0 === nothing`, and its two-term polynomial
+reports `A_2 == 0`.
 
-Expect `nothing` in practice whatever the target: all three sections are marked
-"(Not broadcast temporarily)" in BDS-SIS-ICD-B1I-3.0, and the B-CNAV signals
-carry the BGTO that replaced them.
+Expect `nothing` in practice: all three sections are marked "(Not broadcast
+temporarily)" in BDS-SIS-ICD-B1I-3.0, and the B-CNAV signals carry the BGTO that
+replaced them.
 """
 function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::TimeSystem)
     data = state.data
     A_0, A_1 =
         target === GPST() ? (data.A_0GPS, data.A_1GPS) :
         target === GST() ? (data.A_0Gal, data.A_1Gal) : (nothing, nothing)
-    # Each section carries both or neither; `A_1` is checked anyway, to narrow it for
-    # the call below (see `galileo_ggto_offset`).
+    # Each section carries both or neither; `A_1` is checked to narrow its type (see
+    # `galileo_ggto_offset`).
     (isnothing(A_0) || isnothing(A_1)) && return nothing
     broadcast_time_offset(
         state,
@@ -807,12 +768,9 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
 end
 
 function is_decoding_completed_for_positioning(data::BeiDouDNAVData)
-    # Klobuchar ionosphere is deliberately *not* gated on: `src/gnss.jl` states
-    # that second-order corrections are excluded from readiness and should be
-    # applied when present rather than waited for. It happens to ride in the
-    # same subframe as the clock set here (D1 subframe 1 / D2 page 2), so this
-    # is a contract fix rather than a behaviour change — but the contract is
-    # what other consumers rely on.
+    # Klobuchar ionosphere is deliberately *not* gated on: `src/gnss.jl` excludes
+    # second-order corrections from readiness (apply when present, don't wait). It rides
+    # in the same subframe as the clock set (D1 subframe 1 / D2 page 2).
     !isnothing(data.SOW) &&
         is_dnav_clock_and_health_decoded(data) &&
         is_dnav_ephemeris_decoded(data)
@@ -820,20 +778,18 @@ end
 
 # ---- SOW plausibility screen ---------------------------------------------------
 #
-# Frame sync is only an 11-bit preamble match, so — exactly as for GPS L1 C/A
-# (see `is_plausible_TOW`) — a false lock can reach the SOW field with an
-# arbitrary count behind valid BCH parity. The same two screens apply: once
-# the symbol counter runs across two SOW decodes, the elapsed symbols predict
-# the next SOW exactly (D1: 50 sps and a 300-symbol subframe grid; D2: 500 sps
-# and SOW readings from subframe 1 only, 1500 symbols apart); before that, a
-# bounded forward step.
+# Frame sync is only an 11-bit preamble match, so, as for GPS L1 C/A (see
+# `is_plausible_TOW`), a false lock can reach the SOW field with an arbitrary count
+# behind valid BCH parity. The same two screens apply: once the symbol counter spans two
+# SOW decodes, the elapsed symbols predict the next SOW exactly (D1: 50 sps, 300-symbol
+# subframe grid; D2: 500 sps, SOW from subframe 1 only, 1500 symbols apart); before
+# that, a bounded forward step.
 
 const DNAV_MAX_SOW_GAP = 600
 
-# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_since_time_reference)`,
-# folded by the caller so the call carries two `Union{Nothing,Int64}` arguments
-# rather than three — within inference's union-split limit, so the call resolves
-# statically (see `is_plausible_TOW`).
+# `elapsed` is `elapsed_symbols(prev_SOW_anchor, num_bits_since_time_reference)`, folded
+# by the caller so the call has two `Union{Nothing,Int64}` arguments rather than three,
+# within inference's union-split limit (see `is_plausible_TOW`).
 function is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, symbols_per_second)
     SOW_count < SECONDS_PER_WEEK || return false
     isnothing(prev_SOW) && return true
@@ -847,20 +803,15 @@ function is_plausible_dnav_SOW(SOW_count, prev_SOW, elapsed, symbols_per_second)
     return 0 < ΔSOW <= DNAV_MAX_SOW_GAP
 end
 
-# Screen and store a freshly decoded SOW (with its symbol-counter anchor) in
-# `raw_data`.
+# Screen and store a freshly decoded SOW (with its symbol-counter anchor) in `raw_data`.
 #
-# A SOW that fails the screen leaves the previously accepted (SOW, anchor)
-# pair in place rather than clearing it. Clearing would defeat the screen
-# itself: `is_plausible_dnav_SOW` waves through any SOW once `prev_SOW` is
-# `nothing`, so a rejection would leave the very next subframe unscreened.
-# Keeping the pair costs nothing — the elapsed-symbol prediction spans however
-# many subframes were skipped, since `elapsed % 300 == 0` holds for any whole
-# number of them.
+# A SOW that fails the screen leaves the previously accepted (SOW, anchor) pair in place.
+# Clearing it would defeat the screen: `is_plausible_dnav_SOW` accepts any SOW once
+# `prev_SOW` is `nothing`. Keeping the pair is safe because the elapsed-symbol prediction
+# spans any number of skipped subframes (`elapsed % 300 == 0`).
 #
-# Freshness is therefore not carried by `SOW` being non-`nothing` but by the
-# `sow_is_fresh` cache flag this raises on acceptance — see
-# `is_dnav_SOW_from_this_subframe`.
+# Freshness is therefore carried by the `sow_is_fresh` cache flag raised on acceptance,
+# not by `SOW` being non-`nothing`; see `is_dnav_SOW_from_this_subframe`.
 function store_dnav_SOW(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     SOW_count = Int64(dnav_bits(content, 19, 20))
     prev_SOW = state.raw_data.SOW
@@ -886,29 +837,27 @@ end
 """
 True when `raw_data.SOW` was decoded from the subframe that just synced.
 
-`decode_sync_unit` clears the flag as it starts and `store_dnav_SOW`
-sets it only on acceptance, so it distinguishes a SOW read *now* from one
-carried over. The symbol counter cannot serve here: it stays `nothing` until
-the first promotion, so an anchor-versus-counter comparison would read
-`nothing == nothing` and call every subframe fresh.
+`decode_sync_unit` clears the cache's `sow_is_fresh` flag as it starts and `store_dnav_SOW`
+sets it only on acceptance, distinguishing a SOW read *now* from one carried over. The
+symbol counter cannot serve: it stays `nothing` until the first promotion, so an
+anchor-versus-counter comparison would read `nothing == nothing` and call every subframe
+fresh.
 
-Two paths depend on this. Promotion re-anchors the counter to the SOW epoch,
-which is only meaningful for a SOW read from this very subframe: D2 reads a
-SOW in subframe 1 only (§5.3.3.1(2)), so subframes 2-5 must not re-anchor a
-SOW up to four subframes old. And because BCH(15,11,1) is a perfect code —
-`dnav_bch_decode` always returns *some* codeword and can never reject — the
-SOW screen is the only integrity gate this message has, so a subframe whose
-SOW failed it must not write its payload fields either.
+Two paths depend on this. Promotion re-anchors the counter to the SOW epoch, which is
+meaningful only for a SOW from this very subframe: D2 reads a SOW in subframe 1 only
+(§5.3.3.1(2)), so subframes 2-5 must not re-anchor a SOW up to four subframes old. And
+because BCH(15,11,1) is a perfect code (`dnav_bch_decode` never rejects), the SOW screen
+is the message's only integrity gate, so a subframe whose SOW failed it must not write
+its payload fields either.
 """
 is_dnav_SOW_from_this_subframe(state::GNSSDecoderState{<:BeiDouDNAVData}) =
     state.cache.sow_is_fresh
 
 # ---- D1 subframe parsers -------------------------------------------------------
 #
-# Field positions cite the first (most significant) bit in the ICD's 300-bit
-# numbering (BDS-SIS-ICD-B1I-3.0 Figures 5-8, 5-9, 5-10, 5-11-x); scale
-# factors cite Tables 5-4..5-18. Parity-split fields are contiguous in the
-# content domain, so a single (start, length) pair reads the whole field.
+# Field positions cite the first (most significant) bit in the ICD's 300-bit numbering
+# (BDS-SIS-ICD-B1I-3.0 Figures 5-8, 5-9, 5-10, 5-11-x); scale factors cite Tables
+# 5-4..5-18. A single (start, length) pair reads a parity-split field.
 
 function decode_d1_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     URAI = Int64(dnav_bits(content, 49, 4))
@@ -940,14 +889,11 @@ end
 # Assemble the 17-bit t_0e (× 2³ s) from its subframe-2 MSBs and subframe-3
 # LSBs, but only when the two halves provably belong to one ephemeris.
 #
-# D1 splits t_0e across two subframes and, having no issue-of-data stamp to
-# pair them with, offers only their adjacency: subframe 3 follows subframe 2
-# 6 s later within the same frame, and the ICD changes the ephemeris at frame
-# boundaries. So the halves match iff subframe 2 was the immediately preceding
-# decoded subframe. If subframe 2 was missed or failed its SOW screen, the
-# stored MSBs belong to an earlier frame and pairing them with fresh LSBs
-# would fabricate a t_0e that is in neither ephemeris — plausible enough to
-# key the voting dataset and pass every other check.
+# D1 has no issue-of-data stamp to pair the halves, only adjacency: subframe 3 follows
+# subframe 2 6 s later in the same frame, and the ICD changes the ephemeris at frame
+# boundaries. So the halves match iff subframe 2 was the immediately preceding decoded
+# subframe. Otherwise the stored MSBs belong to an earlier frame, and pairing them with
+# fresh LSBs would fabricate a plausible t_0e that is in neither ephemeris.
 function with_assembled_t_0e(data::BeiDouDNAVData, prev_subframe_id::Int)
     prev_subframe_id == 2 || return data
     # Locals: Julia 1.10 does not narrow a field read through `isnothing`.
@@ -969,9 +915,8 @@ function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         C_rs = dnav_signed(content, 225, 18) / (1 << 6),
         sqrt_A = Int64(dnav_bits(content, 251, 32)) / 2.0^19,
         t_0e_msb2 = Int64(dnav_bits(content, 291, 2)),
-        # These MSBs open a new pairing: the LSBs still held here are the
-        # previous frame's, so drop them (and the t_0e they assembled) rather
-        # than let subframe 3 pair across the frame boundary.
+        # These MSBs open a new pairing: drop the previous frame's LSBs and the t_0e
+        # assembled from them.
         t_0e_lsb15 = nothing,
         t_0e = nothing,
     )
@@ -981,8 +926,8 @@ end
 function decode_d1_subframe3(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     data = BeiDouDNAVData(
         state.raw_data;
-        # Bits 3-17 of t_0e: the 10 middle bits (subframe 3 word 2) and the 5
-        # LSBs (word 3) are contiguous in the content domain (Figure 5-10).
+        # Bits 3-17 of t_0e: 10 middle bits (word 2) and 5 LSBs (word 3), contiguous in
+        # content (Figure 5-10).
         t_0e_lsb15 = Int64(dnav_bits(content, 43, 15)),
         i_0 = dnav_signed(content, 66, 32) * GNSS_PI / 2.0^31,
         C_ic = dnav_signed(content, 106, 18) / 2.0^31,
@@ -1005,8 +950,7 @@ end
 # is AmEpID on the former two, AmID on the expanded pages.
 function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, content, sv_id)
     sqrt_A_raw = Int64(dnav_bits(content, 51, 24))
-    # An all-zero √A marks an empty/dummy almanac slot (no satellite has a
-    # zero semi-major axis); skip it rather than store zeros.
+    # An all-zero √A marks an empty/dummy almanac slot; skip it.
     sqrt_A_raw == 0 && return state
     WN_a = state.raw_data.WN_a
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
@@ -1021,9 +965,8 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
         Ω_dot = dnav_signed(content, 202, 17) * GNSS_PI / 2.0^38,
         ω = dnav_signed(content, 227, 24) * GNSS_PI / (1 << 23),
         M_0 = dnav_signed(content, 259, 24) * GNSS_PI / (1 << 23),
-        # Snapshot the reference week in force now: the page carries its own
-        # t_0a but no week, and the global `WN_a` moves on at the next
-        # almanac changeover.
+        # Snapshot the reference week now: the page has its own t_0a but no week, and
+        # the global `WN_a` moves on at the next almanac changeover.
         WN_a,
     )
     # Overwrites this SV's slot of the preallocated almanac store in place.
@@ -1165,12 +1108,11 @@ end
 
 # ---- D2 subframe-1 page collection and parsing ----------------------------------
 #
-# D2 spreads the fundamental navigation data over pages 1-10 of subframe 1,
-# one page per 3-second frame (Figures 5-14-1..-10); most ephemeris fields
-# are split across pages. Decoded pages are staged in the cache keyed by
-# Pnum1 together with their frame SOW; once all ten are present with the
-# expected 3-seconds-per-page SOW chain (i.e. they belong to one 30-second
-# broadcast cycle), the complete field set is assembled into `raw_data`.
+# D2 spreads the fundamental navigation data over pages 1-10 of subframe 1, one page per
+# 3 s frame (Figures 5-14-1..-10); most ephemeris fields are split across pages. Pages
+# are staged in the cache keyed by Pnum1 with their frame SOW; once all ten are present
+# with the 3-s-per-page SOW chain (one 30 s broadcast cycle), the field set is assembled
+# into `raw_data`.
 
 # Content positions (ICD 300-bit numbering) of the per-page fields. All D2
 # scale factors equal their D1 counterparts (§5.3.3.1).
@@ -1236,9 +1178,8 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
             32,
         ) * GNSS_PI / 2.0^31,
         C_us = sext(C_us_raw, 18) / 2.0^31,
-        # Through `Int64` (exact for these 32-bit fields), as the D1 parser
-        # does: `Float64(::UInt320)` goes through BitIntegers' generic
-        # conversion, which allocates.
+        # Via `Int64` (exact for 32-bit fields), as in D1: `Float64(::UInt320)` goes
+        # through BitIntegers' allocating generic conversion.
         e = Int64(e_raw) / 2.0^33,
         sqrt_A = Int64(sqrt_A_raw) / 2.0^19,
         C_ic = sext(C_ic_raw, 18) / 2.0^31,
@@ -1258,8 +1199,8 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
 end
 
 function decode_d2_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
-    # The staged page's SOW must be this frame's SOW (already screened); an
-    # implausible SOW also invalidates the page for the completeness chain.
+    # The staged page's SOW must be this frame's (already screened); an implausible SOW
+    # also invalidates the page for the completeness chain.
     sow = state.raw_data.SOW
     isnothing(sow) && return state
     pnum1 = Int(dnav_bits(content, 43, 4))
@@ -1267,8 +1208,8 @@ function decode_d2_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     # Overwrites this page's slot of the cache's page store in place.
     pages = state.cache.d2_pages
     set!(pages, pnum1, BeiDouD2Page(sow, content))
-    # Parse only when all ten pages of one 30-second broadcast cycle are
-    # present: page p must carry SOW(page 1) + 3(p-1) (one page per 3 s frame).
+    # Parse only when all ten pages of one 30 s cycle are present: page p must carry
+    # SOW(page 1) + 3(p-1).
     for p = 1:10
         haskey(pages, p) || return state
     end
@@ -1282,25 +1223,22 @@ end
 # ---- Frame dispatch --------------------------------------------------------------
 
 function decode_sync_unit(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
-    # Clear the freshness flag first: every path out of this function leaves
-    # it false unless `store_dnav_SOW` accepts a SOW from this very subframe.
+    # Clear the freshness flag first: it stays false unless `store_dnav_SOW` accepts a SOW
+    # from this very subframe.
     state =
         GNSSDecoderState(state; cache = BeiDouDNAVCache(state.cache; sow_is_fresh = false))
     content = decode_dnav_subframe_content(buffer, state.constants)
     fra_id = Int(dnav_bits(content, 16, 3))
     fra_id in 1:5 || return state  # FraID 110/111 are reserved (Table 5-3)
     if GNSSSignals.is_beidou_geo(state.prn)
-        # D2: the fundamental navigation data lives in subframe 1 pages 1-10;
-        # subframes 2-4 (BDS integrity / wide-area differential corrections)
-        # and subframe 5 (D2 almanac & time offsets, 120 pages) belong to the
-        # legacy regional augmentation service and are intentionally not
-        # decoded (§5.3.3.1). The D2 SOW refers to subframe 1 of the frame
-        # (§5.3.3.1 (2)), so it is read only there.
+        # D2: the fundamental navigation data is in subframe 1 pages 1-10; subframes 2-4
+        # and subframe 5 (120 pages) belong to the regional augmentation service and are
+        # intentionally not decoded (§5.3.3.1). The D2 SOW refers to subframe 1 of the
+        # frame (§5.3.3.1 (2)), so it is read only there.
         fra_id == 1 || return state
         state = store_dnav_SOW(state, content)
-        # The SOW screen is this message's only integrity gate (see
-        # `is_dnav_SOW_from_this_subframe`), so a subframe that failed it
-        # contributes nothing — not its payload and not its FraID.
+        # A subframe that failed the SOW screen (the only integrity gate, see
+        # `is_dnav_SOW_from_this_subframe`) contributes neither payload nor FraID.
         is_dnav_SOW_from_this_subframe(state) || return state
         state = decode_d2_subframe1(state, content)
         state = GNSSDecoderState(
@@ -1311,10 +1249,9 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
         # D1: every subframe carries its own SOW (§5.2.4.3).
         state = store_dnav_SOW(state, content)
         is_dnav_SOW_from_this_subframe(state) || return state
-        # `last_subframe_id` is updated *after* the parsers run, so that they
-        # observe the FraID of the preceding subframe. `decode_d1_subframe3`
-        # needs it to prove that subframe 2 came immediately before, which is
-        # what makes the two halves of `t_0e` one ephemeris.
+        # `last_subframe_id` is updated *after* the parsers run so they see the preceding
+        # FraID: `decode_d1_subframe3` needs it to prove subframe 2 came immediately
+        # before (the two halves of `t_0e` then form one ephemeris).
         if fra_id == 1
             state = decode_d1_subframe1(state, content)
         elseif fra_id == 2
@@ -1336,15 +1273,13 @@ end
 
 # ---- Data validation (voting) -----------------------------------------------------
 #
-# The legacy message has no issue-of-data stamps: AODC/AODE are broadcast
-# *ages*, not version numbers, so cross-subframe consistency cannot be gated
-# on an IODC/IODE match the way GPS L1 C/A does. The dataset key is instead
-# the (t_0c, t_0e) reference-time pair — the ICD guarantees both change
-# whenever their parameter sets change (§5.2.4.9/§5.2.4.12: "the value of
-# toc/toe shall monotonically increase over the week and shall change if any
-# of the parameters change") — and the same broadcast-repetition voting as
-# GPS L1 C/A guards against BCH(15,11,1) mis-corrections (the code corrects
-# one error per 15-bit block; two errors are silently mis-corrected).
+# The legacy message has no issue-of-data stamps: AODC/AODE are *ages*, so consistency
+# cannot be gated on an IODC/IODE match as in GPS L1 C/A. The dataset key is the
+# (t_0c, t_0e) pair; the ICD guarantees both change whenever their parameter sets do
+# (§5.2.4.9/§5.2.4.12: "the value of toc/toe shall monotonically increase over the week
+# and shall change if any of the parameters change"). Broadcast-repetition voting, as in
+# GPS L1 C/A, guards against BCH(15,11,1) mis-corrections (one error per 15-bit block
+# is corrected; two are silently mis-corrected).
 
 function dnav_compare_data(data::BeiDouDNAVData, new_data::BeiDouDNAVData)
     data.WN == new_data.WN &&
@@ -1374,28 +1309,23 @@ end
 
 dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
 
-# Promote `raw_data` to validated `data`, re-anchoring the symbol counter to
-# the epoch the SOW stamps, so that a consumer reads the current time as
+# Promote `raw_data` to validated `data`, re-anchoring the symbol counter to the epoch
+# the SOW stamps, so a consumer reads the current time as
 # `SOW + num_bits_since_time_reference / get_bit_rate(state)`.
 #
-# That epoch is the *leading edge of this subframe's preamble*
-# (BDS-SIS-ICD-B1I-3.0 §5.2.4.3 for D1, §5.3.3.1(2) for D2), and at promotion
-# time the whole subframe plus the next preamble sit in the window — so the
-# anchor is `sync_unit_length + preamble_length` (311 symbols; 6.22 s at
-# D1's 50 sps, 0.622 s at D2's 500 sps), matching `b2a.jl` and `b2b.jl`.
+# That epoch is the *leading edge of this subframe's preamble* (BDS-SIS-ICD-B1I-3.0
+# §5.2.4.3 for D1, §5.3.3.1(2) for D2); at promotion the whole subframe plus the next
+# preamble sit in the window, so the anchor is `sync_unit_length + preamble_length`
+# (311 symbols; 6.22 s at D1's 50 sps, 0.622 s at D2's 500 sps), as in `b2a.jl` and
+# `b2b.jl`. GPS LNAV differs: its HOW TOW stamps the *next* subframe, so `gps/l1ca.jl`
+# anchors to `preamble_length` alone; that anchor here would be one subframe early.
 #
-# This is where BeiDou parts company with GPS: LNAV's HOW TOW stamps the
-# *next* subframe, so `gps/l1ca.jl` anchors to `preamble_length` alone. Using
-# the GPS anchor here would report the time one whole subframe early.
+# The SOW anchor is rebased into the same counting frame: promotion only happens with a
+# SOW decoded in this very subframe (`validate_data` enforces this via
+# `is_dnav_SOW_from_this_subframe`), so it equals the counter being replaced.
 #
-# The SOW anchor is rebased into the same counting frame: promotion only
-# happens with a SOW decoded in this very subframe (`validate_data` enforces
-# that via `is_dnav_SOW_from_this_subframe`), so the anchor being rebased
-# equals the counter being replaced.
-#
-# `data` gets its own copy of every container (`publish_data` overwrites the
-# preallocated validated ones), so later pages written into `raw_data`'s
-# containers do not leak into `data` before they are voted on.
+# `data` gets its own copy of every container (`publish_data`), so later pages written
+# into `raw_data` do not leak into `data` before they are voted on.
 function dnav_promote_data(state)
     anchor = state.constants.sync_unit_length + state.constants.preamble_length
     promoted = BeiDouDNAVData(state.raw_data; sow_anchor_bit_count = anchor)
@@ -1421,11 +1351,9 @@ function dnav_confirm_data(state, max_vote = 20)
         end
     end
 
-    # The non-promoting branches clear `raw_data` for the next vote round, but
-    # must carry the (SOW, anchor) screening pair across the clear: wiping it
-    # would let `is_plausible_dnav_SOW` wave the very next SOW through
-    # unscreened — and BCH(15,11,1) is a perfect code, so a two-error SOW word
-    # mis-corrects silently; one such accepted SOW then fails every honest
+    # The non-promoting branches clear `raw_data` but must carry the (SOW, anchor)
+    # screening pair across: wiping it would let `is_plausible_dnav_SOW` accept the next
+    # SOW unscreened, and a mis-corrected two-error SOW would then fail every honest
     # subframe against the elapsed-symbol prediction until an external reset.
     SOW = state.raw_data.SOW
     anchor = state.raw_data.sow_anchor_bit_count
@@ -1434,14 +1362,11 @@ function dnav_confirm_data(state, max_vote = 20)
         @split_nothing (SOW, anchor) BeiDouDNAVData(; SOW, sow_anchor_bit_count = anchor)
 
     if isnothing(matching_idx)
-        # First sighting of this dataset — stage it and wait for the broadcast
-        # to repeat it. GPS L1 C/A promotes here on first sight, which is safe
-        # only because its word parity detects errors; BCH(15,11,1) is a
-        # perfect code, so `dnav_bch_decode` always returns *some* codeword and
-        # a two-error word is silently mis-corrected. Repetition voting is the
-        # only thing standing between a mis-correction and `state.data`, so
-        # first-fix promotion would walk straight past it. The cost is one
-        # extra broadcast cycle before the first fix.
+        # First sighting: stage it and wait for the broadcast to repeat it. GPS L1 C/A
+        # promotes on first sight, safe only because its word parity detects errors;
+        # BCH(15,11,1) is a perfect code, so two-error words are silently mis-corrected
+        # and repetition voting is the only guard. Cost: one extra broadcast cycle
+        # before the first fix.
         push_vote_candidate!(
             old_data,
             VotedBeiDouDNAVData(0, state.raw_data),
@@ -1452,10 +1377,10 @@ function dnav_confirm_data(state, max_vote = 20)
 
     curr_score = old_data[matching_idx].vote
     new_vote = increment_voting(curr_score, max_vote)
-    # An explicit loop rather than `maximum(... for e in old_data if ...)`: the
-    # filter closure captures `key`, whose `Union{Nothing,Int64}` fields leave
-    # the closure type abstract, and `juliac --trim` rejects the dynamic call.
-    # The matching entry is itself in `old_data`, so `curr_score` is a floor.
+    # An explicit loop rather than `maximum(... for e in old_data if ...)`: the closure
+    # captures `key` (`Union{Nothing,Int64}` fields), leaving its type abstract, and
+    # `juliac --trim` rejects the dynamic call. The matching entry is in `old_data`, so
+    # `curr_score` is a floor.
     best_score = curr_score
     for e in old_data
         dnav_dataset_key(e.data) == key && (best_score = max(best_score, e.vote))
@@ -1477,10 +1402,9 @@ function dnav_confirm_data(state, max_vote = 20)
 end
 
 function validate_data(state::GNSSDecoderState{<:BeiDouDNAVData})
-    # Promotion re-anchors the symbol counter to this subframe's SOW epoch, so
-    # it may only run for a SOW decoded from the subframe that just synced.
-    # `decode!` calls this hook after *every* sync, including the D2 subframes
-    # 2-5 that carry no SOW at all.
+    # Promotion re-anchors the counter to this subframe's SOW epoch, so it may only run
+    # for a SOW from the subframe that just synced; `decode!` calls this hook after
+    # *every* sync, including D2 subframes 2-5, which carry no SOW.
     is_dnav_SOW_from_this_subframe(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)
         state = dnav_confirm_data(state)
@@ -1493,21 +1417,19 @@ $(TYPEDSIGNATURES)
 
 Reset a BeiDou B1I/B3I decoder state after a signal loss or reacquisition.
 
-Clears the soft-symbol buffer and the staged D2 pages (both emptied in
-place, overwriting `state`'s buffers), the seconds-of-week field (and its
-symbol-counter anchor), and the validated `data`, while preserving the other
-decoded parameters in `raw_data`. This allows faster recovery after brief
-signal outages without a full re-decode of all subframes.
+Clears the soft-symbol buffer and the staged D2 pages (emptied in place), the
+seconds-of-week field and its symbol-counter anchor, and the validated `data`, while
+preserving the other decoded parameters in `raw_data` for faster recovery after brief
+outages.
 
 !!! note
 
-    Like the GPS L1 C/A reset, `WN` is intentionally not cleared as it is
-    broadcast only in subframe 1 (D1) / page 1 (D2); a week rollover during
-    the outage yields a briefly stale week number.
+    As in the GPS L1 C/A reset, `WN` is intentionally not cleared. It is broadcast only in
+    subframe 1 (D1) / page 1 (D2), so a week crossover during the outage yields a briefly
+    stale week number.
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouDNAVData})
-    # Overwrites the soft buffer and the staged D2 pages: both are emptied in
-    # place.
+    # Both are emptied in place.
     empty!(state.cache.soft_buffer)
     empty!(state.cache.d2_pages)
     GNSSDecoderState(
