@@ -12,15 +12,15 @@
     expected_klobuchar = values(klobuchar)
     nequick_g = (; a_i0 = 60.0, a_i1 = 0.3, a_i2 = 0.002)
     bdgim = (;
-        α_bdgim_1 = 1.0,
-        α_bdgim_2 = 2.0,
-        α_bdgim_3 = 3.0,
-        α_bdgim_4 = 4.0,
-        α_bdgim_5 = -5.0,
-        α_bdgim_6 = 6.0,
-        α_bdgim_7 = 7.0,
-        α_bdgim_8 = 8.0,
-        α_bdgim_9 = 9.0,
+        α_1 = 1.0,
+        α_2 = 2.0,
+        α_3 = 3.0,
+        α_4 = 4.0,
+        α_5 = -5.0,
+        α_6 = 6.0,
+        α_7 = 7.0,
+        α_8 = 8.0,
+        α_9 = 9.0,
     )
     fields(x) = ntuple(i -> getfield(x, i), fieldcount(typeof(x)))
 
@@ -100,7 +100,7 @@
                   BDGIMParameters(1.0, 2.0, 3.0, 4.0, -5.0, 6.0, 7.0, 8.0, 9.0)
             # No week number needed, as for NeQuick-G.
             @test isnothing(GNSSDecoderState(state; data = D(; bdgim...)).data.WN)
-            partial = GNSSDecoderState(state; data = D(; bdgim..., α_bdgim_9 = nothing))
+            partial = GNSSDecoderState(state; data = D(; bdgim..., α_9 = nothing))
             @test isnothing(get_bdgim_parameters(partial))
         end
     end

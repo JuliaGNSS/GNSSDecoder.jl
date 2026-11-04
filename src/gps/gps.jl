@@ -24,13 +24,13 @@ Normalise the GGTO parameter set of CNAV (message type 35) and CNAV-2
 absent, marked unavailable, or refers to a system other than `target`. GPS
 counterpart of `beidou_bgto_offset`.
 
-Only one set is carried at a time, tagged by `GNSS_ID`, so which target is
+Only one set is carried at a time, tagged by `GGTO_ID`, so which target is
 answerable is the satellite's choice.
 """
 function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     # Only ID 001 is reachable; 000 is "no data", reserved codes are unusable.
-    (data.GNSS_ID == GPS_GGTO_ID_GALILEO && target === GST()) || return nothing
+    (data.GGTO_ID == GPS_GGTO_ID_GALILEO && target === GST()) || return nothing
     # Decoded together, so all present or all `nothing`; each is checked anyway to
     # narrow its type for the call below (see `galileo_ggto_offset`).
     (; A_0GGTO, A_1GGTO, A_2GGTO, t_GGTO, WN_GGTO) = data

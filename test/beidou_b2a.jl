@@ -97,10 +97,10 @@ function set_flags!(bits, start)
 end
 
 function set_clock!(bits, start)
-    b2a_setbits!(bits, start, 11, 1005)        # t_0c raw (×300 = 301500 s)
-    b2a_setbits!(bits, start + 11, 25, -5000000) # a_f0
-    b2a_setbits!(bits, start + 36, 22, -150000)  # a_f1
-    b2a_setbits!(bits, start + 58, 11, 300)      # a_f2
+    b2a_setbits!(bits, start, 11, 1005)        # t_oc raw (×300 = 301500 s)
+    b2a_setbits!(bits, start + 11, 25, -5000000) # a_0
+    b2a_setbits!(bits, start + 36, 22, -150000)  # a_1
+    b2a_setbits!(bits, start + 58, 11, 300)      # a_2
 end
 
 build_b2a_mt10(; sow, iode = B2A_IODE, prn = B2A_PRN, corrupt_crc = false) =
@@ -108,7 +108,7 @@ build_b2a_mt10(; sow, iode = B2A_IODE, prn = B2A_PRN, corrupt_crc = false) =
         b2a_setbits!(bits, 31, 13, B2A_WN)
         set_flags!(bits, 44)
         b2a_setbits!(bits, 54, 8, iode)
-        b2a_setbits!(bits, 62, 11, 1000)        # t_0e raw (×300 = 300000 s)
+        b2a_setbits!(bits, 62, 11, 1000)        # t_oe raw (×300 = 300000 s)
         b2a_setbits!(bits, 73, 2, 3)            # SatType = MEO
         b2a_setbits!(bits, 75, 26, -12345)      # ΔA
         b2a_setbits!(bits, 101, 25, 345)        # A_dot
@@ -126,7 +126,7 @@ build_b2a_mt11(; sow, prn = B2A_PRN) =
         b2a_setbits!(bits, 43, 33, -1987654321) # Ω_0
         b2a_setbits!(bits, 76, 33, 555666777)   # i_0
         b2a_setbits!(bits, 109, 19, -90000)     # Ω_dot
-        b2a_setbits!(bits, 128, 15, 9000)       # i_dot
+        b2a_setbits!(bits, 128, 15, 9000)       # i_0_dot
         b2a_setbits!(bits, 143, 16, -2100)      # C_is
         b2a_setbits!(bits, 159, 16, 1500)       # C_ic
         b2a_setbits!(bits, 175, 24, -400000)    # C_rs
@@ -141,7 +141,7 @@ build_b2a_mt30(; sow, iodc = B2A_IODC) =
         set_flags!(bits, 33)
         set_clock!(bits, 43)
         b2a_setbits!(bits, 112, 10, iodc)
-        b2a_setbits!(bits, 122, 12, -800)   # T_GD_B2ap
+        b2a_setbits!(bits, 122, 12, -800)   # T_GDB2ap
         b2a_setbits!(bits, 134, 12, 600)    # ISC_B2ad
         b2a_setbits!(bits, 146, 10, 800)    # α₁ (unsigned)
         b2a_setbits!(bits, 156, 8, -100)    # α₂
@@ -152,7 +152,7 @@ build_b2a_mt30(; sow, iodc = B2A_IODC) =
         b2a_setbits!(bits, 196, 8, 17)      # α₇
         b2a_setbits!(bits, 204, 8, -128)    # α₈
         b2a_setbits!(bits, 212, 8, 127)     # α₉
-        b2a_setbits!(bits, 220, 12, -1024)  # T_GD_B1Cp
+        b2a_setbits!(bits, 220, 12, -1024)  # T_GDB1Cp
     end
 
 # Three reduced-almanac slots: PRN 7, PRN 8, and an empty (PRN 0) slot.
@@ -163,16 +163,16 @@ build_b2a_mt31(; sow) =
         set_clock!(bits, 43)
         b2a_setbits!(bits, 112, 10, B2A_IODC)
         b2a_setbits!(bits, 122, 13, B2A_WN) # WN_a
-        b2a_setbits!(bits, 135, 8, 100)     # t_0a raw (×2¹² = 409600 s)
+        b2a_setbits!(bits, 135, 8, 100)     # t_oa raw (×2¹² = 409600 s)
         b2a_setbits!(bits, 143, 6, 7)       # PRN_a
         b2a_setbits!(bits, 149, 2, 3)       # MEO
-        b2a_setbits!(bits, 151, 8, -50)     # δA
+        b2a_setbits!(bits, 151, 8, -50)     # δ_A
         b2a_setbits!(bits, 159, 7, 31)      # Ω_0
         b2a_setbits!(bits, 166, 7, -64)     # Φ_0
         b2a_setbits!(bits, 173, 8, 0)       # health
         b2a_setbits!(bits, 181, 6, 8)       # PRN_a
         b2a_setbits!(bits, 187, 2, 2)       # IGSO
-        b2a_setbits!(bits, 189, 8, 100)     # δA
+        b2a_setbits!(bits, 189, 8, 100)     # δ_A
         b2a_setbits!(bits, 197, 7, -31)     # Ω_0
         b2a_setbits!(bits, 204, 7, 45)      # Φ_0
         b2a_setbits!(bits, 211, 8, 128)     # health (clock unhealthy)
@@ -207,13 +207,13 @@ build_b2a_mt33(; sow) =
         b2a_setbits!(bits, 173, 7, -60)     # A_2BGTO
         b2a_setbits!(bits, 180, 6, 9)       # reduced almanac PRN_a
         b2a_setbits!(bits, 186, 2, 1)       # GEO
-        b2a_setbits!(bits, 188, 8, 100)     # δA
+        b2a_setbits!(bits, 188, 8, 100)     # δ_A
         b2a_setbits!(bits, 196, 7, -31)     # Ω_0
         b2a_setbits!(bits, 203, 7, 45)      # Φ_0
         b2a_setbits!(bits, 210, 8, 2)       # health
         b2a_setbits!(bits, 218, 10, B2A_IODC)
         b2a_setbits!(bits, 228, 13, B2A_WN) # WN_a
-        b2a_setbits!(bits, 241, 8, 100)     # t_0a raw
+        b2a_setbits!(bits, 241, 8, 100)     # t_oa raw
     end
 
 build_b2a_mt34(; sow) =
@@ -230,8 +230,8 @@ build_b2a_mt34(; sow) =
         b2a_setbits!(bits, 160, 13, 2500)   # A_1UTC
         b2a_setbits!(bits, 173, 7, -50)     # A_2UTC
         b2a_setbits!(bits, 180, 8, 4)       # Δt_LS
-        b2a_setbits!(bits, 188, 16, 35000)  # t_0t raw (×2⁴ = 560000 s)
-        b2a_setbits!(bits, 204, 13, B2A_WN) # WN_0t
+        b2a_setbits!(bits, 188, 16, 35000)  # t_ot raw (×2⁴ = 560000 s)
+        b2a_setbits!(bits, 204, 13, B2A_WN) # WN_ot
         b2a_setbits!(bits, 217, 13, 902)    # WN_LSF
         b2a_setbits!(bits, 230, 3, 6)       # DN
         b2a_setbits!(bits, 233, 8, 5)       # Δt_LSF
@@ -249,9 +249,9 @@ build_b2a_mt40(; sow) =
         b2a_setbits!(bits, 70, 6, 23)     # midi PRN_a
         b2a_setbits!(bits, 76, 2, 2)      # IGSO
         b2a_setbits!(bits, 78, 13, B2A_WN)
-        b2a_setbits!(bits, 91, 8, 100)    # t_0a raw
+        b2a_setbits!(bits, 91, 8, 100)    # t_oa raw
         b2a_setbits!(bits, 99, 11, 1500)  # e (unsigned)
-        b2a_setbits!(bits, 110, 11, -800) # δi
+        b2a_setbits!(bits, 110, 11, -800) # δ_i
         b2a_setbits!(bits, 121, 17, 105000) # √A (unsigned)
         b2a_setbits!(bits, 138, 16, -20000) # Ω_0
         b2a_setbits!(bits, 154, 11, -700)   # Ω_dot
@@ -311,8 +311,8 @@ end
 
         # MT10: ephemeris I
         @test state.raw_data.IODE == B2A_IODE
-        @test state.raw_data.t_0e == 300000
-        @test state.raw_data.sat_type == 3
+        @test state.raw_data.t_oe == 300000
+        @test state.raw_data.SatType == 3
         @test state.raw_data.ΔA == -12345 * 2.0^-9
         @test state.raw_data.A_dot == 345 * 2.0^-21
         @test state.raw_data.Δn_0 == -2000 * 2.0^-44 * PI
@@ -326,7 +326,7 @@ end
         @test state.raw_data.Ω_0 == -1987654321 * 2.0^-32 * PI
         @test state.raw_data.i_0 == 555666777 * 2.0^-32 * PI
         @test state.raw_data.Ω_dot == -90000 * 2.0^-44 * PI
-        @test state.raw_data.i_dot == 9000 * 2.0^-44 * PI
+        @test state.raw_data.i_0_dot == 9000 * 2.0^-44 * PI
         @test state.raw_data.C_is == -2100 * 2.0^-30
         @test state.raw_data.C_ic == 1500 * 2.0^-30
         @test state.raw_data.C_rs == -400000 * 2.0^-8
@@ -337,41 +337,41 @@ end
 
         # Clock block (identical in MT30-34)
         @test state.raw_data.IODC == B2A_IODC
-        @test state.raw_data.t_0c == 301500
-        @test state.raw_data.a_f0 == -5000000 * 2.0^-34
-        @test state.raw_data.a_f1 == -150000 * 2.0^-50
-        @test state.raw_data.a_f2 == 300 * 2.0^-66
+        @test state.raw_data.t_oc == 301500
+        @test state.raw_data.a_0 == -5000000 * 2.0^-34
+        @test state.raw_data.a_1 == -150000 * 2.0^-50
+        @test state.raw_data.a_2 == 300 * 2.0^-66
 
         # MT30: group delay + BDGIM
-        @test state.raw_data.T_GD_B2ap == -800 * 2.0^-34
+        @test state.raw_data.T_GDB2ap == -800 * 2.0^-34
         @test state.raw_data.ISC_B2ad == 600 * 2.0^-34
-        @test state.raw_data.T_GD_B1Cp == -1024 * 2.0^-34
-        @test state.raw_data.α_bdgim_1 == 800 * 2.0^-3
-        @test state.raw_data.α_bdgim_2 == -100 * 2.0^-3
-        @test state.raw_data.α_bdgim_3 == 200 * 2.0^-3
-        @test state.raw_data.α_bdgim_4 == 90 * 2.0^-3
-        @test state.raw_data.α_bdgim_5 == 40 * -2.0^-3
-        @test state.raw_data.α_bdgim_6 == -3 * 2.0^-3
-        @test state.raw_data.α_bdgim_7 == 17 * 2.0^-3
-        @test state.raw_data.α_bdgim_8 == -128 * 2.0^-3
-        @test state.raw_data.α_bdgim_9 == 127 * 2.0^-3
+        @test state.raw_data.T_GDB1Cp == -1024 * 2.0^-34
+        @test state.raw_data.α_1 == 800 * 2.0^-3
+        @test state.raw_data.α_2 == -100 * 2.0^-3
+        @test state.raw_data.α_3 == 200 * 2.0^-3
+        @test state.raw_data.α_4 == 90 * 2.0^-3
+        @test state.raw_data.α_5 == 40 * -2.0^-3
+        @test state.raw_data.α_6 == -3 * 2.0^-3
+        @test state.raw_data.α_7 == 17 * 2.0^-3
+        @test state.raw_data.α_8 == -128 * 2.0^-3
+        @test state.raw_data.α_9 == 127 * 2.0^-3
 
         # MT31 + MT33: reduced almanacs (PRN 0 slot skipped)
         @test !isnothing(state.raw_data.reduced_almanacs)
         @test sort(collect(keys(state.raw_data.reduced_almanacs))) == [7, 8, 9]
         alm7 = state.raw_data.reduced_almanacs[7]
-        @test alm7.sat_type == 3
-        @test alm7.δA == -50 * 2.0^9
+        @test alm7.SatType == 3
+        @test alm7.δ_A == -50 * 2.0^9
         @test alm7.Ω_0 == 31 * 2.0^-6 * PI
         @test alm7.Φ_0 == -64 * 2.0^-6 * PI
-        @test alm7.health == 0
+        @test alm7.Health == 0
         @test alm7.WN_a == B2A_WN
-        @test alm7.t_0a == 100 * 2^12
-        @test state.raw_data.reduced_almanacs[8].health == 128
+        @test alm7.t_oa == 100 * 2^12
+        @test state.raw_data.reduced_almanacs[8].Health == 128
         alm9 = state.raw_data.reduced_almanacs[9]
-        @test alm9.sat_type == 1
-        @test alm9.δA == 100 * 2.0^9
-        @test alm9.health == 2
+        @test alm9.SatType == 1
+        @test alm9.δ_A == 100 * 2.0^9
+        @test alm9.Health == 2
 
         # MT32: EOP
         @test state.raw_data.t_EOP == 30000 * 2^4
@@ -399,8 +399,8 @@ end
         @test state.raw_data.A_1UTC == 2500 * 2.0^-51
         @test state.raw_data.A_2UTC == -50 * 2.0^-68
         @test state.raw_data.Δt_LS == 4
-        @test state.raw_data.t_0t == 35000 * 2^4
-        @test state.raw_data.WN_0t == B2A_WN
+        @test state.raw_data.t_ot == 35000 * 2^4
+        @test state.raw_data.WN_ot == B2A_WN
         @test state.raw_data.WN_LSF == 902
         @test state.raw_data.DN == 6
         @test state.raw_data.Δt_LSF == 5
@@ -410,11 +410,11 @@ end
         @test !isnothing(state.raw_data.midi_almanacs)
         @test collect(keys(state.raw_data.midi_almanacs)) == [23]
         midi = state.raw_data.midi_almanacs[23]
-        @test midi.sat_type == 2
+        @test midi.SatType == 2
         @test midi.WN_a == B2A_WN
-        @test midi.t_0a == 100 * 2^12
+        @test midi.t_oa == 100 * 2^12
         @test midi.e == 1500 * 2.0^-16
-        @test midi.δi == -800 * 2.0^-14 * PI
+        @test midi.δ_i == -800 * 2.0^-14 * PI
         @test midi.sqrt_A == 105000 * 2.0^-4
         @test midi.Ω_0 == -20000 * 2.0^-15 * PI
         @test midi.Ω_dot == -700 * 2.0^-33 * PI
@@ -422,7 +422,7 @@ end
         @test midi.M_0 == -15000 * 2.0^-15 * PI
         @test midi.a_f0 == -900 * 2.0^-20
         @test midi.a_f1 == 333 * 2.0^-37
-        @test midi.health == 0
+        @test midi.Health == 0
 
         # Validation: complete after MT10 + MT11 + a clock message
         @test has_positioning_data(state)
@@ -455,9 +455,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; sat_type = 0))
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; SatType = 0))
         @test all(
-            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; sat_type = t)) for
+            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV2Data(state.data; SatType = t)) for
             t = 1:3
         )
     end

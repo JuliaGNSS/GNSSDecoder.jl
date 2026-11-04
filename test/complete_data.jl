@@ -23,3 +23,30 @@ end
 
 complete_state(state, D; overrides...) =
     GNSSDecoderState(state; data = complete_data(D; overrides...))
+
+# Each container spells the ephemeris epochs, the rate of inclination and the clock
+# polynomial as its ICD does; the normalised `BroadcastEphemeris` uses one name for each.
+ephemeris_icd_names(::Type{<:GNSSDecoder.AbstractGPSData}) =
+    (; t_0e = :t_oe, i_dot = :IDOT, t_0c = :t_oc)
+ephemeris_icd_names(::Type{<:GNSSDecoder.AbstractGalileoData}) = (;)
+ephemeris_icd_names(::Type{BeiDouDNAVData}) =
+    (; t_0e = :t_oe, i_dot = :IDOT, t_0c = :t_oc, a_f0 = :a_0, a_f1 = :a_1, a_f2 = :a_2)
+ephemeris_icd_names(::Type{<:GNSSDecoder.AbstractBeiDouCNAVData}) = (;
+    t_0e = :t_oe,
+    i_dot = :i_0_dot,
+    t_0c = :t_oc,
+    a_f0 = :a_0,
+    a_f1 = :a_1,
+    a_f2 = :a_2,
+)
+
+"""
+    icd_fields(D, fields) -> NamedTuple
+
+`fields`, named as `BroadcastEphemeris` names them, under the names `D`'s ICD gives the
+same quantities, ready to build a `D` from.
+"""
+function icd_fields(D, fields::NamedTuple)
+    names = ephemeris_icd_names(D)
+    (; (get(names, name, name) => value for (name, value) in pairs(fields))...)
+end

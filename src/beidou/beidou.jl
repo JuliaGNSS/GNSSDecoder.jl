@@ -20,9 +20,9 @@ const BEIDOU_F = -4.442807309e-10
 # 2 = IGSO, 3 = MEO, 0 reserved (BDS-SIS-ICD-B1C-1.0 and B2a-1.0 Table 7-8, B2b-1.0
 # Table 7-6).
 #
-# This gates positioning: `sat_type` selects the reference of the broadcast ephemeris,
+# This gates positioning: `SatType` selects the reference of the broadcast ephemeris,
 # `A = A_ref + ΔA` with `A_ref = 27 906 100 m` (MEO) or `42 162 200 m` (IGSO/GEO), and
-# `i = i_ref + δi` in the almanacs. The references differ by 14 256 100 m, so a
+# `i = i_ref + δ_i` in the almanacs. The references differ by 14 256 100 m, so a
 # satellite broadcasting the reserved code must not be used. B1I/B3I are unaffected:
 # D1/D2 NAV broadcasts `sqrt_A` outright and has no orbit-type field.
 #
@@ -44,29 +44,28 @@ type 40, BDS-SIS-ICD-B2a-1.0 Figure 6-20 / Table 7-13), and the B2b decoder
 [`GalileoAlmanac`](@ref) does for I/NAV and F/NAV. Each record is keyed by `PRN_a`
 in the per-signal data containers.
 
-Reference value (ICD notes to the midi-almanac tables): `i = i_ref + δi` with
-`i_ref = 0.30π rad` (54°) for MEO/IGSO and `0.0` for GEO, selected by `sat_type`.
+Reference value (ICD notes to the midi-almanac tables): `i = i_ref + δ_i` with
+`i_ref = 0.30π rad` (54°) for MEO/IGSO and `0.0` for GEO, selected by `SatType`.
 Semi-circle fields are converted to radians on decode.
 
 # Fields
 
   - `PRN_a::Int`: Almanac satellite PRN (1-63; a zero PRN marks an empty
     block and is never stored).
-  - `sat_type::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
+  - `SatType::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
     3 = MEO, 0 reserved).
   - `WN_a::Int`: Almanac reference week number (BDT week).
-  - `t_0a::Int`: Almanac reference time of week (seconds, LSB 2¹²).
+  - `t_oa::Int`: Almanac reference time of week (seconds, LSB 2¹²).
   - `e::Float64`: Eccentricity (dimensionless).
-  - `δi::Float64`: Inclination delta from the `sat_type` reference (rad).
+  - `δ_i::Float64`: Inclination delta from the `SatType` reference (rad).
   - `sqrt_A::Float64`: Square root of the semi-major axis (√m).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
   - `Ω_dot::Float64`: Rate of right ascension (rad/s).
   - `ω::Float64`: Argument of perigee (rad).
   - `M_0::Float64`: Mean anomaly at reference time (rad).
   - `a_f0::Float64`, `a_f1::Float64`: Satellite clock bias / drift (s, s/s).
-    The ICDs spell these `af0`/`af1` (B2b-1.0 Table 7-11, B1C/B2a-1.0 Table 7-13),
-    unlike the clock-correction block's `a_0`/`a_1`/`a_2`.
-  - `health::Int`: Raw 8-bit satellite health word (BDS-SIS-ICD-B2b-1.0
+    (ICD a with subscript f0 / f1; B2b-1.0 Table 7-11, B1C/B2a-1.0 Table 7-13.)
+  - `Health::Int`: Raw 8-bit satellite Health word (BDS-SIS-ICD-B2b-1.0
     Table 7-12, the fullest definition: bit 8 (MSB) = satellite clock,
     bit 7 = B1C signal, bit 6 = B2a signal, bit 5 = B2b_I signal, bits 4-1
     reserved; 0 = healthy. The earlier B1C/B2a ICDs' Table 7-14 defines the
@@ -74,11 +73,11 @@ Semi-circle fields are converted to radians on decode.
 """
 Base.@kwdef struct BeiDouMidiAlmanac
     PRN_a::Int
-    sat_type::Int
+    SatType::Int
     WN_a::Int
-    t_0a::Int
+    t_oa::Int
     e::Float64
-    δi::Float64
+    δ_i::Float64
     sqrt_A::Float64
     Ω_0::Float64
     Ω_dot::Float64
@@ -86,7 +85,7 @@ Base.@kwdef struct BeiDouMidiAlmanac
     M_0::Float64
     a_f0::Float64
     a_f1::Float64
-    health::Int
+    Health::Int
 end
 
 """
@@ -104,34 +103,34 @@ of the carrying page/message is copied into every record. Each record is keyed b
 `PRN_a` in the per-signal data containers.
 
 Reference values to apply (ICD notes to the reduced-almanac tables):
-`A = A_ref + δA` with `A_ref = 27 906 100 m` (MEO) or `42 162 200 m`
-(IGSO/GEO) selected by `sat_type`; `Φ₀ = M₀ + ω` relative to `e = 0` and
-`δi = 0` with `i = 55°` (MEO/IGSO) or `i = 0°` (GEO). The user algorithm is
+`A = A_ref + δ_A` with `A_ref = 27 906 100 m` (MEO) or `42 162 200 m`
+(IGSO/GEO) selected by `SatType`; `Φ₀ = M₀ + ω` relative to `e = 0` and
+`δ_i = 0` with `i = 55°` (MEO/IGSO) or `i = 0°` (GEO). The user algorithm is
 the midi almanac's with the missing parameters set to zero.
 
 # Fields
 
   - `PRN_a::Int`: Almanac satellite PRN (1-63; a zero PRN marks an empty
     block and is never stored).
-  - `sat_type::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
+  - `SatType::Int`: Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO,
     3 = MEO, 0 reserved).
   - `WN_a::Int`: Almanac reference week number (from the carrying page/message).
-  - `t_0a::Int`: Almanac reference time of week (seconds, from the carrying page/message).
-  - `δA::Float64`: Semi-major-axis correction to the `sat_type` reference (m).
+  - `t_oa::Int`: Almanac reference time of week (seconds, from the carrying page/message).
+  - `δ_A::Float64`: Semi-major-axis correction to the `SatType` reference (m).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
   - `Φ_0::Float64`: Argument of latitude at reference time, `M₀ + ω` (rad).
-  - `health::Int`: Raw 8-bit satellite health word (same layout as
+  - `Health::Int`: Raw 8-bit satellite Health word (same layout as
     [`BeiDouMidiAlmanac`](@ref)'s).
 """
 Base.@kwdef struct BeiDouReducedAlmanac
     PRN_a::Int
-    sat_type::Int
+    SatType::Int
     WN_a::Int
-    t_0a::Int
-    δA::Float64
+    t_oa::Int
+    δ_A::Float64
     Ω_0::Float64
     Φ_0::Float64
-    health::Int
+    Health::Int
 end
 
 # ---- Shared B-CNAV data blocks ----------------------------------------------
@@ -151,15 +150,15 @@ end
 # each call site.
 
 """
-Clock correction block, 69 bits: `t_0c`(11, LSB 300 s), `a_f0`(25, 2⁻³⁴ s),
-`a_f1`(22, 2⁻⁵⁰ s/s), `a_f2`(11, 2⁻⁶⁶ s/s²), the ICD's `t_oc`, `a_0`, `a_1`, `a_2` —
+Clock correction block, 69 bits: `t_oc`(11, LSB 300 s), `a_0`(25, 2⁻³⁴ s),
+`a_1`(22, 2⁻⁵⁰ s/s), `a_2`(11, 2⁻⁶⁶ s/s²), the ICD's `t_oc`, `a_0`, `a_1`, `a_2` —
 BDS-SIS-ICD-B1C-1.0 Figure 6-13, Table 7-5.
 """
 beidou_clock_block(word::Unsigned, word_length::Int, start::Int) = (;
-    t_0c = Int64(get_bits(word, word_length, start, 11)) * 300,
-    a_f0 = get_twos_complement_num(word, word_length, start + 11, 25) * 2.0^-34,
-    a_f1 = get_twos_complement_num(word, word_length, start + 36, 22) * 2.0^-50,
-    a_f2 = get_twos_complement_num(word, word_length, start + 58, 11) * 2.0^-66,
+    t_oc = Int64(get_bits(word, word_length, start, 11)) * 300,
+    a_0 = get_twos_complement_num(word, word_length, start + 11, 25) * 2.0^-34,
+    a_1 = get_twos_complement_num(word, word_length, start + 36, 22) * 2.0^-50,
+    a_2 = get_twos_complement_num(word, word_length, start + 58, 11) * 2.0^-66,
 )
 
 """
@@ -169,7 +168,7 @@ ICDs defer the accuracy semantics to a future update (B1C §7.16).
 
 `t_op` is scaled to seconds although no BDS table states its factor. The ICDs define
 it as "the time of week for data prediction" (B2b §7.15 item 5); 11 bits in seconds
-cannot span a week, while LSB 300 s gives 0..614100, the convention of `t_0c`/`t_0e`
+cannot span a week, while LSB 300 s gives 0..614100, the convention of `t_oc`/`t_oe`
 (Table 7-5) and of GPS CNAV's same-named `t_op` (IS-GPS-705J). Leaving it raw would
 give the same field name in two units (CONTEXT.md naming doctrine, rule 1).
 """
@@ -188,20 +187,20 @@ Signedness is not uniform: `α₁`, `α₃`, `α₄` and `α₅` are unsigned, `
 `α₆`…`α₉` are two's complement, and `α₅` carries the *negative* scale factor −2⁻³.
 """
 beidou_bdgim_block(word::Unsigned, word_length::Int, start::Int) = (;
-    α_bdgim_1 = Int64(get_bits(word, word_length, start, 10)) * 2.0^-3,
-    α_bdgim_2 = get_twos_complement_num(word, word_length, start + 10, 8) * 2.0^-3,
-    α_bdgim_3 = Int64(get_bits(word, word_length, start + 18, 8)) * 2.0^-3,
-    α_bdgim_4 = Int64(get_bits(word, word_length, start + 26, 8)) * 2.0^-3,
-    α_bdgim_5 = Int64(get_bits(word, word_length, start + 34, 8)) * -(2.0^-3),
-    α_bdgim_6 = get_twos_complement_num(word, word_length, start + 42, 8) * 2.0^-3,
-    α_bdgim_7 = get_twos_complement_num(word, word_length, start + 50, 8) * 2.0^-3,
-    α_bdgim_8 = get_twos_complement_num(word, word_length, start + 58, 8) * 2.0^-3,
-    α_bdgim_9 = get_twos_complement_num(word, word_length, start + 66, 8) * 2.0^-3,
+    α_1 = Int64(get_bits(word, word_length, start, 10)) * 2.0^-3,
+    α_2 = get_twos_complement_num(word, word_length, start + 10, 8) * 2.0^-3,
+    α_3 = Int64(get_bits(word, word_length, start + 18, 8)) * 2.0^-3,
+    α_4 = Int64(get_bits(word, word_length, start + 26, 8)) * 2.0^-3,
+    α_5 = Int64(get_bits(word, word_length, start + 34, 8)) * -(2.0^-3),
+    α_6 = get_twos_complement_num(word, word_length, start + 42, 8) * 2.0^-3,
+    α_7 = get_twos_complement_num(word, word_length, start + 50, 8) * 2.0^-3,
+    α_8 = get_twos_complement_num(word, word_length, start + 58, 8) * 2.0^-3,
+    α_9 = get_twos_complement_num(word, word_length, start + 66, 8) * 2.0^-3,
 )
 
 """
 BDT-UTC offset block, 97 bits: `A_0UTC`(16, 2⁻³⁵), `A_1UTC`(13, 2⁻⁵¹),
-`A_2UTC`(7, 2⁻⁶⁸), `Δt_LS`(8), `t_0t`(16, LSB 2⁴ s), `WN_0t`(13),
+`A_2UTC`(7, 2⁻⁶⁸), `Δt_LS`(8), `t_ot`(16, LSB 2⁴ s), `WN_ot`(13),
 `WN_LSF`(13), `DN`(3), `Δt_LSF`(8) — Figure 6-17, Table 7-20.
 """
 beidou_bdt_utc_block(word::Unsigned, word_length::Int, start::Int) = (;
@@ -209,14 +208,14 @@ beidou_bdt_utc_block(word::Unsigned, word_length::Int, start::Int) = (;
     A_1UTC = get_twos_complement_num(word, word_length, start + 16, 13) * 2.0^-51,
     A_2UTC = get_twos_complement_num(word, word_length, start + 29, 7) * 2.0^-68,
     Δt_LS = Int64(get_twos_complement_num(word, word_length, start + 36, 8)),
-    t_0t = Int64(get_bits(word, word_length, start + 44, 16)) * 2^4,
-    WN_0t = Int64(get_bits(word, word_length, start + 60, 13)),
+    t_ot = Int64(get_bits(word, word_length, start + 44, 16)) * 2^4,
+    WN_ot = Int64(get_bits(word, word_length, start + 60, 13)),
     WN_LSF = Int64(get_bits(word, word_length, start + 73, 13)),
     DN = Int64(get_bits(word, word_length, start + 86, 3)),
     Δt_LSF = Int64(get_twos_complement_num(word, word_length, start + 89, 8)),
 )
 
-# B-CNAV `WN_0t` and `WN_LSF` are 13 bits, the width of `WN` (BDS-SIS-ICD-B1C-1.0
+# B-CNAV `WN_ot` and `WN_LSF` are 13 bits, the width of `WN` (BDS-SIS-ICD-B1C-1.0
 # Table 7-20): see `get_utc_parameters`.
 const BEIDOU_CNAV_UTC_WN_MODULUS = 8192
 const BEIDOU_CNAV_LSF_WN_MODULUS = 8192
@@ -239,7 +238,7 @@ beidou_eop_block(word::Unsigned, word_length::Int, start::Int) = (;
 """
     beidou_orbit_class(sat_type) -> Union{Nothing,OrbitClass}
 
-Map a broadcast B-CNAV `sat_type` onto an [`OrbitClass`](@ref): 1 GEO, 2 IGSO,
+Map a broadcast B-CNAV `SatType` onto an [`OrbitClass`](@ref): 1 GEO, 2 IGSO,
 3 MEO, with the reserved 0 — and an undecoded `nothing` — reporting `nothing`.
 
 The same screen as `is_known_sat_type`, in the form [`get_orbit_class`](@ref)
@@ -251,11 +250,11 @@ beidou_orbit_class(sat_type) =
     sat_type == 2 ? inclined_geosynchronous_orbit :
     sat_type == 3 ? medium_earth_orbit : nothing
 
-# Orbit class from the broadcast `sat_type` (Ephemeris I block); `nothing` until decoded
+# Orbit class from the broadcast `SatType` (Ephemeris I block); `nothing` until decoded
 # and for the reserved code. Dispatched on the B-CNAV family type because only B-CNAV
-# carries `sat_type`; B1I/B3I use the GEO PRN partition (see `beidou/dnav.jl`).
+# carries `SatType`; B1I/B3I use the GEO PRN partition (see `beidou/dnav.jl`).
 get_orbit_class(state::GNSSDecoderState{<:AbstractBeiDouCNAVData}) =
-    beidou_orbit_class(state.data.sat_type)
+    beidou_orbit_class(state.data.SatType)
 
 # `WN_0BGTO` is 13 bits, the width of the BDT week number, so resolving it matters only
 # across a week-number rollover. See `resolve_reference_week`.
@@ -337,11 +336,12 @@ function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int)
     PRN_a == 0 && return nothing
     BeiDouMidiAlmanac(;
         PRN_a,
-        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
+        SatType = Int(get_bits(word, word_length, start + 6, 2)),
         WN_a = Int(get_bits(word, word_length, start + 8, 13)),
-        t_0a = Int(get_bits(word, word_length, start + 21, 8)) * 2^12,
+        t_oa = Int(get_bits(word, word_length, start + 21, 8)) * 2^12,
         e = Int(get_bits(word, word_length, start + 29, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, start + 40, 11) * 2.0^-14 * GNSS_PI,
+        δ_i =
+            get_twos_complement_num(word, word_length, start + 40, 11) * 2.0^-14 * GNSS_PI,
         sqrt_A = Int(get_bits(word, word_length, start + 51, 17)) * 2.0^-4,
         Ω_0 = get_twos_complement_num(word, word_length, start + 68, 16) *
               2.0^-15 *
@@ -355,12 +355,12 @@ function beidou_midi_almanac(word::Unsigned, word_length::Int, start::Int)
               GNSS_PI,
         a_f0 = get_twos_complement_num(word, word_length, start + 127, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, start + 138, 10) * 2.0^-37,
-        health = Int(get_bits(word, word_length, start + 148, 8)),
+        Health = Int(get_bits(word, word_length, start + 148, 8)),
     )
 end
 
 """
-    beidou_reduced_almanac(word, word_length, start, WN_a, t_0a)
+    beidou_reduced_almanac(word, word_length, start, WN_a, t_oa)
         -> Union{Nothing,BeiDouReducedAlmanac}
 
 One 38-bit reduced-almanac block (Figure 6-18, Table 7-16), or `nothing` for the
@@ -372,19 +372,19 @@ function beidou_reduced_almanac(
     word_length::Int,
     start::Int,
     WN_a::Integer,
-    t_0a::Integer,
+    t_oa::Integer,
 )
     PRN_a = Int(get_bits(word, word_length, start, 6))
     PRN_a == 0 && return nothing
     BeiDouReducedAlmanac(;
         PRN_a,
-        sat_type = Int(get_bits(word, word_length, start + 6, 2)),
+        SatType = Int(get_bits(word, word_length, start + 6, 2)),
         WN_a = Int(WN_a),
-        t_0a = Int(t_0a),
-        δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
+        t_oa = Int(t_oa),
+        δ_A = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
         Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * GNSS_PI,
         Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * GNSS_PI,
-        health = Int(get_bits(word, word_length, start + 30, 8)),
+        Health = Int(get_bits(word, word_length, start + 30, 8)),
     )
 end
 

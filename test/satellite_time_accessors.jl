@@ -65,7 +65,7 @@ using GNSSDecoder:
             @test get_bit_rate(state) == 50Hz
         end
 
-        # B-CNAV: from the satellite's own broadcast `sat_type`, reserved code 0
+        # B-CNAV: from the satellite's own broadcast `SatType`, reserved code 0
         # and an undecoded field both reading `nothing`.
         expected = Dict(
             0 => nothing,
@@ -76,15 +76,15 @@ using GNSSDecoder:
         for (sat_type, class) in expected
             b1c = GNSSDecoderState(
                 BeiDouB1CDecoderState(20);
-                data = BeiDouCNAV1Data(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV1Data(; SatType = Int64(sat_type)),
             )
             b2a = GNSSDecoderState(
                 BeiDouB2aDecoderState(20);
-                data = BeiDouCNAV2Data(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV2Data(; SatType = Int64(sat_type)),
             )
             b2b = GNSSDecoderState(
                 BeiDouB2bDecoderState(20);
-                data = BeiDouCNAV3Data(; sat_type = Int64(sat_type)),
+                data = BeiDouCNAV3Data(; SatType = Int64(sat_type)),
             )
             @test get_orbit_class(b1c) === class
             @test get_orbit_class(b2a) === class
@@ -365,15 +365,15 @@ using GNSSDecoder:
         for (state, mk) in (
             (
                 GPSL5IDecoderState(1),
-                id -> GPSCNAVData(; WN = Int64(2300), GNSS_ID = Int64(id), ggto...),
+                id -> GPSCNAVData(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
             ),
             (
                 GPSL2CMDecoderState(1),
-                id -> GPSCNAVData(; WN = Int64(2300), GNSS_ID = Int64(id), ggto...),
+                id -> GPSCNAVData(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
             ),
             (
                 GPSL1C_DDecoderState(1),
-                id -> GPSCNAV2Data(; WN = Int64(2300), GNSS_ID = Int64(id), ggto...),
+                id -> GPSCNAV2Data(; WN = Int64(2300), GGTO_ID = Int64(id), ggto...),
             ),
         )
             galileo = GNSSDecoderState(state; data = mk(1))
@@ -481,7 +481,7 @@ using GNSSDecoder:
                         GPSL5IDecoderState(1);
                         data = GPSCNAVData(;
                             WN = Int64(2300),
-                            GNSS_ID = Int64(1),
+                            GGTO_ID = Int64(1),
                             zeroed...,
                         ),
                     ),
@@ -492,7 +492,7 @@ using GNSSDecoder:
                         GPSL1C_DDecoderState(1);
                         data = GPSCNAV2Data(;
                             WN = Int64(2300),
-                            GNSS_ID = Int64(1),
+                            GGTO_ID = Int64(1),
                             zeroed...,
                         ),
                     ),

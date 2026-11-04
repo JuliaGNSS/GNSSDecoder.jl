@@ -137,7 +137,7 @@
         b1c = complete_state(
             BeiDouB1CDecoderState(20),
             BeiDouCNAV1Data;
-            T_GD_B1Cp = T_GD,
+            T_GDB1Cp = T_GD,
             ISC_B1Cd = ISC,
         )
         @test get_group_delay(b1c, BeiDouB1C_D()) == T_GD + ISC
@@ -148,7 +148,7 @@
             BeiDouB2aDecoderState(20),
             BeiDouCNAV2Data;
             SOW_mt11 = Int64(4),   # broadcast in the frame after MT10's
-            T_GD_B2ap = T_GD,
+            T_GDB2ap = T_GD,
             ISC_B2ad = ISC,
         )
         @test GNSSDecoder.has_positioning_messages(b2a.data)
@@ -158,7 +158,7 @@
             BeiDouB2aDecoderState(20),
             BeiDouCNAV2Data;
             SOW_mt11 = Int64(4),
-            T_GD_B2ap = T_GD,
+            T_GDB2ap = T_GD,
             ISC_B2ad = nothing,
         )
         @test GNSSDecoder.has_positioning_messages(b2a_partial.data)
@@ -166,7 +166,7 @@
         @test isnothing(get_group_delay(b2a_partial, BeiDouB2aI()))
         @test get_group_delay(b2a_partial, BeiDouB2aQ()) == T_GD
 
-        b2b = complete_state(BeiDouB2bDecoderState(20), BeiDouCNAV3Data; T_GD_B2bI = T_GD)
+        b2b = complete_state(BeiDouB2bDecoderState(20), BeiDouCNAV3Data; T_GDB2bI = T_GD)
         @test get_group_delay(b2b, BeiDouB2bI()) == T_GD
     end
 

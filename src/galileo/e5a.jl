@@ -91,10 +91,10 @@ by π), as in [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData).
 
 # Issue of Data (Page Types 1-4)
 
-  - `IOD_nav1::UInt`: Issue of Data from page type 1 (10-bit)
-  - `IOD_nav2::UInt`: Issue of Data from page type 2 (10-bit)
-  - `IOD_nav3::UInt`: Issue of Data from page type 3 (10-bit)
-  - `IOD_nav4::UInt`: Issue of Data from page type 4 (10-bit)
+  - `IOD_nav1::UInt`: The ICD's IOD_nav as broadcast in page type 1 (10-bit)
+  - `IOD_nav2::UInt`: The ICD's IOD_nav as broadcast in page type 2 (10-bit)
+  - `IOD_nav3::UInt`: The ICD's IOD_nav as broadcast in page type 3 (10-bit)
+  - `IOD_nav4::UInt`: The ICD's IOD_nav as broadcast in page type 4 (10-bit)
   - `num_pages_since_last_TOW::Int`: Pages decoded since last TOW update
   - `num_bits_since_time_reference_at_last_TOW::Int`: Time-reference counter reading when
     TOW was decoded
@@ -113,12 +113,12 @@ by π), as in [`GalileoINAVData`](@ref GNSSDecoder.GalileoINAVData).
   - `a_i0::Float64`: Effective Ionisation Level 1st-order coefficient (sfu)
   - `a_i1::Float64`: Effective Ionisation Level 2nd-order coefficient (sfu/degree)
   - `a_i2::Float64`: Effective Ionisation Level 3rd-order coefficient (sfu/degree²)
-  - `iono_storm_flag_region1..5::Bool`: Ionospheric Disturbance (storm) flags for regions 1-5
+  - `SF_1..SF_5::Bool`: Ionospheric Disturbance (storm) flags for regions 1-5
 
 # GST-UTC Conversion (Page Type 4)
 
-  - `A_0UTC::Float64`: Constant term of polynomial (s; the ICD writes `A0`)
-  - `A_1UTC::Float64`: 1st-order term of polynomial (s/s; the ICD writes `A1`)
+  - `A_0::Float64`: Constant term of the GST-UTC polynomial (s)
+  - `A_1::Float64`: 1st-order term of the GST-UTC polynomial (s/s)
   - `Δt_LS::Int`: Leap Second count before leap second adjustment (s)
   - `t_0t::Int`: UTC data reference Time of Week (s)
   - `WN_0t::Int`: UTC data reference Week Number (8-bit, modulo 256)
@@ -205,14 +205,14 @@ Base.@kwdef struct GalileoFNAVData <: AbstractGalileoEphemerisData
     a_i0::Union{Nothing,Float64} = nothing
     a_i1::Union{Nothing,Float64} = nothing
     a_i2::Union{Nothing,Float64} = nothing
-    iono_storm_flag_region1::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region2::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region3::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region4::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region5::Union{Nothing,Bool} = nothing
+    SF_1::Union{Nothing,Bool} = nothing
+    SF_2::Union{Nothing,Bool} = nothing
+    SF_3::Union{Nothing,Bool} = nothing
+    SF_4::Union{Nothing,Bool} = nothing
+    SF_5::Union{Nothing,Bool} = nothing
 
-    A_0UTC::Union{Nothing,Float64} = nothing
-    A_1UTC::Union{Nothing,Float64} = nothing
+    A_0::Union{Nothing,Float64} = nothing
+    A_1::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int} = nothing
     t_0t::Union{Nothing,Int} = nothing
     WN_0t::Union{Nothing,Int} = nothing
@@ -267,13 +267,13 @@ end
     a_i0 = data.a_i0,
     a_i1 = data.a_i1,
     a_i2 = data.a_i2,
-    iono_storm_flag_region1 = data.iono_storm_flag_region1,
-    iono_storm_flag_region2 = data.iono_storm_flag_region2,
-    iono_storm_flag_region3 = data.iono_storm_flag_region3,
-    iono_storm_flag_region4 = data.iono_storm_flag_region4,
-    iono_storm_flag_region5 = data.iono_storm_flag_region5,
-    A_0UTC = data.A_0UTC,
-    A_1UTC = data.A_1UTC,
+    SF_1 = data.SF_1,
+    SF_2 = data.SF_2,
+    SF_3 = data.SF_3,
+    SF_4 = data.SF_4,
+    SF_5 = data.SF_5,
+    A_0 = data.A_0,
+    A_1 = data.A_1,
     Δt_LS = data.Δt_LS,
     t_0t = data.t_0t,
     WN_0t = data.WN_0t,
@@ -323,13 +323,13 @@ end
         a_i0,
         a_i1,
         a_i2,
-        iono_storm_flag_region1,
-        iono_storm_flag_region2,
-        iono_storm_flag_region3,
-        iono_storm_flag_region4,
-        iono_storm_flag_region5,
-        A_0UTC,
-        A_1UTC,
+        SF_1,
+        SF_2,
+        SF_3,
+        SF_4,
+        SF_5,
+        A_0,
+        A_1,
         Δt_LS,
         t_0t,
         WN_0t,
@@ -688,11 +688,11 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
         a_i0 = fnav_field(bits, 103, 11) / (1 << 2)
         a_i1 = get_twos_complement_num(bits, 238, 114, 11) / (1 << 8)
         a_i2 = get_twos_complement_num(bits, 238, 125, 14) / (1 << 15)
-        iono_storm_flag_region1 = get_bit(bits, 238, 139)
-        iono_storm_flag_region2 = get_bit(bits, 238, 140)
-        iono_storm_flag_region3 = get_bit(bits, 238, 141)
-        iono_storm_flag_region4 = get_bit(bits, 238, 142)
-        iono_storm_flag_region5 = get_bit(bits, 238, 143)
+        SF_1 = get_bit(bits, 238, 139)
+        SF_2 = get_bit(bits, 238, 140)
+        SF_3 = get_bit(bits, 238, 141)
+        SF_4 = get_bit(bits, 238, 142)
+        SF_5 = get_bit(bits, 238, 143)
         BGD_E1_E5a = get_twos_complement_num(bits, 238, 144, 10) * 2.0^-32
         E5a_SHS = SignalHealth(fnav_field(bits, 154, 2))
         WN = fnav_field(bits, 156, 12)
@@ -714,11 +714,11 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
                 a_i0,
                 a_i1,
                 a_i2,
-                iono_storm_flag_region1,
-                iono_storm_flag_region2,
-                iono_storm_flag_region3,
-                iono_storm_flag_region4,
-                iono_storm_flag_region5,
+                SF_1,
+                SF_2,
+                SF_3,
+                SF_4,
+                SF_5,
                 BGD_E1_E5a,
                 E5a_SHS,
                 E5a_DVS,
@@ -794,8 +794,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
         IOD_nav4 = fnav_field(bits, 7, 10)
         C_ic = get_twos_complement_num(bits, 238, 17, 16) / Float64(1 << 29)
         C_is = get_twos_complement_num(bits, 238, 33, 16) / Float64(1 << 29)
-        A_0UTC = get_twos_complement_num(bits, 238, 49, 32) / Float64(1 << 30)
-        A_1UTC = get_twos_complement_num(bits, 238, 81, 24) * 2.0^-50
+        A_0 = get_twos_complement_num(bits, 238, 49, 32) / Float64(1 << 30)
+        A_1 = get_twos_complement_num(bits, 238, 81, 24) * 2.0^-50
         Δt_LS = Int(get_twos_complement_num(bits, 238, 105, 8))
         t_0t = Int(fnav_field(bits, 113, 8) * 3600)
         WN_0t = Int(fnav_field(bits, 121, 8))
@@ -821,8 +821,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
                     IOD_nav4,
                     C_ic,
                     C_is,
-                    A_0UTC,
-                    A_1UTC,
+                    A_0,
+                    A_1,
                     Δt_LS,
                     t_0t,
                     WN_0t,
@@ -847,7 +847,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
             Δsqrt_A = get_twos_complement_num(bits, 238, 29, 13) / (1 << 9),
             e = fnav_field(bits, 42, 11) / (1 << 16),
             ω = get_twos_complement_num(bits, 238, 53, 16) * GNSS_PI / (1 << 15),
-            δi = get_twos_complement_num(bits, 238, 69, 11) * GNSS_PI / (1 << 14),
+            δ_i = get_twos_complement_num(bits, 238, 69, 11) * GNSS_PI / (1 << 14),
             Ω_0 = get_twos_complement_num(bits, 238, 80, 16) * GNSS_PI / (1 << 15),
             Ω_dot = get_twos_complement_num(bits, 238, 96, 11) * GNSS_PI * 2.0^-33,
             M_0 = get_twos_complement_num(bits, 238, 107, 16) * GNSS_PI / (1 << 15),
@@ -865,7 +865,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
             Δsqrt_A = get_twos_complement_num(bits, 238, 160, 13) / (1 << 9),
             e = fnav_field(bits, 173, 11) / (1 << 16),
             ω = get_twos_complement_num(bits, 238, 184, 16) * GNSS_PI / (1 << 15),
-            δi = get_twos_complement_num(bits, 238, 200, 11) * GNSS_PI / (1 << 14),
+            δ_i = get_twos_complement_num(bits, 238, 200, 11) * GNSS_PI / (1 << 14),
             IOD_a,
             WN_a,
             t_0a,
@@ -929,7 +929,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoFNAVData}, ::Bool)
                 Δsqrt_A = get_twos_complement_num(bits, 238, 87, 13) / (1 << 9),
                 e = fnav_field(bits, 100, 11) / (1 << 16),
                 ω = get_twos_complement_num(bits, 238, 111, 16) * GNSS_PI / (1 << 15),
-                δi = get_twos_complement_num(bits, 238, 127, 11) * GNSS_PI / (1 << 14),
+                δ_i = get_twos_complement_num(bits, 238, 127, 11) * GNSS_PI / (1 << 14),
                 Ω_0 = get_twos_complement_num(bits, 238, 138, 16) * GNSS_PI / (1 << 15),
                 Ω_dot = get_twos_complement_num(bits, 238, 154, 11) * GNSS_PI * 2.0^-33,
                 M_0 = get_twos_complement_num(bits, 238, 165, 16) * GNSS_PI / (1 << 15),
