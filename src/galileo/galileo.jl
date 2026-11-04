@@ -1,28 +1,21 @@
-# Definitions shared across Galileo signals (I/NAV on E1-B and E5b-I, F/NAV on
-# E5a-I, C/NAV on E6-B): the signal-health / data-validity enums, the
-# per-satellite almanac record, and the common
-# forward-error-correction primitive. Each message's framing, page layout, and
-# parser live in its own file (`inav.jl`, `e5a.jl`, `e6b.jl`), with the
-# per-signal layers on top (`e1b.jl`, `e5b.jl`). This mirrors how `src/gnss.jl`
-# holds the definitions shared across *all* signals.
+# Definitions shared across Galileo signals (I/NAV on E1-B and E5b-I, F/NAV on E5a-I,
+# C/NAV on E6-B): enums, the almanac record and the FEC primitive. Framing, page layout
+# and parsers live in `inav.jl`, `e5a.jl`, `e6b.jl`; per-signal layers in `e1b.jl`,
+# `e5b.jl`. Definitions shared by all signals are in `src/gnss.jl`.
 
-# All Galileo open-service signals share the same rate-1/2, constraint-length-7
-# (K=7) non-systematic convolutional (NSC) FEC: generator polynomials G1 = 0o171,
-# G2 = 0o133, with the G2 output inverted (Galileo OS SIS ICD, Issue 2.2, §4.1.4).
-# Only the block-interleaver dimensions and codeword length differ per signal.
+# All Galileo open-service signals share the rate-1/2, K=7 non-systematic convolutional
+# FEC: G1 = 0o171, G2 = 0o133, G2 output inverted (Galileo OS SIS ICD, Issue 2.2,
+# §4.1.4). Only interleaver dimensions and codeword length differ per signal.
 const GALILEO_VITERBI_POLY = [0o171, 0o133]
 
-# Every Galileo data channel interleaves over 8 rows — I/NAV 8×30, E5a F/NAV
-# 8×61, E6-B C/NAV 8×123 (OS SIS ICD, Issue 2.2 §4.1.4.2 and Table 27; HAS SIS
-# ICD, Issue 1.0 Table 4). Only the column count differs, so it is the one number
-# each signal states, and `galileo_viterbi` takes that alone.
+# Every Galileo data channel interleaves over 8 rows: I/NAV 8×30, F/NAV 8×61, C/NAV
+# 8×123 (OS SIS ICD, Issue 2.2 §4.1.4.2 and Table 27; HAS SIS ICD, Issue 1.0 Table 4).
+# Each signal states only its column count.
 const GALILEO_INTERLEAVER_ROWS = 8
 
-# GTRF constants specific to Galileo (Galileo OS SIS ICD, Issue 2.2, Table 68).
-# Only the two that differ from the GPS WGS-84 values live here; π and the Earth
-# rotation rate are shared package-wide (`GNSS_PI`, `EARTH_ROTATION_RATE` in
-# `gnss.jl`). `GALILEO_F` follows from μ via F = -2√μ/c², which is why it too
-# differs from GPS.
+# Ephemeris user-algorithm constants (Galileo OS SIS ICD, Issue 2.2, Table 68, and
+# Eq. 16 for F). Only those differing from GPS WGS-84 live here; π and the Earth
+# rotation rate are in `gnss.jl`. `GALILEO_F` = -2√μ/c², hence differs too.
 const GALILEO_μ = 3.986004418e14   # geocentric gravitational constant (m³/s²)
 const GALILEO_F = -4.442807309e-10 # relativistic correction constant (s/√m)
 
@@ -79,10 +72,11 @@ end
 Almanac data for one Galileo satellite.
 
 The almanac provides reduced-precision orbital and clock parameters for predicting
-satellite positions and selecting satellites for tracking. Differences (`Δsqrt_A`,
-`δi`) are relative to nominal Galileo constellation values (`A_nominal = 29 600 000 m`, `i_nominal = 56°`; OS SIS ICD Issue 2.2 Table 1). The same record is produced by both the I/NAV decoder (word
-types 7-10) and the F/NAV decoder (page types 5-6); they differ only in which
-signal-health facet they populate (see below).
+satellite positions and selecting satellites for tracking. `Δsqrt_A` and `δi` are
+relative to the nominal constellation (`A_nominal = 29 600 000 m`, `i_nominal = 56°`;
+OS SIS ICD Issue 2.2 Table 1). Both the I/NAV decoder (word types 7-10) and the F/NAV
+decoder (page types 5-6) produce this record; they populate different signal-health
+fields.
 
 # Fields
 
@@ -96,8 +90,9 @@ signal-health facet they populate (see below).
   - `M_0::Float64`: Mean anomaly at reference time (rad)
   - `a_f0::Float64`: Truncated SV clock bias (seconds)
   - `a_f1::Float64`: Truncated SV clock drift (s/s)
-  - `E5b_SHS::SignalHealth`: Predicted E5b signal health status (Galileo I/NAV word types 7-10)
-  - `E1B_SHS::SignalHealth`: Predicted E1-B/C signal health status (Galileo I/NAV word types 7-10)
+  - `E5b_SHS::SignalHealth`: Predicted E5b signal health status (Galileo I/NAV word types 7-10; `nothing` for F/NAV-decoded almanacs)
+  - `E1B_SHS::SignalHealth`: Predicted E1-B/C signal health status (ICD E1-B_SHS, hyphen
+    dropped; Galileo I/NAV word types 7-10; `nothing` for F/NAV-decoded almanacs)
   - `E5a_SHS::SignalHealth`: Predicted E5a signal health status (Galileo F/NAV page types 5-6; `nothing` for I/NAV-decoded almanacs)
   - `IOD_a::Int`: Almanac IOD
   - `WN_a::Int`: Almanac reference Week Number
@@ -167,28 +162,22 @@ end
     )
 end
 
-# Slots of the per-SVID almanac store that I/NAV (`GalileoINAVData.almanacs`)
-# and F/NAV (`GalileoFNAVData.almanacs`) decode into, a
-# `SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}`. Nominal SVIDs are
-# 1-36, but the almanac SVID field is 6 bits wide (OS SIS ICD Tables 51-54 and
-# 34-35), so a CRC-valid page can carry any key 1-63. One slot per 6-bit value
-# keeps every decodable almanac — as the `Dictionary` this replaces did — instead
-# of throwing on a key past 36, for 27 extra preallocated slots.
+# Slots of the per-SVID almanac store (`SlotDictionary{GalileoAlmanac,
+# GALILEO_ALMANAC_SLOTS}`) of I/NAV and F/NAV data. Nominal SVIDs are 1-36, but the
+# SVID field is 6 bits (OS SIS ICD Tables 48-51 and 34-35), so a CRC-valid page can
+# carry any key 1-63. One slot per 6-bit value keeps every decodable almanac instead
+# of throwing on a key past 36.
 const GALILEO_ALMANAC_SLOTS = 64
 
-# Ephemeris/clock completeness are per-message facts: I/NAV (E1-B, E5b-I) and
-# F/NAV (E5a-I) broadcast the same orbital and clock parameters, so the "all
-# present?" checks are identical and are stated once — on
-# `AbstractGalileoEphemerisData`, the supertype of exactly the Galileo data types
-# that have these fields (`GalileoINAVData`, `GalileoFNAVData`).
+# I/NAV and F/NAV broadcast the same orbital and clock parameters, so the "all
+# present?" checks are stated once, on `AbstractGalileoEphemerisData` (supertype of
+# `GalileoINAVData` and `GalileoFNAVData`).
 #
-# `GalileoE6BData` is an `AbstractGalileoData` but deliberately *not* an
-# `AbstractGalileoEphemerisData`: E6-B's C/NAV broadcasts HAS corrections *to*
-# another signal's ephemeris and has no orbital fields, so it defines
-# `is_decoding_completed_for_positioning` itself. Dispatching these on the wider
-# supertype would give it methods that raise a `FieldError` on its own subtype.
-# The health-status and positioning-readiness checks genuinely differ per signal
-# and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.
+# `GalileoE6BData` is deliberately *not* an `AbstractGalileoEphemerisData`: C/NAV
+# carries HAS corrections to another signal's ephemeris and has no orbital fields
+# (dispatching on the wider supertype would raise a `FieldError`), so it defines
+# `is_decoding_completed_for_positioning` itself. Health-status and positioning-readiness
+# checks differ per signal and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.
 function is_ephemeris_decoded(data::AbstractGalileoEphemerisData)
     !isnothing(data.t_0e) &&
         !isnothing(data.M_0) &&
@@ -218,16 +207,11 @@ end
 """
 $(TYPEDEF)
 
-Long-lived scratch for one Galileo FEC decode: the AFF3CT Viterbi handle plus
-the two buffers the decode would otherwise allocate per page.
-
-Every Galileo data channel runs the same K=7 NSC code and differs only in
-codeword length and interleaver shape, so one type serves I/NAV, F/NAV and
-C/NAV; each cache holds one, sized for its own signal.
-
-Bundling the buffers with the handle rather than adding two loose vectors to
-three caches is what keeps [`galileo_viterbi`](@ref) a one-argument call and
-makes it impossible to hand it a decoder and a mismatched buffer.
+Long-lived scratch for one Galileo FEC decode: the AFF3CT Viterbi handle plus the
+two buffers a decode would otherwise allocate per page. One type serves I/NAV, F/NAV
+and C/NAV; each cache holds one sized for its signal. Bundling the buffers with the
+handle keeps [`galileo_viterbi`](@ref) a one-argument call and rules out a mismatched
+decoder and buffer.
 
 # Fields
 
@@ -261,11 +245,10 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
     Vector{Int32}(undef, K),
 )
 
-# The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits
-# 123-128, F/NAV page type 4), against a 12-bit `WN`. It is the one reference
-# week in this package whose field is narrower than the week it is subtracted
-# from, so it is the one that is wrong rather than merely rollover-fragile if
-# left as broadcast — see `resolve_reference_week`.
+# The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits 123-128, F/NAV
+# page type 4) against a 12-bit `WN`. It is the one reference week narrower than the week
+# it is subtracted from, so it is wrong rather than merely rollover-fragile if left as
+# broadcast; see `resolve_reference_week`.
 const GALILEO_GGTO_WN_MODULUS = 64
 
 """
@@ -274,26 +257,21 @@ const GALILEO_GGTO_WN_MODULUS = 64
 Normalise a decoded GGTO into a [`GNSSTimeOffset`](@ref), or `nothing` when the
 satellite is not broadcasting one or `target` is not GPS time.
 
-Galileo's GNSS Time Offset is GPS-only — the ICD defines exactly one, GST to
-GPST (OS SIS ICD Issue 2.2 §5.1.8) — so unlike the GPS and BeiDou messages
-there is no broadcast identifier to check and no other `target` can be
-answered. The quadratic term the normalised record carries is zero: the GGTO
-polynomial has two terms.
+The only Galileo GNSS Time Offset is GST to GPST (OS SIS ICD Issue 2.2 §5.1.8), so
+there is no broadcast identifier to check and no other `target` can be answered. The
+quadratic term of the normalised record is zero (the polynomial has two terms).
 
-`state.data` must carry the four GGTO fields, which `galileo_ggto` has already
-either scaled or set to `nothing` as a set; the `state` is needed beyond them
-for the week number that resolves the 6-bit `WN_0G`. The two callers are I/NAV word type
-10 and F/NAV page type 4; this is a helper on the data rather than a method on
-`AbstractGalileoEphemerisData` so that a future ephemeris-bearing Galileo signal
-without a GGTO does not inherit a `FieldError`.
+`state.data` must carry the four GGTO fields as set by [`galileo_ggto`](@ref); `state`
+supplies the week number that resolves the 6-bit `WN_0G`. Callers are I/NAV word type
+10 and F/NAV page type 4. This is not a method on `AbstractGalileoEphemerisData`, so
+a future ephemeris signal without a GGTO does not inherit a `FieldError`.
 """
 function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     target === GPST() || return nothing
-    # Decoded together from one word, so all present or all `nothing`. Each is checked
-    # anyway: it narrows them from `Union{Nothing,…}`, and Julia 1.10 cannot split the
-    # call below over that many `Union` arguments, so it would dispatch at runtime and
-    # allocate.
+    # All present or all `nothing`. Each is checked anyway to narrow the types: Julia
+    # 1.10 cannot split the call below over that many `Union` arguments and would
+    # dispatch at runtime and allocate.
     (; A_0G, A_1G, t_0G, WN_0G) = data
     (isnothing(A_0G) || isnothing(A_1G) || isnothing(t_0G) || isnothing(WN_0G)) &&
         return nothing
@@ -323,18 +301,13 @@ available the GGTO parameters disseminated are: A0G (all ones - 16 bits), A1G
 user receives all four parameters set to all ones the GGTO is considered as not
 valid."
 
-All four must be all-ones together — the ICD makes the *set* the sentinel, not
-any one field, and `A_0G` alone being `0xffff` is the perfectly legal value
--2^-35 s. Scaling an unavailable GGTO regardless would publish
-`A_0G ~= -2.9e-11`, `t_0G = 918000`, `WN_0G = 63`: numbers a consumer has no way
-to tell from a real offset. Reporting `nothing` is the same treatment E6-B gives
-the HAS "data not available" sentinels.
+The *set* is the sentinel: `A_0G` alone being `0xffff` is the legal value -2^-35 s.
+Scaling an unavailable GGTO would publish `A_0G ~= -2.9e-11`, `t_0G = 918000`,
+`WN_0G = 63`, indistinguishable from a real offset. E6-B treats the HAS "data not
+available" sentinels the same way.
 
-Takes the *unsigned* raw fields; the sign extension of `A_0G` and `A_1G` happens
-here, after the test.
-
-The two I/NAV/F/NAV call sites are the only ones: GGTO rides in I/NAV word
-type 10 and F/NAV page type 4.
+Takes the *unsigned* raw fields; `A_0G` and `A_1G` are sign-extended here, after the
+test. Callers: I/NAV word type 10 and F/NAV page type 4.
 """
 function galileo_ggto(
     A_0G_raw::Integer,
@@ -359,10 +332,10 @@ end
 Rebuild the I/NAV or F/NAV `data` with the four GGTO fields of `ggto`, the
 result of [`galileo_ggto`](@ref).
 
-A function barrier: `galileo_ggto` returns one of two `NamedTuple` types, and a
-call on that union is split into one concrete method instance per type, where
-destructuring it into keywords would leave four `Union{Nothing,…}` keyword
-values — which Julia 1.10 compiles through the allocating generic kw path.
+A function barrier: `galileo_ggto` returns one of two `NamedTuple` types, so the call
+splits into one concrete method instance per type. Destructuring into keywords would
+leave four `Union{Nothing,…}` values, which Julia 1.10 compiles through the allocating
+generic keyword path.
 """
 @inline with_ggto(data::D, ggto::NamedTuple) where {D<:AbstractGalileoEphemerisData} =
     D(data; ggto.A_0G, ggto.A_1G, ggto.t_0G, ggto.WN_0G)
@@ -370,45 +343,31 @@ values — which Julia 1.10 compiles through the allocating generic kw path.
 """
     galileo_viterbi(scratch, soft_page, interleaver_columns, ::Type{T}) -> T
 
-Recover one Galileo page's information bits from `soft_page` — the
-polarity-corrected `Float32` LLR soft symbols between the leading and trailing
-page-sync sequences. Shared by I/NAV (E1-B, E5b-I), E5a F/NAV, and E6-B C/NAV,
-which all use the same FEC and differ only in the block-interleaver shape and
-codeword length. `scratch` is the caller's long-lived
-[`GalileoViterbiScratch`](@ref) from its cache, so a decode allocates no buffers.
+Recover one page's information bits from `soft_page`, the polarity-corrected
+`Float32` LLRs between the leading and trailing page-sync sequences. Shared by I/NAV,
+F/NAV and C/NAV. `scratch` is the caller's cached [`GalileoViterbiScratch`](@ref).
 
 The transmit FEC chain (Galileo OS SIS ICD, Issue 2.2, §4.1.4) is undone in order:
 
- 1. **Block deinterleave** of the LLRs (`deinterleave!` from
-    `src/coding/deinterleave.jl`, into `scratch.deinterleaved`). The ICD's interleaver
-    is 8 rows by
-    `interleaver_columns` columns; undoing it means filling the *transposed*
-    matrix — `interleaver_columns × 8`, written by column and read by row — so
-    only the column count varies per signal (I/NAV 30, E5a 61, E6-B C/NAV 123)
-    and `GALILEO_INTERLEAVER_ROWS` supplies the other dimension.
- 2. **Invert every second symbol** — the spec inverts the G2 output of the
-    rate-1/2 encoder. On soft symbols an inversion is a sign flip (negation), so
-    confidence magnitudes are preserved.
- 3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`, through the
-    in-place `Aff3ct.decode!` into `scratch.info_bits`. AFF3CT's LLR sign
-    convention matches ours (positive ⇒ bit 0), so the LLRs feed in directly. The
-    decoder returns only the information bits (the 6 tail bits are consumed by
-    trellis termination).
+ 1. **Block deinterleave** (`deinterleave!` from `src/coding/deinterleave.jl`, into
+    `scratch.deinterleaved`). The ICD interleaver is 8 rows by `interleaver_columns`
+    columns; undoing it fills the *transposed* `interleaver_columns × 8` matrix by
+    column and reads by row. Column counts: I/NAV 30, F/NAV 61, C/NAV 123.
+ 2. **Invert every second symbol** (the ICD inverts the G2 output). On soft symbols
+    this is a sign flip, preserving confidence.
+ 3. **K=7 NSC Viterbi** via AFF3CT.jl's `ConvViterbiDecoder`, in place with
+    `Aff3ct.decode!` into `scratch.info_bits`. AFF3CT's LLR sign convention matches
+    ours (positive ⇒ bit 0). Only information bits are returned (the 6 tail bits are
+    consumed by trellis termination).
 
-The decoded bits are packed MSB-first into the low bits of `T<:Unsigned` (I/NAV
-uses `UInt128` for its 114 bits, E5a `UInt256` for its 238, E6-B `UInt512` for
-its 486).
+The bits are packed MSB-first into the low bits of `T<:Unsigned` (`UInt128` for I/NAV's
+114 bits, `UInt256` for F/NAV's 238, `UInt512` for C/NAV's 486).
 
-Both intermediate buffers come from `scratch` rather than being allocated here.
-The allocating `deinterleave` and `Aff3ct.decode` cost 1.6 kB per I/NAV page
-part, 3.2 kB per F/NAV page and 6.2 kB per C/NAV page — once per second per
-tracked satellite on E1-B, E5b and E6-B — which is the same garbage the caller's
-`copy_soft_window!` into a cached buffer exists to avoid one line earlier.
-`deinterleave!`, `Aff3ct.decode!` and the packing loop each measure exactly
-zero, for all three widths, so a call allocates nothing. Callers must keep
-their own arithmetic off the wide result, though: BitIntegers converts a
-`UInt256` or `UInt512` to `Float64` through a `BigInt`, so a field is narrowed
-to `UInt64` before it is scaled (see `fnav_field` in `e5a.jl`).
+Both buffers come from `scratch`: the allocating `deinterleave` and `Aff3ct.decode` would
+cost 1.6 kB per I/NAV page part (1 s), 3.2 kB per F/NAV page (10 s) and 6.2 kB per C/NAV
+page (1 s), per tracked satellite. A call allocates nothing. Callers must keep arithmetic
+off the wide result: BitIntegers converts `UInt256`/`UInt512` to `Float64` through a
+`BigInt`, so narrow a field to `UInt64` before scaling (see `fnav_field` in `e5a.jl`).
 """
 function galileo_viterbi(
     scratch::GalileoViterbiScratch,

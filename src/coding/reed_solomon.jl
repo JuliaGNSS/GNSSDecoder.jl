@@ -3,32 +3,26 @@
 # Reed-Solomon" (HPVRS) outer layer on E6-B C/NAV (Galileo HAS SIS ICD,
 # Issue 1.0, §6).
 #
-# The primitives here are signal-independent — field polynomial, code length and
-# dimension are all parameters — and carry their own unit tests, like `crc.jl`
-# and `deinterleave.jl`. `galileo/e6b.jl` instantiates them once for the ICD's
-# RS(255, 32) code.
+# The primitives are signal-independent (field polynomial, code length and dimension are
+# parameters) and have their own unit tests; `galileo/e6b.jl` instantiates them for the
+# ICD's RS(255, 32) code.
 #
-# The one thing worth stating up front, because it is what makes HPVRS useful:
-# an RS(n, k) code over GF(2^8) with a *systematic* generator matrix G (n x k,
-# leading k x k identity) can be decoded from **any** k received code symbols by
-# pure linear algebra — no syndromes, no Berlekamp-Massey. Every received symbol
-# is a known linear functional of the information vector, so k of them give a
-# k x k system. Galileo exploits this by having each satellite broadcast a
-# *different* row of the code (the page ID), so a receiver assembles one message
-# from whichever pages it happens to hear (ICD §6.4). Symbols that fail the
-# page CRC are simply not collected — a binary erasure channel — which is why an
-# erasure decoder, rather than an error-correcting one, is the right tool.
+# An RS(n, k) code over GF(2^8) with a *systematic* generator matrix G (n x k, leading
+# k x k identity) can be decoded from **any** k received code symbols by linear algebra
+# alone (no syndromes, no Berlekamp-Massey): each received symbol is a known linear
+# functional of the information vector, so k of them give a k x k system. Each satellite
+# broadcasts a *different* row (the page ID), so a receiver assembles a message from
+# whichever pages it hears (ICD §6.4). Pages failing the CRC are simply not collected,
+# so the channel is a pure erasure channel and an erasure decoder suffices.
 
 """
 $(TYPEDEF)
 
-Multiplication tables for GF(256), built from a primitive polynomial. Constructed
-once and shared; all field arithmetic below takes it as its first argument.
+Multiplication tables for GF(256), built from a primitive polynomial. All field
+arithmetic below takes it as its first argument.
 
-The extension degree is fixed at 8, not a parameter: the tables are sized for 255
-nonzero elements and the reduction step tests the carry out of bit 8, so only a
-degree-8 primitive polynomial gives a valid field here. Only the polynomial
-itself varies (Galileo HAS and CCSDS pick different ones).
+The extension degree is fixed at 8: the tables hold 255 nonzero elements and reduction
+tests the carry out of bit 8. Only the polynomial varies (Galileo HAS and CCSDS differ).
 
 # Fields
 
@@ -36,8 +30,8 @@ $(TYPEDFIELDS)
 """
 struct GaloisField256
     """
-    `exponentials[i+1] == α^i`, tabulated for `i = 0 … 2(order-1)` so that
-    products can be looked up from a sum of logarithms without a modulo.
+    `exponentials[i+1] == α^i`, tabulated for `i = 0 … 511` (the 255-entry cycle
+    repeated) so that products can be looked up from a sum of logarithms without a modulo.
     """
     exponentials::Vector{UInt8}
     """
@@ -66,8 +60,7 @@ function GaloisField256(primitive_polynomial::UInt16)
             x ⊻= primitive_polynomial
         end
     end
-    # α^255 == α^0, so the second half of the table repeats the first. This
-    # lets `gf_multiply` add two logarithms (each ≤ 254) and index directly.
+    # α^255 == α^0: repeating the table lets `gf_multiply` index a sum of two logarithms.
     for i = 255:511
         exponentials[i+1] = exponentials[i-255+1]
     end
@@ -78,8 +71,7 @@ end
     GALILEO_HAS_GF256
 
 GF(256) as the Galileo HAS SIS ICD defines it: primitive polynomial
-`p(α) = α^8 + α^4 + α^3 + α^2 + 1` (ICD Issue 1.0, Eq. 7 — wire form `0x11d`,
-the same field AES and CCSDS conventionally use).
+`p(α) = α^8 + α^4 + α^3 + α^2 + 1` (ICD Issue 1.0, Eq. 7; wire form `0x11d`).
 """
 const GALILEO_HAS_GF256 = GaloisField256(UInt16(0x11d))
 
@@ -122,7 +114,7 @@ function rs_generator_polynomial(field::GaloisField256, num_parity::Int)
     degree = 0
     for i = 1:num_parity
         root = field.exponentials[i+1]     # α^i
-        # Multiply g(x) by (x - α^i) = (x + α^i) in characteristic 2.
+        # g(x) *= (x - α^i) = (x + α^i) in characteristic 2.
         degree += 1
         @inbounds for j = degree:-1:1
             g[j+1] = gf_add(g[j], gf_multiply(field, g[j+1], root))
@@ -142,13 +134,11 @@ vector is `c = [c_{k-1}, …, c_0]` and the code vector is
 `Γ = [c_{k-1}, …, c_0, γ_{n-k-1}, …, γ_0]` — information part first, both parts
 in descending coefficient order.
 
-Column `i` is therefore the codeword of the `i`-th unit information vector:
-rows `1:k` are the identity, and rows `k+1:n` hold the parity submatrix `P`,
-with row `k + t` carrying `γ_{n-k-t}`. Reproduces the ICD's Annex B attachment
-exactly for `(n, k) = (255, 32)`.
+Column `i` is the codeword of the `i`-th unit information vector: rows `1:k` are the
+identity, rows `k+1:n` the parity submatrix `P`, with row `k + t` carrying
+`γ_{n-k-t}`. Reproduces the ICD's Annex B attachment for `(n, k) = (255, 32)`.
 
-Erasure decoding (see [`rs_erasure_decode!`](@ref)) needs only `G`, so this one
-function is the whole codec a receiver requires.
+[`rs_erasure_decode!`](@ref) needs only `G`, so this is the whole codec a receiver needs.
 """
 function rs_systematic_generator_matrix(field::GaloisField256, n::Int, k::Int)
     0 < k <= n <= 255 || throw(ArgumentError("need 0 < k ≤ n ≤ 255, got n=$n, k=$k"))
@@ -159,24 +149,22 @@ function rs_systematic_generator_matrix(field::GaloisField256, n::Int, k::Int)
     coefficients = zeros(UInt8, n)
     for i = 1:k
         G[i, i] = 0x01
-        # Information vector e_i sets c_{k-i} = 1, so `c(x) ⋅ x^(n-k)` is the
-        # bare monomial x^(n-i) (ICD Eq. 9-11). Reduce it modulo the monic g(x)
-        # by long division; what is left below degree n-k is the parity vector γ.
+        # Information vector e_i sets c_{k-i} = 1, so `c(x) ⋅ x^(n-k)` is the monomial
+        # x^(n-i) (ICD Eq. 9-11). Its remainder modulo the monic g(x) is the parity γ.
         fill!(coefficients, 0x00)
         coefficients[n-i+1] = 0x01
         @inbounds for degree = (n-i):-1:num_parity
             leading = coefficients[degree+1]
             leading == 0x00 && continue
-            # g is monic of degree num_parity, so subtracting
-            # leading ⋅ x^(degree - num_parity) ⋅ g(x) clears this term.
+            # g is monic: subtracting leading ⋅ x^(degree-num_parity) ⋅ g(x) clears
+            # the term.
             shift = degree - num_parity
             for j = 0:num_parity
                 coefficients[shift+j+1] =
                     gf_add(coefficients[shift+j+1], gf_multiply(field, g[j+1], leading))
             end
         end
-        # ICD row k + t carries γ_{(n-k) - t} (Eq. 12: the parity part is listed
-        # in descending coefficient order).
+        # ICD row k + t carries γ_{(n-k) - t} (Eq. 12, descending coefficient order).
         @inbounds for t = 1:num_parity
             G[k+t, i] = coefficients[num_parity-t+1]
         end
@@ -187,14 +175,12 @@ end
 """
     gf_invert!(inverse, M, field, n) -> Union{Nothing,typeof(inverse)}
 
-Matrix inverse over GF(256), by Gauss-Jordan elimination, of the leading `n × n`
-block of `M`: **overwrites**
-the leading `n × n` block of `inverse` with the inverse and returns `inverse`,
-or returns `nothing` if that block is singular. The leading `n × n` block of `M`
-is **overwritten** too (it is eliminated to the identity), so pass a working
-copy. Entries outside the leading blocks are neither read nor written, which is
-what lets one pair of preallocated buffers serve every size up to theirs.
-Allocates nothing.
+Invert the leading `n × n` block of `M` over GF(256) by Gauss-Jordan elimination.
+**Overwrites** the leading `n × n` block of `inverse` with the result and returns
+`inverse`, or returns `nothing` if the block is singular. The leading block of `M` is
+**overwritten** too (eliminated to the identity), so pass a working copy. Entries
+outside the leading blocks are untouched, so one pair of buffers serves every size up
+to theirs. Allocates nothing.
 """
 function gf_invert!(
     inverse::AbstractMatrix{UInt8},
@@ -246,9 +232,8 @@ end
 """
 $(TYPEDEF)
 
-Preallocated working matrices for [`rs_erasure_decode!`](@ref): the decoding
-matrix and its inverse, sized once for the largest information length that
-will be decoded (the code dimension). Both are **overwritten** by every decode.
+Preallocated working matrices for [`rs_erasure_decode!`](@ref), sized for the code
+dimension. Both are **overwritten** by every decode.
 
 # Fields
 
@@ -286,24 +271,20 @@ code symbols per column — the Galileo HAS HPVRS decode (HAS SIS ICD, Issue 1.0
     `k = MS ≤ 32` pages and zero-pads the information vector to the code's
     dimension, so only the first `k` columns of `G` matter.
 
-Writes the `k × J` information symbols into `out` **row by row** — information
-block `i` (HAS non-encoded page `M_i`), symbol `j` at `out[(i - 1) * J + j]` —
-which for HAS is exactly the reassembled message octets in page order. Only
-`out[1:k*J]` is **overwritten**, and the working matrices in `scratch` are
-overwritten too. Returns `out`, or `nothing` if the chosen rows are linearly
-dependent (the `k × k` decoding matrix is singular). Allocates nothing.
+Writes the `k × J` information symbols into `out` **row by row** (block `i`, symbol
+`j` at `out[(i - 1) * J + j]`; for HAS the reassembled message octets in page order).
+Only `out[1:k*J]` and `scratch` are **overwritten**. Returns `out`, or `nothing` if the
+chosen rows are linearly dependent (singular decoding matrix). Allocates nothing.
 
 !!! warning "Rows k+1 … (code dimension) carry nothing"
 
-    The code is MDS, so *any* `k` distinct code symbols determine the message —
-    with one exception created by the zero padding. When `k` is less than the
-    code dimension, systematic rows `k+1 … dimension` are zero in the first `k`
-    columns, because the information symbols they carry are the padding. Such a
-    row contributes no equation and makes the submatrix singular. HAS therefore
-    never transmits those pages ("Pages Ck+1, …, CK contain only zeroes and are
-    excluded from transmission", ICD §6.3) and a caller must not collect them.
-    Passing one, or the same row twice, is reported as `nothing` rather than
-    silently producing garbage.
+    The code is MDS, so *any* `k` distinct code symbols determine the message, with one
+    exception: when `k` is below the code dimension, systematic rows `k+1 … dimension`
+    carry the zero padding and are zero in the first `k` columns. Such a row gives no
+    equation and makes the submatrix singular. HAS never transmits those pages
+    ("Pages Ck+1, …, CK contain only zeroes and are excluded from transmission", ICD
+    §6.3); callers must not collect them. Passing one, or the same row twice, returns
+    `nothing`.
 """
 function rs_erasure_decode!(
     out::AbstractVector{UInt8},
@@ -314,8 +295,8 @@ function rs_erasure_decode!(
     received::AbstractMatrix{UInt8},
     k::Int,
 )
-    # The sizes are bound before the checks: Julia 1.10 leaves the throwing
-    # branches uninferred, so a call inside an error message dispatches dynamically.
+    # Sizes are bound before the checks: Julia 1.10 leaves throwing branches uninferred,
+    # so a call inside an error message would dispatch dynamically.
     num_rows = length(received_rows)
     num_received = size(received, 1)
     code_length, code_dimension = size(G)

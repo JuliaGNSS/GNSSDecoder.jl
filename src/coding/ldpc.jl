@@ -1,25 +1,20 @@
-# Shared LDPC decode helper used by every LDPC-coded signal decoder: GPS
-# L1C-D (CNAV-2 subframes 2 and 3, IS-GPS-800G) and the BeiDou B-CNAV family
-# (B-CNAV1 subframes 2 and 3, B-CNAV2, B-CNAV3 — all binary images of the
-# ICDs' 64-ary LDPC codes, see `scripts/generate_beidou_alist.jl`). All of
-# them pair a rate-1/2 systematic LDPC block with a trailing CRC-24Q inside
-# the info block, so the decode → CRC gate → MSB-first packing pipeline is
-# one shared function.
+# LDPC decode helper shared by GPS L1C-D (CNAV-2 subframes 2 and 3, IS-GPS-800G) and the
+# BeiDou B-CNAV family (B-CNAV1 subframes 2 and 3, B-CNAV2, B-CNAV3; binary images of the
+# ICDs' 64-ary LDPC codes, see `scripts/generate_beidou_alist.jl`). All pair a rate-1/2
+# systematic LDPC block with a trailing CRC-24Q inside the info block, so decode, CRC gate
+# and MSB-first packing are one function.
 #
-# Included after `crc.jl` (consumes `crc24q`) and before the per-signal
-# decoders that call it.
+# Included after `crc.jl` (consumes `crc24q`) and before the per-signal decoders.
 
 using Aff3ct: LDPCMatrix, LDPCBPDecoder
 
 """
 $(TYPEDEF)
 
-Long-lived scratch for one LDPC block decode: the AFF3CT belief-propagation
-decoder plus the three buffers the decode would otherwise allocate per block.
-
-The counterpart of `GalileoViterbiScratch` for the LDPC-coded signals, and held
-the same way — one per coded block in the owning decoder's cache (GPS L1C-D and
-BeiDou B1C each hold two, for their subframes 2 and 3; B2a and B2b one each).
+Long-lived scratch for one LDPC block decode: the AFF3CT belief-propagation decoder plus
+the three buffers a decode would otherwise allocate. The LDPC counterpart of
+`GalileoViterbiScratch`: one per coded block in the owning decoder's cache (GPS L1C-D and
+BeiDou B1C hold two each, for subframes 2 and 3; B2a and B2b one each).
 
 # Fields
 
@@ -31,8 +26,7 @@ struct LDPCScratch
     """
     decoder::LDPCBPDecoder
     """
-    `N` channel LLRs, so a caller passing a view or a lazily-typed window is
-    materialised without allocating
+    `N` channel LLRs; materialises a view or lazily-typed window without allocating
     """
     llr::Vector{Float32}
     """
@@ -48,8 +42,8 @@ end
 """
     LDPCScratch(path; num_iterations = 50)
 
-Load a committed `.alist` parity-check matrix, build the decoder for it (see
-[`load_ldpc_decoder`](@ref)), and size the three buffers from its `N` and `K`.
+Load a committed `.alist` parity-check matrix, build its decoder (see
+[`load_ldpc_decoder`](@ref)) and size the buffers from `N` and `K`.
 """
 function LDPCScratch(path::AbstractString; num_iterations::Integer = 50)
     decoder = load_ldpc_decoder(path; num_iterations)
@@ -62,10 +56,9 @@ function LDPCScratch(path::AbstractString; num_iterations::Integer = 50)
 end
 
 """
-Decode, CRC-check, and pack one LDPC info block MSB-first into a `T`-typed word
-(e.g. `UInt600` for a GPS L1C-D subframe 2); `nothing` on CRC failure.
-
-Every buffer comes from `scratch`, so a decode allocates nothing.
+Decode, CRC-check and pack one LDPC info block MSB-first into a `T`-typed word (e.g.
+`UInt600` for a GPS L1C-D subframe 2); `nothing` on CRC failure. Allocation-free: all
+buffers come from `scratch`.
 """
 function ldpc_decode_word(scratch::LDPCScratch, symbols, ::Type{T}) where {T}
     # AFF3CT LLR convention matches ours: positive ⇒ bit 0, negative ⇒ bit 1.
@@ -79,11 +72,9 @@ function ldpc_decode_word(scratch::LDPCScratch, symbols, ::Type{T}) where {T}
     @inbounds for i in eachindex(bits)
         bits[i] = info[i] != 0
     end
-    # CRC-24Q over the whole info block (message bits + trailing 24-bit CRC) is
-    # 0 iff the checksum matches; check on the bit vector before packing.
+    # CRC-24Q over the whole info block (message + trailing CRC) is 0 iff it matches.
     crc24q(bits) == 0 || return nothing
-    # Pack MSB-first so bit 1 is the most-significant bit and the last bit the
-    # least-significant (right-aligned), matching `word_length = K`.
+    # MSB-first, right-aligned, matching `word_length = K`.
     word = T(0)
     @inbounds for b in bits
         word = (word << 1) | T(b ? 1 : 0)
@@ -94,15 +85,12 @@ end
 """
     alist_path(name) -> String
 
-Absolute path of a committed `.alist` parity-check matrix in `data/`, resolved
-relative to this file so it works from any working directory.
+Absolute path of a committed `.alist` matrix in `data/`, resolved relative to this file.
 """
 alist_path(name) = joinpath(@__DIR__, "..", "..", "data", name)
 
-# Every committed `.alist`, read into the package image at precompile time. A
-# binary built with `juliac` (or a relocated sysimage) runs without the source
-# tree, so `data/` may not exist at run time; `committed_ldpc_scratch` then falls
-# back to these copies.
+# Every committed `.alist`, embedded at precompile time: a `juliac` binary or relocated
+# sysimage may run without `data/`, and `committed_ldpc_scratch` falls back to these.
 const EMBEDDED_ALISTS = let dir = alist_path("")
     Dict{String,String}(
         name => (
@@ -115,10 +103,9 @@ end
 """
     committed_ldpc_scratch(name; num_iterations = 50) -> LDPCScratch
 
-[`LDPCScratch`](@ref) for the committed `.alist` matrix `name` (e.g.
-`"cnv2_sf2.alist"`). Loads `data/name` when the source tree is present, and
-otherwise the copy embedded at precompile time (`EMBEDDED_ALISTS`), staged
-through a temporary file because AFF3CT only loads matrices from a path.
+[`LDPCScratch`](@ref) for the committed `.alist` matrix `name` (e.g. `"cnv2_sf2.alist"`).
+Loads `data/name` if present, else the copy in `EMBEDDED_ALISTS`, staged through a
+temporary file because AFF3CT only loads matrices from a path.
 """
 function committed_ldpc_scratch(name::String; num_iterations::Integer = 50)
     path = alist_path(name)
@@ -126,8 +113,7 @@ function committed_ldpc_scratch(name::String; num_iterations::Integer = 50)
     embedded_ldpc_scratch(name; num_iterations)
 end
 
-# The `committed_ldpc_scratch` fallback, split out so the test suite can
-# exercise it with `data/` present.
+# `committed_ldpc_scratch` fallback, split out so tests can run it with `data/` present.
 function embedded_ldpc_scratch(name::String; num_iterations::Integer = 50)
     tmp, io = mktemp()
     try
@@ -144,10 +130,9 @@ end
     load_ldpc_decoder(path; num_iterations = 50) -> LDPCBPDecoder
 
 Load a committed `.alist` parity-check matrix and build an Aff3ct flooding
-belief-propagation decoder for it. All the alist artefacts in `data/` lay the
-codeword out as `[info | parity]` (the ICDs' systematic layout), but Aff3ct's
-alist loader derives its own info-bit positions by Gaussian elimination and
-does not generally pick the first K columns, so the ICD layout is forced
+belief-propagation decoder. The alists in `data/` lay the codeword out as `[info | parity]`
+(the ICDs' systematic layout), but Aff3ct's loader derives info-bit positions by Gaussian
+elimination and generally does not pick the first K columns, so the ICD layout is forced
 before the decoder captures the positions.
 """
 function load_ldpc_decoder(path::AbstractString; num_iterations::Integer = 50)
