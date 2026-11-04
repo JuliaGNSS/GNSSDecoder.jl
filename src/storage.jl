@@ -1,15 +1,13 @@
 # Preallocated storage for the allocation-free decode path (`decode!`).
 #
-# A decoder that allocates nothing per symbol must never grow a container
-# while decoding: every container a decoder writes into is sized once, when the
-# state is constructed, and later writes *overwrite* it in place. This file
-# holds the pieces that make that explicit:
+# A decoder that allocates nothing per symbol never grows a container while decoding:
+# every container is sized once at state construction and later writes *overwrite* it.
 #
-#   - `SlotDictionary`, a dictionary with one preallocated slot per possible key,
-#     used for every keyed store in the decoded data (almanacs, masks, ...);
-#   - `writable_container` / `overwrite!`, the only two ways decode code touches
-#     such a container, plus `duplicate`, the trim-safe deep copy behind
-#     `copy(::GNSSDecoderState)` for anyone who needs a snapshot.
+#   - `SlotDictionary`: a dictionary with one preallocated slot per possible key, used for
+#     every keyed store in the decoded data (almanacs, masks, ...);
+#   - `writable_container` / `overwrite!`: the only ways decode code touches such a
+#     container;
+#   - `duplicate`: the trim-safe deep copy behind `copy(::GNSSDecoderState)`.
 
 """
     SlotIndices
@@ -39,25 +37,21 @@ end
 """
 $(TYPEDEF)
 
-A dictionary from `Int` keys in `0:N-1` to values of type `V`, with one slot per
-possible key allocated up front — every `N`-sized buffer exists from
-construction on, so inserting, overwriting or deleting an entry never
-allocates. This is what makes [`decode!`](@ref) allocation-free for the keyed
-stores of the decoded data (almanacs keyed by satellite, HAS masks keyed by
-Mask ID, ...): the key range of each is small and fixed by its ICD.
+A dictionary from `Int` keys in `0:N-1` to values of type `V`, with one slot per possible
+key allocated up front, so inserting, overwriting or deleting never allocates. This keeps
+[`decode!`](@ref) allocation-free for keyed stores of the decoded data (almanacs keyed by
+satellite, HAS masks keyed by Mask ID, ...), whose key ranges are small and fixed by the
+ICD.
 
-It is an `AbstractDictionary` from Dictionaries.jl, so it reads like the
-`Dictionary` it replaces (`d[key]`, `haskey`, `keys`, `pairs`, `length`, ...),
-with one difference: it iterates in **ascending key order** rather than in
-insertion order. Any `AbstractDictionary` converts to it, which is what lets a
-decoded data container be constructed from a `Dictionary`.
+An `AbstractDictionary` from Dictionaries.jl, so it reads like the `Dictionary` it
+replaces (`d[key]`, `haskey`, `keys`, `pairs`, `length`, ...), except that it iterates in
+**ascending key order**, not insertion order. Any `AbstractDictionary` converts to it.
 
 Inserting a key outside `0:N-1` throws.
 """
 mutable struct SlotDictionary{V,N} <: Dictionaries.AbstractDictionary{Int,V}
-    # Mutable only for its identity: an immutable wrapper would be re-boxed —
-    # allocated — every time it is stored into a `Union{Nothing,SlotDictionary}`
-    # field of a rebuilt data container.
+    # Mutable only for identity: an immutable wrapper would be re-boxed (allocated) each
+    # time it is stored into a `Union{Nothing,SlotDictionary}` field of a rebuilt container.
     """
     Slot `key + 1` holds the value for `key`; only occupied slots are defined
     """
@@ -161,20 +155,17 @@ Base.copy(dict::SlotDictionary{V,N}) where {V,N} = SlotDictionary{V,N}(
 """
     writable_container(current, spare) -> container
 
-The container a decode step writes a keyed or indexed field into, in place:
-the one `raw_data` already holds (`current`), or — the first time the field is
-written, while `current` is `nothing` — the preallocated `spare` from the
-decoder's cache, emptied first so no entry from an earlier use of it survives.
+The container a decode step writes a keyed or indexed field into: the one `raw_data`
+already holds (`current`), or, while `current` is `nothing`, the preallocated `spare` from
+the decoder's cache, emptied first.
 
-The returned container is **overwritten**: the caller mutates it and stores it
-back into `raw_data`. Any earlier state still referencing it sees the change,
-which is the documented contract of [`decode!`](@ref).
+The container is **overwritten**: the caller mutates it and stores it back into `raw_data`.
+Earlier states referencing it see the change, as documented for [`decode!`](@ref).
 """
 function writable_container(current, spare)
     current === nothing || return current
-    # `spare` is read from a `DataStorage` field, typed `Union{Nothing,C}` like
-    # the data field it backs; it is never `nothing`, and saying so keeps the
-    # `clear!` below statically dispatched (Julia 1.10 would not infer it).
+    # `spare` comes from a `Union{Nothing,C}` `DataStorage` field and is never `nothing`;
+    # saying so keeps `clear!` statically dispatched (Julia 1.10 would not infer it).
     spare === nothing && throw(ArgumentError("preallocated storage is missing"))
     return clear!(spare)
 end
@@ -185,9 +176,8 @@ clear!(vector::Vector{T}) where {T} = fill!(vector, zero(T))
 """
     overwrite!(dst, src) -> dst
 
-Make `dst` hold exactly what `src` holds, by overwriting `dst` in place — the
-explicit copy a decoder makes when it promotes a raw container into the
-validated `data`. `dst` and `src` must have the same capacity.
+Make `dst` hold exactly what `src` holds, overwriting `dst` in place: the copy made when
+promoting a raw container into the validated `data`. Both must have the same capacity.
 """
 function overwrite!(dst::SlotDictionary{V,N}, src::SlotDictionary{V,N}) where {V,N}
     dst === src && return dst
@@ -206,9 +196,9 @@ overwrite!(dst::Vector{T}, src::Vector{T}) where {T} = copyto!(dst, src)
 """
     publish!(dst, src) -> Union{Nothing,typeof(dst)}
 
-Overwrite the preallocated validated container `dst` with the raw container
-`src`, returning `dst` — or `nothing` when `src` is `nothing` (the field was
-never decoded). The value to store in the promoted `data`.
+Overwrite the preallocated validated container `dst` with the raw container `src` and
+return `dst`, or `nothing` when `src` is `nothing` (field never decoded). The value to
+store in the promoted `data`.
 """
 function publish!(dst, src)
     src === nothing && return nothing
@@ -225,8 +215,8 @@ is_shared_leaf(T) =
 """
     duplicate_expr(T, ex, depth) -> Expr
 
-Code deep-copying the value `ex` (of type `T`), built at generation time by
-recursing over `T`'s field and element types.
+Code deep-copying the value `ex` (of type `T`), built by recursing over `T`'s field and
+element types.
 """
 function duplicate_expr(T, ex, depth::Int)
     # A recursive type would never bottom out; fall back to a runtime call.
@@ -296,9 +286,8 @@ function duplicate_expr(T, ex, depth::Int)
             end
         )
     end
-    # A mutable struct from another package may own memory outside Julia (the
-    # AFF3CT handles do); copying its fields would alias that memory, so each
-    # such type must be handled above explicitly.
+    # A foreign mutable struct may own memory outside Julia (the AFF3CT handles do);
+    # copying its fields would alias it, so each such type needs an explicit rule above.
     ismutabletype(T) &&
         parentmodule(T) !== @__MODULE__() &&
         return :(throw(ArgumentError($(string("no `duplicate` rule for ", T)))))
@@ -314,35 +303,32 @@ function duplicate_expr(T, ex, depth::Int)
     )
 end
 
+# After `duplicate_expr`: a generator may only call functions that exist when it is defined.
 """
     duplicate(x)
 
 Deep copy of decoder state for `copy(::GNSSDecoderState)`, written out per type instead of
 via `Base.deepcopy` (whose reflection `juliac --trim` rejects).
 
-Every container is copied, keeping its capacity, so the copy decodes through
-[`decode!`](@ref) without allocating either. The FEC decoder handles — AFF3CT
-objects that live outside Julia — are shared rather than copied: they hold no
-state between two decodes, but it does mean two copies of a state must not
-decode concurrently from different threads.
+Every container is copied with its capacity, so the copy also decodes through
+[`decode!`](@ref) without allocating. The FEC decoder handles (AFF3CT objects outside
+Julia) are shared, not copied: they hold no state between decodes, but two copies of a
+state must not decode concurrently from different threads.
 
-The copy of a whole type tree is unrolled into one method body at compile time
-(see `duplicate_expr`) rather than recursing through `duplicate` itself: a
-method that calls itself on ever-different argument types — a HAS message, its
-mask, the mask's satellite list — is exactly the recursion inference widens,
-which `juliac --trim` then reports as an unresolved call.
+The copy of a whole type tree is unrolled into one method body at compile time (see
+`duplicate_expr`) instead of recursing through `duplicate`: a method calling itself on
+ever-different types (HAS message, mask, satellite list) is a recursion inference widens,
+which `juliac --trim` reports as an unresolved call.
 """
-# Defined after `duplicate_expr`: a generator may only call functions that
-# already exist when the generated function is defined.
 @generated duplicate(x::T) where {T} = duplicate_expr(T, :x, 0)
 
-# The number of elements `x` can hold before `push!` reallocates, so `duplicate`
-# can give the copy the same headroom (the voting tallies rely on it).
+# Elements `x` can hold before `push!` reallocates, so `duplicate` keeps the same headroom
+# (the voting tallies rely on it).
 @static if VERSION >= v"1.11"
     vector_capacity(x::Vector) = length(x.ref.mem)
 else
-    # Julia 1.10 has no `Memory`; the capacity is the `maxsize` field of the C
-    # `jl_array_t` header (data, length, flags/elsize/offset, nrows, maxsize).
+    # Julia 1.10 has no `Memory`; read `maxsize` from the C `jl_array_t` header
+    # (data, length, flags/elsize/offset, nrows, maxsize).
     vector_capacity(x::Vector) = GC.@preserve x Int(
         unsafe_load(Ptr{Csize_t}(pointer_from_objref(x) + 4 * sizeof(Ptr{Cvoid}))),
     )
@@ -351,16 +337,15 @@ end
 """
 $(TYPEDEF)
 
-The preallocated containers behind a decoder's `raw_data` and `data`: two
-instances of the data type `D` with every container field (a
-[`SlotDictionary`](@ref) or an `Array`) allocated, which the decode path only
-ever writes into.
+The preallocated containers behind a decoder's `raw_data` and `data`: two instances of
+the data type `D` with every container field (a [`SlotDictionary`](@ref) or an `Array`)
+allocated; decoding only writes into them.
 
   - A decode step writes a container field of `raw_data` in place through
     [`writable_container`](@ref)`(raw_data.field, storage.raw.field)`.
   - Promotion to `data` goes through [`publish_data`](@ref), which overwrites
-    `storage.validated`'s containers with the raw ones instead of sharing them,
-    so `raw_data` keeps being written while `data` holds still.
+    `storage.validated`'s containers instead of sharing them, so `raw_data` keeps being
+    written while `data` holds still.
 
 Each per-signal cache holds one, built by `preallocated_data(D)`.
 
@@ -369,8 +354,8 @@ Each per-signal cache holds one, built by `preallocated_data(D)`.
 $(TYPEDFIELDS)
 """
 mutable struct DataStorage{D}
-    # Mutable only so the cache holds it by reference: the two data containers
-    # inline would be copied along with the decoder state on every symbol.
+    # Mutable only so the cache holds it by reference; inline, both containers would be
+    # copied with the decoder state on every symbol.
     """
     Containers `raw_data` is decoded into
     """
@@ -386,9 +371,8 @@ DataStorage{D}() where {D} = DataStorage{D}(preallocated_data(D), preallocated_d
 """
     preallocated_data(D) -> D
 
-An instance of the data type `D` with every container field allocated at the
-size the ICD bounds it to — the backing store of a [`DataStorage`](@ref).
-Defined per data type.
+An instance of `D` with every container field allocated at the size the ICD bounds it
+to: the backing store of a [`DataStorage`](@ref). Defined per data type.
 """
 function preallocated_data end
 
@@ -398,10 +382,9 @@ is_container_field(T) = is_container_type(Base.nonnothingtype(T))
 """
     publish_data(storage::DataStorage{D}, raw::D) -> D
 
-`raw` promoted to validated data: every container field is copied into
-(overwriting) the matching container of `storage.validated` via
-[`publish!`](@ref), every other field is taken as is. The result shares no
-container with `raw`.
+`raw` promoted to validated data: each container field is copied into the matching
+container of `storage.validated` via [`publish!`](@ref), other fields are taken as is.
+The result shares no container with `raw`.
 """
 @generated function publish_data(storage::DataStorage{D}, raw::D) where {D}
     fields = map(1:fieldcount(D)) do i
@@ -417,17 +400,14 @@ end
 """
     @split_nothing (a, b, ...) expr
 
-Evaluate `expr` with each of the local variables `a`, `b`, ... known to be
-either `nothing` or not: the expression is duplicated under
-`a === nothing ? expr : expr`, so the compiler sees a concrete type for `a` in
-each copy.
+Evaluate `expr` with each local variable `a`, `b`, ... known to be `nothing` or not: the
+expression is duplicated under `a === nothing ? expr : expr`, so the compiler sees a
+concrete type for `a` in each copy.
 
-This is for keyword calls that rebuild a data container from an optional
-(`Union{Nothing,T}`) value, e.g. `GPSLNAVData(raw_data; TOW)` with a `TOW` that
-may be `nothing`. On Julia 1.10 the keyword `NamedTuple` of such a call has a
-non-concrete type, and the keyword sorter then takes its generic, allocating
-path; splitting the union at the call site keeps every copy concrete. `n`
-variables produce `2^n` copies, so keep the list short.
+Use it for keyword calls that rebuild a data container from an optional (`Union{Nothing,T}`)
+value, e.g. `GPSLNAVData(raw_data; TOW)` with a `TOW` that may be `nothing`. On Julia 1.10
+the keyword `NamedTuple` of such a call is non-concrete and the keyword sorter takes its
+generic, allocating path. `n` variables produce `2^n` copies; keep the list short.
 """
 macro split_nothing(vars, ex)
     names = vars isa Symbol ? [vars] : vars.args
@@ -442,9 +422,9 @@ end
 """
     push_vote_candidate!(candidates, candidate, capacity) -> candidates
 
-Append `candidate` to a repetition-voting tally in place. The tally never grows
-past `capacity` (its preallocated size): when it is full, the candidate with
-the fewest votes — the oldest of them on a tie — is overwritten instead.
+Append `candidate` to a repetition-voting tally in place. The tally never grows past
+`capacity`: when full, the candidate with the fewest votes (the oldest on a tie) is
+overwritten.
 """
 function push_vote_candidate!(candidates::Vector, candidate, capacity::Int)
     if length(candidates) < capacity

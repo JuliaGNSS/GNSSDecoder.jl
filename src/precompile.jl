@@ -1,17 +1,12 @@
-# Precompile workload (PrecompileTools). The first `decode!` of a real navigation
-# stream costs 12.5 s of compilation on a workstation and three to four times
-# that on an embedded ARM host — paid by a live receiver at the moment its first
-# satellite has bit sync, tens of seconds into a run, while every tracking loop
-# waits (GNSSReceiver.jl#107). Every decoder this package has runs here, so a
-# receiver on any signal finds it compiled: real captured streams where the
-# test suite has them (GPS L1 C/A and Galileo E1B as hex — the latter also
-# drives E5b, whose I/NAV pages are the same; GPS L2C and L5I CNAV messages and
-# Galileo E5a F/NAV pages from the test suite's own `test/data/`, encoded to
-# symbols the way the transmitter would), structurally valid pages for Galileo E6-B, and random
-# symbols for the decoders without a capture (GPS L1C-D, BeiDou
-# B1I/B1C/B2a/B2b/B3I), which
-# still compiles their sync search, FEC and CRC paths, just not the field
-# parsing that only a valid frame reaches.
+# Precompile workload (PrecompileTools). The first `decode!` of a real stream costs 12.5 s
+# of compilation on a workstation (3-4x on embedded ARM), paid by a live receiver while
+# every tracking loop waits (GNSSReceiver.jl#107). Every decoder runs here:
+# - real captures: GPS L1 C/A and Galileo E1B as hex (E1B also drives E5b, same I/NAV
+#   pages); GPS L2C/L5I CNAV messages and Galileo E5a F/NAV pages from `test/data/`,
+#   encoded to symbols as the transmitter would;
+# - structurally valid pages for Galileo E6-B;
+# - random symbols for decoders without a capture (GPS L1C-D, BeiDou
+#   B1I/B1C/B2a/B2b/B3I): compiles sync search, FEC and CRC, not field parsing.
 using PrecompileTools: @setup_workload, @compile_workload
 
 const _PRECOMPILE_GPS_L1CA_SYMBOLS =
@@ -85,10 +80,9 @@ function _precompile_cnav_symbols(messages)
     soft
 end
 
-# One Galileo page on air: the sync pattern, then the information bits
-# convolutionally encoded (K=7, G1 = 0o171, G2 = 0o133 inverted) and block
-# interleaved over `GALILEO_INTERLEAVER_ROWS` rows. `columns` is the only shape
-# that differs between the channels — 61 for E5a's F/NAV, 123 for E6-B's C/NAV.
+# One Galileo page on air: sync pattern, then the information bits convolutionally encoded
+# (K=7, G1 = 0o171, G2 = 0o133 inverted) and block interleaved over
+# `GALILEO_INTERLEAVER_ROWS` rows. Only `columns` differs: 61 for E5a F/NAV, 123 for E6-B.
 function _precompile_galileo_page_symbols(info::Vector{Bool}, sync, columns::Int)
     register = zeros(Bool, 6)
     encoded = Float32[]
@@ -109,8 +103,7 @@ function _precompile_galileo_page_symbols(info::Vector{Bool}, sync, columns::Int
     )
 end
 
-# A stream of such pages, closed by a trailing sync so the last page's
-# both-ends preamble match succeeds.
+# Such pages closed by a trailing sync, so the last page's both-ends preamble matches.
 function _precompile_galileo_stream(pages::Vector{Vector{Bool}}, sync, columns::Int)
     stream = Float32[]
     for page in pages
@@ -134,12 +127,8 @@ function _precompile_e5a_pages(path)
     end
 end
 
-# The captured fixtures are the ones the test suite already ships in
-# `test/data/`, read from there rather than copied into `src/`: a package
-# tarball carries both directories, and one copy cannot drift from the other.
-# A tree without them still precompiles — `_precompile_fixture_symbols` falls
-# back to random symbols, which compiles the affected decoder's sync search,
-# FEC and CRC paths, just not its field parsing.
+# Fixtures are read from `test/data/` rather than copied into `src/`, so the copies cannot
+# drift. Without them `_precompile_fixture_symbols` falls back to random symbols.
 _precompile_fixture(name) = joinpath(@__DIR__, "..", "test", "data", name)
 
 function _precompile_fixture_symbols(build, name, fallback)
@@ -167,10 +156,9 @@ end
                 61,
             )
         end
-    # E6-B C/NAV: 486 information bits per page. The HAS payload the pages carry
-    # is not reproduced here — a structurally valid page (right sync, FEC and
-    # interleaving) already compiles the sync search, deinterleaver, Viterbi and
-    # CRC, which is the decoder's hot path.
+    # E6-B C/NAV: 486 information bits per page. A structurally valid page (sync, FEC,
+    # interleaving) compiles the hot path (sync search, deinterleaver, Viterbi, CRC);
+    # the HAS payload is not reproduced.
     galileo_e6b = _precompile_galileo_stream(
         [Bool[isodd(k >> 2) for k = 1:486] for _ = 1:3],
         (1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0),
@@ -184,8 +172,7 @@ end
             (GPSL2CM(), 25, gps_l2c),
             (GPSL5I(), 25, gps_l5i),
             (GalileoE5aI(), 21, galileo_e5a),
-            # E5b carries the same I/NAV pages as E1B and decodes them
-            # identically, so the E1B stream exercises it for real.
+            # E5b carries the same I/NAV pages as E1B.
             (GalileoE5bI(), 2, galileo_e1b),
             (GalileoE6B(), 2, galileo_e6b),
             (GPSL1C_D(), 7, random_symbols),

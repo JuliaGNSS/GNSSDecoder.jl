@@ -1,66 +1,47 @@
 # Shared Galileo I/NAV navigation message core — Galileo OS SIS ICD, Issue 2.2
 # §4.3 (I/NAV Message Description).
 #
-# I/NAV is broadcast on *two* signal components, E1-B and E5b-I, and the ICD is
-# explicit that they "use the same page layout since the service provided on
-# these frequencies is a dual frequency service, using frequency diversity.
-# Only page sequencing is different" (§4.3.1). Both run at 250 sps with
-# 250-symbol (1 s) page parts, the same 10-bit page-sync pattern
-# `0101100000`, the same K=7 rate-1/2 NSC FEC over the same 30×8 block
-# interleaver, the same even/odd page pairing into 128-bit nominal words, and
-# the same CRC-24Q over the 196 protected bits of the page pair.
+# I/NAV is broadcast on E1-B and E5b-I, which "use the same page layout ... Only page
+# sequencing is different" (§4.3.1): 250 sps, 250-symbol (1 s) page parts, 10-bit
+# page sync `0101100000`, K=7 rate-1/2 NSC FEC over a 30×8 block interleaver, even/odd
+# pairing into 128-bit nominal words, CRC-24Q over the 196 protected bits of a pair.
 #
-# The two page-part layouts differ only in fields this decoder does not read
-# (ICD Table 38): the E1-B odd part spends 64 bits on OSNMA(40) + SAR(22) +
-# Spare(2) where E5b-I has a single 64-bit "Reserved 1" field, and its trailing
-# 8 bits are the SSP where E5b-I has "Reserved 2". Crucially the *protected*
-# prefix is 82 bits either way (Even/Odd + Page Type + Data(2/2) + those 64
-# bits), the CRC sits at odd-part bits 83-106 either way, and neither trailing
-# 8-bit field is covered by the CRC. So the CRC scope, the word extraction, and
-# every word-type parser below are bit-for-bit identical on the two signals.
+# The page-part layouts differ only in fields this decoder does not read (Table 38):
+# E1-B's odd part has OSNMA(40) + SAR(22) + Spare(2) where E5b-I has "Reserved 1" (64),
+# and ends in the 8-bit SSP where E5b-I has "Reserved 2". The *protected* prefix is 82
+# bits either way, the CRC sits at odd-part bits 83-106, and neither trailing 8-bit
+# field is covered. CRC scope, word extraction and word-type parsers are therefore
+# identical on both signals.
 #
-# Consequently this file holds the whole I/NAV decoder — framing, FEC, sync,
-# CRC gate, and all word-type parsing, plus the shared `GalileoINAVData`
-# container — and `e1b.jl` / `e5b.jl` are thin signal layers carrying only
-# their own `*Constants` alias, decoder-state constructor, `get_signal_type`
-# mapping, and health-facet selection in `is_sat_healthy` (E1-B/C health and
-# data validity vs E5b's — both fields come from the same word type 5, so both
-# are always decoded together). This mirrors how GPS L5I and L2C share
-# `gps/cnav.jl` and BeiDou B1I and B3I share `beidou/dnav.jl`.
+# This file holds the whole I/NAV decoder and the shared `GalileoINAVData`; `e1b.jl` and
+# `e5b.jl` carry only the `*Constants` alias, decoder-state constructor,
+# `get_signal_type` and the health facet in `is_sat_healthy` (both facets come from word
+# type 5). GPS L5I/L2C share `gps/cnav.jl` and BeiDou B1I/B3I share `beidou/dnav.jl`
+# likewise.
 #
-# The one substantive sequencing consequence: word types 16 (Reduced CED) and
-# 17-20 (FEC2 RS CED) are broadcast on E1-B only (Table 40), so an E5b-I
-# decoder simply never observes them. Nothing in the parser needs to know that.
+# Word types 16 (Reduced CED) and 17-20 (FEC2 RS CED) are E1-B only (Table 40); an
+# E5b-I decoder never observes them and the parser needs no special case.
 
-# The packed word for a Galileo I/NAV page pair — the even part's 114 bits
-# followed by the odd part's leading 106, the 220 bits the CRC-24Q gate runs
-# over — is `UInt288`, defined in `gnss.jl` because two other decoders reach
-# for the same width.
+# The packed page-pair word (even part's 114 bits + odd part's leading 106 = the 220
+# bits the CRC-24Q gate runs over) is `UInt288`, defined in `gnss.jl` because two other
+# decoders use the same width.
 
-# Page-part geometry, as module-level constants rather than only
-# `GalileoINAVConstants` fields: `try_sync` below hands them to
-# `detect_preamble_pair` once per symbol, where being compile-time constants is
-# what lets the bit packing unroll (see that function's note).
+# Page-part geometry as module-level constants: `try_sync` passes them to
+# `detect_preamble_pair` per symbol, and compile-time constants let its bit packing
+# unroll.
 const GALILEO_INAV_PAGE_PART_SYMBOLS = 250
 const GALILEO_INAV_SYNC_SYMBOLS = 10
 
-# Galileo I/NAV uses the shared K=7 NSC FEC (`GALILEO_VITERBI_POLY`, see
-# `galileo.jl`). After the 30×8 block deinterleave a page carries 240 encoded
-# symbols which the Viterbi decoder maps back to 120 trellis steps: 114
-# information bits + 6 tail bits. AFF3CT's `ConvViterbiDecoder` is configured with
-# K = 114, N = 240 and those polynomials; it applies the trellis termination
-# internally and returns exactly the 114 information bits (the 6 tail bits are
-# consumed by termination and never surface), which is precisely the per-page
-# payload the I/NAV parser expects. The interleaver shape below is passed to the
-# shared `galileo_viterbi` helper at decode time.
+# Shared K=7 NSC FEC (`GALILEO_VITERBI_POLY`, see `galileo.jl`). After the 30×8
+# deinterleave a page has 240 encoded symbols = 120 trellis steps (114 information bits
+# + 6 tail bits). AFF3CT's `ConvViterbiDecoder` (K = 114, N = 240) terminates the
+# trellis internally and returns only the 114 information bits.
 const GALILEO_INAV_VITERBI_K = 114
 const GALILEO_INAV_VITERBI_N = 240
 
-# Octets spanned by the 220 bits the CRC-24Q gate runs over — the 196 protected
-# bits of a page pair followed by the 24-bit checksum itself, i.e. the even
-# part's 114 bits plus the odd part's leading 106 — for the packed-word
-# `crc24q`. 220 rounds up to 28 octets; the four leading bits are zero and so are
-# neutral, CRC-24Q initialising its register to zero.
+# Octets spanned by the 220 CRC-checked bits (196 protected + 24-bit CRC) for the
+# packed-word `crc24q`. 220 rounds up to 28 octets; the four leading bits are zero and
+# neutral since CRC-24Q initialises its register to zero.
 const GALILEO_INAV_CRC_OCTETS = cld(114 + 106, 8)
 
 # Columns of the I/NAV block interleaver; the 8 rows every Galileo channel shares
@@ -70,17 +51,15 @@ const GALILEO_INAV_INTERLEAVER_COLUMNS = 30
 """
     GalileoINAVConstants{S}
 
-I/NAV message structure parameters shared by the two Galileo
-signal components that broadcast I/NAV, E1-B and E5b-I. Aliased per signal as
-[`GalileoE1BConstants`](@ref GNSSDecoder.GalileoE1BConstants) (`S = :GalileoE1B`)
-and [`GalileoE5bConstants`](@ref GNSSDecoder.GalileoE5bConstants)
-(`S = :GalileoE5bI`); the field values are identical and the tag `S` only selects
-the signal reported by [`get_signal_type`](@ref) and the health facet checked by
-[`is_sat_healthy`](@ref).
+I/NAV message structure parameters shared by E1-B and E5b-I. Aliased as
+[`GalileoE1BConstants`](@ref GNSSDecoder.GalileoE1BConstants) (`S = :GalileoE1B`) and
+[`GalileoE5bConstants`](@ref GNSSDecoder.GalileoE5bConstants) (`S = :GalileoE5bI`);
+field values are identical and `S` only selects the signal reported by
+[`get_signal_type`](@ref) and the health facet checked by [`is_sat_healthy`](@ref).
 
 # Fields
 
-  - `sync_unit_length::Int`: Length of the sync unit in bits (250 bits per page)
+  - `sync_unit_length::Int`: Length of the sync unit in channel symbols (250 symbols per page)
   - `preamble::UInt16`: Page synchronization pattern (0101100000 binary)
   - `preamble_length::Int`: Length of preamble in bits (10)
 
@@ -99,10 +78,9 @@ end
 
 Reduced Clock and Ephemeris Data, decoded from word type 16.
 
-A compact ephemeris/clock set transmitted within a single I/NAV word. Provides
-reduced-accuracy parameters that allow a receiver to compute an initial position
-fix before the full ephemeris (words 1-4) has been collected. Reduced CED
-parameters must NOT be combined with full-precision parameters from words 1-4.
+A compact, reduced-accuracy ephemeris/clock set in a single I/NAV word, allowing an
+initial fix before the full ephemeris (words 1-4) is collected. Must NOT be combined
+with full-precision parameters from words 1-4.
 
 # Fields
 
@@ -133,13 +111,9 @@ end
 """
     GalileoINAVData
 
-Decoded Galileo I/NAV navigation message data — the shared container for the
-two signal components that broadcast I/NAV, E1-B and E5b-I.
-
-Contains ephemeris, clock correction, signal health, group delay, ionospheric
-correction, GST-UTC and GST-GPS conversion, almanac, and Reduced CED parameters
-decoded from the Galileo I/NAV message. All parameters conform to the Galileo
-OS SIS ICD, Issue 2.2.
+Decoded Galileo I/NAV data, shared by E1-B and E5b-I: ephemeris, clock correction,
+signal health, group delay, ionospheric correction, GST-UTC and GST-GPS conversion,
+almanac and Reduced CED parameters (Galileo OS SIS ICD, Issue 2.2).
 
 # Galileo System Time (GST) Fields
 
@@ -187,7 +161,8 @@ OS SIS ICD, Issue 2.2.
   - `IOD_nav3::UInt`: Issue of Data from word type 3 (10-bit)
   - `IOD_nav4::UInt`: Issue of Data from word type 4 (10-bit)
   - `num_pages_since_last_TOW::Int`: Pages decoded since last TOW update
-  - `num_bits_since_time_reference_at_last_TOW::Int`: Bits since last TOW sync
+  - `num_bits_since_time_reference_at_last_TOW::Int`: Time-reference counter reading when
+    `TOW` was decoded
 
 # Signal Health and Data Validity (Word Type 5)
 
@@ -229,18 +204,16 @@ OS SIS ICD, Issue 2.2.
 
   - `WN_0G::Int`: GGTO reference Week Number (6-bit)
 
-    All four stay `nothing` when the satellite broadcasts the ICD's "GGTO not
-    valid" encoding — every one of the four fields all ones (5.1.8).
+    All four stay `nothing` when the satellite broadcasts the "GGTO not valid"
+    encoding, all four fields all ones (5.1.8).
 
 # Almanac (Word Types 7-10)
 
   - `almanacs::SlotDictionary{GalileoAlmanac,64}`: Decoded almanacs keyed by
-    SVID. Entries are inserted as Galileo broadcasts the almanac chain across
-    word types 7→10. SVIDs not yet seen are absent from the dictionary. In-flight
-    chain partials live in the decoder cache and are flushed here only once a
-    full almanac for an SVID has been assembled with a consistent IODa. The
-    store is preallocated with one slot per value of the 6-bit SVID field
-    (0-63) and each flush **overwrites** that SVID's slot in place (see
+    SVID; SVIDs not yet seen are absent. In-flight word type 7→10 chain partials live
+    in the decoder cache and are flushed here only once a full almanac with a
+    consistent IODa is assembled. The store has one preallocated slot per 6-bit SVID
+    value (0-63); each flush **overwrites** that slot in place (see
     [`decode!`](@ref)).
 
 # Reduced Clock and Ephemeris Data (Word Type 16)
@@ -448,18 +421,16 @@ end
     )
 end
 
-# The default `==` for structs falls back to `===`, which is reference equality
-# and so fails for the mutable `almanacs::SlotDictionary{...}` field even when the
+# The default `==` is `===`, which fails for the mutable `almanacs` field even when
 # contents match. Compare field-by-field.
 Base.:(==)(a::GalileoINAVData, b::GalileoINAVData) = fields_equal(a, b)
 
-# The one container field, at its ICD size: an almanac slot per 6-bit SVID.
+# The one container field, at its ICD size: a slot per 6-bit SVID.
 preallocated_data(::Type{GalileoINAVData}) =
     GalileoINAVData(; almanacs = SlotDictionary{GalileoAlmanac,GALILEO_ALMANAC_SLOTS}())
 
-# Page is splitted in even and odd parts
-# Cache even part and decode after odd part
-# Page contains 120 bits
+# A page is split into even and odd parts (120 bits); the even part is cached and
+# decoded together with the odd part.
 #
 # Almanac chain partials carry across word types 7-10 within one subframe:
 #   WT7  fills SV-position-1 first half
@@ -473,17 +444,14 @@ $(TYPEDEF)
 
 Per-decoder cache for Galileo I/NAV (E1-B and E5b-I).
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 250 + 10 = 260), the
-scratch buffer the polarity-resolved page part is copied into, the cached
-even-page bits used to stitch two consecutive pages into a word, and the
-two-position almanac-chain state needed to merge word types 7-10. Soft-symbol
-buffering is shared across all signals; the rest is Galileo-specific.
+Holds the soft-symbol `CircularDeque{Float32}` (capacity 250 + 10 = 260), the scratch
+buffer for the polarity-resolved page part, the cached even-page bits, and the
+two-position almanac-chain state merging word types 7-10.
 
-The Galileo decoder consumes *soft symbols* end-to-end: the page-sync hook
-hard-slices only the two 10-bit preamble windows out of the deque, while the K=7
-NSC FEC is undone on the raw `Float32` LLRs via AFF3CT.jl's `ConvViterbiDecoder`
-(issue #37). The deque-backed input boundary is identical to L1 C/A so the public
-API is uniform.
+Soft symbols are consumed end-to-end: the page-sync hook hard-slices only the two
+10-bit preamble windows, while the K=7 NSC FEC is undone on the raw `Float32` LLRs via
+AFF3CT.jl's `ConvViterbiDecoder` (issue #37). The deque-backed input is identical to
+L1 C/A.
 
 # Fields
 
@@ -555,10 +523,9 @@ GalileoINAVCache() = GalileoINAVCache(
     )
 end
 
-# `soft_page` and the Viterbi handle are scratch, not state — both are
-# overwritten from the deque before they are read — so they are excluded, the way
-# `GalileoE6BCache` excludes its `fec_window`. `storage` only backs the
-# containers `raw_data` and `data` reference, which the state compares itself.
+# `soft_page` and the Viterbi handle are scratch (overwritten before being read), as
+# is `GalileoE6BCache`'s `fec_window`, so they are excluded. `storage` only backs
+# `raw_data` and `data`, which the state compares itself.
 function Base.:(==)(a::GalileoINAVCache, b::GalileoINAVCache)
     deques_equal(a.soft_buffer, b.soft_buffer) &&
         a.even_page_part_bits == b.even_page_part_bits &&
@@ -566,22 +533,17 @@ function Base.:(==)(a::GalileoINAVCache, b::GalileoINAVCache)
         a.almanac_chain_pos2 == b.almanac_chain_pos2
 end
 
-# Flush a completed almanac-chain position into the raw almanac store,
-# **overwriting** its SVID's slot in place, and return the store to put back
-# into `raw_data`.
+# Flush a completed almanac-chain position into the raw almanac store, **overwriting**
+# its SVID's slot, and return the store to put back into `raw_data`.
 function flush_almanac!(state::GNSSDecoderState{<:GalileoINAVData}, almanac::GalileoAlmanac)
     almanacs = writable_container(state.raw_data.almanacs, state.cache.storage.raw.almanacs)
     set!(almanacs, something(almanac.SVID), almanac)
     return almanacs
 end
 
-# `is_ephemeris_decoded` and `is_clock_correction_decoded` are per-constellation
-# facts (identical fields for I/NAV and F/NAV), defined once on
-# `AbstractGalileoData` in `galileo/galileo.jl`. Only the health-status check
-# below is genuinely per-signal only in *which* facet it reports: word type 5
-# carries E1-B/C and E5b health and data validity together, so an I/NAV decoder
-# on either component always has both. `is_sat_healthy` picks the facet matching
-# the component being decoded (see `e1b.jl` / `e5b.jl`).
+# `is_ephemeris_decoded` and `is_clock_correction_decoded` are shared with F/NAV in
+# `galileo/galileo.jl`. Word type 5 carries both E1-B/C and E5b health and validity;
+# `is_sat_healthy` picks the facet for the decoded component (`e1b.jl` / `e5b.jl`).
 function is_health_status_decoded(data::GalileoINAVData)
     !isnothing(data.E1B_SHS) &&
         !isnothing(data.E5b_SHS) &&
@@ -617,15 +579,13 @@ $(TYPEDSIGNATURES)
 
 Reset a Galileo I/NAV decoder state after a signal loss or reacquisition.
 
-Clears the bit buffers and time-of-week (TOW) field while preserving other
-decoded ephemeris and clock data in `raw_data`. This allows faster recovery
-after brief signal outages without requiring a full re-decode of all pages.
+Clears the bit buffers and time-of-week (TOW) field but keeps other decoded ephemeris
+and clock data in `raw_data`, for faster recovery after brief outages.
 
 !!! note
 
-    The week number (`WN`) field is intentionally not reset as it is not
-    broadcast as frequently as TOW. This may cause brief errors if a week
-    rollover occurs during a signal outage.
+    `WN` is intentionally not reset since it is broadcast less often than TOW. This may
+    cause brief errors if a week crossover occurs during an outage.
 
 # Arguments
 
@@ -650,15 +610,9 @@ state = decode!(state, new_bits, num_bits)
   - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GalileoINAVData})
-    # Reset bit buffers and TOW data field, while keeping the
-    # remaining parameters in raw_data. This allows a GNSSReceiver
-    # to use a satellite after a reacquisition without waiting for
-    # the decoding of all data fields.
-    # Note: WN is currently not reset as it is broadcast not as
-    # frequently as the TOW and thus may increase the time until
-    # the decoder is available again after an outage. This will
-    # lead to erroneous decoder information for a few seconds after
-    # reacquisition when a new week started during a signal outage.
+    # Keep `raw_data` except TOW so a receiver can use the satellite after reacquisition
+    # without re-decoding everything. WN is kept (resetting it would delay recovery),
+    # which is wrong for a few seconds if a new week began during the outage.
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
@@ -672,17 +626,14 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoINAVData})
     )
 end
 
-# No `packed_buffer_type` method: I/NAV overrides `try_sync` and reads the two
-# 10-symbol page-sync patterns straight from the soft buffer, so the 260-bit
-# packed window the default would build once per symbol is never needed — the
-# payload is consumed as soft symbols by the Viterbi decoder below.
+# No `packed_buffer_type` method: `try_sync` reads the page-sync patterns straight from
+# the soft buffer, so the default 260-bit packed window is never needed.
 """
     try_sync(state::GNSSDecoderState{<:GalileoINAVData}) -> Union{Nothing,Bool}
 
-I/NAV page-part sync: the 10-symbol pattern `0101100000` must appear at both ends
-of the 260-symbol window (start of this page part and start of the next), both
-upright or both inverted. Returns the resolved polarity, or `nothing` when there
-is no sync.
+I/NAV page-part sync: the 10-symbol pattern `0101100000` must appear at both ends of
+the 260-symbol window, both upright or both inverted. Returns the resolved polarity,
+or `nothing` when there is no sync.
 """
 try_sync(state::GNSSDecoderState{<:GalileoINAVData}) = detect_preamble_pair(
     soft_buffer(state),
@@ -691,8 +642,7 @@ try_sync(state::GNSSDecoderState{<:GalileoINAVData}) = detect_preamble_pair(
     GALILEO_INAV_PAGE_PART_SYMBOLS,
 )
 
-# Record the polarity `try_sync` resolved; `decode_sync_unit` reads it back
-# off the state when it copies the soft page part out of the deque.
+# Record the polarity `try_sync` resolved; `decode_sync_unit` reads it back.
 function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GalileoINAVData},
     is_polarity_inverted::Bool,
@@ -701,11 +651,9 @@ function complement_buffer_if_necessary(
 end
 
 function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
-    # The 240 encoded symbols are the soft-buffer entries between the leading
-    # 10-bit page-sync preamble and the trailing preamble of the next page
-    # (deque indices preamble_length+1 .. sync_unit_length). Resolve the
-    # 180-degree polarity ambiguity by negating the LLRs when the sync hook
-    # flagged the page as inverted (an inverted soft symbol = a negated one).
+    # The 240 encoded symbols lie between the leading and trailing preambles (deque
+    # indices preamble_length+1 .. sync_unit_length). Negate the LLRs when the page was
+    # flagged inverted to resolve the 180-degree ambiguity.
     soft_page = copy_soft_window!(
         state.cache.soft_page,
         soft_buffer(state),
@@ -729,8 +677,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
         ),
     )
     if is_even
-        # Two calls rather than `is_nominal_page ? bits : nothing`: a Union
-        # keyword value takes the allocating kw path on Julia 1.10.
+        # Two calls: a Union keyword value takes the allocating kw path on Julia 1.10.
         cache = if is_nominal_page
             GalileoINAVCache(state.cache; even_page_part_bits = bits)
         else
@@ -739,9 +686,9 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
         return GNSSDecoderState(state; cache)
     end
     even_bits = state.cache.even_page_part_bits
-    # `nothing`, not a zero sentinel: a nominal even page part whose 112 content
-    # bits are all zero is legal (word type 0 with the Time field '00' and a zero
-    # spare) and a `!= 0` test would silently discard its odd partner.
+    # `nothing`, not a zero sentinel: an even part with 112 all-zero content bits is
+    # legal (word type 0, Time field '00', zero spare); a `!= 0` test would discard its
+    # odd partner.
     if !isnothing(even_bits) && is_nominal_page
         data = get_bits(even_bits, 114, 3, 112) << 16 + get_bits(bits, 114, 3, 16)
         bits_to_check_CRC = UInt288(even_bits) << 106 + get_bits(bits, 114, 1, 106)
@@ -751,7 +698,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 if get_bits(data, 128, 7, 2) == 2 # '10'
                     WN = get_bits(data, 128, 97, 12)
                     TOW = get_bits(data, 128, 109, 20)
-                    # split: a Union keyword value takes the allocating kw path on Julia 1.10
+                    # split: a Union keyword value takes the allocating kw path (Julia 1.10)
                     TOW_anchor = state.num_bits_since_time_reference
                     state = @split_nothing TOW_anchor GNSSDecoderState(
                         state;
@@ -971,8 +918,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     E5b_SHS = signal_health_e5b_pos1,
                     E1B_SHS = signal_health_e1b_pos1,
                 )
-                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
-                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                # Rebuild `raw_data` only on a flush so the `almanacs` keyword is concrete
+                # (a Union value takes the allocating kw path on Julia 1.10).
                 raw_data = state.raw_data
                 if completed_pos1.IOD_a == IOD_a && !isnothing(completed_pos1.SVID)
                     raw_data = GalileoINAVData(
@@ -1015,8 +962,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     WN_a,
                     t_0a,
                 )
-                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
-                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                # Rebuild `raw_data` only on a flush (see above).
                 raw_data = state.raw_data
                 if completed_pos2.IOD_a == IOD_a && !isnothing(completed_pos2.SVID)
                     raw_data = GalileoINAVData(
@@ -1044,8 +990,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 a_f1_pos3 = get_twos_complement_num(data, 128, 70, 13) * 2.0^-38
                 signal_health_e5b_pos3 = SignalHealth(get_bits(data, 128, 83, 2))
                 signal_health_e1b_pos3 = SignalHealth(get_bits(data, 128, 85, 2))
-                # GGTO — all four fields all-ones means "not valid" (ICD
-                # 5.1.8), so they are read raw and scaled by `galileo_ggto`.
+                # GGTO: all four fields all ones means "not valid" (5.1.8), so they are
+                # read raw and scaled by `galileo_ggto`.
                 ggto = galileo_ggto(
                     get_bits(data, 128, 87, 16),
                     get_bits(data, 128, 103, 12),
@@ -1063,8 +1009,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     E5b_SHS = signal_health_e5b_pos3,
                     E1B_SHS = signal_health_e1b_pos3,
                 )
-                # Rebuild `raw_data` only on a flush, so the `almanacs` keyword is
-                # always concrete (a Union value takes the allocating kw path on Julia 1.10).
+                # Rebuild `raw_data` only on a flush (see above).
                 raw_data = state.raw_data
                 if completed_pos3.IOD_a == IOD_a && !isnothing(completed_pos3.SVID)
                     raw_data = GalileoINAVData(
@@ -1136,9 +1081,8 @@ function validate_data(state::GNSSDecoderState{<:GalileoINAVData})
                 (state.raw_data.num_pages_since_last_TOW + 1) *
                 state.constants.sync_unit_length
         end
-        # `data` gets its own copy of the almanac store (`publish_data`
-        # overwrites the preallocated validated one), so later almanac words
-        # written into `raw_data` do not leak into `data` before the next promotion.
+        # `data` gets its own almanac store copy (`publish_data` overwrites the
+        # preallocated validated one) so later almanac words do not leak into it.
         data = publish_data(state.cache.storage, state.raw_data)
         # split: a Union keyword value takes the allocating kw path on Julia 1.10
         state = @split_nothing num_bits_since_time_reference GNSSDecoderState(

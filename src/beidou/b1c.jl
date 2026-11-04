@@ -1,56 +1,44 @@
 # BeiDou B1C (B-CNAV1) decoder — BDS-SIS-ICD-B1C-1.0 (2017-12).
 #
-# The B1C data component (`BeiDouB1C_D`) carries the B-CNAV1 message as
-# 18-second frames of 1800 symbols at 100 sps (ICD §6.2.1):
+# The B1C data component (`BeiDouB1C_D`) carries B-CNAV1 as 18 s frames of 1800 symbols
+# at 100 sps (ICD §6.2.1):
 #
-#   - Subframe 1: 72 symbols — the 6-bit PRN encoded BCH(21,6) followed by
-#     the 8-bit Seconds-Of-Hour (SOH) count encoded BCH(51,8) (ICD §6.2.2.1,
-#     §6.2.3.1). Carries system time as well as framing: SOH is a BDT parameter
-#     counting 18 s units within the hour (§7.3, Table 7-2, range 0..3582 s), and
-#     the decoder uses it for both — the sync match and the time stamp, exactly
-#     like GPS L1C-D's TOI.
-#   - Subframes 2 + 3: 1728 symbols, block-interleaved (36×48 with a
-#     staggered write, ICD §6.2.2.4) over a 1200-symbol 64-ary LDPC(200,100)
-#     codeword for subframe 2 (600 info bits) and a 528-symbol 64-ary
-#     LDPC(88,44) codeword for subframe 3 (264 info bits). Decoded through
-#     the binary-image `.alist` matrices (see `scripts/generate_beidou_alist.jl`)
-#     with the shared `load_ldpc_decoder`/`ldpc_decode_word` helpers.
+#   - Subframe 1: 72 symbols — the 6-bit PRN as BCH(21,6), then the 8-bit Seconds-Of-Hour
+#     (SOH) count as BCH(51,8) (ICD §6.2.2.1, §6.2.3.1). SOH is a BDT parameter counting
+#     18 s units within the hour (§7.3, Table 7-2, range 0..3582 s) and serves as both
+#     sync match and time stamp, like GPS L1C-D's TOI.
+#   - Subframes 2 + 3: 1728 symbols, block-interleaved (36×48, staggered write, ICD
+#     §6.2.2.4) over a 1200-symbol 64-ary LDPC(200,100) codeword for subframe 2 (600 info
+#     bits) and a 528-symbol 64-ary LDPC(88,44) codeword for subframe 3 (264 info bits).
+#     Decoded through the binary-image `.alist` matrices (see
+#     `scripts/generate_beidou_alist.jl`) with `load_ldpc_decoder`/`ldpc_decode_word`.
 #
-# Subframe 2 carries WN/HOW, IODC/IODE, the full ephemeris, the clock
-# correction, and the group-delay parameters (ICD Figure 6-6); subframe 3 is
-# paged (PageID 1-4: iono + BDT-UTC, reduced almanacs, EOP + BGTO, midi
-# almanac; ICD Figures 6-8 .. 6-11). Every layout and scale below was
-# transcribed from the ICD figures/tables cited inline.
+# Subframe 2 carries WN/HOW, IODC/IODE, ephemeris, clock correction and group delays (ICD
+# Figure 6-6); subframe 3 is paged (PageID 1-4: iono + BDT-UTC, reduced almanacs, EOP +
+# BGTO, midi almanac; ICD Figures 6-8 .. 6-11).
 #
-# Frame sync follows the generic streaming framework in `src/gnss.jl`: the
-# soft-symbol `CircularDeque` is sized to one full frame (1800) plus the
-# 72-symbol subframe-1 segment of the *next* frame (1872 total) so the BCH
-# match can be confirmed at both ends of the window before locking — the
-# same two-subframe pattern as GPS L1C-D, with SOH in the role of TOI.
+# Frame sync follows the streaming framework in `src/gnss.jl`: the soft-symbol
+# `CircularDeque` holds one frame (1800) plus the next frame's 72-symbol subframe 1
+# (1872), so the BCH match is confirmed at both ends of the window before locking (as for
+# GPS L1C-D, with SOH in the role of TOI).
 
 # ---- Subframe-1 BCH codewords (ICD §6.2.2.1, Table 6-1, Figure 6-2) ---------
 #
-# Subframe 1 encodes its 14 info bits as two concatenated cyclic codewords:
-# the 6 PRN bits into 21 symbols and the 8 SOH bits into 51 symbols (21 + 51
-# = 72; transmitted PRN-codeword first, matching the subframe-1 MSB-first
-# layout of Figure 6-5 — cross-checked against PocketSDR's `sync_BCNV1_frame`).
+# The 14 info bits are two concatenated cyclic codewords: PRN (6 bits) into 21 symbols,
+# SOH (8 bits) into 51 symbols (21 + 51 = 72), PRN first, matching the MSB-first layout of
+# Figure 6-5 (cross-checked against PocketSDR's `sync_BCNV1_frame`).
 #
-# Both codewords come from `bch_lfsr_codeword` (`src/coding/bch_toi.jl`), the same
-# Fibonacci-LFSR construction the GPS L1C-D TOI table uses — only the symbol
-# count, register width and tap mask differ.
+# Both come from `bch_lfsr_codeword` (`src/coding/bch_toi.jl`), the same Fibonacci-LFSR
+# construction as the GPS L1C-D TOI table; only symbol count, register width and tap
+# mask differ.
 #
 # The ICD's "generator polynomials" g21,6(x) = x⁶+x⁴+x²+x+1 and
-# g51,8(x) = x⁸+x⁷+x⁴+x³+x²+x+1 have degree k (not n-k): they are the
-# *characteristic polynomials* of the k-stage encoder registers of Figure
-# 6-2. Each codeword is the k-stage Fibonacci LFSR output clocked n times
-# from an initial state holding the info value: seeding with the
-# *bit-reversed* info value and emitting the register LSB makes the code
-# systematic — the first k emitted symbols spell the info value MSB-first —
-# which is the same construction (and the same verified convention) as the
-# GPS L1C-D TOI table in `src/coding/bch_toi.jl`, and matches PocketSDR's
-# `LFSR(n, rev_reg(v, k), taps, k)`. The tap masks below are the
-# non-leading coefficients of the ICD polynomials, which is what
-# `bch_lfsr_codeword` takes.
+# g51,8(x) = x⁸+x⁷+x⁴+x³+x²+x+1 have degree k (not n-k): they are the *characteristic
+# polynomials* of the k-stage encoder registers of Figure 6-2. A codeword is the LFSR
+# output clocked n times from the *bit-reversed* info value, emitting the register LSB,
+# which makes the code systematic (the first k symbols spell the info value MSB-first),
+# as for the TOI table and PocketSDR's `LFSR(n, rev_reg(v, k), taps, k)`. The tap masks
+# below are the non-leading polynomial coefficients, as `bch_lfsr_codeword` takes them.
 
 const B1C_PRN_BCH_WIDTH = 6
 const B1C_PRN_BCH_TAP = 0b010111       # g21,6 = x⁶ + x⁴ + x² + x + 1
@@ -65,23 +53,18 @@ const B1C_SOH_SECONDS = 18             # seconds per SOH step, i.e. per B-CNAV1 
 const B1C_PRN_MASK21 = (UInt64(1) << B1C_PRN_CODEWORD_LEN) - UInt64(1)
 const B1C_SOH_MASK51 = (UInt64(1) << B1C_SOH_CODEWORD_LEN) - UInt64(1)
 
-# Correction radii for the two subframe-1 BCH codes. Both are the classical
-# bounded-distance radius `t = floor((d_min - 1) / 2)`, and both minimum
-# distances are properties of the codebooks this file generates rather than
-# numbers taken on trust — `test/beidou_b1c.jl` recomputes them exhaustively.
+# Correction radii for the subframe-1 BCH codes: the bounded-distance radius
+# `t = floor((d_min - 1) / 2)`. Both d_min are properties of the generated codebooks;
+# `test/beidou_b1c.jl` recomputes them exhaustively.
 #
 #   BCH(21,6) over the 63 assigned PRNs: d_min = 8 -> t = 3
 #   BCH(51,8) over the 200 assigned SOH counts: d_min = 24 -> t = 11
 #
-# Matching a codeword exactly, as this decoder used to, throws that away: at
-# 28 dB-Hz a 72-symbol subframe 1 arrives error-free about 6 % of the time and
-# within the correction radius about 99 % of it, which is roughly 6 dB of
-# acquisition sensitivity on a field the ICD protected precisely so it would
-# survive the margin. The cost is a false-sync rate that rises from
-# unmeasurable to still unmeasurable: `try_sync` demands two windows a frame
-# apart carrying consecutive SOH counts, which puts a random-symbol false sync
-# at ~1e-13 per window pair, well under one per thousand years at 100 sps —
-# and the LDPC CRC on subframes 2 and 3 discards it in any case.
+# Exact matching would throw this away: at 28 dB-Hz a 72-symbol subframe 1 arrives
+# error-free about 6 % of the time but within the radius about 99 %, roughly 6 dB of
+# acquisition sensitivity. False sync stays negligible: `try_sync` demands two windows a
+# frame apart with consecutive SOH counts (~1e-13 per window pair for random symbols), and
+# the LDPC CRC on subframes 2 and 3 discards it anyway.
 const B1C_PRN_MAX_ERRORS = 3
 const B1C_SOH_MAX_ERRORS = 11
 
@@ -97,13 +80,12 @@ b1c_prn_codeword(prn::Int) =
 b1c_soh_codeword(SOH::Int) =
     bch_lfsr_codeword(SOH, B1C_SOH_CODEWORD_LEN, B1C_SOH_BCH_WIDTH, B1C_SOH_BCH_TAP)
 
-# 63-entry PRN codeword table, indexed by PRN and materialised once at
-# precompile time. `try_sync` looks its codeword up from `state.prn` rather
-# than the cache holding one: everything PRN-specific lives in `state.prn`, so a
-# state rebound to another PRN with the same cache syncs on the new PRN.
+# PRN codeword table (63 entries), built at precompile time. `try_sync` indexes it by
+# `state.prn` rather than the cache holding one, so a state rebound to another PRN with
+# the same cache syncs on the new PRN.
 const B1C_PRN_CODEWORDS = ntuple(b1c_prn_codeword, 63)
 
-# 200-entry SOH codeword table, materialised once at precompile time.
+# SOH codeword table (200 entries), built at precompile time.
 const B1C_SOH_CODEWORDS = ntuple(i -> b1c_soh_codeword(i - 1), B1C_SOH_RANGE)
 
 # ---- Frame geometry (ICD §6.2.1, §6.2.2.4) ----------------------------------
@@ -121,14 +103,12 @@ const B1C_INTERLEAVER_COLS = 48
 const B1C_SF2_INFO_BITS = 600
 const B1C_SF3_INFO_BITS = 264
 
-# Staggered interleaver row assignment (ICD §6.2.2.4): the transmitter writes
-# rows 1,2 from subframe 2, row 3 from subframe 3, repeating until the 528
-# subframe-3 symbols fill 11 rows (row 33), then the last 3 rows with the
-# remaining 144 subframe-2 symbols; it reads the 36×48 array out by column.
-# After the receiver undoes the column read (`deinterleave(…, 36, 48)` gives
-# the array back in row-major order) these constants pick the rows back
-# apart: subframe 2 = rows {3k+1, 3k+2 : k=0..10} ∪ {34,35,36} in that
-# order, subframe 3 = rows {3k+3 : k=0..10}.
+# Staggered interleaver row assignment (ICD §6.2.2.4): the transmitter writes rows 1,2
+# from subframe 2, row 3 from subframe 3, repeating until the 528 subframe-3 symbols fill
+# 11 rows (row 33), then the last 3 rows with the remaining 144 subframe-2 symbols, and
+# reads the 36×48 array by column. After `deinterleave(…, 36, 48)` restores row-major
+# order, subframe 2 = rows {3k+1, 3k+2 : k=0..10} ∪ {34,35,36} in that order, subframe 3 =
+# rows {3k+3 : k=0..10}.
 const B1C_SF2_ROW_ORDER = (vcat([[3k + 1, 3k + 2] for k = 0:10]...)..., 34, 35, 36)
 const B1C_SF3_ROW_ORDER = ntuple(k -> 3k, 11)
 
@@ -199,11 +179,10 @@ end
 
 Decoded BeiDou B1C (B-CNAV1) navigation message data.
 
-Holds the subframe-2 system time, ephemeris, clock, and group-delay
-parameters (BDS-SIS-ICD-B1C-1.0 Figure 6-6, Tables 7-5 .. 7-8) plus the
-paged subframe-3 contents (Figures 6-8 .. 6-11). Semi-circle quantities are
-converted to radians on decode (multiplied by π); all fields are
-`Union{Nothing,…}` until first decoded.
+Holds the subframe-2 system time, ephemeris, clock, and group-delay parameters
+(BDS-SIS-ICD-B1C-1.0 Figure 6-6, Tables 7-5 .. 7-8) plus the paged subframe-3 contents
+(Figures 6-8 .. 6-11). Semi-circle quantities are converted to radians on decode; all
+fields are `Union{Nothing,…}` until first decoded.
 
 # Sync / timing (ICD §7.3)
 
@@ -216,11 +195,10 @@ converted to radians on decode (multiplied by π); all fields are
 # Issue of data (ICD §7.4)
 
   - `IODC::Int64`: Issue of data, clock (10 bits).
-  - `IODE::Int64`: Issue of data, ephemeris (8 bits). Not necessarily equal to
-    the 8 LSBs of `IODC`, even inside one CRC-protected subframe 2: §7.4.3 says
-    the two "may be different … during the update of the ephemeris and clock
-    correction data", and a user "shall use the preceding matched pair" until
-    they agree. `is_decoding_completed_for_positioning` enforces that match.
+  - `IODE::Int64`: Issue of data, ephemeris (8 bits). May differ from the 8 LSBs of
+    `IODC` even within one CRC-protected subframe 2: §7.4.3 says a user "shall use the
+    preceding matched pair" until they agree. `is_decoding_completed_for_positioning`
+    enforces the match.
 
 # Ephemeris (Figure 6-12/6-13, Table 7-8)
 
@@ -259,12 +237,10 @@ converted to radians on decode (multiplied by π); all fields are
   - `T_GD_B1Cp::Float64`: Group delay differential of the B1C pilot, relative to
     B3I (s).
 
-    A B1C receiver needs both: `a_f0` is referenced to B3I (§7.6.1), so reaching
-    the B1C data component means adding `T_GD_B1Cp` (B1C pilot vs B3I) and then
-    `ISC_B1Cd` (B1C data vs B1C pilot). They ride in the same CRC-protected
-    subframe 2 as the clock, so `is_decoding_completed_for_positioning` requires
-    both and a consumer never has to treat either as optional. `T_GD_B2ap` is
-    the B2a pilot's delta and is not required here.
+    The clock is referenced to B3I (§7.6.1), so reaching the B1C data component means
+    adding `T_GD_B1Cp` and then `ISC_B1Cd`. Both ride in the same CRC-protected subframe 2
+    as the clock, so `is_decoding_completed_for_positioning` requires them; `T_GD_B2ap` is
+    not required.
 
 # Subframe 3 page header (Figures 6-8 .. 6-11, §7.14-7.17)
 
@@ -285,18 +261,16 @@ Present on every defined page type, refreshed whenever any page decodes:
 
 # Subframe 3, page type 1 — ionosphere + BDT-UTC (Figures 6-16, 6-17)
 
-  - `α_bdgim_1 .. α_bdgim_9::Float64`: BDGIM ionospheric coefficients (TECu; Table 7-10 —
+  - `α_bdgim_1 .. α_bdgim_9::Float64`: BDGIM ionospheric coefficients (TECu; Table 7-10;
     the broadcast `α_bdgim_5` carries scale factor −2⁻³, applied on decode). The ICD
-    names them `α_1` … `α_9`; the `bdgim` qualifier is this package's, because the
-    Klobuchar `α_0` … `α_3` on `GPSLNAVData`, `GPSCNAVData`, `GPSCNAV2Data` and
-    `BeiDouDNAVData` are a different model with different units, and one name for
-    both would let generic code apply the wrong one without complaint.
+    names them `α_1` … `α_9`; the `bdgim` qualifier keeps them apart from the Klobuchar
+    `α_0` … `α_3` (different model and units) on `GPSLNAVData`, `GPSCNAVData`,
+    `GPSCNAV2Data` and `BeiDouDNAVData`, so generic code cannot apply the wrong one.
   - `A_0UTC,A_1UTC,A_2UTC::Float64`: BDT-UTC polynomial (s, s/s, s/s²).
   - `Δt_LS,Δt_LSF::Int64`: current *or past* and future leap-second counts (s;
     Table 7-20 — the past case is what selects Eq. (7-29) over (7-25)).
   - `t_0t::Int64`: UTC reference time of week (s); `WN_0t::Int64`: reference
     week. (The ICD writes `t_ot`/`WN_ot`.)
-    (The ICD writes `t_ot`/`WN_ot`.)
   - `WN_LSF::Int64`, `DN::Int64`: leap-second reference week/day (day 0..6).
 
 # Subframe 3, page type 3 — EOP + BGTO (Figures 6-19, 6-20)
@@ -573,18 +547,15 @@ $(TYPEDEF)
 
 Per-decoder cache for the BeiDou B1C signal.
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity 1872 symbols: one
-1800-symbol frame plus the next frame's 72-symbol subframe 1) and the two Aff3ct
-LDPC belief-propagation decoders for the binary images of the 64-ary
-LDPC(200,100) / LDPC(88,44) codes (subframe 2: K=600, N=1200; subframe 3: K=264,
-N=528 — bit counts of the `data/bcnv1_sf{2,3}.alist` matrices). The decoder
-objects are mutable Aff3ct handles; they are shared by reference through the
-otherwise-immutable [`GNSSDecoderState`](@ref).
+Holds the soft-symbol `CircularDeque{Float32}` (1872 symbols: one frame plus the next
+frame's subframe 1) and two Aff3ct LDPC belief-propagation decoders for the binary images
+of the 64-ary LDPC(200,100) / LDPC(88,44) codes (subframe 2: K=600, N=1200; subframe 3:
+K=264, N=528; from `data/bcnv1_sf{2,3}.alist`). The mutable Aff3ct handles are shared by
+reference through the otherwise-immutable [`GNSSDecoderState`](@ref).
 
-The rest is scratch, sized once so that a decoded frame allocates nothing: the
-four symbol buffers the deinterleave and the two LDPC decodes run through.
-Nothing here depends on the PRN — `try_sync` takes the PRN codeword from
-`state.prn` — so a cache can be carried over to a state for another satellite.
+The four symbol buffers for deinterleaving and LDPC decoding are scratch, sized once so a
+decoded frame allocates nothing. Nothing depends on the PRN (`try_sync` takes the codeword
+from `state.prn`), so a cache can be reused for another satellite.
 
 # Fields
 
@@ -666,16 +637,13 @@ $(TYPEDSIGNATURES)
 
 Seconds of week of the epoch the SOH stamps: `HOW·3600 + SOH·18`.
 
-B-CNAV1 splits the time of week across two subframes and two rates — the
-subframe-2 `HOW` counts whole hours of the week and the subframe-1 `SOH` counts
-the 18-second frames within the hour (BDS-SIS-ICD-B1C-1.0 §7.3, Table 7-2) — so
-neither field is a time of week on its own. Both must be present; `nothing`
-until they are.
+`HOW` (subframe 2) counts whole hours of the week and `SOH` (subframe 1) 18 s frames
+within the hour (BDS-SIS-ICD-B1C-1.0 §7.3, Table 7-2), so neither is a time of week alone.
+Returns `nothing` until both are present.
 
 The epoch is the leading edge of the *current* frame's subframe 1, which is what
-`num_bits_since_time_reference` is anchored to for this signal (see
-`validate_data` below); GPS L1C-D's TOI stamps the next frame instead, so its
-otherwise identical-looking reconstruction is anchored differently.
+`num_bits_since_time_reference` is anchored to (see `validate_data`); GPS L1C-D's TOI
+stamps the next frame instead.
 """
 function get_broadcast_time_of_week(data::BeiDouCNAV1Data)
     (isnothing(data.HOW) || isnothing(data.SOH)) && return nothing
@@ -685,15 +653,13 @@ end
 """
 $(TYPEDSIGNATURES)
 
-The BDT-to-`target` offset from subframe 3 page type 3, or `nothing` when this
-satellite has not broadcast one for `target`.
+The BDT-to-`target` offset from subframe 3 page type 3, or `nothing` when this satellite
+has not broadcast one for `target`.
 
-B1C is the one shape that keys its offsets by system: successive frames may
-carry sets for different systems, and each is filed under its `GNSS_ID` in
-`data.bgtos` rather than overwriting the last (see [`BeiDouB1CBGTO`](@ref)), so
-every system this satellite has ever broadcast an offset for stays answerable.
-Sets tagged `GNSS_ID == 0` ("not available", §7.13.1) are dropped at decode and
-never appear here.
+B1C keys its offsets by system: each set is filed under its `GNSS_ID` in `data.bgtos`
+(see [`BeiDouB1CBGTO`](@ref)) rather than overwriting the last,
+so every system ever broadcast stays answerable. Sets with `GNSS_ID == 0` ("not
+available", §7.13.1) are dropped at decode.
 """
 function get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, target::TimeSystem)
     bgtos = state.data.bgtos
@@ -715,21 +681,19 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV1Data}, target::Tim
     return nothing
 end
 
-# Positioning readiness: a validated SOH (time), the subframe-2 ephemeris +
-# clock set, and the subframe-3 health status `HS`.
+# Positioning readiness: a validated SOH (time), the subframe-2 ephemeris + clock set, and
+# the subframe-3 health status `HS`.
 #
-# IODE and IODC both live in the CRC-protected subframe 2, but must still be a
-# matched pair: during an update the two can disagree inside one valid block,
-# and ICD §7.4.3 directs the user to keep the preceding matched pair until
-# IODE equals the 8 LSBs of IODC again (same gate as `b2a.jl`).
+# IODE and IODC share the CRC-protected subframe 2 but must still be a matched pair:
+# during an update they can disagree inside one valid block, and ICD §7.4.3 directs the
+# user to keep the preceding matched pair until IODE equals the 8 LSBs of IODC (same gate
+# as `b2a.jl`).
 #
-# The group delays are required here, unlike on most signals (see the policy on
-# `is_decoding_completed_for_positioning` in src/gnss.jl): ICD §7.6 references
-# the clock parameter a0 to the B3I signal, so a B1C receiver must add
-# `T_GD_B1Cp` and `ISC_B1Cd` to reach its own component — a metre-scale bias —
-# and both ride in the same CRC-protected subframe 2 as the ephemeris and
-# clock, so requiring them costs no extra time to first fix. `T_GD_B2ap` is the
-# B2a pilot's delta and is deliberately not required.
+# The group delays are required here, unlike on most signals (policy on
+# `is_decoding_completed_for_positioning` in src/gnss.jl): ICD §7.6 references the clock
+# to B3I, so a B1C receiver must add `T_GD_B1Cp` and `ISC_B1Cd` (a metre-scale bias). Both
+# are in the same CRC-protected subframe 2, so requiring them costs no time to first fix.
+# `T_GD_B2ap` is the B2a pilot's delta and not required.
 function is_decoding_completed_for_positioning(data::BeiDouCNAV1Data)
     !isnothing(data.SOH) &&
         !isnothing(data.HS) &&
@@ -744,15 +708,13 @@ $(TYPEDSIGNATURES)
 
 Create a decoder state for BeiDou B1C (B-CNAV1) navigation messages.
 
-Wires up a [`GNSSDecoderState`](@ref) with a 1872-symbol soft-symbol buffer,
-the BCH(21,6) PRN / BCH(51,8) SOH subframe-1 codeword tables, and two Aff3ct
-LDPC belief-propagation decoders loaded from the committed binary-image
-`.alist` parity matrices in `data/` (see `scripts/generate_beidou_alist.jl`).
+Wires up a [`GNSSDecoderState`](@ref) with a 1872-symbol soft-symbol buffer, the BCH(21,6)
+PRN / BCH(51,8) SOH codeword tables, and two Aff3ct LDPC decoders loaded from the
+committed `.alist` matrices in `data/` (see `scripts/generate_beidou_alist.jl`).
 
-Like GPS L1C-D, the LDPC decode is flooding sum-product and therefore
-scale-sensitive: feed soft symbols whose magnitudes are confidence-weighted
-on a roughly LLR-like scale (`≈ 2·r/σ²`) for best performance at marginal
-SNR (see the soft-symbol convention note on [`decode!`](@ref)).
+As for GPS L1C-D, the flooding sum-product LDPC decode is scale-sensitive: feed
+confidence-weighted, roughly LLR-scaled soft symbols (`≈ 2·r/σ²`) for best marginal-SNR
+performance (see the soft-symbol note on [`decode!`](@ref)).
 
 # Arguments
 
@@ -791,15 +753,14 @@ function BeiDouB1CDecoderState(prn)
     )
 end
 
-# Dispatch from the GNSSSignals type. B-CNAV1 rides on the B1C data
-# component — `BeiDouB1C_D` — while `BeiDouB1C_P` is the dataless pilot.
+# Dispatch from the GNSSSignals type: B-CNAV1 rides on `BeiDouB1C_D`; `BeiDouB1C_P` is the
+# dataless pilot.
 function GNSSDecoderState(system::BeiDouB1C_D, prn)
     BeiDouB1CDecoderState(prn)
 end
 
-# The signal this decoder demodulates; signal metadata is forwarded through it
-# (see `src/gps/l1ca.jl`). Named for the data component that carries B-CNAV1,
-# mirroring how the Galileo E5a decoder is keyed to `GalileoE5aI`.
+# The signal this decoder demodulates; signal metadata is forwarded through it (see
+# `src/gps/l1ca.jl`). Keyed to the data component, as Galileo E5a is to `GalileoE5aI`.
 get_signal_type(::BeiDouB1CConstants) = BeiDouB1C_D
 
 """
@@ -807,10 +768,10 @@ $(TYPEDSIGNATURES)
 
 Reset the BeiDou B1C decoder state after a signal loss or reacquisition.
 
-Clears the in-flight sync state (soft-symbol buffer and SOH) and the
-validated data, while preserving the long-lived ephemeris/clock fields in
-`raw_data` so a receiver can re-use the satellite after reacquisition without
-re-decoding all of subframe 2. Mirrors the GPS L1C-D implementation.
+Clears the sync state (soft-symbol buffer, SOH and HOW) and validated data, keeping the
+other ephemeris/clock fields in `raw_data` so the satellite can be reused without
+re-decoding subframe 2; HOW is re-learned from the next decoded subframe 2. Mirrors GPS
+L1C-D.
 
 # Arguments
 
@@ -842,16 +803,15 @@ end
 
 # ---- Sync (ICD §6.2.2.1 / §7.3) ---------------------------------------------
 #
-# B-CNAV1 has no preamble; sync runs the two-codeword BCH match directly on
-# the soft-symbol deque, with SOH in the role GPS L1C-D gives the TOI: the
-# first 72 symbols must equal [PRN₂₁ | SOH₅₁(s)] and the last 72 (the next
-# frame's subframe 1) [PRN₂₁ | SOH₅₁((s+1) mod 200)], in a common polarity.
+# B-CNAV1 has no preamble; sync runs the two-codeword BCH match on the soft-symbol deque,
+# with SOH in GPS L1C-D's TOI role: the first 72 symbols must equal [PRN₂₁ | SOH₅₁(s)] and
+# the last 72 (next frame's subframe 1) [PRN₂₁ | SOH₅₁((s+1) mod 200)], in a common
+# polarity.
 #
-# Unlike the GPS TOI construction there is no MSB overlay, and the all-ones
-# word is not a codeword of either BCH code (both generator polynomials have
-# an odd number of terms), so a codeword's complement is never itself a
-# codeword: the polarity is determined unambiguously by the PRN segment —
-# even for SOH = 0, whose 51-symbol codeword is all zeros.
+# Unlike the TOI there is no MSB overlay, and the all-ones word is not a codeword of
+# either BCH code (both generator polynomials have an odd number of terms), so a
+# codeword's complement is never a codeword: the PRN segment alone fixes the polarity,
+# even for SOH = 0 (all-zero 51-symbol codeword).
 
 """
     B1CSF1Sync(SOH::Int, is_polarity_inverted::Bool)
@@ -866,23 +826,18 @@ struct B1CSF1Sync
     is_polarity_inverted::Bool
 end
 
-# Decode one 72-symbol subframe-1 window as [PRN₂₁ | SOH₅₁(SOH)] under a known
-# polarity (`flip`), returning the SOH it carries or `nothing`. Both fields are
-# read straight off the deque with the shared `pack_bits_lsb_first`
-# (src/gnss.jl), which packs bit 0 = first symbol, the codeword tables' order.
+# Decode one 72-symbol subframe-1 window as [PRN₂₁ | SOH₅₁(SOH)] under polarity `flip`,
+# returning the SOH or `nothing`. Fields are read off the deque with
+# `pack_bits_lsb_first` (src/gnss.jl; bit 0 = first symbol, the codeword tables' order).
 #
-# Both BCH fields are decoded to the nearest codeword within their correction
-# radius rather than matched exactly, which is what the ICD encodes them for
-# (see `B1C_PRN_MAX_ERRORS` / `B1C_SOH_MAX_ERRORS`). Neither step needs a
-# tie-break: `2t < d_min` holds for both codes, so at most one codeword can lie
-# within the radius, and the search can stop early only on an exact hit.
+# Both fields are decoded to the nearest codeword within the correction radius (see
+# `B1C_PRN_MAX_ERRORS` / `B1C_SOH_MAX_ERRORS`). No tie-break is needed: `2t < d_min`, so
+# at most one codeword lies within the radius; the search stops early only on an exact hit.
 #
-# The order of the two fields is what makes the SOH radius safe. Its 200
-# codewords are 24 apart from each other but only 19 from some *complement* of
-# another, so a search that had to consider both polarities could not use the
-# full radius of 11. It does not have to: the PRN field is decoded first, and
-# there its complement distance is 9 against a radius of 3, so a PRN match
-# settles the polarity before any SOH symbol is de-flipped.
+# Field order makes the SOH radius safe. SOH codewords are 24 apart from each other but
+# only 19 from some *complement* of another, so a search over both polarities could not
+# use the full radius of 11. The PRN field is decoded first (complement distance 9 against
+# radius 3), so a PRN match settles the polarity before any SOH symbol is de-flipped.
 function _match_sf1_soh(deque, start::Int, prn_codeword::UInt64, flip::Bool)
     prn_word = pack_bits_lsb_first(deque, start, B1C_PRN_CODEWORD_LEN)
     flip && (prn_word = ~prn_word & B1C_PRN_MASK21)
@@ -906,12 +861,12 @@ end
 """
     try_sync(state::GNSSDecoderState{<:BeiDouCNAV1Data}) -> Union{Nothing,B1CSF1Sync}
 
-Per-signal sync hook for BeiDou B1C. Hard-slices the leading 72 and trailing
-72 soft symbols of the 1872-symbol window and requires, under a common
-polarity: the own-PRN BCH(21,6) codeword at both subframe-1 positions, some
-SOH `s` in the leading BCH(51,8) segment, and `(s+1) mod 200` in the trailing
-one. Returns the [`B1CSF1Sync`](@ref) on a match (carrying the SOH and the
-detected polarity flip) or `nothing`.
+Per-signal sync hook for BeiDou B1C. Hard-slices the leading 72 and trailing 72 soft symbols
+of the 1872-symbol window and requires, under a common polarity: the own-PRN BCH(21,6)
+codeword at both subframe-1 positions, some SOH `s` in the leading BCH(51,8) segment, and
+`(s+1) mod 200` in the trailing one, each within its correction radius
+(`B1C_PRN_MAX_ERRORS`, `B1C_SOH_MAX_ERRORS`). Returns the [`B1CSF1Sync`](@ref) on a match
+(carrying the SOH and the detected polarity flip) or `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     deque = soft_buffer(state)
@@ -958,13 +913,12 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync::B1CS
     if !isnothing(prev_soh) && (prev_soh + 1) % B1C_SOH_RANGE != sync.SOH
         return reset_decoder_state!(state)
     end
-    # `SOH` advances with every locked frame, but `HOW` only refreshes when a
-    # subframe 2 clears LDPC+CRC — so carry the hour across the SOH wrap here,
-    # or the one frame in 200 that straddles an hour boundary with a noisy
-    # subframe 2 promotes a time of week exactly 3600 s low. A later decoded
-    # subframe 2 overwrites this with the broadcast value either way. The week
-    # rollover (HOW 167 → 0 while `WN` still awaits its subframe 2) inherits
-    # the same one-frame ambiguity every WN-carrying signal has at that instant.
+    # `SOH` advances with every locked frame but `HOW` only refreshes when a subframe 2
+    # clears LDPC+CRC, so carry the hour across the SOH wrap; otherwise the one frame in
+    # 200 that straddles an hour boundary with a noisy subframe 2 promotes a time of week
+    # exactly 3600 s low. A decoded subframe 2 overwrites this. The week crossover (HOW
+    # 167 → 0 with `WN` awaiting its subframe 2) has the same one-frame ambiguity as every
+    # WN-carrying signal.
     HOW = state.raw_data.HOW
     if !isnothing(prev_soh) && sync.SOH == 0 && !isnothing(HOW)
         HOW = (HOW + 1) % B1C_HOW_RANGE
@@ -973,9 +927,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync::B1CS
     raw_data = @split_nothing HOW BeiDouCNAV1Data(state.raw_data; SOH = sync.SOH, HOW)
     state = GNSSDecoderState(state; raw_data)
 
-    # Extract the 1728-symbol interleaved SF2+SF3 payload (symbols 73..1800),
-    # applying the polarity flip by negating soft symbols up front. All four
-    # working buffers live in the cache, so a decoded frame allocates nothing.
+    # Extract the 1728-symbol SF2+SF3 payload (symbols 73..1800), applying the polarity
+    # flip by negating soft symbols. All buffers live in the cache: no allocation.
     interleaved = copy_soft_window!(
         state.cache.payload,
         soft_buffer(state),
@@ -984,9 +937,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sync::B1CS
         state.is_polarity_inverted,
     )
 
-    # Undo the column-wise readout: `deinterleave!(…, 36, 48)` restores the
-    # 36×48 array in row-major order; the staggered row orders then split the
-    # rows back into the SF2 and SF3 codewords.
+    # Undo the column-wise readout (`deinterleave!(…, 36, 48)` restores row-major order),
+    # then split the rows into the SF2 and SF3 codewords by the staggered row orders.
     array_rows = deinterleave!(
         state.cache.array_rows,
         interleaved,
@@ -1021,9 +973,9 @@ end
 
 # ---- Subframe 2 bit-field extraction (ICD Figure 6-6, 6-12 .. 6-14) --------
 #
-# `word` is the 600-bit subframe-2 info block packed MSB-first into a
-# `UInt600` (bit 1 = MSB). Fields are read by 1-based start bit and length
-# through the shared `get_bits` / `get_twos_complement_num` helpers. Layout:
+# `word` is the 600-bit subframe-2 info block packed MSB-first into a `UInt600` (bit 1 =
+# MSB), read by 1-based start bit and length via `get_bits` / `get_twos_complement_num`.
+# Layout:
 # WN(13) HOW(8) IODC(10) IODE(8) EphemerisI(203) EphemerisII(222)
 # Clock(69) T_GD_B2ap(12) ISC_B1Cd(12) T_GD_B1Cp(12) Rev(7) CRC(24).
 
@@ -1103,14 +1055,12 @@ end
 
 # ---- Subframe 3 page parsing (ICD Figures 6-7 .. 6-11) ----------------------
 #
-# Every SF3 page is a 264-bit info block: bits 1-6 the PageID, then (for the
-# defined page types 1-4) a common header HS(2) DIF(1) SIF(1) AIF(1)
-# SISMAI(4) at bits 7-15, page-specific fields, and a trailing CRC-24Q. After
-# the CRC passes the 264 bits are packed MSB-first into a `UInt288`
-# (`get_bits(word, 264, …)` addresses the right-aligned logical bits); we
-# dispatch on the PageID and merge parsed fields into `raw_data`. The keyed
-# stores (almanacs, BGTOs) are overwritten in place: their preallocated spares
-# come from `state.cache.storage.raw` (see `writable_container`).
+# Every SF3 page is a 264-bit info block: PageID (bits 1-6), for defined page types 1-4 a
+# common header HS(2) DIF(1) SIF(1) AIF(1) SISMAI(4) at bits 7-15, page-specific fields,
+# and a trailing CRC-24Q. After the CRC passes, the bits are packed MSB-first into a
+# `UInt288` (`get_bits(word, 264, …)` addresses the right-aligned logical bits). Parsed
+# fields merge into `raw_data`; the keyed stores (almanacs, BGTOs) are overwritten in
+# place using spares from `state.cache.storage.raw` (see `writable_container`).
 
 function decode_b1c_subframe3(state::GNSSDecoderState{<:BeiDouCNAV1Data}, sf3_symbols)
     word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
@@ -1166,7 +1116,6 @@ function parse_b1c_sf3_page1(raw::BeiDouCNAV1Data, word::UInt288)
         raw;
         # BDGIM ionospheric coefficients (Figure 6-16, Table 7-10), bits 43-116:
         beidou_bdgim_block(word, word_length, 43)...,
-        # BDT-UTC time offset (Figure 6-17, Table 7-20).
         # BDT-UTC (Figure 6-17, Table 7-20), bits 117-213:
         beidou_bdt_utc_block(word, word_length, 117)...,
     )
@@ -1241,25 +1190,20 @@ end
 """
     validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
 
-Promote `raw_data` to `data` once the positioning set is complete (SOH,
-subframe 2, and the subframe-3 health status) and the ephemeris and clock sets
-are a matched pair. The per-frame BCH re-check and monotonic-SOH enforcement
-are performed inline by [`decode_sync_unit`](@ref); this hook publishes
-validated data and arms the streaming counter.
+Promote `raw_data` to `data` once the positioning set is complete (SOH, subframe 2,
+subframe-3 health status) and IODE/IODC match
+([`is_decoding_completed_for_positioning`](@ref)), publishing it and arming the streaming
+counter. The BCH match happens in `try_sync` on every frame, and
+SOH continuity in [`decode_sync_unit`](@ref).
 
-Promotion overwrites the preallocated validated containers with the raw ones
-(`publish_data`), so `data` never shares an almanac or BGTO store with
-`raw_data`, which later frames keep writing into.
+`publish_data` overwrites the preallocated validated containers, so `data` never shares
+an almanac or BGTO store with `raw_data`.
 
-Sharing one CRC-protected block does not make IODE and IODC a matched pair —
-see [`is_decoding_completed_for_positioning`](@ref), which carries that gate.
-
-The counter is armed at the epoch the SOH stamps — the leading edge of the
-*current* subframe 1 (ICD §7.3) — which at promotion time is
-`sync_unit_length + preamble_length` (1872 symbols = 18.72 s) behind the
-newest buffered symbol, as in `b2a.jl` and `b2b.jl`. GPS L1C-D's TOI stamps
-the *next* frame instead, so `gps/l1c_d.jl` anchors to `preamble_length`
-alone; using that anchor here would report the time 18 s early.
+The counter is armed at the epoch the SOH stamps, the leading edge of the *current*
+subframe 1 (ICD §7.3): `sync_unit_length + preamble_length` (1872 symbols = 18.72 s)
+behind the newest buffered symbol, as in `b2a.jl` and `b2b.jl`. GPS L1C-D's TOI stamps
+the *next* frame, so `gps/l1c_d.jl` anchors to `preamble_length` alone; that anchor here
+would report the time 18 s early.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
     if is_decoding_completed_for_positioning(state.raw_data)

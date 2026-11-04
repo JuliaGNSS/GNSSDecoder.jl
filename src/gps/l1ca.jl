@@ -5,7 +5,7 @@ LNAV message structure parameters for GPS L1 C/A signal decoding (IS-GPS-200).
 
 # Fields
 
-  - `sync_unit_length::Int`: Length of the sync unit in bits (300 bits = 10 words × 30 bits)
+  - `sync_unit_length::Int`: Length of the sync unit in symbols (300 symbols = 10 words × 30 bits)
   - `preamble::UInt8`: TLM word preamble pattern (10001011 binary, 0x8B)
   - `preamble_length::Int`: Length of preamble in bits (8)
   - `word_length::Int`: Length of each LNAV word in bits (30)
@@ -27,10 +27,8 @@ end
 Almanac data for one GPS satellite, decoded from a single LNAV almanac page
 (subframe 4 pages 2-5 / 7-10 for SV 25-32, subframe 5 pages 1-24 for SV 1-24).
 
-The almanac provides reduced-precision orbital and clock parameters for satellite
-acquisition planning and bootstrapping position fixes. Inclination is broadcast as a
-delta from the nominal GPS constellation value (`i_nominal = 0.3 semi-circles ≈ 54°`),
-which the decoder stores in `δi`.
+Reduced-precision orbital and clock parameters. Inclination is broadcast as a delta
+from the nominal `i_nominal = 0.3 semi-circles ≈ 54°`, stored in `δi`.
 
 # Fields
 
@@ -71,39 +69,36 @@ end
 
 Decoded GPS L1 C/A LNAV navigation message data.
 
-Contains ephemeris, clock correction, and satellite health parameters decoded from
-subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-200N.
+Ephemeris, clock correction, health, ionosphere, UTC and almanac parameters decoded
+from the GPS LNAV message (IS-GPS-200N).
 
 # Telemetry and Handover Word (TLM/HOW) Fields
 
   - `last_subframe_id::Int`: ID of the last decoded subframe (1-5)
-  - `integrity_status_flag::Bool`: Level of integrity assurance the URA carries
-    (IS-GPS-200N 20.3.3.1). `false` is the *legacy* level (4.42 x URA bounds the
-    instantaneous URE with probability 1 - 1e-5 per hour); `true` is the
-    *enhanced* level (5.73 x URA at 1 - 1e-8 per hour). A `true` therefore means
-    stronger integrity, not a fault - the fault indicator is `alert_flag`.
+  - `integrity_status_flag::Bool`: Integrity level of the URA (IS-GPS-200N 20.3.3.1).
+    `false` is *legacy* (4.42 x URA bounds the instantaneous URE with probability
+    1 - 1e-5 per hour); `true` is *enhanced* (5.73 x URA at 1 - 1e-8 per hour).
+    `true` is not a fault; the fault indicator is `alert_flag`.
   - `TOW::Int64`: Time of Week at the start of the next subframe (seconds, 0-604794 in steps of 6)
   - `alert_flag::Bool`: URA may be worse than indicated (0=OK, 1=alert)
   - `anti_spoof_flag::Bool`: Anti-spoofing mode (0=off, 1=on)
-  - `num_bits_since_time_reference_at_last_TOW::Int`: Symbol-counter value when `TOW` was
-    decoded
+  - `num_bits_since_time_reference_at_last_TOW::Int`: Time-reference counter reading when
+    `TOW` was decoded
 
 # Subframe 1 - Clock Correction Parameters
 
   - `WN::Int64`: GPS week number (modulo 1024)
   - `code_on_L2::Int64`: Code on L2 channel (0=invalid, 1=P-code, 2=C/A-code, 3=invalid)
   - `URA_index::Int64`: User Range Accuracy index, the raw 4-bit broadcast value
-    (IS-GPS-200N 20.3.3.3.1.3, Table 20-I). Not converted to metres: the index
-    is what the SV transmits, the table maps it to a *bound* rather than a
-    value, and index 15 means "no accuracy prediction available - use at own
-    risk", which a metre value cannot express.
+    (IS-GPS-200N 20.3.3.3.1.3, Table 20-I). Not converted to metres: the table maps
+    it to a *bound*, and index 15 ("no accuracy prediction available - use at own
+    risk") has no metre value.
   - `sv_health::Int64`: Raw 6-bit satellite health word (0 = healthy;
     IS-GPS-200N 20.3.3.3.1.4, Table 20-VIII)
-  - `IODC::Int64`: Issue of Data, Clock (10 bits, 0-1023). An integer because
-    every operation the ICD defines on it is arithmetic: `IODE == IODC & 0xff`
-    (20.3.4.4), inequality against the values of the preceding six hours, and
-    the Table 20-XII range tests that select the curve-fit interval
-    (`IODC < 240`, `240-247`, `248-255, 496`)
+  - `IODC::Int64`: Issue of Data, Clock (10 bits, 0-1023). An integer because the ICD
+    defines arithmetic on it: `IODE == IODC & 0xff` (20.3.4.4), inequality against
+    the preceding six hours, and the Table 20-XII range tests selecting the curve-fit
+    interval (`IODC < 240`, `240-247`, `248-255, 496`)
   - `L2_P_data_flag::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
   - `T_GD::Float64`: L1-L2 group delay correction (seconds)
   - `t_0c::Int64`: Clock reference time (seconds; the ICD writes `toc`)
@@ -122,7 +117,7 @@ subframes 1, 2, and 3 of the GPS LNAV message. All parameters conform to IS-GPS-
   - `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
   - `t_0e::Int64`: Ephemeris reference time (seconds; the ICD writes `toe`)
-  - `fit_interval::Bool`: Curve fit interval flag (0=4h, 1=>4h)
+  - `fit_interval::Bool`: Curve fit interval flag (0 = 4 h, 1 = more than 4 h)
   - `AODO::Int64`: Age of Data Offset for the NMCT (seconds; 5-bit broadcast
     count with an LSB of 900 s, so 27900 s means "NMCT unavailable")
 
@@ -173,8 +168,7 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     TOW::Union{Nothing,Int64} = nothing
     alert_flag::Union{Nothing,Bool} = nothing
     anti_spoof_flag::Union{Nothing,Bool} = nothing
-    # `num_bits_since_time_reference` when `TOW` was decoded; lets
-    # `is_plausible_TOW` predict the next legal TOW exactly (issue #82).
+    # `num_bits_since_time_reference` when `TOW` was decoded (see `is_plausible_TOW`, #82).
     num_bits_since_time_reference_at_last_TOW::Union{Nothing,Int} = nothing
 
     WN::Union{Nothing,Int64} = nothing
@@ -374,14 +368,12 @@ end
     )
 end
 
-# The default struct `==` falls back to `===` (reference equality), which fails
-# for the `Vector` and `Dictionary` fields — `sv_config`, the two
-# `sv_health_sf*_25` lists, `almanacs` — even when their contents match. Compare
+# The default `==` is `===`, which fails for the `Vector` and `Dictionary` fields
+# (`sv_config`, `sv_health_sf*_25`, `almanacs`) even when contents match. Compare
 # field-by-field (mirrors `GPSCNAVData`).
 #
-# This is equality of the *published* data only. Subframe voting compares
-# candidates with `compare_data` below, which weighs the ephemeris fields the
-# vote is about rather than every field, and is deliberately not this.
+# This is equality of the *published* data only; subframe voting uses `compare_data`
+# below, which weighs just the ephemeris fields.
 Base.:(==)(a::GPSLNAVData, b::GPSLNAVData) = fields_equal(a, b)
 
 struct VotedGPSLNAVData
@@ -389,11 +381,9 @@ struct VotedGPSLNAVData
     data::GPSLNAVData
 end
 
-# Needed on top of the `GPSLNAVData` method above, not implied by it: Julia's
-# default `==` for a struct is `===`, which compares fields with `===` rather
-# than dispatching to their `==`. So without this the wrapper — and hence
-# `GPSL1CACache`'s `old_data` vector, and hence the whole decoder state — would
-# still compare by reference.
+# Not implied by the `GPSLNAVData` method: the default `==` compares fields with
+# `===`, so without this the wrapper, `GPSL1CACache.old_data` and hence the whole
+# decoder state would compare by reference.
 Base.:(==)(a::VotedGPSLNAVData, b::VotedGPSLNAVData) = fields_equal(a, b)
 
 """
@@ -401,14 +391,11 @@ $(TYPEDEF)
 
 Per-decoder cache for the GPS L1 C/A signal.
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 300 + 8 = 308) and
-the data-voting cache used by `confirm_data`. The struct itself is immutable.
-Following the framework convention (see [`GNSSDecoderState`](@ref)), the only
-field mutated in place is the shared soft-symbol buffer; the `old_data` voting
-tally is rebuilt immutably and threaded through a new cache by `confirm_data`
-(mirroring the Galileo E1B / GPS L1C-D caches). The packed-bit buffer used for
-sync is *not* stored here — it is computed as a local value at sync time and
-threaded through the decode path (see `pack_buffer`).
+Holds the soft-symbol `CircularDeque{Float32}` (capacity 300 + 8 = 308) and the
+voting cache used by `confirm_data`. The struct is immutable; per the framework
+convention (see [`GNSSDecoderState`](@ref)) its buffers are mutated in place: the
+soft-symbol buffer, and the `old_data` tally by `confirm_data`. The packed-bit buffer
+for sync is a local value, not stored here (see `pack_buffer`).
 
 # Fields
 
@@ -430,14 +417,12 @@ struct GPSL1CACache <: AbstractGNSSCache
     storage::DataStorage{GPSLNAVData}
 end
 
-# Distinct IODC candidates the voting tally keeps at once. Broadcast data only
-# changes at an upload, so more than two live candidates means bit errors that
-# slipped past parity; eight leaves ample room before the weakest is evicted.
+# Distinct IODC candidates the voting tally keeps. Data only changes at an upload, so
+# more than two live candidates means bit errors that slipped past parity.
 const GPSL1CA_MAX_VOTE_CANDIDATES = 8
 
 function GPSL1CACache(old_data::Vector{VotedGPSLNAVData} = VotedGPSLNAVData[])
-    # Seeding `old_data` is how the tests start from a known tally (fresh, empty
-    # soft buffer).
+    # Seeding `old_data` lets tests start from a known tally.
     GPSL1CACache(
         CircularDeque{Float32}(308),
         sizehint!(copy(old_data), GPSL1CA_MAX_VOTE_CANDIDATES),
@@ -445,8 +430,8 @@ function GPSL1CACache(old_data::Vector{VotedGPSLNAVData} = VotedGPSLNAVData[])
     )
 end
 
-# Every container field at its ICD size: 32 SV configurations, 8 + 24 SV
-# health words and one almanac slot per SV ID (1-32).
+# Container fields at ICD size: 32 SV configs, 8 + 24 SV health words, an almanac
+# slot per SV ID (1-32).
 preallocated_data(::Type{GPSLNAVData}) = GPSLNAVData(;
     sv_config = zeros(Int64, 32),
     sv_health_sf4_25 = zeros(Int64, 8),
@@ -500,12 +485,11 @@ function is_subframe3_decoded(data::GPSLNAVData)
         !isnothing(data.i_dot)
 end
 
-# LNAV broadcasts the time of week as seconds outright (the 17-bit HOW count is
-# scaled by 6 at parse), so there is nothing to reconstruct.
+# `TOW` is already in seconds (the 17-bit HOW count is scaled by 6 at parse).
 get_broadcast_time_of_week(data::GPSLNAVData) = data.TOW
 
-# LNAV carries UTC parameters but no inter-GNSS offset: the GGTO arrived with
-# CNAV and CNAV-2 (see `gps/cnav.jl` and `gps/l1c_d.jl`).
+# LNAV carries UTC parameters but no inter-GNSS offset; GGTO is CNAV / CNAV-2 only
+# (`gps/cnav.jl`, `gps/l1c_d.jl`).
 get_time_offset(::GNSSDecoderState{<:GPSLNAVData}, ::TimeSystem) = nothing
 
 function is_decoding_completed_for_positioning(data::GPSLNAVData)
@@ -523,9 +507,8 @@ $(TYPEDSIGNATURES)
 
 Create a decoder state for GPS L1 C/A navigation messages.
 
-Initializes a [`GNSSDecoderState`](@ref) configured for decoding GPS L1 C/A
-(Coarse/Acquisition) civil navigation messages. The decoder extracts ephemeris,
-clock correction, and health data from the 50 bps LNAV data stream.
+Initializes a [`GNSSDecoderState`](@ref) for decoding GPS L1 C/A LNAV messages
+(50 bps): ephemeris, clock correction, health, ionosphere, UTC and almanac data.
 
 # Arguments
 
@@ -568,12 +551,9 @@ function GNSSDecoderState(system::GPSL1CA, prn)
     GPSL1CADecoderState(prn)
 end
 
-# The signal this decoder demodulates. Everything GNSSSignals knows about GPS
-# L1 C/A — its name and ids, its band, its 50 Hz nav-message rate, GPS Time — is
-# forwarded to the decoder state through this one mapping, so none of it is
-# restated here. Keyed on the constants type, which is 1:1 with the signal (and
-# is what tells apart decoders that share a data type — see the GPS CNAV note in
-# `src/gps/l5.jl`).
+# The signal this decoder demodulates. All GNSSSignals metadata (ids, band, nav-message
+# rate, GPS Time) is forwarded through this mapping. Keyed on the constants type, which
+# is 1:1 with the signal and tells apart decoders sharing a data type (see `src/gps/l5.jl`).
 get_signal_type(::GPSL1CAConstants) = GPSL1CA
 
 """
@@ -581,15 +561,15 @@ $(TYPEDSIGNATURES)
 
 Reset the GPS L1 decoder state after a signal loss or reacquisition.
 
-Clears the bit buffers and time-of-week (TOW) field while preserving other
-decoded ephemeris and clock data in `raw_data`. This allows faster recovery
-after brief signal outages without requiring a full re-decode of all subframes.
+Clears the bit buffers, the published `data` and `TOW`, while preserving other decoded
+ephemeris and clock data in `raw_data`, so a satellite is usable again after
+reacquisition without re-decoding all subframes; `is_sat_healthy` is `false` until the
+data is validated again.
 
 !!! note
 
-    The `WN` field is intentionally not reset as it is only broadcast
-    in subframe 1. This may cause brief errors if a GPS week rollover occurs
-    during a signal outage.
+    `WN` is deliberately not reset (it is only broadcast in subframe 1), so it may be
+    wrong briefly if a GPS week crossover occurs during an outage.
 
 # Arguments
 
@@ -610,21 +590,13 @@ state = decode!(state, new_bits, num_bits)
 
 # See Also
 
-    # Reset bit buffers and TOW data field, while keeping the
-
-  - [`GPSL1CADecoderState`](@ref): Create a fresh decoder state    # remaining parameters in raw_data. This allows a GNSSReceiver
-  - [`decode!`](@ref): Continue decoding after reset    # to use a satellite after a reacquisition without waiting for
+  - [`GPSL1CADecoderState`](@ref): Create a fresh decoder state
+  - [`decode!`](@ref): Continue decoding after reset
 """
 function reset_decoder_state!(state::GNSSDecoderState{<:GPSLNAVData})
-    # Reset bit buffers and TOW data field, while keeping the
-    # remaining parameters in raw_data. This allows a GNSSReceiver
-    # to use a satellite after a reacquisition without waiting for
-    # the decoding of all data fields.
-    # Note: WN is currently not reset as it is only
-    # broadcast in subframe 1 and thus may increase the time until
-    # the decoder is available again after an outage. This will
-    # lead to erroneous decoder information for a few seconds after
-    # reacquisition when a new GPS week started during a signal outage.
+    # Keep the other `raw_data` fields so a GNSSReceiver can use the satellite after
+    # reacquisition without waiting for all data. `WN` is kept too: it is only in
+    # subframe 1, and clearing it would delay availability (see docstring).
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
@@ -734,52 +706,42 @@ function can_decode_two_words(
     return state
 end
 
-# Largest legal truncated TOW count in a HOW: the count steps once per 6 s
-# subframe and rolls over after 100799 (IS-GPS-200N, Section 20.3.3.2), even
-# though the 17-bit field could hold counts up to 131071.
+# Largest legal TOW count in a HOW: steps once per 6 s subframe, rolls over after
+# 100799 (IS-GPS-200N, Section 20.3.3.2), though the 17-bit field holds up to 131071.
 const LNAV_MAX_TOW_COUNT = SECONDS_PER_WEEK ÷ 6 - 1
 
-# An LNAV subframe is 300 symbols long and lasts 6 s (50 bps).
+# An LNAV subframe is 300 symbols (6 s at 50 bps).
 const LNAV_SYMBOLS_PER_SUBFRAME = 300
 
-# Fallback bound for the TOW continuity screen while the time-reference counter is
-# not yet running (before the first data promotion, and after a decoder
-# reset): largest forward step accepted between the TOWs of two successfully
-# decoded HOWs, in seconds. Generous against real gaps — subframes are missed
-# when bit decoding stalls through a signal blockage or words fail parity —
-# while small enough (~0.1% of the week) to reject nearly every false-lock
-# TOW. Once the counter runs, the exact elapsed-symbols screen replaces this
-# bound. A genuine gap beyond it costs one discarded TOW; the next subframe
-# is accepted fresh.
+# Fallback bound for the TOW continuity screen while the time-reference counter is not
+# running (before the first data promotion, after a reset): largest forward step in seconds
+# accepted between two decoded HOWs. Generous against real gaps (blockage, parity failures)
+# yet small (~0.1% of the week) enough to reject nearly every false-lock TOW. A genuine gap
+# beyond it costs one discarded TOW; the next is accepted fresh.
 const LNAV_MAX_TOW_GAP = 600
 
 """
     is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_time_reference)
 
-Screen a truncated time-of-week count freshly decoded from a HOW against what
-a genuine frame lock can produce, before it is stored (in seconds) in
-`raw_data.TOW`. `prev_TOW` is the TOW held from an earlier subframe's HOW in
-seconds (`nothing` if none is held), `prev_TOW_anchor` the time-reference counter
-value recorded when it was decoded, and the last argument the counter's
-current value (`state.num_bits_since_time_reference`).
+Screen a TOW count freshly decoded from a HOW against what a genuine frame lock can produce,
+before it is stored (in seconds) in `raw_data.TOW`. `prev_TOW` is the TOW (seconds) from an
+earlier HOW (`nothing` if none), `prev_TOW_anchor` the time-reference counter value recorded
+then, and the last argument the current counter value
+(`state.num_bits_since_time_reference`).
 
-Frame sync is only a 16-bit preamble match, so a false lock on noise
-occasionally reaches this point with an arbitrary 17-bit count behind valid
-parity (issue #82). The screens, strongest available first:
+Frame sync is only a 16-bit preamble match, so a false lock on noise can reach this
+point with an arbitrary 17-bit count behind valid parity (issue #82). Returns `true` if
+the count passes the screens, strongest first:
 
   - The count must lie inside the week (at most `LNAV_MAX_TOW_COUNT`).
-  - When the time-reference counter ran across both HOW decodes, the elapsed symbols
-    predict the TOW exactly: `elapsed` must be a positive multiple of
-    `LNAV_SYMBOLS_PER_SUBFRAME` — genuine locks always sit on the same
-    300-symbol frame grid — and the TOW must have advanced by 6 s per
-    subframe (modulo `SECONDS_PER_WEEK`, so the week rollover passes). This
-    holds across arbitrarily long decode gaps (a blockage, a satellite
-    concealed for hours from a vector-tracking receiver) as long as tracking
-    keeps symbols flowing, and needs no tuning constant. Should the counter
-    desync from the frame grid (a symbol slip), one genuine TOW is discarded
-    and the next is accepted fresh against an empty history.
-  - Before the counter runs there is no elapsed-time reference, so fall back
-    to a bounded forward step of at most `LNAV_MAX_TOW_GAP` seconds.
+  - If the time-reference counter ran across both HOW decodes, the elapsed symbols predict
+    the TOW exactly: `elapsed` must be a positive multiple of `LNAV_SYMBOLS_PER_SUBFRAME`
+    (genuine locks sit on the same 300-symbol grid) and the TOW must have advanced by 6 s
+    per subframe (modulo `SECONDS_PER_WEEK`). This holds across arbitrarily long gaps as
+    long as symbols keep flowing, with no tuning constant. After a symbol slip, one genuine
+    TOW is discarded and the next accepted fresh.
+  - Without the counter, accept a forward step of at most `LNAV_MAX_TOW_GAP` seconds.
+    With no `prev_TOW`, any in-week count is accepted.
 """
 is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_time_reference) =
     is_plausible_TOW(
@@ -788,10 +750,10 @@ is_plausible_TOW(TOW_count, prev_TOW, prev_TOW_anchor, num_bits_since_time_refer
         elapsed_symbols(prev_TOW_anchor, num_bits_since_time_reference),
     )
 
-# The decoder calls this form: three `Union{Nothing,Int64}` arguments are eight
-# union-split combinations, past inference's limit, so the four-argument call
-# would dispatch dynamically — which `juliac --trim` rejects. Folding the two
-# counter readings into `elapsed` first leaves four.
+# The decoder calls this form: three `Union{Nothing,Int64}` arguments give eight
+# union-split combinations, past inference's limit, so the four-argument call would
+# dispatch dynamically, which `juliac --trim` rejects. Folding the two counter readings
+# into `elapsed` leaves four.
 function is_plausible_TOW(TOW_count, prev_TOW, elapsed)
     TOW_count <= LNAV_MAX_TOW_COUNT || return false
     isnothing(prev_TOW) && return true
@@ -809,18 +771,14 @@ function read_tlm_and_how_words(state, buffer)
         integrity_status_flag = get_bit(tlm_word, 30, 23)
         GPSLNAVData(state.raw_data; integrity_status_flag)
     end
-    # `raw_data.TOW` must only ever hold a TOW decoded from *this* subframe's
-    # HOW: `confirm_data` re-anchors `num_bits_since_time_reference` to
-    # it when promoting `raw_data`, so a TOW left over from an earlier subframe
-    # would shift the reported transmit time by a multiple of 6 s. Clear it
-    # (and its anchor) up front; a HOW that passes parity and the plausibility
-    # screen writes them back.
-    # Capture the concrete decoder state rather than three optional scalars.
-    # Capturing those scalars creates a different closure type for each
-    # Int/Nothing combination. A missing HOW after the time-reference counter starts
-    # then compiles a new can_decode_word specialization during live tracking
-    # (292 ms on an Orin, GNSSReceiver.jl#107). The state type is unchanged
-    # through cold start, valid HOWs, rejection, and recovery.
+    # `raw_data.TOW` must only hold a TOW from *this* subframe's HOW: `confirm_data`
+    # re-anchors `num_bits_since_time_reference` to it on promotion, so a stale TOW would
+    # shift the transmit time by a multiple of 6 s. Clear it (and its anchor) up front;
+    # a HOW passing parity and the plausibility screen writes them back.
+    # Capture the concrete state, not three optional scalars: those give a different
+    # closure type per Int/Nothing combination, and a missing HOW after the counter starts
+    # would compile a new `can_decode_word` specialization during live tracking (292 ms
+    # on an Orin, GNSSReceiver.jl#107).
     previous_state = state
     state = GNSSDecoderState(
         state;
@@ -869,12 +827,10 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             # Codes on L2 Channel
             code_on_L2 = get_bits(word3, 30, 11, 2)
 
-            # SV accuracy: the raw URA index, unconverted. Table 20-I maps it
-            # to a bound rather than a value, and index 15 is "no accuracy
-            # prediction available"; folding that to `nothing` made it
-            # indistinguishable from "subframe 1 not decoded yet" and kept such
-            # a satellite out of `is_decoding_completed_for_positioning`
-            # forever.
+            # Raw URA index, unconverted (Table 20-I maps it to a bound; 15 means "no
+            # accuracy prediction"). Mapping 15 to `nothing` was indistinguishable
+            # from "subframe 1 not decoded" and kept the SV out of
+            # `is_decoding_completed_for_positioning` forever.
             URA_index = Int64(get_bits(word3, 30, 13, 4))
 
             # Satellite Health
@@ -975,10 +931,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             # Reference Time ephemeris
             t_0e = get_bits(word10, 30, 1, 16) << 4
             fit_interval = get_bit(word10, 30, 17)
-            # IS-GPS-200N 20.3.3.4: "a five-bit unsigned term with an LSB scale
-            # factor of 900, a range from 0 to 31, and units of seconds", and
-            # 20.3.3.4.4's worked example reads "27900 seconds (i.e. binary
-            # 11111)". The raw count is not the value.
+            # Five-bit unsigned count with LSB 900 s, 0-31 (IS-GPS-200N 20.3.3.4); 11111
+            # is 27900 s (20.3.3.4.4). The raw count is not the value.
             AODO = Int64(get_bits(word10, 30, 18, 5)) * 900
             GPSLNAVData(state.raw_data; t_0e, fit_interval, AODO)
         end
@@ -1039,9 +993,9 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             GPSLNAVData(state.raw_data; IODE_subframe3, i_dot)
         end
     elseif subframe_id == 4
-        # Get page ID (SV ID) from word 3 bits 3-8. The closure's local must not
-        # share a name with `sv_page_id` below: a captured, reassigned variable
-        # is boxed as `Any`, which `juliac --trim` rejects.
+        # Page ID (SV ID) is word 3 bits 3-8. The closure's local must not share a name
+        # with `sv_page_id` below: a captured, reassigned variable is boxed as `Any`,
+        # which `juliac --trim` rejects.
         state = can_decode_word(state, buffer, 3) do word3, state
             page_id = get_bits(word3, 30, 3, 6)
             GPSLNAVData(state.raw_data; last_subframe_id = 4 + page_id * 100) # encode page in subframe_id temporarily
@@ -1060,7 +1014,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             state = decode_almanac_page(state, buffer, sv_page_id)
         end
     elseif subframe_id == 5
-        # Get SV ID from word 3 bits 3-8 (named apart from `sv_id`, as above)
+        # SV ID is word 3 bits 3-8 (named apart from `sv_id`, as above)
         state = can_decode_word(state, buffer, 3) do word3, state
             word3_sv_id = get_bits(word3, 30, 3, 6)
             GPSLNAVData(state.raw_data; last_subframe_id = 5 + word3_sv_id * 100) # encode SV ID temporarily
@@ -1295,15 +1249,14 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSLNAVData}, buffer, sv_
     # Word 7: bits 1-24 = Ω0 (24 bits)
     # Word 8: bits 1-24 = ω (24 bits)
     # Word 9: bits 1-24 = M0 (24 bits)
-    # Word 10: bits 1-8 = af0 MSBs (8 bits), bits 9-19 = af1 (11 bits), bits 20-22 = af0 LSBs (3 bits)
+    # Word 10: bits 1-8 = af0 MSBs (8 bits), bits 9-19 = af1 (11 bits),
+    #          bits 20-22 = af0 LSBs (3 bits)
 
     if sv_id == 0
         # Dummy SV, skip decoding
         return state
     end
 
-    # Decode all almanac words and build the almanac entry
-    # We need to decode all words and check parity for each
     word3 = get_word(buffer, state, 3)
     word4 = get_word(buffer, state, 4)
     word5 = get_word(buffer, state, 5)
@@ -1365,7 +1318,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSLNAVData}, buffer, sv_
         return state
     end
 
-    # Apply bit complement if needed based on prev word bit 30
+    # Complement per the previous word's bit 30
     word3_comp = get_bit(prev_word2, 30, 30) ? ~word3 : word3
     word4_comp = get_bit(prev_word3, 30, 30) ? ~word4 : word4
     word5_comp = get_bit(prev_word4, 30, 30) ? ~word5 : word5
@@ -1448,15 +1401,13 @@ function compare_data(data::GPSLNAVData, new_data::GPSLNAVData)
         data.i_dot == new_data.i_dot
 end
 
-# Promote `raw_data` to validated `data`, re-anchoring the time-reference counter to
-# the current subframe (`preamble_length` symbols past its boundary). The TOW
-# anchor must be rebased into the same counting frame: promotion only happens
-# with a TOW decoded in this very subframe (`read_tlm_and_how_words` clears
-# stale ones), so the anchor being rebased equals the counter being replaced.
+# Promote `raw_data` to validated `data`, re-anchoring the time-reference counter to the
+# current subframe (`preamble_length` symbols past its boundary). The TOW anchor is
+# rebased into the same frame: promotion only happens with a TOW decoded in this
+# subframe (`read_tlm_and_how_words` clears stale ones).
 #
-# `data` gets its own copy of every container (`publish_data` overwrites the
-# preallocated validated ones), so later subframes written into `raw_data`'s
-# containers do not leak into `data` before they are voted on.
+# `data` gets its own copy of every container (`publish_data`), so later subframes
+# written into `raw_data`'s containers do not leak into `data` before being voted on.
 function promote_data(state)
     promoted = GPSLNAVData(
         state.raw_data;
@@ -1474,10 +1425,10 @@ end
 function confirm_data(state, max_vote = 20)
     old_data = state.cache.old_data
 
-    # Check if any entry has same IODC
+    # Any entry with the same IODC?
     has_same_iodc = any(e.data.IODC == state.raw_data.IODC for e in old_data)
 
-    # Find matching entry (same IODC and same data)
+    # Entry with same IODC and same data
     matching_idx = findfirst(old_data) do entry
         entry.data.IODC == state.raw_data.IODC && compare_data(entry.data, state.raw_data)
     end
@@ -1488,8 +1439,8 @@ function confirm_data(state, max_vote = 20)
             replace_vote_candidates!(old_data, VotedGPSLNAVData(0, state.raw_data))
             return promote_data(state)
         end
-        # Same IODC with differing data, or a new IODC while data is already in
-        # use - add as new entry, don't use data yet
+        # Same IODC with differing data, or a new IODC while data is in use: add as a
+        # new entry, don't publish yet
         push_vote_candidate!(
             old_data,
             VotedGPSLNAVData(0, state.raw_data),
@@ -1498,11 +1449,11 @@ function confirm_data(state, max_vote = 20)
         return GNSSDecoderState(state; raw_data = GPSLNAVData())
     end
 
-    # Found matching entry - upvote it
+    # Upvote the match
     curr_score = old_data[matching_idx].vote
     new_vote = increment_voting(curr_score, max_vote)
 
-    # Find best score among entries with same IODC
+    # Best score among entries with same IODC
     best_score = 0
     for entry in old_data
         if entry.data.IODC == state.raw_data.IODC
@@ -1511,14 +1462,14 @@ function confirm_data(state, max_vote = 20)
     end
 
     if best_score > curr_score
-        # Another entry has higher score - reject this data
+        # Another entry leads: reject
         old_data[matching_idx] = VotedGPSLNAVData(new_vote, state.raw_data)
         return GNSSDecoderState(state; raw_data = GPSLNAVData())
     end
 
-    # This entry has the best (or tied best) score - use the data
+    # Best (or tied) score: publish
     if new_vote == max_vote && length(old_data) > 1
-        # Max votes reached - keep only this entry
+        # Max votes: keep only this entry
         replace_vote_candidates!(old_data, VotedGPSLNAVData(new_vote, state.raw_data))
     else
         old_data[matching_idx] = VotedGPSLNAVData(new_vote, state.raw_data)
@@ -1542,13 +1493,12 @@ $(TYPEDSIGNATURES)
 
 Check if the GPS satellite is healthy and usable for positioning.
 
-Examines the 6-bit satellite health field (`sv_health`) from subframe 1. A satellite
-is considered healthy only if all health bits are zero (`"000000"`).
+Healthy only if the 6-bit `sv_health` field of subframe 1 is zero (`"000000"`).
 
 !!! warning
 
-    This function requires that subframe 1 has been successfully decoded.
-    Check that `state.data.sv_health` is not `nothing` before relying on this result.
+    Requires subframe 1 to be decoded; check that `state.data.sv_health` is not
+    `nothing` before relying on this result.
 
 # Arguments
 

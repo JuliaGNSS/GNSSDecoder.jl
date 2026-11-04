@@ -1,51 +1,39 @@
 # Shared GPS CNAV core — IS-GPS-200N §30 ≡ IS-GPS-705J §20.3.3.
 #
-# The CNAV navigation message is defined once and broadcast identically on two
-# signals: GPS L2C (on the L2 CM code, IS-GPS-200N §30) and GPS L5I (on the L5
-# in-phase component, IS-GPS-705J §20.3). Both carry the *same* 300-bit
-# message — same 8-bit preamble `10001011`, same rate-1/2 constraint-length-7
-# (K=7) non-systematic convolutional (NSC) FEC (G1 = 0o171, G2 = 0o133), same
-# 24-bit CRC-24Q over the whole message, same per-message-type bit layouts
-# (MT10/11, 12–15, 30–37, 40), same π and the same `TOW × 6` scaling. The only
-# differences are in the *signal* layer (L2C: 25 bps → 50 sps, 12-second
-# messages; L5I: 50 bps → 100 sps, 6-second messages) and in which health bit
-# `is_sat_healthy` reports — neither of which affects this symbol-domain
-# decoder (the message is always 600 symbols, the sync window 616). This file
-# therefore holds everything shared; `gps/l5.jl` and `gps/l2c.jl` are thin
-# signal layers (their own `*Constants` type, decoder-state constructor, and
-# `is_sat_healthy`). gnss-sdr and pocketsdr likewise reuse one CNAV decoder
-# for both signals.
+# CNAV is broadcast identically on GPS L2C (L2 CM code, IS-GPS-200N §30) and GPS L5I
+# (IS-GPS-705J §20.3): the same 300-bit message, 8-bit preamble `10001011`, rate-1/2
+# K=7 NSC FEC (G1 = 0o171, G2 = 0o133), CRC-24Q over the whole message, per-message-type
+# layouts (MT10/11, 12–15, 30–37, 40), π and `TOW × 6` scaling. The differences are in
+# the signal layer (L2C: 25 bps → 50 sps, 12 s messages; L5I: 50 bps → 100 sps, 6 s
+# messages) and in the health bit `is_sat_healthy` reports; neither affects this
+# symbol-domain decoder (message 600 symbols, sync window 616). `gps/l5.jl` and
+# `gps/l2c.jl` are thin signal layers (`*Constants`, decoder-state constructor,
+# `is_sat_healthy`).
 #
-# Field offsets/scales are cited to IS-GPS-705J figures/tables below; the
-# identical definitions appear in IS-GPS-200N §30 (e.g. Fig 30-1 ≡ Fig 20-1).
+# Field offsets/scales are cited to IS-GPS-705J; the same definitions appear in
+# IS-GPS-200N §30 (e.g. Fig 30-1 ≡ Fig 20-1).
 #
-# Unlike Galileo E1B pages, the CNAV FEC is convolved *continuously* across
-# message boundaries — there are no tail bits and no encoder reset — so the
-# preamble is only visible after FEC decoding and AFF3CT's tail-terminated
-# `ConvViterbiDecoder` does not apply. Message sync therefore follows the
-# generic streaming framework in `src/gnss.jl` with a window-decoding
-# `try_sync`: the soft-symbol `CircularDeque` is sized to one full message
-# (600 symbols) plus the 16-symbol encoding of the *next* message's start
-# (616 total); each sync attempt Viterbi-decodes the whole window on the raw
-# `Float32` LLRs and requires the preamble at *both ends* of the decoded
-# window (in either polarity, mirroring `detect_preamble_pair`) plus a clean
-# CRC-24Q before locking. Symbol-pair phase ambiguity needs no special
-# handling — a misaligned window simply fails to sync and slides one symbol.
+# Unlike Galileo E1B pages, the CNAV FEC is convolved *continuously* across message
+# boundaries (no tail bits, no encoder reset), so the preamble is visible only after FEC
+# decoding and AFF3CT's tail-terminated `ConvViterbiDecoder` does not apply. Sync follows
+# the generic streaming framework in `src/gnss.jl` with a window-decoding `try_sync`: the
+# soft-symbol `CircularDeque` holds one message (600 symbols) plus the 16-symbol encoding
+# of the *next* message's start (616). Each attempt Viterbi-decodes the whole window on
+# the raw `Float32` LLRs and requires the preamble at *both ends* (either polarity,
+# as in `detect_preamble_pair`) and a clean CRC-24Q. Symbol-pair phase ambiguity needs
+# no handling: a misaligned window fails to sync and slides one symbol.
 
 """
     GPSCNAVConstants{S} <: AbstractGNSSConstants
 
-CNAV message structure parameters shared by the GPS CNAV
-signals. The CNAV message is identical on GPS L5I and GPS L2C, so the field
-values are identical too; the phantom signal tag `S` (`:GPSL5I` / `:GPSL2CM`)
-exists only so [`is_sat_healthy`](@ref) can dispatch on the signal (L5I reports
-the L5 health bit, L2C the L2 health bit). The per-signal aliases
-[`GPSL5IConstants`](@ref) and [`GPSL2CMConstants`](@ref) fix `S`.
+CNAV message structure parameters shared by GPS L5I and L2C, with identical field
+values. The phantom signal tag `S` (`:GPSL5I` / `:GPSL2CM`) only lets
+[`is_sat_healthy`](@ref) dispatch (L5I reports the L5 health bit, L2C the L2 one). The
+aliases [`GPSL5IConstants`](@ref) and [`GPSL2CMConstants`](@ref) fix `S`.
 
-The message is modelled through the generic streaming framework:
-`sync_unit_length` is the 600-symbol message that is drained once
-decoded, and `preamble_length` is the 16-symbol encoding of the *next*
-message's preamble retained at the tail of the sync window.
+In the generic streaming framework, `sync_unit_length` is the 600-symbol message drained
+once decoded and `preamble_length` is the 16-symbol encoding of the *next* message's
+preamble retained at the tail of the sync window.
 
 # Fields
 
@@ -53,9 +41,8 @@ $(TYPEDFIELDS)
 
 # Reference
 
-IS-GPS-705J §20.3.3 (L5I CNAV data) ≡ IS-GPS-200N §30.3.2 (L2C CNAV data) — the
-same message on the two signals. The signal layers that differ are IS-GPS-705J
-§3.3.3.1 (L5 data modulation, 100 sps) and IS-GPS-200N §3.3.3.1 (L2 CM, 50 sps).
+IS-GPS-705J §20.3.3 (L5I) ≡ IS-GPS-200N §30.3.2 (L2C). Signal layers: IS-GPS-705J
+§3.3.3.1 (L5, 100 sps) and IS-GPS-200N §3.3.3.1 (L2 CM, 50 sps).
 """
 Base.@kwdef struct GPSCNAVConstants{S} <: AbstractGNSSConstants
     """
@@ -92,10 +79,9 @@ const CNAV_PREAMBLE = 0b10001011
 One satellite's reduced-almanac packet from CNAV message types 12 or 31
 (IS-GPS-705J Figure 20-16, Table 20-VI).
 
-The reduced almanac gives a very coarse ephemeris for satellite selection.
-Message type 12 carries seven 31-bit packets, message type 31 four; each
-packet is complete in itself, so `GPSCNAVData.reduced_almanacs` entries are
-inserted whole, keyed by `PRN_a` (mirrors [`GPSL1C_DReducedAlmanac`](@ref)).
+A very coarse ephemeris for satellite selection. Message type 12 carries seven 31-bit
+packets, type 31 four; each is complete, so `GPSCNAVData.reduced_almanacs` entries are
+inserted whole, keyed by `PRN_a` (as [`GPSL1C_DReducedAlmanac`](@ref)).
 
 Reference values to apply (Table 20-VI footnotes): `e = 0`,
 `δi = +0.0056 semi-circles` (so `i = 55°`),
@@ -135,11 +121,10 @@ end
 One satellite's Midi almanac from CNAV message type 37 (IS-GPS-705J
 Figure 20-10, Table 20-V).
 
-The Midi almanac is a medium-precision single-SV almanac, complete in a
-single message, so `GPSCNAVData.midi_almanacs` entries are inserted whole,
-keyed by `PRN_a` (mirrors [`GPSL1C_DMidiAlmanac`](@ref)). Inclination is `δi`
-relative to `i₀ = 0.30 semi-circles` (54°); semi-circle fields are converted
-to radians on decode.
+A medium-precision single-SV almanac, complete in one message, so
+`GPSCNAVData.midi_almanacs` entries are inserted whole, keyed by `PRN_a` (as
+[`GPSL1C_DMidiAlmanac`](@ref)). Inclination is `δi` relative to `i₀ = 0.30 semi-circles`
+(54°); semi-circle fields are converted to radians on decode.
 
 # Fields
 
@@ -280,11 +265,10 @@ Base.@kwdef struct GPSCNAVIntegritySupportMessage
     mask::UInt64
 end
 
-# Slots of the keyed stores in `GPSCNAVData`, one per value the ICD key field
-# can take. Almanac packets (message types 12, 31, 37) carry a 6-bit PRN_a
-# (1-63, 0 = empty packet); differential-correction packets (message types 13,
-# 14, 34) an 8-bit PRN ID (0-254, all-ones = empty packet), IS-GPS-705J
-# Figures 20-10 / 20-16 / 20-17.
+# Slots of the keyed stores in `GPSCNAVData`, one per ICD key value. Almanac packets
+# (message types 12, 31, 37) have a 6-bit PRN_a (1-63, 0 = empty); differential-correction
+# packets (13, 14, 34) an 8-bit PRN ID (0-254, all-ones = empty), IS-GPS-705J Figures
+# 20-10 / 20-16 / 20-17.
 const CNAV_ALMANAC_SLOTS = 64
 const CNAV_DC_SLOTS = 256
 
@@ -296,15 +280,10 @@ const CNAV_MT36_TEXT_CHARS = 18
 """
     GPSCNAVData
 
-Decoded GPS CNAV navigation message data, shared by GPS L5I and GPS L2C (the
-CNAV message is identical on both signals).
-
-Holds the parameters decoded from CNAV message types 10, 11, 12, 13, 14, 15,
-30-37, and 40 (IS-GPS-705J §20.3.3 ≡ IS-GPS-200N §30.3.3). The decoder fills
-fields incrementally as the corresponding message types are received.
-Field-naming follows [`GPSCNAV2Data`](@ref) (CNAV-2 broadcasts nearly the same
-parameter set): semi-circle quantities are converted to radians on decode
-(multiplied by π), all `Union{Nothing,…}` until first decoded.
+Decoded GPS CNAV data, shared by GPS L5I and L2C: message types 10, 11, 12, 13, 14, 15,
+30-37 and 40 (IS-GPS-705J §20.3.3 ≡ IS-GPS-200N §30.3.3), filled incrementally as they
+arrive. Naming follows [`GPSCNAV2Data`](@ref); semi-circle quantities are converted to
+radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
 
 # Header (every message)
 
@@ -319,9 +298,8 @@ parameter set): semi-circle quantities are converted to radians on decode
     health (false = OK).
   - `URA_ED_index::Int64`: Ephemeris URA index (signed).
   - `URA_NED0_index::Int64`, `URA_NED1_index::Int64`, `URA_NED2_index::Int64`:
-    Non-elevation-dependent accuracy indices — NED Accuracy, NED Accuracy
-    Change, and NED Accuracy Change Rate. Not three interchangeable clock URAs:
-    they are the terms of one time-dependent NED bound.
+    Non-elevation-dependent accuracy indices: NED Accuracy, Change and Change Rate.
+    Not interchangeable clock URAs but the terms of one time-dependent NED bound.
 
 # Ephemeris (message types 10 + 11, Table 20-I)
 
@@ -354,12 +332,11 @@ parameter set): semi-circle quantities are converted to radians on decode
 
 # Group delay / ISC + ionosphere (message type 30, Tables 20-III / 20-IV)
 
-These fields are carried **only** by message type 30, which is broadcast far
-less often than the clock/ephemeris (max interval 288 s on L2C / 144 s on L5,
-vs 48 s / 24 s — IS-GPS-200 Table 30-XII, IS-GPS-705J Table 20-XII). They may
-therefore still be `nothing` even once positioning is otherwise ready:
-`is_decoding_completed_for_positioning` deliberately does not wait for them, so
-code that applies these corrections must handle `nothing` (treat as 0).
+Carried **only** by message type 30, broadcast far less often than clock/ephemeris
+(max interval 288 s on L2C / 144 s on L5, vs 48 s / 24 s; IS-GPS-200 Table 30-XII,
+IS-GPS-705J Table 20-XII). They may still be `nothing` when positioning is otherwise
+ready: `is_decoding_completed_for_positioning` deliberately does not wait for them, so
+code applying these corrections must handle `nothing` (treat as 0).
 
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
@@ -387,20 +364,17 @@ code that applies these corrections must handle `nothing` (treat as 0).
   - `A_0GGTO,A_1GGTO,A_2GGTO::Float64`: GPS/GNSS time-offset polynomial (the ICD
     writes `A0GGTO`/`A1GGTO`/`A2GGTO`).
   - `t_GGTO::Int64`, `WN_GGTO::Int64`: GGTO reference time/week.
-  - `GNSS_ID::Int64`: GNSS Type ID — 0 no data available, 1 Galileo, 2 GLONASS,
-    3-7 reserved. The ICD directs that a reserved code be read as "the GGTO data
-    to which it applies is presently unusable", so there is no BeiDou code to
-    decode: IS-GPS-200N §30.3.3.8.1 and IS-GPS-705J §20.3.3.8.1 both stop at
-    GLONASS.
+  - `GNSS_ID::Int64`: GNSS Type ID: 0 no data available, 1 Galileo, 2 GLONASS,
+    3-7 reserved (to be read as "the GGTO data to which it applies is presently
+    unusable"). There is no BeiDou code: IS-GPS-200N §30.3.3.8.1 and IS-GPS-705J
+    §20.3.3.8.1 stop at GLONASS.
 
 # Almanacs / corrections / text — keyed stores (`nothing` until first decoded)
 
-The keyed stores are [`SlotDictionary`](@ref)s with
-one preallocated slot per key the ICD field can hold, iterated in ascending
-`PRN_a` order. The decoder **overwrites** them in place (see
-[`decode!`](@ref)): each packet overwrites its PRN's slot of the store in
-`raw_data`, and each promotion to `data` overwrites the separate validated
-stores with the raw ones.
+The keyed stores are [`SlotDictionary`](@ref)s with one preallocated slot per ICD key
+value, iterated in ascending `PRN_a` order. The decoder **overwrites** them in place
+(see [`decode!`](@ref)): each packet overwrites its PRN's slot in `raw_data`, and each
+promotion to `data` overwrites the separate validated stores.
 
   - `reduced_almanacs::SlotDictionary{GPSCNAVReducedAlmanac,64}` (message types
     12, 31; 6-bit `PRN_a`, 1-63).
@@ -694,9 +668,8 @@ end
     )
 end
 
-# The default struct `==` falls back to `===` (reference equality), which fails
-# for the mutable `SlotDictionary` fields even when their contents match. Compare
-# field-by-field (mirrors `GPSCNAV2Data`).
+# The default `==` is `===`, which fails for the mutable `SlotDictionary` fields even
+# when contents match. Compare field-by-field (as `GPSCNAV2Data`).
 Base.:(==)(a::GPSCNAVData, b::GPSCNAVData) = fields_equal(a, b)
 
 """
@@ -704,12 +677,11 @@ $(TYPEDEF)
 
 Per-decoder cache shared by the GPS CNAV signals (GPS L5I and L2C).
 
-Holds the soft-symbol `CircularDeque{Float32}` (capacity = 616 = 600 message
-symbols + 16 next-message preamble symbols) plus reusable scratch for the
-window-decoding Viterbi that undoes the K=7 NSC FEC in `try_sync`. Because
-`try_sync` runs a full 616-symbol decode on *every* incoming symbol until it
-locks, the window copy and the Viterbi metric/decision/output buffers are
-preallocated here and reused rather than reallocated (~20 KB) per symbol.
+Holds the soft-symbol `CircularDeque{Float32}` (capacity 616 = 600 message symbols + 16
+next-message preamble symbols) plus scratch for the window-decoding Viterbi in
+`try_sync`. Since `try_sync` runs a full 616-symbol decode on *every* symbol until it
+locks, the window copy and Viterbi metric/decision/output buffers are preallocated
+(~20 KB per symbol otherwise).
 
 The Viterbi buffers and the `storage` containers are **overwritten** in place
 by [`decode!`](@ref); nothing on the decode path allocates.
@@ -798,25 +770,18 @@ function is_ephemeris_decoded(data::GPSCNAVData)
 end
 
 function is_clock_correction_decoded(data::GPSCNAVData)
-    # SV clock polynomial from the shared clock block of ANY of message
-    # types 30-37 (`parse_clock_block`). Do NOT require T_GD here: the
-    # inter-signal group delay is broadcast *only* in message type 30, so
-    # gating positioning-readiness on it couples validation to MT30
-    # specifically and stalls on CNAV streams that carry the clock via
-    # MT31-37 without MT30.
+    # SV clock polynomial from the clock block of ANY of message types 30-37
+    # (`parse_clock_block`). Do NOT require T_GD: it is broadcast *only* in MT30, so
+    # requiring it would stall CNAV streams that carry the clock via MT31-37 without MT30.
     #
-    # The ICDs make T_GD structurally infrequent relative to the data needed
-    # for a fix. Maximum broadcast intervals (IS-GPS-200 Table 30-XII for
-    # L2C, IS-GPS-705J Table 20-XII for L5):
+    # Maximum broadcast intervals (IS-GPS-200 Table 30-XII for L2C, IS-GPS-705J
+    # Table 20-XII for L5):
     #                        ephemeris (MT10/11)   clock (MT30-37)   T_GD (MT30 only)
     #   L2C (IS-GPS-200)          48 s                 48 s               288 s
     #   L5  (IS-GPS-705J)         24 s                 24 s               144 s
-    # i.e. T_GD is guaranteed only ~6x less often than the clock on both
-    # signals. Requiring it would make a receiver wait up to 288 s (L2C) /
-    # 144 s (L5) after it already has a complete ephemeris + clock, on a
-    # fully spec-compliant SV. T_GD is a ~metre-level inter-signal
-    # correction: apply it downstream when present, but never block a fix on
-    # it.
+    # T_GD is guaranteed only ~6x less often than the clock, so requiring it would delay
+    # a fix by up to 288 s (L2C) / 144 s (L5) on a spec-compliant SV. It is a ~metre-level
+    # correction: apply it downstream when present, never block a fix on it.
     !isnothing(data.t_0c) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
@@ -832,8 +797,8 @@ $(TYPEDSIGNATURES)
 The GPS/GNSS time offset from message type 35, if this satellite is currently
 broadcasting one for `target`.
 
-`GNSS_ID` names the system the single broadcast set refers to — 0 none,
-1 Galileo, 2 GLONASS, 3 BeiDou (Table 20-XI); see `gps_ggto_offset`.
+`GNSS_ID` names the system the single broadcast set refers to: 0 no data, 1 Galileo,
+2 GLONASS, 3-7 reserved (unusable; IS-GPS-705J §20.3.3.8.2); see `gps_ggto_offset`.
 """
 get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target)
@@ -847,11 +812,9 @@ $(TYPEDSIGNATURES)
 
 Reset a GPS CNAV decoder state after a signal loss or reacquisition.
 
-Clears the soft-symbol buffer and the time-of-week (TOW) field while
-preserving the remaining decoded ephemeris and clock data in `raw_data`, so a
-`GNSSReceiver` can re-use the satellite after reacquisition without
-re-decoding all message types. Mirrors the semantics of the GPS L1 C/A and
-Galileo E1B implementations.
+Clears the soft-symbol buffer and time-of-week (TOW) but keeps the remaining decoded
+ephemeris and clock data in `raw_data`, so a `GNSSReceiver` can re-use the satellite
+after reacquisition. Same semantics as GPS L1 C/A and Galileo E1B.
 
 # Arguments
 
@@ -880,21 +843,18 @@ end
 
 # ---- Viterbi ----------------------------------------------------------------
 #
-# The CNAV FEC is the rate-1/2, K=7 NSC code with G1 = 0o171, G2 = 0o133
-# (IS-GPS-705J §3.3.3.1.1, Figure 3-7) — the same code Galileo E1B uses, but
-# convolved continuously across message boundaries with no tail bits. The
-# window decoder below therefore starts from an unknown trellis state (all
-# path metrics equal), runs a full add-compare-select forward pass over the
-# 616-symbol window, and chains back from the best final state. Noise-free
-# the maximum-likelihood path is exact at both window edges; under noise the
-# preamble + CRC gate rejects any residual edge errors.
+# The CNAV FEC is the rate-1/2, K=7 NSC code with G1 = 0o171, G2 = 0o133 (IS-GPS-705J
+# §3.3.3.1.1, Figure 3-7), as for Galileo E1B, but convolved continuously with no tail
+# bits. The window decoder starts from an unknown trellis state (equal path metrics),
+# runs add-compare-select over the 616-symbol window and chains back from the best final
+# state. Noise-free, the ML path is exact at both edges; under noise the preamble + CRC
+# gate rejects residual edge errors.
 
 const CNAV_VITERBI_NUM_STATES = 64  # 2^(K-1) for K=7
 
-# Encoder output (G1, G2) for every (state, input_bit) pair. State numbering:
-# bits [s1 s2 s3 s4 s5 s6] where s1 (MSB) is the most recent past input (one
-# period ago) and s6 (LSB) is the oldest (six periods ago); the new input bit u
-# shifts in as the next s1. Reading the generator octals MSB-first as the tap on
+# Encoder output (G1, G2) for every (state, input_bit) pair. State bits [s1 ... s6]:
+# s1 (MSB) is the most recent past input, s6 (LSB) the oldest (six periods ago); the new
+# input u shifts in as the next s1. Generator octals read MSB-first give the taps from
 # the current input down to the six-periods-ago stage:
 #   y1 = u ⊕ s1 ⊕ s2 ⊕ s3 ⊕ s6   (G1 = 0o171 = 0b1111001)
 #   y2 = u ⊕ s2 ⊕ s3 ⊕ s5 ⊕ s6   (G2 = 0o133 = 0b1011011)
@@ -919,28 +879,24 @@ const _CNAV_VITERBI_G2 = [
     s = 0:(CNAV_VITERBI_NUM_STATES-1), u = 0:1
 ]
 
-# Soft branch penalty for one expected encoder output bit `y` given the
-# received LLR (positive ⇒ bit 0): charge `abs(llr)` iff the hard slice
-# disagrees with `y`. Summed over a path this equals the maximum-likelihood
-# correlation metric up to a path-independent constant, so the decoder is
-# exact ML on soft inputs and degrades gracefully to hard-decision Hamming
-# distance for ±1 inputs.
+# Soft branch penalty for expected encoder output bit `y` given the received LLR
+# (positive ⇒ bit 0): `abs(llr)` iff the hard slice disagrees with `y`. Summed over a
+# path this equals the ML correlation metric up to a path-independent constant (exact ML
+# on soft inputs, Hamming distance for ±1 inputs).
 @inline _cnav_branch_penalty(llr::Float32, y::Bool) =
     hard_slice(llr) != y ? abs(llr) : 0.0f0
 
 """
     gps_cnav_viterbi(soft_window) -> Vector{Bool}
 
-Viterbi-decode a window of FEC soft symbols (LLR convention, length must be
-even) into `length(soft_window) ÷ 2` bits. Starts from an unknown encoder
-state (the CNAV FEC runs continuously across message boundaries, so the
-window's initial state is the tail of the previous message) and traces back
-from the best final state.
+Viterbi-decode a window of FEC soft symbols (LLR convention, even length) into
+`length(soft_window) ÷ 2` bits. Starts from an unknown encoder state (the FEC runs
+continuously, so the initial state is the previous message's tail) and traces back from
+the best final state.
 
-The metric/decision/output buffers default to fresh allocations; supplying
-them (sized for the window) makes this the overwriting
-[`gps_cnav_viterbi!`](@ref GNSSDecoder.gps_cnav_viterbi!), whose output `bits`
-is also returned.
+The metric/decision/output buffers default to fresh allocations; supplying them (sized
+for the window) makes this the overwriting
+[`gps_cnav_viterbi!`](@ref GNSSDecoder.gps_cnav_viterbi!), whose `bits` is also returned.
 """
 function gps_cnav_viterbi(
     soft_window::AbstractVector{Float32};
@@ -960,10 +916,10 @@ end
     gps_cnav_viterbi!(bits, metrics, next_metrics, decisions, soft_window) -> bits
 
 In-place form of [`gps_cnav_viterbi`](@ref GNSSDecoder.gps_cnav_viterbi):
-**overwrites** `bits` (length `length(soft_window) ÷ 2`) with the decoded bits
-and uses `metrics` / `next_metrics` (one entry per trellis state) and
-`decisions` (`[state, step]`) as scratch, overwriting them too. Allocates
-nothing; `try_sync` passes the buffers preallocated in `GPSCNAVCache`.
+**overwrites** `bits` (length `length(soft_window) ÷ 2`) with the decoded bits and
+`metrics` / `next_metrics` (one entry per trellis state) and `decisions`
+(`[state, step]`) as scratch. Allocates nothing; `try_sync` passes the buffers from
+`GPSCNAVCache`.
 """
 function gps_cnav_viterbi!(
     bits::Vector{Bool},
@@ -998,15 +954,14 @@ function gps_cnav_viterbi!(
             decisions[sp+1, t] = from_odd
             next_metrics[sp+1] = from_odd ? m1 : m0
         end
-        # Renormalize so the accumulated Float32 penalties stay small and
-        # precision is preserved regardless of the caller's LLR magnitudes.
+        # Renormalize to keep Float32 precision regardless of LLR magnitudes.
         min_metric = minimum(next_metrics)
         for i = 1:CNAV_VITERBI_NUM_STATES
             metrics[i] = next_metrics[i] - min_metric
         end
     end
-    # Chain back from the best final state; the decoded bit at step t is the
-    # input bit that produced that step's state (its top bit).
+    # Chain back from the best final state; the bit at step t is the input bit (top bit)
+    # that produced that step's state.
     best_state = argmin(metrics) - 1
     @inbounds for t = num_steps:-1:1
         bits[t] = (best_state >> 5) & 0x01 == 0x01
@@ -1017,18 +972,17 @@ end
 
 # ---- Sync ------------------------------------------------------------------
 #
-# Override the generic packed-buffer sync: the CNAV preamble only exists in
-# the *decoded* bit domain, so each sync attempt Viterbi-decodes the whole
-# 616-symbol window into 308 bits and mirrors `detect_preamble_pair` on the result —
-# the preamble must be visible at both the start of this message (bits 1-8)
-# and the start of the next (bits 301-308), either both upright or both
-# inverted (the NSC generators have odd weight, so a 180°-inverted symbol
-# stream decodes to the complemented bit stream). The 300-bit message must
-# then pass CRC-24Q; preamble matches with a failing CRC are treated as no
-# sync, which lets the window slide on by one symbol.
+# Overrides the generic packed-buffer sync: the preamble exists only in the *decoded*
+# bit domain, so each attempt Viterbi-decodes the 616-symbol window into 308 bits and
+# mirrors `detect_preamble_pair`: the preamble must appear at the start of this message
+# (bits 1-8) and of the next (bits 301-308), both upright or both inverted (the NSC
+# generators have odd weight, so inverted symbols decode to complemented bits). The
+# 300-bit message must then pass CRC-24Q; a preamble match with a failing CRC counts as
+# no sync, so the window slides on by one symbol.
 
 """
-Sync result for a GPS CNAV message: the polarity-resolved 300-bit message and the detected polarity.
+Sync result for a GPS CNAV message: the polarity-resolved 300-bit message and the
+detected polarity.
 """
 struct GPSCNAVSync
     """
@@ -1055,11 +1009,10 @@ end
 """
     try_sync(state::GNSSDecoderState{<:GPSCNAVData}) -> Union{Nothing,GPSCNAVSync}
 
-Per-signal sync hook for the GPS CNAV signals (L5I / L2C). Viterbi-decodes the buffered 616-symbol
-window, requires the CNAV preamble at both ends of the decoded 308-bit window
-(in either polarity) and a clean CRC-24Q over the polarity-resolved 300-bit
-message. Returns the [`GPSCNAVSync`](@ref) on a match (carrying the message
-bits and the detected polarity flip) or `nothing`.
+Sync hook for GPS CNAV (L5I / L2C). Viterbi-decodes the buffered 616-symbol window and
+requires the preamble at both ends of the decoded 308-bit window (either polarity) and a
+clean CRC-24Q over the polarity-resolved 300-bit message. Returns the
+[`GPSCNAVSync`](@ref) (message bits and polarity flip) on a match, else `nothing`.
 """
 function try_sync(state::GNSSDecoderState{<:GPSCNAVData})
     # Overwrites the window copy and the Viterbi buffers in `state.cache`.
@@ -1083,8 +1036,7 @@ function try_sync(state::GNSSDecoderState{<:GPSCNAVData})
         is_polarity_inverted = false
     elseif leading == ~CNAV_PREAMBLE && trailing == ~CNAV_PREAMBLE
         is_polarity_inverted = true
-        # Inverted symbols decode to complemented bits; un-complement the
-        # message portion before the CRC check and field extraction.
+        # Un-complement the message bits before the CRC check and field extraction.
         @inbounds for i = 1:CNAV_MESSAGE_BITS
             bits[i] = !bits[i]
         end
@@ -1119,19 +1071,17 @@ end
 """
     decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
 
-Process one CRC-validated 300-bit CNAV message: parse the common header
-(message type ID at bits 15-20, message TOW count at 21-37, alert flag at
-38 — IS-GPS-705J §20.3.3), then dispatch to the per-message-type parser.
-Unknown or reserved message types keep the decoded header but no further
-fields.
+Process one CRC-validated 300-bit CNAV message: parse the common header (message type
+ID at bits 15-20, message TOW count at 21-37, alert flag at 38; IS-GPS-705J §20.3.3),
+then dispatch to the per-message-type parser. Unknown or reserved message types keep
+only the header.
 """
 function decode_sync_unit(state::GNSSDecoderState{<:GPSCNAVData}, sync::GPSCNAVSync)
     word = sync.word
     word_length = CNAV_MESSAGE_BITS
     message_id = Int(get_bits(word, word_length, 15, 6))
-    # The 17-bit message TOW count, in units of 6 seconds, is the SV time at the
-    # start of the *next* message — the next message is 6 s away on L5I and 12 s
-    # on L2C, but the count's LSB is 6 s on both (IS-GPS-705J §20.3.3 /
+    # The 17-bit TOW count (6 s units) is the SV time at the start of the *next* message
+    # (6 s away on L5I, 12 s on L2C); the LSB is 6 s on both (IS-GPS-705J §20.3.3 /
     # IS-GPS-200N §30.3.3), so the ×6 scaling is shared.
     TOW = Int64(get_bits(word, word_length, 21, 17)) * 6
     alert_flag = get_bit(word, word_length, 38)
@@ -1177,10 +1127,9 @@ end
 
 # ---- Per-message-type bit-field extraction (IS-GPS-705J §20.3.3) ------------
 #
-# `word` is the 300-bit message packed MSB-first into a `UInt320` (bit 1 = the
-# leftmost preamble bit). Fields are read by 1-based start bit and length
-# through the shared `get_bits` / `get_twos_complement_num` / `get_bit`
-# helpers, matching the other decoders (#48).
+# `word` is the 300-bit message packed MSB-first into a `UInt320` (bit 1 = leftmost
+# preamble bit). Fields are read by 1-based start bit and length with the shared
+# `get_bits` / `get_twos_complement_num` / `get_bit` helpers (#48).
 
 """
 Message type 10 — ephemeris 1 + health (IS-GPS-705J Fig 20-1, Table 20-I).
@@ -1201,8 +1150,8 @@ function parse_mt10(raw::GPSCNAVData, word::UInt320)
         Δn_0 = get_twos_complement_num(word, word_length, 133, 17) * 2.0^-44 * GNSS_PI,
         Δn_0_dot = get_twos_complement_num(word, word_length, 150, 23) * 2.0^-57 * GNSS_PI,
         M_0 = get_twos_complement_num(word, word_length, 173, 33) * 2.0^-32 * GNSS_PI,
-        # 33-bit field: convert through Int64 explicitly (a platform Int
-        # would overflow on 32-bit), matching the BeiDou B-CNAV parsers.
+        # 33-bit field: convert through Int64 (a 32-bit platform Int would overflow),
+        # as in the BeiDou B-CNAV parsers.
         e = Int64(get_bits(word, word_length, 206, 33)) * 2.0^-34,
         ω = get_twos_complement_num(word, word_length, 239, 33) * 2.0^-32 * GNSS_PI,
         integrity_status_flag = get_bit(word, word_length, 272),
@@ -1275,7 +1224,7 @@ function parse_mt30(raw::GPSCNAVData, word::UInt320)
 end
 
 """
-Decode one 31-bit reduced-almanac packet starting at 1-based bit `start` (IS-GPS-705J Fig 20-16).
+Decode one 31-bit reduced-almanac packet at 1-based bit `start` (IS-GPS-705J Fig 20-16).
 """
 function _cnav_reduced_almanac_packet(word::UInt320, start::Int, WN_a::Int, t_0a::Int)
     word_length = CNAV_MESSAGE_BITS
@@ -1297,9 +1246,9 @@ end
 """
     parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
-Message type 12 — seven reduced-almanac packets (IS-GPS-705J Fig 20-11).
-Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` (or, on the
-first almanac, of the preallocated `storage.reduced_almanacs`).
+Message type 12 — seven reduced-almanac packets (IS-GPS-705J Fig 20-11). Each packet
+**overwrites** its PRN's slot of `raw.reduced_almanacs` (or, on the first, of the
+preallocated `storage.reduced_almanacs`).
 """
 function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
@@ -1317,8 +1266,8 @@ function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
 end
 
 """
-Overwrite the reduced-almanac store with the packets starting at `starts`,
-stopping at the first empty packet; returns `raw` holding the store.
+Overwrite the reduced-almanac store with the packets at `starts`, stopping at the first
+empty packet; returns `raw` holding the store.
 """
 function _cnav_reduced_almanac_packets!(
     storage::GPSCNAVData,
@@ -1343,9 +1292,8 @@ end
 """
     parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
-Message type 31 — clock & four reduced-almanac packets (IS-GPS-705J Fig 20-4).
-Each packet **overwrites** its PRN's slot of the reduced-almanac store, as in
-[`parse_mt12!`](@ref GNSSDecoder.parse_mt12!).
+Message type 31 — clock & four reduced-almanac packets (IS-GPS-705J Fig 20-4). Stores
+as in [`parse_mt12!`](@ref GNSSDecoder.parse_mt12!).
 """
 function parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
@@ -1415,8 +1363,8 @@ end
     parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
 Message type 37 — clock & one Midi almanac (IS-GPS-705J Fig 20-10, Table 20-V).
-The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` (or, on the
-first one, of the preallocated `storage.midi_almanacs`).
+The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` (or, on the first, of
+the preallocated `storage.midi_almanacs`).
 """
 function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
@@ -1450,7 +1398,7 @@ end
 const CNAV_DC_EMPTY_PRN = 0xff
 
 """
-Decode one 34-bit CDC packet starting at 1-based bit `start` (IS-GPS-705J Fig 20-17).
+Decode one 34-bit CDC packet at 1-based bit `start` (IS-GPS-705J Fig 20-17).
 """
 function _cnav_cdc_packet(
     word::UInt320,
@@ -1474,7 +1422,7 @@ function _cnav_cdc_packet(
 end
 
 """
-Decode one 92-bit EDC packet starting at 1-based bit `start` (IS-GPS-705J Fig 20-17).
+Decode one 92-bit EDC packet at 1-based bit `start` (IS-GPS-705J Fig 20-17).
 """
 function _cnav_edc_packet(
     word::UInt320,
@@ -1504,9 +1452,9 @@ end
 """
     parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
-Message type 13 — clock differential correction (IS-GPS-705J Fig 20-12).
-Each CDC packet **overwrites** its PRN's slot of `raw.clock_corrections` (or,
-on the first one, of the preallocated `storage.clock_corrections`).
+Message type 13 — clock differential correction (IS-GPS-705J Fig 20-12). Each CDC packet
+**overwrites** its PRN's slot of `raw.clock_corrections` (or, on the first, of the
+preallocated `storage.clock_corrections`).
 """
 function parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
@@ -1520,13 +1468,12 @@ function parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     for start in (61, 96, 131, 166, 201, 236)
         dc_data_type = get_bit(word, word_length, start)
         packet = _cnav_cdc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
-        # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is
-        # contained in the remainder of the data block ... the remainder shall
-        # be filler bits, i.e. alternating ones and zeros beginning with one".
-        # `break`, not `continue`: reading on would parse `10101010` as PRN 170
-        # (or 85 — the 35-/93-bit packet stride flips the parity) and merge a
-        # correction for a satellite that does not exist. Same rule as
-        # `parse_mt12` / `parse_mt31` above.
+        # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is contained in the
+        # remainder of the data block ... the remainder shall be filler bits, i.e.
+        # alternating ones and zeros beginning with one". `break`, not `continue`:
+        # reading on would parse `10101010` as PRN 170 (or 85; the 35-/93-bit stride
+        # flips the parity) and merge a correction for a nonexistent satellite. Same
+        # rule as `parse_mt12` / `parse_mt31`.
         isnothing(packet) && break
         set!(corrections, packet.PRN_a, packet)
     end
@@ -1536,9 +1483,9 @@ end
 """
     parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
-Message type 14 — ephemeris differential correction (IS-GPS-705J Fig 20-13).
-Each EDC packet **overwrites** its PRN's slot of `raw.ephemeris_corrections`
-(or, on the first one, of the preallocated `storage.ephemeris_corrections`).
+Message type 14 — ephemeris differential correction (IS-GPS-705J Fig 20-13). Each EDC
+packet **overwrites** its PRN's slot of `raw.ephemeris_corrections` (or, on the first,
+of the preallocated `storage.ephemeris_corrections`).
 """
 function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
@@ -1552,13 +1499,7 @@ function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     for start in (61, 154)
         dc_data_type = get_bit(word, word_length, start)
         packet = _cnav_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
-        # IS-GPS-705J 20.3.3.7.2.3: an all-ones PRN means "no DC data is
-        # contained in the remainder of the data block ... the remainder shall
-        # be filler bits, i.e. alternating ones and zeros beginning with one".
-        # `break`, not `continue`: reading on would parse `10101010` as PRN 170
-        # (or 85 — the 35-/93-bit packet stride flips the parity) and merge a
-        # correction for a satellite that does not exist. Same rule as
-        # `parse_mt12` / `parse_mt31` above.
+        # All-ones PRN: filler follows (see `parse_mt13!`), so `break`.
         isnothing(packet) && break
         set!(corrections, packet.PRN_a, packet)
     end
@@ -1568,9 +1509,8 @@ end
 """
     parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word) -> GPSCNAVData
 
-Message type 34 — clock & one CDC+EDC pair (IS-GPS-705J Fig 20-7). Each
-non-empty packet **overwrites** its PRN's slot of the clock / ephemeris
-correction store, as in [`parse_mt13!`](@ref GNSSDecoder.parse_mt13!) /
+Message type 34 — clock & one CDC+EDC pair (IS-GPS-705J Fig 20-7). Each non-empty packet
+**overwrites** its PRN's slot as in [`parse_mt13!`](@ref GNSSDecoder.parse_mt13!) /
 [`parse_mt14!`](@ref GNSSDecoder.parse_mt14!).
 """
 function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
@@ -1597,9 +1537,9 @@ function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
 end
 
 """
-Decode `N` 8-bit ASCII characters starting at 1-based bit `start` into an
-inline `CStaticString{N}`, stripping control chars (so the text may be shorter:
-the unused tail stays NUL, where a `CStaticString` ends).
+Decode `N` 8-bit ASCII characters at 1-based bit `start` into an inline
+`CStaticString{N}`, stripping control chars (the text may be shorter: the unused tail
+stays NUL, where a `CStaticString` ends).
 """
 function _cnav_text(word::UInt320, start::Int, ::Val{N}) where {N}
     word_length = CNAV_MESSAGE_BITS
@@ -1607,7 +1547,7 @@ function _cnav_text(word::UInt320, start::Int, ::Val{N}) where {N}
     len = 0
     for k = 0:(N-1)
         code = UInt8(get_bits(word, word_length, start + 8k, 8))
-        # Keep printable ASCII; skip NUL/control padding so the message is clean.
+        # Keep printable ASCII; skip NUL/control padding.
         if code >= 0x20 && code < 0x7f
             len += 1
             units = Base.setindex(units, code, len)
@@ -1646,8 +1586,8 @@ Message type 40 — Integrity Support Message (IS-GPS-705J Fig 20-14a).
 """
 function parse_mt40(raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
-    # 63-bit SV mask (MSB = PRN 1) at bits 89-151, read as one contiguous
-    # field; IS-GPS-705J Figure 20-14a only *draws* it across a row boundary.
+    # 63-bit SV mask (MSB = PRN 1) at bits 89-151, one contiguous field (IS-GPS-705J
+    # Figure 20-14a only *draws* it across a row boundary).
     mask = UInt64(get_bits(word, word_length, 89, 63))
     ism = GPSCNAVIntegritySupportMessage(;
         GNSS_ID = Int(get_bits(word, word_length, 39, 4)),
@@ -1668,15 +1608,14 @@ end
 """
     validate_data(state::GNSSDecoderState{<:GPSCNAVData})
 
-Promote `raw_data` to `data` once the minimum positioning set (message types
-10 + 11 ephemeris and the message type 30 clock + group delay block) has been
-decoded. Every CNAV message carries its own TOW, so each validated message
-re-arms the streaming counter: the TOW refers to the start of the *next*
-message, whose first `preamble_length` symbols are already buffered.
+Promote `raw_data` to `data` once the minimum positioning set (message types 10 + 11
+ephemeris and a clock block from message types 30-37) has been decoded. Every message
+carries its own TOW, so each validated message re-arms the streaming counter: the TOW
+refers to the start of the *next* message, whose first `preamble_length` symbols are
+already buffered.
 
-Promotion **overwrites** the preallocated validated stores in
-`state.cache.storage` with the raw ones (`publish_data`), so `data` never
-shares a container with `raw_data`, which later messages keep writing into.
+Promotion **overwrites** the preallocated validated stores in `state.cache.storage`
+(`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
     if is_decoding_completed_for_positioning(state.raw_data)

@@ -68,25 +68,21 @@ export decode!,
     GNSSDecoderState,
     reset_decoder_state!
 
-# Shared decode framework and cross-signal accessors, then the generic
-# bit-extraction helpers.
+# Shared decode framework, cross-signal accessors and bit-extraction helpers.
 include("gnss.jl")
 include("storage.jl")
 include("bit_fiddling.jl")
 
-# Signal-independent channel-coding primitives: CRC-24Q, the BCH(51,8) TOI
-# codec, the block (de)interleaver, the shared LDPC pipeline (which consumes
-# `crc24q`, so `crc.jl` comes first) and the GF(2^8) Reed-Solomon codec. Each
-# carries its own unit tests under `test/`.
+# Signal-independent channel coding: CRC-24Q, BCH(51,8) TOI, block (de)interleaver, LDPC
+# (consumes `crc24q`, so `crc.jl` comes first) and GF(2^8) Reed-Solomon.
 include("coding/crc.jl")
 include("coding/bch_toi.jl")
 include("coding/deinterleave.jl")
 include("coding/ldpc.jl")
 include("coding/reed_solomon.jl")
 
-# GPS. `gps.jl` holds definitions shared across the GPS signals; `cnav.jl` is
-# the shared CNAV core (broadcast identically on L5I and L2C), with `l5.jl` and
-# `l2c.jl` as thin signal layers over it.
+# GPS. `gps.jl`: shared definitions; `cnav.jl`: CNAV core (identical on L5I and L2C),
+# with `l5.jl` and `l2c.jl` as thin signal layers.
 include("gps/gps.jl")
 include("gps/l1ca.jl")
 include("gps/l1c_d.jl")
@@ -94,9 +90,8 @@ include("gps/cnav.jl")
 include("gps/l5.jl")
 include("gps/l2c.jl")
 
-# Galileo. `galileo.jl` holds definitions shared across the Galileo signals;
-# `inav.jl` is the shared I/NAV core (broadcast identically on E1-B and E5b-I),
-# with `e1b.jl` and `e5b.jl` as thin signal layers over it.
+# Galileo. `galileo.jl`: shared definitions; `inav.jl`: I/NAV core (identical on E1-B and
+# E5b-I), with `e1b.jl` and `e5b.jl` as thin signal layers.
 include("galileo/galileo.jl")
 include("galileo/inav.jl")
 include("galileo/e1b.jl")
@@ -104,9 +99,8 @@ include("galileo/e5b.jl")
 include("galileo/e5a.jl")
 include("galileo/e6b.jl")
 
-# BeiDou. `beidou.jl` holds definitions shared across the BeiDou signals;
-# `dnav.jl` is the shared D1/D2 legacy NAV core (broadcast identically on B1I
-# and B3I), with `b1i.jl` and `b3i.jl` as thin signal layers over it.
+# BeiDou. `beidou.jl`: shared definitions; `dnav.jl`: D1/D2 legacy NAV core (identical on
+# B1I and B3I), with `b1i.jl` and `b3i.jl` as thin signal layers.
 include("beidou/beidou.jl")
 include("beidou/dnav.jl")
 include("beidou/b1i.jl")

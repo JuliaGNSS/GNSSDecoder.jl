@@ -38,15 +38,15 @@ decision (positive ⇒ bit 0, negative ⇒ bit 1) and the magnitude carries
 confidence (AFF3CT LLR convention):
 
 ```jldoctest gps_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL1CADecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GNSSDecoderState(GPSL1CA(), 1);  # Initialize decoder for PRN 1
 
 julia> state.prn  # Access PRN
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSLNAVData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
+julia> typeof(state.data)
+GPSLNAVData
 ```
 
 Process incoming soft bits and check the decoder state:
@@ -54,8 +54,8 @@ Process incoming soft bits and check the decoder state:
 ```jldoctest gps_example
 julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)  # Symbols are now buffered
-8
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 In a real application, you would decode soft bits from a tracking loop. With
@@ -83,20 +83,20 @@ end
 ### Galileo E1B Decoding
 
 ```jldoctest galileo_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GalileoE1BDecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GNSSDecoderState(GalileoE1B(), 1);  # Initialize decoder for PRN 1
 
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B}, GNSSDecoder.GalileoINAVCache}
+julia> typeof(state.data)
+GalileoINAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 ### Galileo E5b Decoding
@@ -109,7 +109,7 @@ type 5 [`is_sat_healthy`](@ref) reads:
 ```jldoctest galileo_e5b_example
 julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GalileoE5bDecoderState(1);
+julia> state = GNSSDecoderState(GalileoE5bI(), 1);
 
 julia> get_signal_name(state)
 "Galileo E5b-I"
@@ -128,12 +128,12 @@ single satellite may take up to 32 seconds per message, while a receiver pooling
 pages from several E6-B satellites completes them much faster.
 
 ```jldoctest galileo_e6b_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GalileoE6BDecoderState(1);
+julia> state = GNSSDecoderState(GalileoE6B(), 1);
 
-julia> state.constants.sync_unit_length   # 1000 symbols = 1 s per page
-1000
+julia> get_bit_rate(state)   # 1000 symbols, one page, per second
+1000 Hz
 
 julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
 false
@@ -168,20 +168,20 @@ CRC-24Q. Construction loads the LDPC parity-check matrices shipped with the
 package:
 
 ```jldoctest l1cd_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL1C_DDecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GNSSDecoderState(GPSL1C_D(), 1);  # Initialize decoder for PRN 1
 
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSCNAV2Data, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
+julia> typeof(state.data)
+GPSCNAV2Data
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 ### GPS L5I Decoding
@@ -193,20 +193,20 @@ window, looks for the 8-bit preamble at both ends of the decoded window, and
 validates the 300-bit message with CRC-24Q:
 
 ```jldoctest l5i_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL5IDecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GNSSDecoderState(GPSL5I(), 1);  # Initialize decoder for PRN 1
 
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
+julia> typeof(state.data)
+GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 ### GPS L2C Decoding
@@ -217,20 +217,20 @@ and decoded fields land in the same [`GPSCNAVData`](@ref) container; only the
 health check differs (it reports the L2 signal-health bit):
 
 ```jldoctest l2c_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL2CMDecoderState(1);  # Initialize decoder for PRN 1
+julia> state = GNSSDecoderState(GPSL2CM(), 1);  # Initialize decoder for PRN 1
 
 julia> state.prn
 1
 
-julia> typeof(state)
-GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
+julia> typeof(state.data)
+GPSCNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 ### BeiDou Decoding
@@ -242,17 +242,17 @@ PRN — so they share the [`BeiDouDNAVData`](@ref) container the way GPS L5I and
 L2C share `GPSCNAVData`:
 
 ```jldoctest b1i_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = BeiDouB1IDecoderState(20);  # PRN 20: MEO/IGSO, D1 NAV
+julia> state = GNSSDecoderState(BeiDouB1I(), 20);  # PRN 20: MEO/IGSO, D1 NAV
 
-julia> typeof(state)
-GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GNSSDecoder.BeiDouDNAVCache}
+julia> typeof(state.data)
+BeiDouDNAVData
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 The modernized BDS-3 signals B1C (B-CNAV1), B2a (B-CNAV2), and B2b (B-CNAV3)
@@ -267,17 +267,17 @@ scale-sensitive, so feed confidence-weighted soft bits on a roughly LLR-like
 scale (`≈ 2·r/σ²`) for best sensitivity — see [`decode!`](@ref):
 
 ```jldoctest b2a_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
+julia> state = GNSSDecoderState(BeiDouB2aI(), 30);  # Initialize decoder for PRN 30
 
-julia> typeof(state)
-GNSSDecoderState{BeiDouCNAV2Data, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
+julia> typeof(state.data)
+BeiDouCNAV2Data
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-10
+julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
+true
 ```
 
 ## State Management
@@ -288,19 +288,16 @@ If signal tracking is lost and reacquired, use [`reset_decoder_state!`](@ref) to
 buffers while preserving previously decoded ephemeris:
 
 ```jldoctest reset_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL1CADecoderState(1);
+julia> state = GNSSDecoderState(GPSL1CA(), 1);
 
 julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
-julia> GNSSDecoder.num_symbols_buffered(state)
-8
-
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
-julia> GNSSDecoder.num_symbols_buffered(state)  # Buffers are cleared
-0
+julia> isnothing(state.num_bits_since_time_reference)  # Synchronisation is cleared
+true
 
 julia> state.prn  # PRN is preserved
 1
@@ -309,14 +306,14 @@ julia> state.prn  # PRN is preserved
 ### Checking Satellite Health
 
 ```jldoctest health_example
-julia> using GNSSDecoder
+julia> using GNSSDecoder, GNSSSignals
 
-julia> state = GPSL1CADecoderState(1);
+julia> state = GNSSDecoderState(GPSL1CA(), 1);
 
 julia> is_sat_healthy(state)  # Health not yet decoded
 false
 
-julia> state = GalileoE1BDecoderState(1);
+julia> state = GNSSDecoderState(GalileoE1B(), 1);
 
 julia> is_sat_healthy(state)  # Health not yet decoded
 false
