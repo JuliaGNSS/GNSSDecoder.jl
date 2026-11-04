@@ -59,7 +59,7 @@ CNAV container).
 
 ```julia
 state = GPSL2CMDecoderState(1)           # PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -88,7 +88,7 @@ end
 # Dispatch from a GNSSSignals system type, mirroring `GNSSDecoderState(::GPSL5I, …)`.
 # CNAV rides on the L2 CM (data) component — `GPSL2CM` — while `GPSL2CL` is the
 # dataless pilot (IS-GPS-200N §3.3.3.1), so only `GPSL2CM` maps to a decoder.
-function GNSSDecoderState(system::GPSL2CM, prn)
+function GNSSDecoderState(signal::GPSL2CM, prn)
     GPSL2CMDecoderState(prn)
 end
 

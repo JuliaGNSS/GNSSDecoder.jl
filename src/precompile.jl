@@ -177,10 +177,10 @@ end
         123,
     )
     @compile_workload begin
-        for (system, prn, symbols) in (
+        for (signal, prn, symbols) in (
             (GPSL1CA(), 25, gps_l1ca),
             (GalileoE1B(), 2, galileo_e1b),
-            (GalileoE1B_BOC11(), 2, galileo_e1b),
+            (GalileoE1B(CBOC), 2, galileo_e1b),
             (GPSL2CM(), 25, gps_l2c),
             (GPSL5I(), 25, gps_l5i),
             (GalileoE5aI(), 21, galileo_e5a),
@@ -195,7 +195,7 @@ end
             (BeiDouB2bI(), 7, random_symbols),
             (BeiDouB3I(), 7, random_symbols),
         )
-            state = decode!(GNSSDecoderState(system, prn), symbols, length(symbols))
+            state = decode!(GNSSDecoderState(signal, prn), symbols, length(symbols))
             is_sat_healthy(state)
             is_decoding_completed_for_positioning(state)
         end

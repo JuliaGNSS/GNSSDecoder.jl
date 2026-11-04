@@ -1,5 +1,3 @@
-using Test
-using GNSSDecoder
 using GNSSDecoder: crc24q
 
 @testset "CRC-24Q" begin

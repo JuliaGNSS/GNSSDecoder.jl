@@ -1,7 +1,4 @@
-using Test
 using Random
-using GNSSDecoder
-using GNSSSignals
 using GNSSDecoder: crc24q, gps_cnav_viterbi
 
 # The CNAV transmit-chain helpers (CNAVTestEncoder, fec_encode_soft, setbits!,

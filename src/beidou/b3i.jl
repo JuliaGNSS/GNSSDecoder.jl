@@ -50,7 +50,7 @@ correction, and parsing into the shared [`BeiDouDNAVData`](@ref) container.
 
 ```julia
 state = BeiDouB3IDecoderState(30)         # PRN 30 (MEO/IGSO ⇒ D1)
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -78,7 +78,7 @@ function BeiDouB3IDecoderState(prn)
 end
 
 # Dispatch from the GNSSSignals system type.
-function GNSSDecoderState(system::BeiDouB3I, prn)
+function GNSSDecoderState(signal::BeiDouB3I, prn)
     BeiDouB3IDecoderState(prn)
 end
 

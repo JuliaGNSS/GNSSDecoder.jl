@@ -76,7 +76,7 @@ end
 
     # F/NAV rides on the E5a-I (data) component; dispatch from the GNSSSignals
     # system type must match the direct constructor.
-    @test GalileoE5aDecoderState(21) == GNSSDecoderState(GNSSSignals.GalileoE5aI(), 21)
+    @test GalileoE5aDecoderState(21) == GNSSDecoderState(GalileoE5aI(), 21)
 end
 
 @testset "Galileo E5a FEC round-trip" begin
