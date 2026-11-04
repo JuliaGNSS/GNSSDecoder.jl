@@ -726,6 +726,10 @@ struct GPSCNAVCache <: AbstractGNSSCache
     storage::DataStorage{GPSCNAVData}
 end
 
+# Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): the buffers
+# are Viterbi scratch, refilled by every message.
+clear_satellite_cache(cache::GPSCNAVCache) = cache
+
 GPSCNAVCache() = GPSCNAVCache(
     CircularDeque{Float32}(CNAV_WINDOW_SYMBOLS),
     Vector{Float32}(undef, CNAV_WINDOW_SYMBOLS),

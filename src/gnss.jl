@@ -36,8 +36,7 @@ differ per signal and stay on the concrete types.
 
 Not every Galileo signal carries an ephemeris: `GalileoE6BData` holds HAS corrections *to*
 another signal's navigation data and has no orbital fields. The ephemeris and clock
-completeness checks therefore live one level down, on
-[`AbstractGalileoEphemerisData`](@ref).
+completeness checks therefore live on the internal `AbstractGalileoEphemerisData`.
 """
 abstract type AbstractGalileoData <: AbstractGNSSData end
 
@@ -108,6 +107,13 @@ it returns shares them with the state passed in, so use the returned value as *t
 state and drop the earlier one. Take a [`copy`](@ref Base.copy(::GNSSDecoderState)) for a
 snapshot.
 
+`prn`, `raw_data`, `data`, `num_bits_since_time_reference` and `is_shifted_by_180_degrees`
+are API: a receiver reads them, and `num_bits_since_time_reference` with
+[`get_broadcast_time_of_week`](@ref) and `get_bit_rate` dates the latest symbol. A
+tracking loop that counts symbols itself may move the counter with
+`GNSSDecoderState(state; num_bits_since_time_reference = n)`. `constants` and `cache` are
+internal.
+
 # Construction
 
 `GNSSDecoderState(signal, prn)` creates the decoder for satellite `prn` on a GNSSSignals
@@ -170,6 +176,7 @@ end
 
 @inline function GNSSDecoderState(
     state::GNSSDecoderState;
+    prn = state.prn,
     raw_data = state.raw_data,
     data = state.data,
     cache = state.cache,
@@ -177,7 +184,7 @@ end
     is_shifted_by_180_degrees = state.is_shifted_by_180_degrees,
 )
     GNSSDecoderState(
-        state.prn,
+        Int(prn),
         raw_data,
         data,
         state.constants,
@@ -295,7 +302,6 @@ has_positioning_data(state::GNSSDecoderState) =
 
 """
     get_signal_type(state::GNSSDecoderState) -> Type{<:AbstractGNSSSignal}
-    get_signal_type(constants::AbstractGNSSConstants) -> Type{<:AbstractGNSSSignal}
 
 The GNSSSignals signal type whose navigation message a decoder demodulates, e.g.
 `GPSL1CA` for a [`GPSL1CADecoderState`](@ref). The single mapping from this package's
@@ -307,10 +313,9 @@ Returns the *type*, not an instance: constructing a signal builds its spreading 
 and SIMD lookup table, which a symbol-domain decoder never needs. As a type it folds to a
 compile-time constant, so forwarded accessors cost nothing at run time.
 
-Stated per signal file and dispatched on the constants type rather than the data type,
-since only the constants tell apart decoders sharing a data container: GPS L5-I and L2C-M
-both decode into `GPSCNAVData` but are distinct signals (`GPSCNAVConstants{:GPSL5I}` vs
-`GPSCNAVConstants{:GPSL2CM}`).
+Each signal states it for its own decoder, so decoders sharing a data container still
+answer their own signal: GPS L5-I and L2C-M both decode into `GPSCNAVData` and report
+`GPSL5I` and `GPSL2CM`.
 
 The mapping names the data-bearing component of a signal pair: `GPSL2CM` (not the `GPSL2CL`
 pilot), `GalileoE5aI` (not `GalileoE5aQ`). Replica variants map to the same canonical type:
@@ -1352,6 +1357,44 @@ is per signal, documented on each signal's method. As with [`decode!`](@ref), us
 return value as the live decoder and not `state`.
 """
 function reset_decoder_state! end
+
+"""
+    reset_decoder_state!(state::GNSSDecoderState, prn::Integer) -> GNSSDecoderState
+
+Reset a decoder for another satellite, `prn`, **overwriting** the buffers `state` holds,
+and return the reset state. Beyond the one-argument `reset_decoder_state!`, it clears
+everything kept for fast recovery of the same satellite: the decoded `raw_data` and `data`,
+the repetition-voting tallies and any message assembly in flight. The polarity is unknown
+again. Preallocated buffers and decoding scratch are kept, so the result decodes `prn` as a
+newly constructed decoder of the same signal would, and the reset allocates nothing.
+
+This moves a channel's decoder to another satellite without constructing (and allocating)
+a new state. Everything that differs per satellite follows `state.prn`: BeiDou B1I and B3I
+switch between D1 and D2 formats and symbol rates, and B1C syncs on the new satellite's
+code word. Galileo E6-B retains its HAS assembly, masks and corrections, which belong to
+the shared service (messages can be assembled from pages of any satellite); it clears only
+the channel's soft-symbol buffer, time counter and polarity.
+
+As with [`decode!`](@ref), use the return value as the live decoder and not `state`.
+"""
+function reset_decoder_state!(state::GNSSDecoderState{D}, prn::Integer) where {D}
+    state = reset_decoder_state!(state)
+    GNSSDecoderState(
+        state;
+        prn,
+        raw_data = D(),
+        data = D(),
+        cache = clear_satellite_cache(state.cache),
+        num_bits_since_time_reference = nothing,
+        is_shifted_by_180_degrees = false,
+    )
+end
+
+# The part of a cache that belongs to the decoded satellite and that the one-argument
+# `reset_decoder_state!` keeps for fast recovery: voting tallies and message assembly in
+# flight. Every cache defines its own method (returning it unchanged where it holds none);
+# no fallback, so a new cache without one fails loudly instead of carrying state over.
+function clear_satellite_cache end
 
 # ---- Shared decoder primitives ----------------------------------------------
 #

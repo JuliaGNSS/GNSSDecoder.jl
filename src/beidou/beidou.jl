@@ -281,7 +281,7 @@ type 40) broadcast into a `TimeOffsetParameters`, or `nothing` when the set is a
 marked unavailable, or refers to a system other than `target`.
 
 Both signals carry one set at a time, tagged with its system, unlike B1C, which keys a
-set per system (see [`BeiDouB1CBGTO`](@ref)). The
+set per system (see [`BeiDouB1CBGTO`](@ref GNSSDecoder.BeiDouB1CBGTO)). The
 `GNSS_ID == 0` "not available" sentinel is screened here because both decoders keep the
 raw field; B1C screens it at decode, having no key to file an unavailable set under.
 """

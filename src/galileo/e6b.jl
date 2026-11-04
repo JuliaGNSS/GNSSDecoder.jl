@@ -390,9 +390,9 @@ signals carry biases, and which broadcast navigation message the orbit and clock
 corrections refer to.
 
 The raw ICD bit fields are kept alongside the expanded lists, since later blocks'
-lengths are computed from the raw masks. Immutable and pointer-free: the lists are views
-computed from the raw masks (see [`GalileoHASMaskIndices`](@ref)) and the Cell Mask is
-stored inline.
+lengths are computed from the raw masks. Immutable and pointer-free: the lists are
+`AbstractVector{Int}` views computed from the raw masks and the Cell Mask is an inline
+`AbstractMatrix{Bool}`. Read them through those interfaces; concrete types are internal.
 
 # Fields
 
@@ -1351,6 +1351,10 @@ struct GalileoE6BCache <: AbstractGNSSCache
     storage::DataStorage{GalileoE6BData}
 end
 
+# Nothing is per-satellite (see `reset_decoder_state!(state, prn)`): HAS messages are
+# assembled from pages of any satellite, so the pages stay.
+clear_satellite_cache(cache::GalileoE6BCache) = cache
+
 GalileoE6BCache() = GalileoE6BCache(
     CircularDeque{Float32}(E6B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, E6B_ENCODED_SYMBOLS),
@@ -1488,6 +1492,19 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
         raw_data,
         data = GalileoE6BData(),
         num_bits_since_time_reference = nothing,
+    )
+end
+
+# HAS is shared across Galileo satellites: page groups, a message waiting for its mask,
+# and decoded masks/corrections stay useful when the channel is handed to another PRN.
+# Only the soft symbols and polarity belong to the channel and are reset.
+function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData}, prn::Integer)
+    empty!(state.cache.soft_buffer)
+    GNSSDecoderState(
+        state;
+        prn,
+        num_bits_since_time_reference = nothing,
+        is_shifted_by_180_degrees = false,
     )
 end
 

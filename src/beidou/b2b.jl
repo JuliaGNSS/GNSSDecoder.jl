@@ -438,6 +438,10 @@ struct BeiDouB2bCache <: AbstractGNSSCache
     storage::DataStorage{BeiDouCNAV3Data}
 end
 
+# Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): the buffers
+# are FEC scratch, refilled by every message.
+clear_satellite_cache(cache::BeiDouB2bCache) = cache
+
 BeiDouB2bCache() = BeiDouB2bCache(
     CircularDeque{Float32}(B2B_WINDOW_SYMBOLS),
     Vector{Float32}(undef, B2B_ENCODED_SYMBOLS),
