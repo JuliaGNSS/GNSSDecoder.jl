@@ -130,7 +130,7 @@ e6b_decode_stream(state, stream) = decode!(state, stream, length(stream))
     @test hasmethod(GNSSDecoderState, Tuple{GalileoE6B,Int})
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE6C,Int})
     # No ephemeris of its own — corrections only.
-    @test !is_decoding_completed_for_positioning(decoder)
+    @test !has_positioning_data(decoder)
     @test !is_sat_healthy(decoder)
 end
 

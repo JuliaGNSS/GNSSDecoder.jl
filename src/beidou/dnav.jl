@@ -642,14 +642,13 @@ packed_buffer_type(::GNSSDecoderState{<:BeiDouDNAVData}) = UInt320
 # ---- Completeness checks ------------------------------------------------------
 
 # `T_GD1` is required and `T_GD2` is not (the package-wide group-delay rule,
-# `is_decoding_completed_for_positioning` in src/gnss.jl). The clock polynomial is
-# referenced to B3I on both signals (§5.2.4.10), so a B1I user must apply `T_GD1` (a
-# metre-scale bias), and it rides in the same subframe 1 (D1) / page 1 (D2) as the clock,
-# so requiring it costs no time to first fix. `T_GD2` is the *B2I* differential: decoded
-# and published, but never gated on (like B1C's `T_GD_B2ap`), because nothing here can
-# consume it. GNSSSignals has no B2I signal and none is planned
-# (JuliaGNSS/GNSSSignals.jl#156, won't-implement); BDS-2 retired 13 of its last 15
-# satellites in April 2026.
+# `has_positioning_data` in src/gnss.jl). The clock polynomial is referenced to B3I on
+# both signals (§5.2.4.10), so a B1I user must apply `T_GD1` (a metre-scale bias), and it
+# rides in the same subframe 1 (D1) / page 1 (D2) as the clock, so requiring it costs no
+# time to first fix. `T_GD2` is the *B2I* differential: decoded and published, but never
+# gated on (like B1C's `T_GD_B2ap`), because nothing here can consume it. GNSSSignals has
+# no B2I signal and none is planned (JuliaGNSS/GNSSSignals.jl#156, won't-implement);
+# BDS-2 retired 13 of its last 15 satellites in April 2026.
 #
 # A B3I user needs neither, but B1I and B3I share `BeiDouDNAVData` and this check
 # dispatches on the data, so one gate serves both; requiring `T_GD1` on B3I is free
@@ -768,7 +767,7 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
     )
 end
 
-function is_decoding_completed_for_positioning(data::BeiDouDNAVData)
+function has_positioning_messages(data::BeiDouDNAVData)
     # Klobuchar ionosphere is deliberately *not* gated on: `src/gnss.jl` excludes
     # second-order corrections from readiness (apply when present, don't wait). It rides
     # in the same subframe as the clock set (D1 subframe 1 / D2 page 2).
@@ -1415,7 +1414,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouDNAVData})
     # for a SOW from the subframe that just synced; `decode!` calls this hook after
     # *every* sync, including D2 subframes 2-5, which carry no SOW.
     is_dnav_SOW_from_this_subframe(state) || return state
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         state = dnav_confirm_data(state)
     end
     return state

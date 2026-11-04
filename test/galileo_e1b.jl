@@ -195,14 +195,14 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
     @test !isnothing(allocations.state.data.reduced_ced.ΔA_red)
 
     # A `copy` is independent: decoding into it leaves the original untouched.
     state = GalileoE1BDecoderState(21)
     decoded = decode!(copy(state), symbols, length(symbols))
-    @test is_decoding_completed_for_positioning(decoded)
+    @test has_positioning_data(decoded)
     @test state == GalileoE1BDecoderState(21)
     @test isnothing(state.raw_data.almanacs)
     @test GNSSDecoder.num_symbols_buffered(state) == 0

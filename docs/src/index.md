@@ -52,7 +52,7 @@ GPSLNAVData
 Process incoming soft bits and check the decoder state:
 
 ```jldoctest gps_example
-julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft bits
+julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1]);  # Decode 8 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -71,7 +71,7 @@ for i in 1:iterations
     soft_symbols = get_soft_bits(track_state, state.prn)
 
     # Decode navigation message
-    state = decode!(state, soft_symbols, length(soft_symbols))
+    state = decode!(state, soft_symbols)
 end
 
 # After decoding completes, access the data
@@ -93,7 +93,7 @@ julia> state.prn
 julia> typeof(state.data)
 GalileoINAVData
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -135,7 +135,7 @@ julia> state = GNSSDecoderState(GalileoE6B(), 1);
 julia> get_bit_rate(state)   # 1000 symbols, one page, per second
 1000 Hz
 
-julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
+julia> has_positioning_data(state)   # corrections, not an ephemeris
 false
 ```
 
@@ -178,7 +178,7 @@ julia> state.prn
 julia> typeof(state.data)
 GPSCNAV2Data
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -203,7 +203,7 @@ julia> state.prn
 julia> typeof(state.data)
 GPSCNAVData
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -227,7 +227,7 @@ julia> state.prn
 julia> typeof(state.data)
 GPSCNAVData
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -249,7 +249,7 @@ julia> state = GNSSDecoderState(BeiDouB1I(), 20);  # PRN 20: MEO/IGSO, D1 NAV
 julia> typeof(state.data)
 BeiDouDNAVData
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -274,7 +274,7 @@ julia> state = GNSSDecoderState(BeiDouB2aI(), 30);  # Initialize decoder for PRN
 julia> typeof(state.data)
 BeiDouCNAV2Data
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1]);  # Decode 10 soft bits
 
 julia> isnothing(state.num_bits_since_time_reference)  # Buffered, not yet synchronised
 true
@@ -292,7 +292,7 @@ julia> using GNSSDecoder, GNSSSignals
 
 julia> state = GNSSDecoderState(GPSL1CA(), 1);
 
-julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
+julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1]);  # Some decoding
 
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 

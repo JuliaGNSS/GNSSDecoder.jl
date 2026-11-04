@@ -425,7 +425,7 @@ end
         @test midi.health == 0
 
         # Validation: complete after MT10 + MT11 + a clock message
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data == state.raw_data
         @test is_sat_healthy(state)
     end
@@ -434,22 +434,22 @@ end
         # MT10 alone: not complete.
         state = BeiDouB2aDecoderState(B2A_PRN)
         state = decode_b2a_frames(state, [build_b2a_mt10(; sow = t0)])
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
         @test state.data == BeiDouCNAV2Data()
 
         # + adjacent MT11: ephemeris paired, but still no clock.
         state = decode_b2a_frames(state, [build_b2a_mt11(; sow = t0 + 3)])
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
 
         # + MT30 with a *mismatched* IODC (IODE ≠ IODC & 0xff): not validated.
         state =
             decode_b2a_frames(state, [build_b2a_mt30(; sow = t0 + 6, iodc = B2A_IODC + 1)])
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
         @test state.data == BeiDouCNAV2Data()
 
         # + MT30 with the matching IODC: validated.
         state = decode_b2a_frames(state, [build_b2a_mt30(; sow = t0 + 9)])
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.data.IODE == state.data.IODC & 0xff
 
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
@@ -473,11 +473,11 @@ end
                 build_b2a_mt11(; sow = t0 + 6),
             ],
         )
-        @test !is_decoding_completed_for_positioning(state)
+        @test !has_positioning_data(state)
 
         # A fresh MT10 right after that MT11 (order reversed) pairs up.
         state = decode_b2a_frames(state, [build_b2a_mt10(; sow = t0 + 9)])
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "MT10/MT11 pairing wraps at the BDT week crossover" begin
@@ -648,7 +648,7 @@ end
                 build_b2a_mt30(; sow = t0 + 6),
             ],
         )
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
         @test state.raw_data.IODE == B2A_IODE   # ephemeris survives reset
@@ -660,20 +660,7 @@ end
             state,
             [build_b2a_mt11(; sow = t0 + 12), build_b2a_mt10(; sow = t0 + 15)],
         )
-        @test is_decoding_completed_for_positioning(state)
-    end
-
-    @testset "decode_once stops after the positioning set" begin
-        state = BeiDouB2aDecoderState(B2A_PRN)
-        messages = [
-            build_b2a_mt10(; sow = t0),
-            build_b2a_mt11(; sow = t0 + 3),
-            build_b2a_mt30(; sow = t0 + 6),
-            build_b2a_mt32(; sow = t0 + 9),
-        ]
-        stream = vcat(reduce(vcat, b2a_frame_symbols.(messages)), b2a_trailing_preamble())
-        state = decode!(state, stream, length(stream); decode_once = true)
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
     end
 
     @testset "Signal metadata accessors" begin
@@ -716,7 +703,7 @@ end
             state,
             [build_b2a_mt10(; sow = t0), mt11_unhealthy, mt30_unhealthy],
         )
-        @test is_decoding_completed_for_positioning(state)
+        @test has_positioning_data(state)
         @test state.raw_data.HS == 1
         @test !is_sat_healthy(state)
     end
@@ -745,7 +732,7 @@ end
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
-    @test is_decoding_completed_for_positioning(state)
+    @test has_positioning_data(state)
     @test sort(collect(keys(state.data.reduced_almanacs))) == [7, 8, 9]
     @test collect(keys(state.data.midi_almanacs)) == [23]
     # Promotion copies the stores: `data` never shares them with `raw_data`.
