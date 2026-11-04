@@ -19,7 +19,10 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 
 GNSSSignals uses BOC(1,1) replicas by default for Galileo E1 and the GPS L1C
 pilot. `GNSSDecoderState(GalileoE1B(), prn)` and
-`GNSSDecoderState(GalileoE1B(CBOC), prn)` decode the same I/NAV message.
+`GNSSDecoderState(GalileoE1B(CBOC), prn)` decode the same I/NAV message. Group-delay
+queries accept both Galileo E1 replica variants and both GPS L1C pilot replicas,
+`GPSL1C_P()` and `GPSL1C_P(TMBOC)`; the correction depends on the broadcast component,
+not the replica modulation.
 
 ## Installation
 

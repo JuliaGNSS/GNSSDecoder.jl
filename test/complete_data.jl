@@ -3,7 +3,7 @@
 
 A `D` with every scalar field set (numbers to 1, flags to `false`, enums to
 their first value), which passes `D`'s readiness gate, with `overrides` on top.
-Only the fields the overrides name matter to a test, so the rest need only
+The group delay reads only the fields the overrides name, so the rest need only
 be present.
 """
 function complete_data(D; overrides...)

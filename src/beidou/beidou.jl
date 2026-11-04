@@ -12,6 +12,9 @@
 # `EARTH_ROTATION_RATE` must *not* be used in BeiDou's ephemeris.
 const BEIDOU_μ = 3.986004418e14                # geocentric gravitational constant (m³/s²)
 const BEIDOU_EARTH_ROTATION_RATE = 7.2921150e-5 # Earth rotation rate of BDCS (rad/s)
+# Relativistic correction constant F = −2√μ/c² (s/√m; B1C-1.0 §7.5.2 and the
+# B2a/B2b counterparts): Galileo's value, because μ agrees.
+const BEIDOU_F = -4.442807309e-10
 
 # Whether a broadcast B-CNAV satellite orbit type names an orbit class: 1 = GEO,
 # 2 = IGSO, 3 = MEO, 0 reserved (BDS-SIS-ICD-B1C-1.0 and B2a-1.0 Table 7-8, B2b-1.0
