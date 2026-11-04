@@ -1,0 +1,36 @@
+name: Integration
+# The real-data decode of the Fraunhofer Flexiband III-7a capture
+# (test/integration/flexiband_iii7a.jl), the same real-sky recording Tracking.jl
+# uses. It runs in its own environment, test/integration, because it needs
+# Acquisition and Tracking, and Tracking depends on GNSSDecoder: on pull requests
+# and pushes it would hold every change to GNSSDecoder back until Tracking had a
+# release on the current major, so it runs weekly and on demand instead, and a
+# new major of either side shows here until the other catches up. It downloads
+# the 1.6 GB capture, cached between runs (GitHub caches are per repository, so
+# this is GNSSDecoder's own copy, not Tracking.jl's), then tracks and decodes
+# GPS L1 C/A, Galileo E1B, BeiDou B1I, GPS L5I and Galileo E5a-I.
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+jobs:
+  integration:
+    name: Integration (real-data decode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Cache Flexiband III-7a capture (1.6 GB)
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/flexiband
+          key: flexiband-iii7a-short-v1
+      - name: Instantiate the integration project
+        run: julia --color=yes --project=test/integration -e 'using Pkg; Pkg.instantiate()'
+      - name: Run the integration test
+        run: julia --color=yes --project=test/integration test/integration/runtests.jl
+        env:
+          GNSSDECODER_TESTDATA_DIR: ${{ runner.temp }}/flexiband
