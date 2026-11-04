@@ -523,6 +523,15 @@ GalileoINAVCache() = GalileoINAVCache(
     )
 end
 
+# For another satellite (`reset_decoder_state!(state, prn)`): the even page part
+# awaiting its odd partner and the almanacs part-filled along the word-type chain.
+clear_satellite_cache(cache::GalileoINAVCache) = GalileoINAVCache(
+    cache;
+    even_page_part_bits = nothing,
+    almanac_chain_pos1 = GalileoAlmanac(),
+    almanac_chain_pos2 = GalileoAlmanac(),
+)
+
 # `soft_page` and the Viterbi handle are scratch (overwritten before being read), as
 # is `GalileoE6BCache`'s `fec_window`, so they are excluded. `storage` only backs
 # `raw_data` and `data`, which the state compares itself.

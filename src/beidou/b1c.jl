@@ -595,6 +595,10 @@ struct BeiDouB1CCache <: AbstractGNSSCache
     storage::DataStorage{BeiDouCNAV1Data}
 end
 
+# Nothing belongs to the satellite (see `reset_decoder_state!(state, prn)`): the buffers
+# are FEC scratch, refilled by every frame.
+clear_satellite_cache(cache::BeiDouB1CCache) = cache
+
 function BeiDouB1CCache()
     BeiDouB1CCache(
         CircularDeque{Float32}(B1C_WINDOW_LENGTH),
@@ -669,7 +673,7 @@ The BDT-to-`target` offset from subframe 3 page type 3, or `nothing` when this s
 has not broadcast one for `target`.
 
 B1C keys its offsets by system: each set is filed under its `GNSS_ID` in `data.bgtos`
-(see [`BeiDouB1CBGTO`](@ref)) rather than overwriting the last,
+(see [`BeiDouB1CBGTO`](@ref GNSSDecoder.BeiDouB1CBGTO)) rather than overwriting the last,
 so every system ever broadcast stays answerable. Sets with `GNSS_ID == 0` ("not
 available", §7.13.1) are dropped at decode.
 """

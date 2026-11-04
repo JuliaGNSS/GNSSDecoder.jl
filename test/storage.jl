@@ -1,4 +1,5 @@
 using GNSSDecoder:
+    SlotDictionary,
     writable_container,
     overwrite!,
     publish!,
