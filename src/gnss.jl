@@ -72,8 +72,8 @@ B-CNAV2 (`BeiDouCNAV2Data`, on B2a) and B-CNAV3 (`BeiDouCNAV3Data`, on B2b). The
 counterpart of [`AbstractGPSCNAVData`](@ref).
 
 Unlike legacy D1/D2 (`BeiDouDNAVData`, on B1I/B3I), all three carry the quasi-Keplerian
-ephemeris as `ΔA` off a `sat_type`-selected reference semi-major axis with an outright
-`Ω̇`, the `sat_type` orbit class itself ([`get_orbit_class`](@ref) dispatches on this
+ephemeris as `ΔA` off a `SatType`-selected reference semi-major axis with an outright
+`Ω̇`, the `SatType` orbit class itself ([`get_orbit_class`](@ref) dispatches on this
 type), and the BDGIM ionospheric coefficients.
 """
 abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
@@ -262,7 +262,7 @@ has been decoded, so no separate `nothing` guard is needed.
 
       - **Ephemeris freshness.** Only presence is checked, not age. The decoder has no
         notion of "now", so the consumer must reject ephemerides outside their fit
-        interval (`fit_interval` / `t_0e` age).
+        interval (`fit_interval` / ephemeris reference-epoch age).
 
       - **Second-order corrections.** Klobuchar / BDGIM ionosphere and UTC parameters are
         excluded: they are broadcast far less often, so apply them when present and treat
@@ -271,18 +271,18 @@ has been decoded, so no separate `nothing` guard is needed.
         in the block the gate already waits for?*
 
         If so, it is required, being a metre-scale bias that costs nothing to wait for.
-        BeiDou B1C's `T_GD_B1Cp` and `ISC_B1Cd` are in the same CRC-protected subframe 2 as
-        the ephemeris and clock, B2b's `T_GD_B2bI` in the same MT30 as the clock, and
+        BeiDou B1C's `T_GDB1Cp` and `ISC_B1Cd` are in the same CRC-protected subframe 2 as
+        the ephemeris and clock, B2b's `T_GDB2bI` in the same MT30 as the clock, and
         B1I/B3I's `T_GD1` in the same D1 subframe 1 / D2 page 1 as the clock.
 
         If not, it is excluded, because requiring it would mean waiting for a message the
-        ICD does not schedule: BeiDou B2a's `T_GD_B2ap` / `ISC_B2ad` are in MT30 alone
+        ICD does not schedule: BeiDou B2a's `T_GDB2ap` / `ISC_B2ad` are in MT30 alone
         while the clock is in MT30-34, and the GPS CNAV `T_GD` and `ISC_*` (message
         type 30) and the CNAV-2 ISCs of the other civil signals (subframe 3 page 1) arrive
         on their own cadence. CNAV-2's own `T_GD`, `ISC_L1CD` and `ISC_L1CP` ride in
         subframe 2 with the ephemeris.
 
-        Corrections for a band this decoder is not on (B1C's `T_GD_B2ap`, B1I/B3I's
+        Corrections for a band this decoder is not on (B1C's `T_GDB2ap`, B1I/B3I's
         `T_GD2` since there is no B2I signal here, the GPS `ISC_L5Q5` on an L1 fix) are
         never required. They are still decoded and published; only this gate ignores them.
 
@@ -408,7 +408,7 @@ them rarely enough that `GNSSDecoder.geostationary_orbit` costs nothing.
   - `medium_earth_orbit`: MEO
 
 The integer values are this package's own, not any ICD's encoding; BeiDou's 2-bit
-`sat_type` (1 GEO / 2 IGSO / 3 MEO) is mapped explicitly.
+`SatType` (1 GEO / 2 IGSO / 3 MEO) is mapped explicitly.
 """
 @enum OrbitClass begin
     geostationary_orbit
@@ -424,7 +424,7 @@ not make it knowable.
 
   - **GPS and Galileo**: [`medium_earth_orbit`](@ref OrbitClass) for every satellite (both
     are MEO-only by design), so no decoded data is needed.
-  - **BeiDou B1C, B2a, B2b**: from the broadcast `sat_type` field of the satellite's
+  - **BeiDou B1C, B2a, B2b**: from the broadcast `SatType` field of the satellite's
     Ephemeris I block (1 GEO / 2 IGSO / 3 MEO, reserved 0; B1C and B2a Table 7-8, B2b
     Table 7-6). `nothing` until that block is decoded and promoted, and for the reserved
     code (the screen `is_known_sat_type` applies to positioning).
@@ -660,9 +660,9 @@ the time of week itself (BDS-SIS-ICD-B1I-3.0 §5.2.4.19, `Δt_GPS = A_0GPS + A_1
     is GPS-only by definition, and BeiDou B1C keys a set per system.
 
 The ICDs' "not available" sentinels are screened, so a returned offset is real: a
-GPS/BeiDou `GNSS_ID` of 0 means "no offset in this message" (IS-GPS-800 Table 6.2-7,
-BDS-SIS-ICD-B1C §7.13.1), and Galileo marks an absent GGTO with all four fields all ones
-(§5.1.8, handled at decode by `galileo_ggto`).
+GPS `GGTO_ID` or BeiDou `GNSS_ID` of 0 means "no offset in this message" (IS-GPS-800
+Table 6.2-7, BDS-SIS-ICD-B1C §7.13.1), and Galileo marks an absent GGTO with all four
+fields all ones (§5.1.8, handled at decode by `galileo_ggto`).
 
 [`get_time_offset_parameters`](@ref) returns the polynomial itself, with its reference
 week resolved, for a RINEX writer. The coefficients as broadcast stay on the decoded data
@@ -746,7 +746,7 @@ form [`get_broadcast_time_offset`](@ref) evaluates. [`get_time_offset_parameters
 returns it.
 
 It normalises the five forms the ICDs broadcast: Galileo's GGTO toward GPS time (OS SIS ICD
-§5.1.8), GPS CNAV and CNAV-2's GGTO toward the system their `GNSS_ID` names
+§5.1.8), GPS CNAV and CNAV-2's GGTO toward the system their `GGTO_ID` names
 (IS-GPS-705/800), BeiDou B-CNAV's BGTO likewise (BDS-SIS-ICD-B1C-1.0 §7.13), and BeiDou
 D1/D2's offsets toward GPS and Galileo time (BDS-SIS-ICD-B1I-3.0 §5.2.4.19). The
 coefficients are the steering residual as broadcast, without the leap seconds between the
@@ -904,9 +904,9 @@ read off the decoder:
 | Galileo I/NAV (E1-B, E5b) | E1-B/C, E5b-I/Q      | `(f_E1 / f)² · BGD_E1_E5b`                    |
 | Galileo F/NAV (E5a)       | E5a-I/Q              | `(f_E1 / f)² · BGD_E1_E5a`                    |
 | BeiDou D1/D2 (B1I, B3I)   | B1I, B3I             | `T_GD1`, `0`                                  |
-| BeiDou B-CNAV1 (B1C)      | B1C data, pilot      | `T_GD_B1Cp + ISC_B1Cd`, `T_GD_B1Cp`           |
-| BeiDou B-CNAV2 (B2a)      | B2a data, pilot      | `T_GD_B2ap + ISC_B2ad`, `T_GD_B2ap`           |
-| BeiDou B-CNAV3 (B2b)      | B2b-I                | `T_GD_B2bI`                                   |
+| BeiDou B-CNAV1 (B1C)      | B1C data, pilot      | `T_GDB1Cp + ISC_B1Cd`, `T_GDB1Cp`             |
+| BeiDou B-CNAV2 (B2a)      | B2a data, pilot      | `T_GDB2ap + ISC_B2ad`, `T_GDB2ap`             |
+| BeiDou B-CNAV3 (B2b)      | B2b-I                | `T_GDB2bI`                                    |
 
 GPS states its clock for the L1 P(Y)/L2 P(Y) ionosphere-free pair, with an inter-signal
 correction per civil signal (IS-GPS-200 §20.3.3.3.3.2 and §30.3.3.3.1.1, IS-GPS-705
@@ -920,7 +920,7 @@ signal from there, with the data components adding an ISC to their band's pilot
 Most terms ride with the clock and are present once the gate passes, including CNAV-2's
 `T_GD`, `ISC_L1CD` and `ISC_L1CP` (subframe 2, with the ephemeris). GPS CNAV's `T_GD` and
 ISCs (message type 30), CNAV-2's ISCs of the other civil signals (`ISC_L1CA` and the L2/L5
-ones, subframe 3 page 1) and B2a's `T_GD_B2ap` and `ISC_B2ad` (message type 30) arrive on
+ones, subframe 3 page 1) and B2a's `T_GDB2ap` and `ISC_B2ad` (message type 30) arrive on
 their own cadence; the gate does not wait for them (see [`has_positioning_data`](@ref)), so
 this returns `nothing` until they have. What to do meanwhile is the caller's choice: a
 single-frequency fix taking the correction as zero,

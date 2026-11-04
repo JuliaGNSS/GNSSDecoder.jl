@@ -28,13 +28,13 @@ Almanac data for one GPS satellite, decoded from a single LNAV almanac page
 (subframe 4 pages 2-5 / 7-10 for SV 25-32, subframe 5 pages 1-24 for SV 1-24).
 
 Reduced-precision orbital and clock parameters. Inclination is broadcast as a delta
-from the nominal `i_nominal = 0.3 semi-circles ≈ 54°`, stored in `δi`.
+from the nominal `i_nominal = 0.3 semi-circles ≈ 54°`, stored in `δ_i`.
 
 # Fields
 
   - `e::Float64`: Eccentricity (dimensionless)
-  - `t_0a::Int`: Almanac reference time of week (seconds)
-  - `δi::Float64`: Inclination delta from nominal 0.3 semi-circles (rad)
+  - `t_oa::Int`: Almanac reference time of week (seconds)
+  - `δ_i::Float64`: Inclination delta from nominal 0.3 semi-circles (rad)
   - `Ω_dot::Float64`: Rate of right ascension (rad/s)
   - `sv_health::Int64`: Raw 8-bit SV health word (0 = healthy; IS-GPS-200N
     20.3.3.5.1.3, Table 20-VII — the MSB summarises the navigation data and the
@@ -52,8 +52,8 @@ IS-GPS-200N, Section 20.3.3.5.1.2, Table 20-VI
 """
 Base.@kwdef struct GPSL1CAAlmanac
     e::Union{Nothing,Float64} = nothing
-    t_0a::Union{Nothing,Int} = nothing
-    δi::Union{Nothing,Float64} = nothing
+    t_oa::Union{Nothing,Int} = nothing
+    δ_i::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     sv_health::Union{Nothing,Int64} = nothing
     sqrt_A::Union{Nothing,Float64} = nothing
@@ -100,7 +100,7 @@ from the GPS LNAV message (IS-GPS-200N).
     interval (`IODC < 240`, `240-247`, `248-255, 496`)
   - `L2_P_data_flag::Bool`: L2 P-code data flag (1=LNAV OFF on P-code)
   - `T_GD::Float64`: L1-L2 group delay correction (seconds)
-  - `t_0c::Int64`: Clock reference time (seconds; the ICD writes `toc`)
+  - `t_oc::Int64`: Clock reference time (seconds)
   - `a_f0::Float64`: Clock bias correction coefficient (seconds)
   - `a_f1::Float64`: Clock drift correction coefficient (s/s)
   - `a_f2::Float64`: Clock drift rate correction coefficient (s/s²)
@@ -115,7 +115,7 @@ from the GPS LNAV message (IS-GPS-200N).
   - `e::Float64`: Eccentricity (dimensionless, range 0-0.03)
   - `C_us::Float64`: Sine harmonic correction to argument of latitude (rad)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
-  - `t_0e::Int64`: Ephemeris reference time (seconds; the ICD writes `toe`)
+  - `t_oe::Int64`: Ephemeris reference time (seconds)
   - `fit_interval::Bool`: Curve fit interval flag (0 = 4 h, 1 = more than 4 h)
   - `AODO::Int64`: Age of Data Offset for the NMCT (seconds; 5-bit broadcast
     count with an LSB of 900 s, so 27900 s means "NMCT unavailable")
@@ -130,17 +130,17 @@ from the GPS LNAV message (IS-GPS-200N).
   - `ω::Float64`: Argument of perigee (rad)
   - `Ω_dot::Float64`: Rate of right ascension (rad/s)
   - `IODE_subframe3::Int64`: Issue of Data, Ephemeris from subframe 3 (8 bits)
-  - `i_dot::Float64`: Rate of inclination angle (rad/s)
+  - `IDOT::Float64`: Rate of inclination angle (rad/s)
 
 # Subframe 4 Page 18 - Ionosphere and UTC
 
   - `α_0..α_3::Float64`: Klobuchar ionospheric delay coefficients (s, s/sc, s/sc², s/sc³)
   - `β_0..β_3::Float64`: Klobuchar ionospheric period coefficients (s, s/sc, s/sc², s/sc³)
-  - `A_0UTC::Float64`: Constant term of the UTC polynomial (s; the ICD writes `A0`)
-  - `A_1UTC::Float64`: 1st-order term of the UTC polynomial (s/s; the ICD writes `A1`)
+  - `A_0::Float64`: Constant term of the UTC polynomial (s)
+  - `A_1::Float64`: 1st-order term of the UTC polynomial (s/s)
   - `Δt_LS::Int64`: Leap-second count before the pending adjustment (s)
-  - `t_0t::Int64`: UTC reference time of week (s; the ICD writes `tot`)
-  - `WN_0t::Int64`: UTC reference week number (modulo 256; the ICD writes `WNt`)
+  - `t_ot::Int64`: UTC reference time of week (s)
+  - `WN_t::Int64`: UTC reference week number (modulo 256)
   - `WN_LSF::Int64`: Week number of the leap-second adjustment (modulo 256)
   - `DN::Int64`: Day number at the end of which the leap second becomes effective (1-7)
   - `Δt_LSF::Int64`: Leap-second count after the pending adjustment (s)
@@ -154,7 +154,7 @@ from the GPS LNAV message (IS-GPS-200N).
 # Subframe 5 Pages 1-24 - Almanac
 
   - `almanacs::SlotDictionary{GPSL1CAAlmanac,33}`: Per-SV almanacs, keyed by SV ID
-  - `t_0a::Int64`: Almanac reference time of week (s; the ICD writes `toa`)
+  - `t_oa::Int64`: Almanac reference time of week (s)
   - `WN_a::Int64`: Almanac reference week number (modulo 256)
 
 # Reference
@@ -177,7 +177,7 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     IODC::Union{Nothing,Int64} = nothing
     L2_P_data_flag::Union{Nothing,Bool} = nothing
     T_GD::Union{Nothing,Float64} = nothing
-    t_0c::Union{Nothing,Int64} = nothing
+    t_oc::Union{Nothing,Int64} = nothing
     a_f2::Union{Nothing,Float64} = nothing
     a_f1::Union{Nothing,Float64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
@@ -190,7 +190,7 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     e::Union{Nothing,Float64} = nothing
     C_us::Union{Nothing,Float64} = nothing
     sqrt_A::Union{Nothing,Float64} = nothing
-    t_0e::Union{Nothing,Int64} = nothing
+    t_oe::Union{Nothing,Int64} = nothing
     fit_interval::Union{Nothing,Bool} = nothing
     AODO::Union{Nothing,Int64} = nothing
 
@@ -202,7 +202,7 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     ω::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     IODE_subframe3::Union{Nothing,Int64} = nothing
-    i_dot::Union{Nothing,Float64} = nothing
+    IDOT::Union{Nothing,Float64} = nothing
 
     # Subframe 4 page 18: Ionospheric parameters
     α_0::Union{Nothing,Float64} = nothing
@@ -215,11 +215,11 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     β_3::Union{Nothing,Float64} = nothing
 
     # Subframe 4 page 18: UTC parameters
-    A_0UTC::Union{Nothing,Float64} = nothing
-    A_1UTC::Union{Nothing,Float64} = nothing
+    A_0::Union{Nothing,Float64} = nothing
+    A_1::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_0t::Union{Nothing,Int64} = nothing
-    WN_0t::Union{Nothing,Int64} = nothing
+    t_ot::Union{Nothing,Int64} = nothing
+    WN_t::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -237,11 +237,11 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     sv_health_sf5_25::Union{Nothing,Vector{Int64}} = nothing
 
     # Subframe 5 page 25: Almanac reference time and week
-    t_0a::Union{Nothing,Int64} = nothing
+    t_oa::Union{Nothing,Int64} = nothing
     WN_a::Union{Nothing,Int64} = nothing
 end
 
-# `WN_0t` and `WN_LSF` are broadcast in 8 bits (IS-GPS-200N Figure 20-1, subframe 4
+# `WN_t` and `WN_LSF` are broadcast in 8 bits (IS-GPS-200N Figure 20-1, subframe 4
 # page 18), against a 10-bit `WN`: see `get_utc_parameters`.
 const LNAV_UTC_WN_MODULUS = 256
 const LNAV_LSF_WN_MODULUS = 256
@@ -261,7 +261,7 @@ const LNAV_LSF_WN_MODULUS = 256
     IODC = data.IODC,
     L2_P_data_flag = data.L2_P_data_flag,
     T_GD = data.T_GD,
-    t_0c = data.t_0c,
+    t_oc = data.t_oc,
     a_f2 = data.a_f2,
     a_f1 = data.a_f1,
     a_f0 = data.a_f0,
@@ -273,7 +273,7 @@ const LNAV_LSF_WN_MODULUS = 256
     e = data.e,
     C_us = data.C_us,
     sqrt_A = data.sqrt_A,
-    t_0e = data.t_0e,
+    t_oe = data.t_oe,
     fit_interval = data.fit_interval,
     AODO = data.AODO,
     C_ic = data.C_ic,
@@ -284,7 +284,7 @@ const LNAV_LSF_WN_MODULUS = 256
     ω = data.ω,
     Ω_dot = data.Ω_dot,
     IODE_subframe3 = data.IODE_subframe3,
-    i_dot = data.i_dot,
+    IDOT = data.IDOT,
     α_0 = data.α_0,
     α_1 = data.α_1,
     α_2 = data.α_2,
@@ -293,11 +293,11 @@ const LNAV_LSF_WN_MODULUS = 256
     β_1 = data.β_1,
     β_2 = data.β_2,
     β_3 = data.β_3,
-    A_0UTC = data.A_0UTC,
-    A_1UTC = data.A_1UTC,
+    A_0 = data.A_0,
+    A_1 = data.A_1,
     Δt_LS = data.Δt_LS,
-    t_0t = data.t_0t,
-    WN_0t = data.WN_0t,
+    t_ot = data.t_ot,
+    WN_t = data.WN_t,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -305,7 +305,7 @@ const LNAV_LSF_WN_MODULUS = 256
     sv_health_sf4_25 = data.sv_health_sf4_25,
     almanacs = data.almanacs,
     sv_health_sf5_25 = data.sv_health_sf5_25,
-    t_0a = data.t_0a,
+    t_oa = data.t_oa,
     WN_a = data.WN_a,
 )
     GPSLNAVData(
@@ -322,7 +322,7 @@ const LNAV_LSF_WN_MODULUS = 256
         IODC,
         L2_P_data_flag,
         T_GD,
-        t_0c,
+        t_oc,
         a_f2,
         a_f1,
         a_f0,
@@ -334,7 +334,7 @@ const LNAV_LSF_WN_MODULUS = 256
         e,
         C_us,
         sqrt_A,
-        t_0e,
+        t_oe,
         fit_interval,
         AODO,
         C_ic,
@@ -345,7 +345,7 @@ const LNAV_LSF_WN_MODULUS = 256
         ω,
         Ω_dot,
         IODE_subframe3,
-        i_dot,
+        IDOT,
         α_0,
         α_1,
         α_2,
@@ -354,11 +354,11 @@ const LNAV_LSF_WN_MODULUS = 256
         β_1,
         β_2,
         β_3,
-        A_0UTC,
-        A_1UTC,
+        A_0,
+        A_1,
         Δt_LS,
-        t_0t,
-        WN_0t,
+        t_ot,
+        WN_t,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -366,7 +366,7 @@ const LNAV_LSF_WN_MODULUS = 256
         sv_health_sf4_25,
         almanacs,
         sv_health_sf5_25,
-        t_0a,
+        t_oa,
         WN_a,
     )
 end
@@ -456,7 +456,7 @@ function is_subframe1_decoded(data::GPSLNAVData)
         !isnothing(data.IODC) &&
         !isnothing(data.L2_P_data_flag) &&
         !isnothing(data.T_GD) &&
-        !isnothing(data.t_0c) &&
+        !isnothing(data.t_oc) &&
         !isnothing(data.a_f2) &&
         !isnothing(data.a_f1) &&
         !isnothing(data.a_f0)
@@ -471,7 +471,7 @@ function is_subframe2_decoded(data::GPSLNAVData)
         !isnothing(data.e) &&
         !isnothing(data.C_us) &&
         !isnothing(data.sqrt_A) &&
-        !isnothing(data.t_0e) &&
+        !isnothing(data.t_oe) &&
         !isnothing(data.fit_interval) &&
         !isnothing(data.AODO)
 end
@@ -485,7 +485,7 @@ function is_subframe3_decoded(data::GPSLNAVData)
         !isnothing(data.ω) &&
         !isnothing(data.Ω_dot) &&
         !isnothing(data.IODE_subframe3) &&
-        !isnothing(data.i_dot)
+        !isnothing(data.IDOT)
 end
 
 # `TOW` is already in seconds (the 17-bit HOW count is scaled by 6 at parse).
@@ -889,8 +889,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
 
         state = can_decode_word(state, buffer, 8) do word8, state
             # Clock data reference
-            t_0c = get_bits(word8, 30, 9, 16) << 4
-            GPSLNAVData(state.raw_data; t_0c)
+            t_oc = get_bits(word8, 30, 9, 16) << 4
+            GPSLNAVData(state.raw_data; t_oc)
         end
 
         state = can_decode_word(state, buffer, 9) do word9, state
@@ -955,12 +955,12 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
 
         state = can_decode_word(state, buffer, 10) do word10, state
             # Reference Time ephemeris
-            t_0e = get_bits(word10, 30, 1, 16) << 4
+            t_oe = get_bits(word10, 30, 1, 16) << 4
             fit_interval = get_bit(word10, 30, 17)
             # Five-bit unsigned count with LSB 900 s, 0-31 (IS-GPS-200N 20.3.3.4); 11111
             # is 27900 s (20.3.3.4.4). The raw count is not the value.
             AODO = Int64(get_bits(word10, 30, 18, 5)) * 900
-            GPSLNAVData(state.raw_data; t_0e, fit_interval, AODO)
+            GPSLNAVData(state.raw_data; t_oe, fit_interval, AODO)
         end
     elseif subframe_id == 3
         state = can_decode_word(state, buffer, 3) do word3, state
@@ -1015,8 +1015,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             # Issue of Ephemeris Data
             IODE_subframe3 = Int64(get_bits(word10, 30, 1, 8))
             # Rate of Inclination Angle
-            i_dot = get_twos_complement_num(word10, 30, 9, 14) * GNSS_PI * 2.0^-43
-            GPSLNAVData(state.raw_data; IODE_subframe3, i_dot)
+            IDOT = get_twos_complement_num(word10, 30, 9, 14) * GNSS_PI * 2.0^-43
+            GPSLNAVData(state.raw_data; IODE_subframe3, IDOT)
         end
     elseif subframe_id == 4
         # Page ID (SV ID) is word 3 bits 3-8. The closure's local must not share a name
@@ -1093,21 +1093,21 @@ function decode_subframe4_page18(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
     end
 
     state = can_decode_word(state, buffer, 6) do word6, state
-        A_1UTC = get_twos_complement_num(word6, 30, 1, 24) * 2.0^-50
-        GPSLNAVData(state.raw_data; A_1UTC)
+        A_1 = get_twos_complement_num(word6, 30, 1, 24) * 2.0^-50
+        GPSLNAVData(state.raw_data; A_1)
     end
 
     state = can_decode_two_words(state, buffer, 7, 8) do word7, word8, state
         # A0 is 32 bits: 24 MSBs in word 7, 8 LSBs in word 8
         combined_word = UInt(get_bits(word7, 30, 1, 24) << 8 + get_bits(word8, 30, 1, 8))
-        A_0UTC = get_twos_complement_num(combined_word, 32, 1, 32) / 1 << 30
-        GPSLNAVData(state.raw_data; A_0UTC)
+        A_0 = get_twos_complement_num(combined_word, 32, 1, 32) / 1 << 30
+        GPSLNAVData(state.raw_data; A_0)
     end
 
     state = can_decode_word(state, buffer, 8) do word8, state
-        t_0t = get_bits(word8, 30, 9, 8) << 12
-        WN_0t = get_bits(word8, 30, 17, 8)
-        GPSLNAVData(state.raw_data; t_0t, WN_0t)
+        t_ot = get_bits(word8, 30, 9, 8) << 12
+        WN_t = get_bits(word8, 30, 17, 8)
+        GPSLNAVData(state.raw_data; t_ot, WN_t)
     end
 
     state = can_decode_word(state, buffer, 9) do word9, state
@@ -1210,9 +1210,9 @@ function decode_subframe5_page25(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
     # Word 9: bits 1-24 = SV21-24 health (6 bits each)
 
     state = can_decode_word(state, buffer, 3) do word3, state
-        t_0a = get_bits(word3, 30, 9, 8) << 12
+        t_oa = get_bits(word3, 30, 9, 8) << 12
         WN_a = get_bits(word3, 30, 17, 8)
-        GPSLNAVData(state.raw_data; t_0a, WN_a)
+        GPSLNAVData(state.raw_data; t_oa, WN_a)
     end
 
     sv_health_sf5_25 = writable_container(
@@ -1269,7 +1269,7 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSLNAVData}, buffer, sv_
     # Almanac pages (subframe 4 pages 2-5, 7-10 for SV 25-32;
     #                subframe 5 pages 1-24 for SV 1-24)
     # Word 3: bits 9-24 = e (16 bits)
-    # Word 4: bits 1-8 = toa, bits 9-24 = δi (16 bits)
+    # Word 4: bits 1-8 = toa, bits 9-24 = δ_i (16 bits)
     # Word 5: bits 1-16 = Ω_dot, bits 17-24 = SV health (8 bits)
     # Word 6: bits 1-24 = √A (24 bits)
     # Word 7: bits 1-24 = Ω0 (24 bits)
@@ -1375,8 +1375,8 @@ function decode_almanac_page(state::GNSSDecoderState{<:GPSLNAVData}, buffer, sv_
     # Store almanac data for this SV
     almanac_entry = GPSL1CAAlmanac(;
         e = alm_e,
-        t_0a = alm_toa,
-        δi = alm_δi,
+        t_oa = alm_toa,
+        δ_i = alm_δi,
         Ω_dot = alm_Ω_dot,
         sv_health = alm_sv_health,
         sqrt_A = alm_sqrt_A,
@@ -1403,7 +1403,7 @@ function compare_data(data::GPSLNAVData, new_data::GPSLNAVData)
             (data.TOW < new_data.TOW && data.WN >= new_data.WN)
         ) &&
         data.T_GD == new_data.T_GD &&
-        data.t_0c == new_data.t_0c &&
+        data.t_oc == new_data.t_oc &&
         data.a_f0 == new_data.a_f0 &&
         data.a_f1 == new_data.a_f1 &&
         data.a_f2 == new_data.a_f2 &&
@@ -1414,7 +1414,7 @@ function compare_data(data::GPSLNAVData, new_data::GPSLNAVData)
         data.e == new_data.e &&
         data.C_us == new_data.C_us &&
         data.sqrt_A == new_data.sqrt_A &&
-        data.t_0e == new_data.t_0e &&
+        data.t_oe == new_data.t_oe &&
         data.fit_interval == new_data.fit_interval &&
         data.AODO == new_data.AODO &&
         data.C_ic == new_data.C_ic &&
@@ -1424,7 +1424,7 @@ function compare_data(data::GPSLNAVData, new_data::GPSLNAVData)
         data.C_rc == new_data.C_rc &&
         data.ω == new_data.ω &&
         data.Ω_dot == new_data.Ω_dot &&
-        data.i_dot == new_data.i_dot
+        data.IDOT == new_data.IDOT
 end
 
 # Promote `raw_data` to validated `data`, re-anchoring the symbol counter to the

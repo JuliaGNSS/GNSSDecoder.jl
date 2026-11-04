@@ -62,7 +62,7 @@ const B2B_SOW_FIELD_BASE = 100_000       # broadcast value == seconds (LSB 1 s)
 
 function b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE)
     b2b_build_message(10, sow_field) do bits
-        b2b_set_field!(bits, 31, 11, 1200)      # t_0e = 1200*300
+        b2b_set_field!(bits, 31, 11, 1200)      # t_oe = 1200*300
         b2b_set_field!(bits, 42, 2, 0b11)       # MEO
         b2b_set_field!(bits, 44, 26, -5000)     # ΔA
         b2b_set_field!(bits, 70, 25, -321)      # A_dot
@@ -74,16 +74,16 @@ function b2b_mt10_message(; sow_field = B2B_SOW_FIELD_BASE)
         b2b_set_field!(bits, 234, 33, -7654321) # Ω_0
         b2b_set_field!(bits, 267, 33, 3456789)  # i_0
         b2b_set_field!(bits, 300, 19, -98765)   # Ω_dot
-        b2b_set_field!(bits, 319, 15, 4321)     # i_dot
+        b2b_set_field!(bits, 319, 15, 4321)     # i_0_dot
         b2b_set_field!(bits, 334, 16, -1111)    # C_is
         b2b_set_field!(bits, 350, 16, 2222)     # C_ic
         b2b_set_field!(bits, 366, 24, -33333)   # C_rs
         b2b_set_field!(bits, 390, 24, 44444)    # C_rc
         b2b_set_field!(bits, 414, 21, -5555)    # C_us
         b2b_set_field!(bits, 435, 21, 6666)     # C_uc
-        b2b_set_field!(bits, 456, 1, 0)         # DIF
-        b2b_set_field!(bits, 457, 1, 1)         # SIF
-        b2b_set_field!(bits, 458, 1, 0)         # AIF
+        b2b_set_field!(bits, 456, 1, 0)         # DIF_I
+        b2b_set_field!(bits, 457, 1, 1)         # SIF_I
+        b2b_set_field!(bits, 458, 1, 0)         # AIF_I
         b2b_set_field!(bits, 459, 4, 9)         # SISMAI
     end
 end
@@ -91,26 +91,26 @@ end
 function b2b_mt30_message(; sow_field = B2B_SOW_FIELD_BASE + 1, HS = 0)
     b2b_build_message(30, sow_field) do bits
         b2b_set_field!(bits, 27, 13, 913)       # WN
-        b2b_set_field!(bits, 44, 11, 1500)      # t_0c = 1500*300
-        b2b_set_field!(bits, 55, 25, -400000)   # a_f0
-        b2b_set_field!(bits, 80, 22, 123456)    # a_f1
-        b2b_set_field!(bits, 102, 11, -321)     # a_f2
-        b2b_set_field!(bits, 113, 12, -1000)    # T_GD_B2bI
-        b2b_set_field!(bits, 125, 10, 200)      # α_bdgim_1 (unsigned)
-        b2b_set_field!(bits, 135, 8, -50)       # α_bdgim_2 (signed)
-        b2b_set_field!(bits, 143, 8, 60)        # α_bdgim_3 (unsigned)
-        b2b_set_field!(bits, 151, 8, 70)        # α_bdgim_4 (unsigned)
-        b2b_set_field!(bits, 159, 8, 80)        # α_bdgim_5 (unsigned, scale -2⁻³)
-        b2b_set_field!(bits, 167, 8, -90)       # α_bdgim_6
-        b2b_set_field!(bits, 175, 8, 100)       # α_bdgim_7
-        b2b_set_field!(bits, 183, 8, -110)      # α_bdgim_8
-        b2b_set_field!(bits, 191, 8, 120)       # α_bdgim_9
+        b2b_set_field!(bits, 44, 11, 1500)      # t_oc = 1500*300
+        b2b_set_field!(bits, 55, 25, -400000)   # a_0
+        b2b_set_field!(bits, 80, 22, 123456)    # a_1
+        b2b_set_field!(bits, 102, 11, -321)     # a_2
+        b2b_set_field!(bits, 113, 12, -1000)    # T_GDB2bI
+        b2b_set_field!(bits, 125, 10, 200)      # α_1 (unsigned)
+        b2b_set_field!(bits, 135, 8, -50)       # α_2 (signed)
+        b2b_set_field!(bits, 143, 8, 60)        # α_3 (unsigned)
+        b2b_set_field!(bits, 151, 8, 70)        # α_4 (unsigned)
+        b2b_set_field!(bits, 159, 8, 80)        # α_5 (unsigned, scale -2⁻³)
+        b2b_set_field!(bits, 167, 8, -90)       # α_6
+        b2b_set_field!(bits, 175, 8, 100)       # α_7
+        b2b_set_field!(bits, 183, 8, -110)      # α_8
+        b2b_set_field!(bits, 191, 8, 120)       # α_9
         b2b_set_field!(bits, 199, 16, -20000)   # A_0UTC
         b2b_set_field!(bits, 215, 13, 3000)     # A_1UTC
         b2b_set_field!(bits, 228, 7, -40)       # A_2UTC
         b2b_set_field!(bits, 235, 8, 4)         # Δt_LS
-        b2b_set_field!(bits, 243, 16, 37800)    # t_0t = 37800*16
-        b2b_set_field!(bits, 259, 13, 913)      # WN_0t
+        b2b_set_field!(bits, 243, 16, 37800)    # t_ot = 37800*16
+        b2b_set_field!(bits, 259, 13, 913)      # WN_ot
         b2b_set_field!(bits, 272, 13, 829)      # WN_LSF
         b2b_set_field!(bits, 285, 3, 6)         # DN
         b2b_set_field!(bits, 288, 8, 5)         # Δt_LSF
@@ -142,9 +142,9 @@ function b2b_mt40_message(; sow_field = B2B_SOW_FIELD_BASE + 2)
         b2b_set_field!(bits, 95, 6, 30)         # PRN_a
         b2b_set_field!(bits, 101, 2, 0b10)      # IGSO
         b2b_set_field!(bits, 103, 13, 913)      # WN_a
-        b2b_set_field!(bits, 116, 8, 100)       # t_0a = 100*4096
+        b2b_set_field!(bits, 116, 8, 100)       # t_oa = 100*4096
         b2b_set_field!(bits, 124, 11, 500)      # e
-        b2b_set_field!(bits, 135, 11, -200)     # δi
+        b2b_set_field!(bits, 135, 11, -200)     # δ_i
         b2b_set_field!(bits, 146, 17, 103900)   # sqrt_A = 103900*2⁻⁴
         b2b_set_field!(bits, 163, 16, -10000)   # Ω_0
         b2b_set_field!(bits, 179, 11, -700)     # Ω_dot
@@ -155,11 +155,11 @@ function b2b_mt40_message(; sow_field = B2B_SOW_FIELD_BASE + 2)
         b2b_set_field!(bits, 243, 8, 0)         # health
         # Reduced-almanac reference time (Table 7-15):
         b2b_set_field!(bits, 251, 13, 913)      # WN_a (reduced)
-        b2b_set_field!(bits, 264, 8, 101)       # t_0a = 101*4096
+        b2b_set_field!(bits, 264, 8, 101)       # t_oa = 101*4096
         # Reduced almanac 1: PRN 7, MEO
         b2b_set_field!(bits, 272, 6, 7)
         b2b_set_field!(bits, 278, 2, 0b11)
-        b2b_set_field!(bits, 280, 8, -20)       # δA = -20*512
+        b2b_set_field!(bits, 280, 8, -20)       # δ_A = -20*512
         b2b_set_field!(bits, 288, 7, 30)        # Ω_0
         b2b_set_field!(bits, 295, 7, -25)       # Φ_0
         b2b_set_field!(bits, 302, 8, 0)         # health
@@ -212,8 +212,8 @@ end
 
         # MT10 — ephemeris + integrity:
         d = state.raw_data
-        @test d.t_0e == 1200 * 300
-        @test d.sat_type == 3
+        @test d.t_oe == 1200 * 300
+        @test d.SatType == 3
         @test d.ΔA == -5000 * 2.0^-9
         @test d.A_dot == -321 * 2.0^-21
         @test d.Δn_0 == 12345 * 2.0^-44 * PI
@@ -224,40 +224,40 @@ end
         @test d.Ω_0 == -7654321 * 2.0^-32 * PI
         @test d.i_0 == 3456789 * 2.0^-32 * PI
         @test d.Ω_dot == -98765 * 2.0^-44 * PI
-        @test d.i_dot == 4321 * 2.0^-44 * PI
+        @test d.i_0_dot == 4321 * 2.0^-44 * PI
         @test d.C_is == -1111 * 2.0^-30
         @test d.C_ic == 2222 * 2.0^-30
         @test d.C_rs == -33333 * 2.0^-8
         @test d.C_rc == 44444 * 2.0^-8
         @test d.C_us == -5555 * 2.0^-30
         @test d.C_uc == 6666 * 2.0^-30
-        @test d.DIF === false
-        @test d.SIF === true
-        @test d.AIF === false
+        @test d.DIF_I === false
+        @test d.SIF_I === true
+        @test d.AIF_I === false
         @test d.SISMAI == 9
 
         # MT30 — clock/TGD/iono/UTC/EOP/SISAI/health:
         @test d.WN == 913
-        @test d.t_0c == 1500 * 300
-        @test d.a_f0 == -400000 * 2.0^-34
-        @test d.a_f1 == 123456 * 2.0^-50
-        @test d.a_f2 == -321 * 2.0^-66
-        @test d.T_GD_B2bI == -1000 * 2.0^-34
-        @test d.α_bdgim_1 == 200 * 2.0^-3
-        @test d.α_bdgim_2 == -50 * 2.0^-3
-        @test d.α_bdgim_3 == 60 * 2.0^-3
-        @test d.α_bdgim_4 == 70 * 2.0^-3
-        @test d.α_bdgim_5 == 80 * -(2.0^-3)
-        @test d.α_bdgim_6 == -90 * 2.0^-3
-        @test d.α_bdgim_7 == 100 * 2.0^-3
-        @test d.α_bdgim_8 == -110 * 2.0^-3
-        @test d.α_bdgim_9 == 120 * 2.0^-3
+        @test d.t_oc == 1500 * 300
+        @test d.a_0 == -400000 * 2.0^-34
+        @test d.a_1 == 123456 * 2.0^-50
+        @test d.a_2 == -321 * 2.0^-66
+        @test d.T_GDB2bI == -1000 * 2.0^-34
+        @test d.α_1 == 200 * 2.0^-3
+        @test d.α_2 == -50 * 2.0^-3
+        @test d.α_3 == 60 * 2.0^-3
+        @test d.α_4 == 70 * 2.0^-3
+        @test d.α_5 == 80 * -(2.0^-3)
+        @test d.α_6 == -90 * 2.0^-3
+        @test d.α_7 == 100 * 2.0^-3
+        @test d.α_8 == -110 * 2.0^-3
+        @test d.α_9 == 120 * 2.0^-3
         @test d.A_0UTC == -20000 * 2.0^-35
         @test d.A_1UTC == 3000 * 2.0^-51
         @test d.A_2UTC == -40 * 2.0^-68
         @test d.Δt_LS == 4
-        @test d.t_0t == 37800 * 16
-        @test d.WN_0t == 913
+        @test d.t_ot == 37800 * 16
+        @test d.WN_ot == 913
         @test d.WN_LSF == 829
         @test d.DN == 6
         @test d.Δt_LSF == 5
@@ -283,14 +283,14 @@ end
         @test d.A_1BGTO == 987 * 2.0^-51
         @test d.A_2BGTO == -12 * 2.0^-68
         @test d.WN_a == 913
-        @test d.t_0a == 101 * 4096
+        @test d.t_oa == 101 * 4096
         midi = d.midi_almanacs[30]
         @test midi.PRN_a == 30
-        @test midi.sat_type == 2
+        @test midi.SatType == 2
         @test midi.WN_a == 913
-        @test midi.t_0a == 100 * 4096
+        @test midi.t_oa == 100 * 4096
         @test midi.e == 500 * 2.0^-16
-        @test midi.δi == -200 * 2.0^-14 * PI
+        @test midi.δ_i == -200 * 2.0^-14 * PI
         @test midi.sqrt_A == 103900 * 2.0^-4
         @test midi.Ω_0 == -10000 * 2.0^-15 * PI
         @test midi.Ω_dot == -700 * 2.0^-33 * PI
@@ -298,17 +298,17 @@ end
         @test midi.M_0 == -30000 * 2.0^-15 * PI
         @test midi.a_f0 == -600 * 2.0^-20
         @test midi.a_f1 == 300 * 2.0^-37
-        @test midi.health == 0
+        @test midi.Health == 0
         red7 = d.reduced_almanacs[7]
-        @test red7.sat_type == 3
-        @test red7.δA == -20 * 512.0
+        @test red7.SatType == 3
+        @test red7.δ_A == -20 * 512.0
         @test red7.Ω_0 == 30 * 2.0^-6 * PI
         @test red7.Φ_0 == -25 * 2.0^-6 * PI
-        @test red7.health == 0
+        @test red7.Health == 0
         red8 = d.reduced_almanacs[8]
-        @test red8.sat_type == 1
-        @test red8.δA == 15 * 512.0
-        @test red8.health == 2
+        @test red8.SatType == 1
+        @test red8.δ_A == 15 * 512.0
+        @test red8.Health == 2
         @test length(d.reduced_almanacs) == 2
 
         # Promotion: SOW + WN + ephemeris (MT10) + clock (MT30) present.
@@ -316,9 +316,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = 0))
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; SatType = 0))
         @test all(
-            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; SatType = t)) for t = 1:3
         )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
@@ -417,8 +417,8 @@ end
         ]
         state = b2b_decode_frames(state, frames; invert = true)
         @test state.is_shifted_by_180_degrees
-        @test state.raw_data.t_0e == 1200 * 300
-        @test state.raw_data.a_f0 == -400000 * 2.0^-34
+        @test state.raw_data.t_oe == 1200 * 300
+        @test state.raw_data.a_0 == -400000 * 2.0^-34
         @test has_positioning_data(state)
     end
 
@@ -449,7 +449,7 @@ end
         state = b2b_decode_frames(state, [b2b_frame_symbols(msg; prn)])
         @test state.raw_data.last_message_type == 63
         @test state.raw_data.SOW == 4000
-        @test isnothing(state.raw_data.t_0e)
+        @test isnothing(state.raw_data.t_oe)
         @test !has_positioning_data(state)
     end
 
@@ -464,8 +464,8 @@ end
         # Keep the tail preamble noiseless so the hard-decision preamble gate
         # is deterministic; the LDPC/CRC path is what is under test.
         state = b2b_decode_frames(state, noisy)
-        @test state.raw_data.t_0e == 1200 * 300
-        @test state.raw_data.a_f0 == -400000 * 2.0^-34
+        @test state.raw_data.t_oe == 1200 * 300
+        @test state.raw_data.a_0 == -400000 * 2.0^-34
         @test has_positioning_data(state)
     end
 
@@ -479,7 +479,7 @@ end
         @test has_positioning_data(state)
         state = reset_decoder_state!(state)
         @test isnothing(state.raw_data.SOW)
-        @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
+        @test state.raw_data.t_oe == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)
         @test !has_positioning_data(state)
         @test isnothing(state.num_bits_since_time_reference)

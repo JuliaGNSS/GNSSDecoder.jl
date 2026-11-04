@@ -17,7 +17,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         AODC = 1,
         URAI = 2,
         WN = 810,
-        t_0c_raw = 5400,       # t_0c = 43200 s
+        t_0c_raw = 5400,       # t_oc = 43200 s
         T_GD1_raw = -52,       # -5.2 ns
         T_GD2_raw = 37,        #  3.7 ns
         α_raw = (10, -20, 30, -40),
@@ -27,7 +27,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         a_1_raw = -2345,
         AODE = 4,
     )
-    t_0e_raw = 70000           # t_0e = 560000 s; MSB pair = 2, LSB 15 = 4464
+    t_0e_raw = 70000           # t_oe = 560000 s; MSB pair = 2, LSB 15 = 4464
     d1_sf2 = (
         SOW = SOW0 + 6,
         Δn_raw = 1234,
@@ -38,11 +38,11 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         C_rc_raw = -1000,
         C_rs_raw = 2000,
         sqrt_A_raw = 2769679000,
-        t_0e_msb2 = t_0e_raw >> 15,
+        t_oe_msb2 = t_0e_raw >> 15,
     )
     d1_sf3 = (
         SOW = SOW0 + 12,
-        t_0e_lsb15 = t_0e_raw & 0x7FFF,
+        t_oe_lsb15 = t_0e_raw & 0x7FFF,
         i_0_raw = 644245094,
         C_ic_raw = -777,
         Ω_dot_raw = -8000,
@@ -87,7 +87,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test data.AODC == 1
         @test data.URAI == 2
         @test data.WN == 810
-        @test data.t_0c == 43200
+        @test data.t_oc == 43200
         @test data.T_GD1 ≈ -52 * 1.0e-10
         @test data.T_GD2 ≈ 37 * 1.0e-10
         @test data.α_0 == 10 / 2^30
@@ -98,11 +98,11 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test data.β_1 == -6.0 * 2^14
         @test data.β_2 == 7.0 * 2^16
         @test data.β_3 == -8.0 * 2^16
-        @test data.a_f2 == -3 / 2.0^66
-        @test data.a_f0 == 123456 / 2.0^33
-        @test data.a_f1 == -2345 / 2.0^50
+        @test data.a_2 == -3 / 2.0^66
+        @test data.a_0 == 123456 / 2.0^33
+        @test data.a_1 == -2345 / 2.0^50
         @test data.AODE == 4
-        @test data.t_0e == 560000
+        @test data.t_oe == 560000
         @test data.Δn == 1234 * PI / 2.0^43
         @test data.C_uc == -9876 / 2.0^31
         @test data.M_0 == 305419896 * PI / 2.0^31
@@ -115,7 +115,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test data.C_ic == -777 / 2.0^31
         @test data.Ω_dot == -8000 * PI / 2.0^43
         @test data.C_is == 555 / 2.0^31
-        @test data.i_dot == -99 * PI / 2.0^43
+        @test data.IDOT == -99 * PI / 2.0^43
         @test data.Ω_0 == -1234567890 * PI / 2.0^31
         @test data.ω == 987654321 * PI / 2.0^31
     end
@@ -200,7 +200,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         # subframe it is meant to have decoded: the 311-symbol sync window wants
         # the next subframe's preamble as lookahead (`dnav_test_soft_symbols`
         # appends exactly that after the final subframe).
-        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_0c = 46800 s
+        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_oc = 46800 s
         d1_cycleB(Δ) = (
             dnav_test_encode_subframe(
                 dnav_test_d1_subframe1_content(; merge(d1_sf1B, (SOW = SOW0 + Δ,))...),
@@ -233,13 +233,13 @@ using GNSSDecoder: BeiDouDNAVAlmanac
 
         state = feed!(state, 6 * 300 + 11)
         @test has_positioning_data(state)   # dataset A promoted
-        @test state.data.t_0c == 43200
+        @test state.data.t_oc == 43200
 
         state = feed!(state, 9 * 300 + 11)
-        @test state.data.t_0c == 43200               # B staged, not yet promoted
+        @test state.data.t_oc == 43200               # B staged, not yet promoted
         @test state.raw_data.SOW == SOW0 + 48        # …with the pair carried
         @test !isnothing(state.raw_data.sow_anchor_bit_count)
-        @test isnothing(state.raw_data.t_0c)         # the clear itself happened
+        @test isnothing(state.raw_data.t_oc)         # the clear itself happened
 
         # The carried pair predicts SOW0 + 54 from the elapsed 300 symbols, so
         # the poisoned SOW0 + 55 must be rejected, keeping the reference.
@@ -253,7 +253,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         # wedged on dataset A until reset.
         state = feed!(state, length(stream))
         @test has_positioning_data(state)
-        @test state.data.t_0c == 46800
+        @test state.data.t_oc == 46800
         @test state.data.SOW == SOW0 + 72
     end
 
@@ -313,11 +313,11 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test state.raw_data.SOW == SOW0 + 12
     end
 
-    @testset "t_0e halves are only paired across adjacent subframes 2 and 3" begin
-        # D1 splits t_0e between subframes 2 and 3 with no IOD to pair them
+    @testset "t_oe halves are only paired across adjacent subframes 2 and 3" begin
+        # D1 splits t_oe between subframes 2 and 3 with no IOD to pair them
         # by. If subframe 2 is missed, the stored MSBs belong to an earlier
         # frame and must not be joined to fresh LSBs — that would fabricate a
-        # t_0e belonging to neither ephemeris, plausible enough to key the
+        # t_oe belonging to neither ephemeris, plausible enough to key the
         # voting dataset.
         state = BeiDouB1IDecoderState(20)
         # Cycle 1 in full, then cycle 2 with subframe 2 replaced by a
@@ -330,9 +330,9 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         )
         symbols = dnav_test_soft_symbols(d1_cycle(0)..., c2[1], stand_in_sf1, c2[3])
         state = decode!(state, symbols, length(symbols))
-        # Subframe 2's MSBs were dropped when it was skipped, so no t_0e is
+        # Subframe 2's MSBs were dropped when it was skipped, so no t_oe is
         # assembled and nothing is promoted.
-        @test isnothing(state.raw_data.t_0e)
+        @test isnothing(state.raw_data.t_oe)
         @test state.data == BeiDouDNAVData()
     end
 
@@ -371,7 +371,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
                 alm...,
             ),
         )
-        # Subframe 5 page 8: health codes for SV 20-30, WN_a, t_0a.
+        # Subframe 5 page 8: health codes for SV 20-30, WN_a, t_oa.
         health_codes = UInt16[k == 3 ? 0x100 : 0x000 for k = 1:11]  # SV 22 unhealthy
         sf5_p8 = dnav_test_encode_subframe(
             dnav_test_d1_subframe5_page8_content(;
@@ -432,22 +432,22 @@ using GNSSDecoder: BeiDouDNAVAlmanac
             @test !isnothing(state.data.almanacs) && haskey(state.data.almanacs, sv_id)
             entry = state.data.almanacs[sv_id]
             @test entry.sqrt_A == 10_460_000 / 2.0^11
-            @test entry.a_f1 == -12 / 2.0^38
-            @test entry.a_f0 == 345 / 2.0^20
+            @test entry.a_1 == -12 / 2.0^38
+            @test entry.a_0 == 345 / 2.0^20
             @test entry.Ω_0 == -4_000_000 * PI / 2.0^23
             @test entry.e == 6789 / 2.0^21
-            @test entry.δi == -321 * PI / 2.0^19
-            @test entry.t_0a == 147 * 2^12
+            @test entry.δ_i == -321 * PI / 2.0^19
+            @test entry.t_oa == 147 * 2^12
             @test entry.Ω_dot == -654 * PI / 2.0^38
             @test entry.ω == 2_222_222 * PI / 2.0^23
             @test entry.M_0 == -3_333_333 * PI / 2.0^23
         end
         @test state.data.AmEpID == 0b11
-        @test state.data.health[22] == 0x100
-        @test state.data.health[20] == 0x000
-        @test state.data.health[30] == 0x000
+        @test state.data.Hea[22] == 0x100
+        @test state.data.Hea[20] == 0x000
+        @test state.data.Hea[30] == 0x000
         @test state.data.WN_a == 55
-        @test state.data.t_0a == 147 * 2^12
+        @test state.data.t_oa == 147 * 2^12
         @test state.data.A_0GPS == -15 * 1.0e-10
         @test state.data.A_1GPS == 25 * 1.0e-10
         @test state.data.A_0Gal == -35 * 1.0e-10
@@ -630,15 +630,15 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test data.WN == WN
         @test data.AODC == 1
         @test data.URAI == 2
-        @test data.t_0c == 43200
+        @test data.t_oc == 43200
         @test data.T_GD1 ≈ -52 * 1.0e-10
         @test data.T_GD2 ≈ 37 * 1.0e-10
         @test data.α_0 == 10 / 2^30
         @test data.α_3 == -40 / 2^24
         @test data.β_1 == -6.0 * 2^14
-        @test data.a_f0 == 123456 / 2.0^33
-        @test data.a_f1 == -2345 / 2.0^50
-        @test data.a_f2 == -3 / 2.0^66
+        @test data.a_0 == 123456 / 2.0^33
+        @test data.a_1 == -2345 / 2.0^50
+        @test data.a_2 == -3 / 2.0^66
         @test data.AODE == 4
         @test data.Δn == 1234 * PI / 2.0^43
         @test data.C_uc == -9876 / 2.0^31
@@ -648,14 +648,14 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         @test data.sqrt_A == 2769679000 / 2.0^19
         @test data.C_ic == -777 / 2.0^31
         @test data.C_is == 555 / 2.0^31
-        @test data.t_0e == 560000
+        @test data.t_oe == 560000
         @test data.i_0 == 644245094 * PI / 2.0^31
         @test data.C_rc == -1000 / 2.0^6
         @test data.C_rs == 2000 / 2.0^6
         @test data.Ω_dot == -8000 * PI / 2.0^43
         @test data.Ω_0 == -1234567890 * PI / 2.0^31
         @test data.ω == 987654321 * PI / 2.0^31
-        @test data.i_dot == -99 * PI / 2.0^43
+        @test data.IDOT == -99 * PI / 2.0^43
 
         @testset "D2 decode! is allocation-free (GEO PRN 4)" begin
             # Three contiguous 30 s broadcast cycles of pages 1-10, each page
@@ -779,7 +779,7 @@ using GNSSDecoder: BeiDouDNAVAlmanac
             ω_raw = 2_222_222,
             M_0_raw = -3_333_333,
         )
-        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_0c = 46800 s
+        d1_sf1B = merge(d1_sf1, (t_0c_raw = 5850,))   # t_oc = 46800 s
         fundamental(sf1_fields, Δ) = (
             dnav_test_encode_subframe(
                 dnav_test_d1_subframe1_content(; merge(sf1_fields, (SOW = SOW0 + Δ,))...),
@@ -895,10 +895,10 @@ using GNSSDecoder: BeiDouDNAVAlmanac
         check_d1_fundamental(state.data; SOW = SOW0 + 342)
         @test sort(collect(keys(state.data.almanacs))) == [1, 30, 63]
         @test state.data.almanacs[63].sqrt_A == 10_460_000 / 2.0^11
-        @test state.data.health[3] == 0x100      # page 7, third word
-        @test state.data.health[22] == 0x100     # page 8, third word
-        @test state.data.health[59] == 0x100     # page 24 (AmID 11), third word
-        @test length(state.data.health) == 30 + 7
+        @test state.data.Hea[3] == 0x100      # page 7, third word
+        @test state.data.Hea[22] == 0x100     # page 8, third word
+        @test state.data.Hea[59] == 0x100     # page 24 (AmID 11), third word
+        @test length(state.data.Hea) == 30 + 7
         @test state.data.DN == 6
         # `data` owns its containers: they are not `raw_data`'s.
         @test state.data.almanacs !== state.raw_data.almanacs
@@ -918,7 +918,7 @@ end
     mk(M_0) = BeiDouDNAVData(;
         WN = 810,
         almanacs = Dictionary([7], [BeiDouDNAVAlmanac(; M_0)]),
-        health = Dictionary([7], [0x0000]),
+        Hea = Dictionary([7], [0x0000]),
     )
     @test mk(0.1) == mk(0.1)
     @test mk(0.1) != mk(0.2)

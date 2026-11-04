@@ -90,7 +90,7 @@ function build_mt10(;
     setbits!(bits, 54, 1, l5_health)   # L5 health
     setbits!(bits, 55, 11, 100)        # t_op (×300 = 30000)
     setbits!(bits, 66, 5, 0)           # URA_ED index
-    setbits!(bits, 71, 11, 100)        # t_0e (×300 = 30000)
+    setbits!(bits, 71, 11, 100)        # t_oe (×300 = 30000)
     setbits!(bits, 82, 26, 0)          # ΔA
     setbits!(bits, 108, 25, 0)         # A_dot
     setbits!(bits, 133, 17, 100)       # Δn_0

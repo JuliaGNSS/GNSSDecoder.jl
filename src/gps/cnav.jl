@@ -84,16 +84,16 @@ packets, type 31 four; each is complete, so `GPSCNAVData.reduced_almanacs` entri
 inserted whole, keyed by `PRN_a` (as [`GPSL1C_DReducedAlmanac`](@ref)).
 
 Reference values to apply (Table 20-VI footnotes): `e = 0`,
-`δi = +0.0056 semi-circles` (so `i = 55°`),
-`Ω̇ = -2.6e-9 semi-circles/s`, `A = A_ref + δA` with `A_ref = 26 559 710 m`,
+`δ_i = +0.0056 semi-circles` (so `i = 55°`),
+`Ω̇ = -2.6e-9 semi-circles/s`, `A = A_ref + δ_A` with `A_ref = 26 559 710 m`,
 `Φ₀ = M₀ + ω`. Semi-circle fields are converted to radians on decode.
 
 # Fields
 
   - `PRN_a::Int`: Almanac satellite PRN (1-63; 0 marks an empty packet).
   - `WN_a::Int`: Almanac reference week number (mod 8192).
-  - `t_0a::Int`: Almanac reference time of week (seconds).
-  - `δA::Float64`: Semi-major-axis delta from `A_ref` (meters).
+  - `t_oa::Int`: Almanac reference time of week (seconds).
+  - `δ_A::Float64`: Semi-major-axis delta from `A_ref` (meters).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
   - `Φ_0::Float64`: Argument of latitude at reference time, `M₀+ω` (rad).
   - `l1_health::Bool`, `l2_health::Bool`, `l5_health::Bool`: per-band health
@@ -106,8 +106,8 @@ IS-GPS-705J, Figures 20-4 / 20-11 / 20-16, Table 20-VI.
 Base.@kwdef struct GPSCNAVReducedAlmanac
     PRN_a::Int
     WN_a::Int
-    t_0a::Int
-    δA::Float64
+    t_oa::Int
+    δ_A::Float64
     Ω_0::Float64
     Φ_0::Float64
     l1_health::Bool
@@ -123,16 +123,16 @@ Figure 20-10, Table 20-V).
 
 A medium-precision single-SV almanac, complete in one message, so
 `GPSCNAVData.midi_almanacs` entries are inserted whole, keyed by `PRN_a` (as
-[`GPSL1C_DMidiAlmanac`](@ref)). Inclination is `δi` relative to `i₀ = 0.30 semi-circles`
+[`GPSL1C_DMidiAlmanac`](@ref)). Inclination is `δ_i` relative to `i₀ = 0.30 semi-circles`
 (54°); semi-circle fields are converted to radians on decode.
 
 # Fields
 
   - `PRN_a::Int`: Almanac satellite PRN.
   - `WN_a::Int`: Almanac reference week number (mod 8192).
-  - `t_0a::Int`: Almanac reference time of week (seconds).
+  - `t_oa::Int`: Almanac reference time of week (seconds).
   - `e::Float64`: Eccentricity (dimensionless).
-  - `δi::Float64`: Inclination delta from `i₀ = 0.30 sc` (rad); add the reference.
+  - `δ_i::Float64`: Inclination delta from `i₀ = 0.30 sc` (rad); add the reference.
   - `Ω_dot::Float64`: Rate of right ascension (rad/s).
   - `sqrt_A::Float64`: Square root of the semi-major axis (√m).
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad).
@@ -148,9 +148,9 @@ IS-GPS-705J, Figure 20-10, Table 20-V.
 Base.@kwdef struct GPSCNAVMidiAlmanac
     PRN_a::Int
     WN_a::Int
-    t_0a::Int
+    t_oa::Int
     e::Float64
-    δi::Float64
+    δ_i::Float64
     Ω_dot::Float64
     sqrt_A::Float64
     Ω_0::Float64
@@ -167,7 +167,7 @@ end
     GPSCNAVClockDifferentialCorrection
 
 One satellite's clock differential-correction (CDC) packet from CNAV message
-types 13 or 34, keyed by `PRN_a` (IS-GPS-705J Figure 20-17, Table 20-X).
+types 13 or 34, keyed by `PRN_ID` (IS-GPS-705J Figure 20-17, Table 20-X).
 
 `dc_data_type` selects the data the corrections apply to: `false` ⇒ CNAV
 (message types 30-37), `true` ⇒ legacy NAV. A `PRN ID` of all-ones marks an
@@ -175,37 +175,37 @@ empty packet (not stored).
 
 # Fields
 
-  - `PRN_a::Int`: PRN the corrections apply to.
+  - `PRN_ID::Int`: PRN the corrections apply to.
   - `t_op_D::Int`: DC data predict time of week (seconds).
   - `t_OD::Int`: Time of DC data (seconds).
   - `dc_data_type::Bool`: false ⇒ CNAV, true ⇒ legacy NAV.
   - `δa_f0::Float64`, `δa_f1::Float64`: Clock bias / drift corrections (s, s/s).
-  - `UDRA_index::Int`: UDRA index (signed).
+  - `UDRA::Int`: UDRA index (signed).
 
 # Reference
 
 IS-GPS-705J, Figures 20-7 / 20-12 / 20-17, Table 20-X.
 """
 Base.@kwdef struct GPSCNAVClockDifferentialCorrection
-    PRN_a::Int
+    PRN_ID::Int
     t_op_D::Int
     t_OD::Int
     dc_data_type::Bool
     δa_f0::Float64
     δa_f1::Float64
-    UDRA_index::Int
+    UDRA::Int
 end
 
 """
     GPSCNAVEphemerisDifferentialCorrection
 
 One satellite's ephemeris differential-correction (EDC) packet from CNAV
-message types 14 or 34, keyed by `PRN_a` (IS-GPS-705J Figure 20-17,
+message types 14 or 34, keyed by `PRN_ID` (IS-GPS-705J Figure 20-17,
 Table 20-X). Semi-circle fields are converted to radians on decode.
 
 # Fields
 
-  - `PRN_a::Int`: PRN the corrections apply to.
+  - `PRN_ID::Int`: PRN the corrections apply to.
   - `t_op_D::Int`: DC data predict time of week (seconds).
   - `t_OD::Int`: Time of DC data (seconds).
   - `dc_data_type::Bool`: false ⇒ CNAV, true ⇒ legacy NAV.
@@ -213,14 +213,14 @@ Table 20-X). Semi-circle fields are converted to radians on decode.
   - `Δγ::Float64`: Ephemeris γ correction (rad).
   - `Δi::Float64`, `ΔΩ::Float64`: Inclination / right-ascension corrections (rad).
   - `ΔA::Float64`: Semi-major-axis correction (meters).
-  - `UDRA_dot_index::Int`: Rate-of-UDRA index (signed).
+  - `UDRA_dot::Int`: Rate-of-UDRA index (signed).
 
 # Reference
 
 IS-GPS-705J, Figures 20-7 / 20-13 / 20-17, Table 20-X.
 """
 Base.@kwdef struct GPSCNAVEphemerisDifferentialCorrection
-    PRN_a::Int
+    PRN_ID::Int
     t_op_D::Int
     t_OD::Int
     dc_data_type::Bool
@@ -230,7 +230,7 @@ Base.@kwdef struct GPSCNAVEphemerisDifferentialCorrection
     Δi::Float64
     ΔΩ::Float64
     ΔA::Float64
-    UDRA_dot_index::Int
+    UDRA_dot::Int
 end
 
 """
@@ -282,8 +282,10 @@ const CNAV_MT36_TEXT_CHARS = 18
 
 Decoded GPS CNAV data, shared by GPS L5I and L2C: message types 10, 11, 12, 13, 14, 15,
 30-37 and 40 (IS-GPS-705J §20.3.3 ≡ IS-GPS-200N §30.3.3), filled incrementally as they
-arrive. Naming follows [`GPSCNAV2Data`](@ref); semi-circle quantities are converted to
-radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
+arrive. Field names are those of IS-GPS-705J / IS-GPS-200N (see CONTEXT.md, Field
+naming). The ICD's satellite suffix `-n` (`M0-n`, `af0-n`, `WNa-n`, …) is dropped
+throughout. Semi-circle quantities are converted to radians on decode, and all fields
+are `Union{Nothing,…}` until first decoded.
 
 # Header (every message)
 
@@ -306,8 +308,7 @@ radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
   - `WN::Int64`: Transmission week number, modulo-8192.
   - `t_op::Int64`: CEI data sequence propagation time of week (seconds). Not
     the same field as `t_op_D`, which *is* the DC Data Predict Time of Week.
-  - `t_0e::Int64`: Ephemeris data reference time of week (seconds; the ICD
-    writes `toe`).
+  - `t_oe::Int64`: Ephemeris data reference time of week (seconds).
   - `ΔA::Float64`: Semi-major axis difference at reference time (meters).
   - `A_dot::Float64`: Change rate in semi-major axis (m/s).
   - `Δn_0::Float64`: Mean motion difference from computed value (rad/s).
@@ -318,7 +319,7 @@ radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
   - `Ω_0::Float64`: Reference right ascension angle (rad).
   - `i_0::Float64`: Inclination angle at reference time (rad).
   - `ΔΩ_dot::Float64`: Rate of right ascension difference (rad/s).
-  - `i_dot::Float64`: Rate of inclination angle (rad/s).
+  - `IDOT::Float64`: Rate of inclination angle (rad/s).
   - `C_is::Float64`, `C_ic::Float64`: Sine/cosine inclination harmonic corrections (rad).
   - `C_rs::Float64`, `C_rc::Float64`: Sine/cosine orbit-radius harmonic corrections (m).
   - `C_us::Float64`, `C_uc::Float64`: Sine/cosine argument-of-latitude harmonic corrections (rad).
@@ -326,45 +327,43 @@ radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
 
 # Clock (message types 30-37, Table 20-III)
 
-  - `t_0c::Int64`: Clock data reference time of week (seconds; the ICD writes
-    `toc`).
+  - `t_oc::Int64`: Clock data reference time of week (seconds).
   - `a_f0::Float64`, `a_f1::Float64`, `a_f2::Float64`: Clock bias / drift / drift-rate.
 
 # Group delay / ISC + ionosphere (message type 30, Tables 20-III / 20-IV)
 
 Carried **only** by message type 30, broadcast far less often than clock/ephemeris
-(max interval 288 s on L2C / 144 s on L5, vs 48 s / 24 s; IS-GPS-200 Table 30-XII,
-IS-GPS-705J Table 20-XII). They may still be `nothing` when positioning is otherwise
+(at least every 300 s on L2C / 150 s on L5, vs 60 s / 30 s for MT10/11 and a clock
+message; IS-GPS-200N §30.3.4.1, IS-GPS-705J §20.3.4.1; Tables 30-XII / 20-XII are
+reserved since IRN-003). They may still be `nothing` when positioning is otherwise
 ready: `has_positioning_data` deliberately does not wait for them, so code applying
 these corrections must handle `nothing` (treat as 0).
 
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
   - `α_0,α_1,α_2,α_3,β_0,β_1,β_2,β_3::Float64`: Klobuchar ionospheric coefficients.
-  - `WN_op::Int64`: Data predict week number (mod 256).
+  - `WN_op::Int64`: CEI data sequence propagation week number (mod 256).
 
 # EOP (message type 32, Table 20-VII)
 
   - `t_EOP::Int64`: EOP reference time of week (s).
   - `PM_X,PM_X_dot,PM_Y,PM_Y_dot::Float64`: polar-motion values/rates (arcsec, arcsec/day).
-  - `ΔUT_GPS,ΔUT_GPS_dot::Float64`: UT1-GPS difference (s) and rate (s/day).
+  - `ΔUTGPS,ΔUTGPS_dot::Float64`: UT1-GPS difference (s) and rate (s/day).
 
 # UTC (message type 33, Table 20-IX)
 
-  - `A_0UTC,A_1UTC,A_2UTC::Float64`: UTC polynomial (s, s/s, s/s²; the ICD
-    names them `A0-n`/`A1-n`/`A2-n`).
+  - `A_0,A_1,A_2::Float64`: UTC polynomial (s, s/s, s/s²; the ICD's `A_0-n`, `A_1-n`
+    and `A_2-n`, here without the satellite index `-n`).
   - `Δt_LS,Δt_LSF::Int64`: current/past and future leap-second counts (s).
-  - `t_0t::Int64`: UTC reference time of week (s; the ICD writes `t_ot`).
-  - `WN_0t,WN_LSF::Int64`: UTC and leap-second reference week numbers (the ICD
-    writes `WN_ot` for the first).
+  - `t_ot::Int64`: UTC reference time of week (s).
+  - `WN_ot,WN_LSF::Int64`: UTC and leap-second reference week numbers.
   - `DN::Int64`: leap-second reference day number (1-7).
 
 # GGTO (message type 35, Table 20-XI)
 
-  - `A_0GGTO,A_1GGTO,A_2GGTO::Float64`: GPS/GNSS time-offset polynomial (the ICD
-    writes `A0GGTO`/`A1GGTO`/`A2GGTO`).
+  - `A_0GGTO,A_1GGTO,A_2GGTO::Float64`: GPS/GNSS time-offset polynomial.
   - `t_GGTO::Int64`, `WN_GGTO::Int64`: GGTO reference time/week.
-  - `GNSS_ID::Int64`: GNSS Type ID: 0 no data available, 1 Galileo, 2 GLONASS,
+  - `GGTO_ID::Int64`: GGTO Type ID (IRN-003): 0 no data, 1 Galileo, 2 GLONASS,
     3-7 reserved (to be read as "the GGTO data to which it applies is presently
     unusable"). There is no BeiDou code: IS-GPS-200N §30.3.3.8.1 and IS-GPS-705J
     §20.3.3.8.1 stop at GLONASS.
@@ -410,7 +409,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
 
     WN::Union{Nothing,Int64} = nothing
     t_op::Union{Nothing,Int64} = nothing
-    t_0e::Union{Nothing,Int64} = nothing
+    t_oe::Union{Nothing,Int64} = nothing
     ΔA::Union{Nothing,Float64} = nothing
     A_dot::Union{Nothing,Float64} = nothing
     Δn_0::Union{Nothing,Float64} = nothing
@@ -421,7 +420,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     Ω_0::Union{Nothing,Float64} = nothing
     i_0::Union{Nothing,Float64} = nothing
     ΔΩ_dot::Union{Nothing,Float64} = nothing
-    i_dot::Union{Nothing,Float64} = nothing
+    IDOT::Union{Nothing,Float64} = nothing
     C_is::Union{Nothing,Float64} = nothing
     C_ic::Union{Nothing,Float64} = nothing
     C_rs::Union{Nothing,Float64} = nothing
@@ -431,7 +430,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     integrity_status_flag::Union{Nothing,Bool} = nothing
     l2c_phasing::Union{Nothing,Bool} = nothing
 
-    t_0c::Union{Nothing,Int64} = nothing
+    t_oc::Union{Nothing,Int64} = nothing
     a_f0::Union{Nothing,Float64} = nothing
     a_f1::Union{Nothing,Float64} = nothing
     a_f2::Union{Nothing,Float64} = nothing
@@ -456,15 +455,15 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     PM_X_dot::Union{Nothing,Float64} = nothing
     PM_Y::Union{Nothing,Float64} = nothing
     PM_Y_dot::Union{Nothing,Float64} = nothing
-    ΔUT_GPS::Union{Nothing,Float64} = nothing
-    ΔUT_GPS_dot::Union{Nothing,Float64} = nothing
+    ΔUTGPS::Union{Nothing,Float64} = nothing
+    ΔUTGPS_dot::Union{Nothing,Float64} = nothing
 
-    A_0UTC::Union{Nothing,Float64} = nothing
-    A_1UTC::Union{Nothing,Float64} = nothing
-    A_2UTC::Union{Nothing,Float64} = nothing
+    A_0::Union{Nothing,Float64} = nothing
+    A_1::Union{Nothing,Float64} = nothing
+    A_2::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int64} = nothing
-    t_0t::Union{Nothing,Int64} = nothing
-    WN_0t::Union{Nothing,Int64} = nothing
+    t_ot::Union{Nothing,Int64} = nothing
+    WN_ot::Union{Nothing,Int64} = nothing
     WN_LSF::Union{Nothing,Int64} = nothing
     DN::Union{Nothing,Int64} = nothing
     Δt_LSF::Union{Nothing,Int64} = nothing
@@ -474,7 +473,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     A_2GGTO::Union{Nothing,Float64} = nothing
     t_GGTO::Union{Nothing,Int64} = nothing
     WN_GGTO::Union{Nothing,Int64} = nothing
-    GNSS_ID::Union{Nothing,Int64} = nothing
+    GGTO_ID::Union{Nothing,Int64} = nothing
 
     reduced_almanacs::Union{
         Nothing,
@@ -499,7 +498,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
 end
 
-# `WN_0t` and `WN_LSF` are 13 bits (IS-GPS-705J Figure 20-10, MT33), as `WN`: see
+# `WN_ot` and `WN_LSF` are 13 bits (IS-GPS-705J Figure 20-10, MT33), as `WN`: see
 # `get_utc_parameters`.
 const CNAV_UTC_WN_MODULUS = 8192
 const CNAV_LSF_WN_MODULUS = 8192
@@ -518,7 +517,7 @@ const CNAV_LSF_WN_MODULUS = 8192
     URA_NED2_index = data.URA_NED2_index,
     WN = data.WN,
     t_op = data.t_op,
-    t_0e = data.t_0e,
+    t_oe = data.t_oe,
     ΔA = data.ΔA,
     A_dot = data.A_dot,
     Δn_0 = data.Δn_0,
@@ -529,7 +528,7 @@ const CNAV_LSF_WN_MODULUS = 8192
     Ω_0 = data.Ω_0,
     i_0 = data.i_0,
     ΔΩ_dot = data.ΔΩ_dot,
-    i_dot = data.i_dot,
+    IDOT = data.IDOT,
     C_is = data.C_is,
     C_ic = data.C_ic,
     C_rs = data.C_rs,
@@ -538,7 +537,7 @@ const CNAV_LSF_WN_MODULUS = 8192
     C_uc = data.C_uc,
     integrity_status_flag = data.integrity_status_flag,
     l2c_phasing = data.l2c_phasing,
-    t_0c = data.t_0c,
+    t_oc = data.t_oc,
     a_f0 = data.a_f0,
     a_f1 = data.a_f1,
     a_f2 = data.a_f2,
@@ -561,14 +560,14 @@ const CNAV_LSF_WN_MODULUS = 8192
     PM_X_dot = data.PM_X_dot,
     PM_Y = data.PM_Y,
     PM_Y_dot = data.PM_Y_dot,
-    ΔUT_GPS = data.ΔUT_GPS,
-    ΔUT_GPS_dot = data.ΔUT_GPS_dot,
-    A_0UTC = data.A_0UTC,
-    A_1UTC = data.A_1UTC,
-    A_2UTC = data.A_2UTC,
+    ΔUTGPS = data.ΔUTGPS,
+    ΔUTGPS_dot = data.ΔUTGPS_dot,
+    A_0 = data.A_0,
+    A_1 = data.A_1,
+    A_2 = data.A_2,
     Δt_LS = data.Δt_LS,
-    t_0t = data.t_0t,
-    WN_0t = data.WN_0t,
+    t_ot = data.t_ot,
+    WN_ot = data.WN_ot,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -577,7 +576,7 @@ const CNAV_LSF_WN_MODULUS = 8192
     A_2GGTO = data.A_2GGTO,
     t_GGTO = data.t_GGTO,
     WN_GGTO = data.WN_GGTO,
-    GNSS_ID = data.GNSS_ID,
+    GGTO_ID = data.GGTO_ID,
     reduced_almanacs = data.reduced_almanacs,
     midi_almanacs = data.midi_almanacs,
     clock_corrections = data.clock_corrections,
@@ -601,7 +600,7 @@ const CNAV_LSF_WN_MODULUS = 8192
         URA_NED2_index,
         WN,
         t_op,
-        t_0e,
+        t_oe,
         ΔA,
         A_dot,
         Δn_0,
@@ -612,7 +611,7 @@ const CNAV_LSF_WN_MODULUS = 8192
         Ω_0,
         i_0,
         ΔΩ_dot,
-        i_dot,
+        IDOT,
         C_is,
         C_ic,
         C_rs,
@@ -621,7 +620,7 @@ const CNAV_LSF_WN_MODULUS = 8192
         C_uc,
         integrity_status_flag,
         l2c_phasing,
-        t_0c,
+        t_oc,
         a_f0,
         a_f1,
         a_f2,
@@ -644,14 +643,14 @@ const CNAV_LSF_WN_MODULUS = 8192
         PM_X_dot,
         PM_Y,
         PM_Y_dot,
-        ΔUT_GPS,
-        ΔUT_GPS_dot,
-        A_0UTC,
-        A_1UTC,
-        A_2UTC,
+        ΔUTGPS,
+        ΔUTGPS_dot,
+        A_0,
+        A_1,
+        A_2,
         Δt_LS,
-        t_0t,
-        WN_0t,
+        t_ot,
+        WN_ot,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -660,7 +659,7 @@ const CNAV_LSF_WN_MODULUS = 8192
         A_2GGTO,
         t_GGTO,
         WN_GGTO,
-        GNSS_ID,
+        GGTO_ID,
         reduced_almanacs,
         midi_almanacs,
         clock_corrections,
@@ -765,11 +764,11 @@ function is_ephemeris_decoded(data::GPSCNAVData)
         !isnothing(data.e) &&
         !isnothing(data.ω) &&
         # Message type 11
-        !isnothing(data.t_0e) &&
+        !isnothing(data.t_oe) &&
         !isnothing(data.Ω_0) &&
         !isnothing(data.i_0) &&
         !isnothing(data.ΔΩ_dot) &&
-        !isnothing(data.i_dot) &&
+        !isnothing(data.IDOT) &&
         !isnothing(data.C_is) &&
         !isnothing(data.C_ic) &&
         !isnothing(data.C_rs) &&
@@ -783,15 +782,14 @@ function is_clock_correction_decoded(data::GPSCNAVData)
     # (`parse_clock_block`). Do NOT require T_GD: it is broadcast *only* in MT30, so
     # requiring it would stall CNAV streams that carry the clock via MT31-37 without MT30.
     #
-    # Maximum broadcast intervals (IS-GPS-200 Table 30-XII for L2C, IS-GPS-705J
-    # Table 20-XII for L5):
-    #                        ephemeris (MT10/11)   clock (MT30-37)   T_GD (MT30 only)
-    #   L2C (IS-GPS-200)          48 s                 48 s               288 s
-    #   L5  (IS-GPS-705J)         24 s                 24 s               144 s
-    # T_GD is guaranteed only ~6x less often than the clock, so requiring it would delay
-    # a fix by up to 288 s (L2C) / 144 s (L5) on a spec-compliant SV. It is a ~metre-level
+    # Minimum broadcast rates (IS-GPS-200N §30.3.4.1 for L2C, IS-GPS-705J §20.3.4.1 for
+    # L5; Tables 30-XII / 20-XII are reserved since IRN-003):
+    #   MT10/11 and a clock message: every 60 s on L2C (nominal 48 s), 30 s on L5 (24 s);
+    #   MT30 (T_GD, only there):     every 300 s on L2C, 150 s on L5.
+    # T_GD is guaranteed only ~5x less often than the clock, so requiring it would delay
+    # a fix by up to 300 s (L2C) / 150 s (L5) on a spec-compliant SV. It is a ~metre-level
     # correction: apply it downstream when present, never block a fix on it.
-    !isnothing(data.t_0c) &&
+    !isnothing(data.t_oc) &&
         !isnothing(data.a_f0) &&
         !isnothing(data.a_f1) &&
         !isnothing(data.a_f2)
@@ -826,8 +824,8 @@ $(TYPEDSIGNATURES)
 The GPS/GNSS time offset from message type 35, if this satellite is currently
 broadcasting one for `target`.
 
-`GNSS_ID` names the system the single broadcast set refers to: 0 no data, 1 Galileo,
-2 GLONASS, 3-7 reserved (unusable; IS-GPS-705J §20.3.3.8.2); see `gps_ggto_offset`.
+`GGTO_ID` names the system the single broadcast set refers to: 0 no data, 1 Galileo,
+2 GLONASS, 3-7 reserved (unusable; IS-GPS-705J §20.3.3.8.1); see `gps_ggto_offset`.
 """
 time_offset_parameters(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target)
@@ -1173,7 +1171,7 @@ function parse_mt10(raw::GPSCNAVData, word::UInt320)
         l5_health = get_bit(word, word_length, 54),
         t_op = Int64(get_bits(word, word_length, 55, 11)) * 300,
         URA_ED_index = get_twos_complement_num(word, word_length, 66, 5),
-        t_0e = Int64(get_bits(word, word_length, 71, 11)) * 300,
+        t_oe = Int64(get_bits(word, word_length, 71, 11)) * 300,
         ΔA = get_twos_complement_num(word, word_length, 82, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 108, 25) * 2.0^-21,
         Δn_0 = get_twos_complement_num(word, word_length, 133, 17) * 2.0^-44 * GNSS_PI,
@@ -1195,11 +1193,11 @@ function parse_mt11(raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     GPSCNAVData(
         raw;
-        t_0e = Int64(get_bits(word, word_length, 39, 11)) * 300,
+        t_oe = Int64(get_bits(word, word_length, 39, 11)) * 300,
         Ω_0 = get_twos_complement_num(word, word_length, 50, 33) * 2.0^-32 * GNSS_PI,
         i_0 = get_twos_complement_num(word, word_length, 83, 33) * 2.0^-32 * GNSS_PI,
         ΔΩ_dot = get_twos_complement_num(word, word_length, 116, 17) * 2.0^-44 * GNSS_PI,
-        i_dot = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * GNSS_PI,
+        IDOT = get_twos_complement_num(word, word_length, 133, 15) * 2.0^-44 * GNSS_PI,
         C_is = get_twos_complement_num(word, word_length, 148, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 164, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 180, 24) * 2.0^-8,
@@ -1220,7 +1218,7 @@ function parse_clock_block(raw::GPSCNAVData, word::UInt320)
         URA_NED0_index = get_twos_complement_num(word, word_length, 50, 5),
         URA_NED1_index = Int64(get_bits(word, word_length, 55, 3)),
         URA_NED2_index = Int64(get_bits(word, word_length, 58, 3)),
-        t_0c = Int64(get_bits(word, word_length, 61, 11)) * 300,
+        t_oc = Int64(get_bits(word, word_length, 61, 11)) * 300,
         a_f0 = get_twos_complement_num(word, word_length, 72, 26) * 2.0^-35,
         a_f1 = get_twos_complement_num(word, word_length, 98, 20) * 2.0^-48,
         a_f2 = get_twos_complement_num(word, word_length, 118, 10) * 2.0^-60,
@@ -1255,15 +1253,15 @@ end
 """
 Decode one 31-bit reduced-almanac packet at 1-based bit `start` (IS-GPS-705J Fig 20-16).
 """
-function _cnav_reduced_almanac_packet(word::UInt320, start::Int, WN_a::Int, t_0a::Int)
+function _cnav_reduced_almanac_packet(word::UInt320, start::Int, WN_a::Int, t_oa::Int)
     word_length = CNAV_MESSAGE_BITS
     PRN_a = Int(get_bits(word, word_length, start, 6))
     PRN_a == 0 && return nothing  # empty packet ⇒ no further packets follow
     GPSCNAVReducedAlmanac(;
         PRN_a,
         WN_a,
-        t_0a,
-        δA = get_twos_complement_num(word, word_length, start + 6, 8) * 2.0^9,
+        t_oa,
+        δ_A = get_twos_complement_num(word, word_length, start + 6, 8) * 2.0^9,
         Ω_0 = get_twos_complement_num(word, word_length, start + 14, 7) * 2.0^-6 * GNSS_PI,
         Φ_0 = get_twos_complement_num(word, word_length, start + 21, 7) * 2.0^-6 * GNSS_PI,
         l1_health = get_bit(word, word_length, start + 28),
@@ -1282,7 +1280,7 @@ preallocated `storage.reduced_almanacs`).
 function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     WN_a = Int(get_bits(word, word_length, 39, 13))
-    t_0a = Int(get_bits(word, word_length, 52, 8)) * 2^12
+    t_oa = Int(get_bits(word, word_length, 52, 8)) * 2^12
     # Seven 31-bit packets at bits 60, 91, 122, 153, 184, 215, 246.
     _cnav_reduced_almanac_packets!(
         storage,
@@ -1290,7 +1288,7 @@ function parse_mt12!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
         word,
         (60, 91, 122, 153, 184, 215, 246),
         WN_a,
-        t_0a,
+        t_oa,
     )
 end
 
@@ -1304,14 +1302,14 @@ function _cnav_reduced_almanac_packets!(
     word::UInt320,
     starts::Tuple,
     WN_a::Int,
-    t_0a::Int,
+    t_oa::Int,
 )
-    first_packet = _cnav_reduced_almanac_packet(word, first(starts), WN_a, t_0a)
+    first_packet = _cnav_reduced_almanac_packet(word, first(starts), WN_a, t_oa)
     # No packet at all: leave the store (and `nothing` before the first one) as is.
     isnothing(first_packet) && return raw
     almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
     for start in starts
-        packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_0a)
+        packet = _cnav_reduced_almanac_packet(word, start, WN_a, t_oa)
         isnothing(packet) && break  # PRN_a==0 ⇒ remaining packets are filler
         set!(almanacs, packet.PRN_a, packet)
     end
@@ -1328,9 +1326,9 @@ function parse_mt31!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     word_length = CNAV_MESSAGE_BITS
     raw = parse_clock_block(raw, word)
     WN_a = Int(get_bits(word, word_length, 128, 13))
-    t_0a = Int(get_bits(word, word_length, 141, 8)) * 2^12
+    t_oa = Int(get_bits(word, word_length, 141, 8)) * 2^12
     # Four 31-bit packets at bits 149, 180, 211, 242.
-    _cnav_reduced_almanac_packets!(storage, raw, word, (149, 180, 211, 242), WN_a, t_0a)
+    _cnav_reduced_almanac_packets!(storage, raw, word, (149, 180, 211, 242), WN_a, t_oa)
 end
 
 """
@@ -1346,8 +1344,8 @@ function parse_mt32(raw::GPSCNAVData, word::UInt320)
         PM_X_dot = get_twos_complement_num(word, word_length, 165, 15) * 2.0^-21,
         PM_Y = get_twos_complement_num(word, word_length, 180, 21) * 2.0^-20,
         PM_Y_dot = get_twos_complement_num(word, word_length, 201, 15) * 2.0^-21,
-        ΔUT_GPS = get_twos_complement_num(word, word_length, 216, 31) * 2.0^-23,
-        ΔUT_GPS_dot = get_twos_complement_num(word, word_length, 247, 19) * 2.0^-25,
+        ΔUTGPS = get_twos_complement_num(word, word_length, 216, 31) * 2.0^-23,
+        ΔUTGPS_dot = get_twos_complement_num(word, word_length, 247, 19) * 2.0^-25,
     )
 end
 
@@ -1359,12 +1357,12 @@ function parse_mt33(raw::GPSCNAVData, word::UInt320)
     raw = parse_clock_block(raw, word)
     GPSCNAVData(
         raw;
-        A_0UTC = get_twos_complement_num(word, word_length, 128, 16) * 2.0^-35,
-        A_1UTC = get_twos_complement_num(word, word_length, 144, 13) * 2.0^-51,
-        A_2UTC = get_twos_complement_num(word, word_length, 157, 7) * 2.0^-68,
+        A_0 = get_twos_complement_num(word, word_length, 128, 16) * 2.0^-35,
+        A_1 = get_twos_complement_num(word, word_length, 144, 13) * 2.0^-51,
+        A_2 = get_twos_complement_num(word, word_length, 157, 7) * 2.0^-68,
         Δt_LS = get_twos_complement_num(word, word_length, 164, 8),
-        t_0t = Int64(get_bits(word, word_length, 172, 16)) * 16,
-        WN_0t = Int64(get_bits(word, word_length, 188, 13)),
+        t_ot = Int64(get_bits(word, word_length, 172, 16)) * 16,
+        WN_ot = Int64(get_bits(word, word_length, 188, 13)),
         WN_LSF = Int64(get_bits(word, word_length, 201, 13)),
         DN = Int64(get_bits(word, word_length, 214, 4)),
         Δt_LSF = get_twos_complement_num(word, word_length, 218, 8),
@@ -1381,7 +1379,7 @@ function parse_mt35(raw::GPSCNAVData, word::UInt320)
         raw;
         t_GGTO = Int64(get_bits(word, word_length, 128, 16)) * 16,
         WN_GGTO = Int64(get_bits(word, word_length, 144, 13)),
-        GNSS_ID = Int64(get_bits(word, word_length, 157, 3)),
+        GGTO_ID = Int64(get_bits(word, word_length, 157, 3)),
         A_0GGTO = get_twos_complement_num(word, word_length, 160, 16) * 2.0^-35,
         A_1GGTO = get_twos_complement_num(word, word_length, 176, 13) * 2.0^-51,
         A_2GGTO = get_twos_complement_num(word, word_length, 189, 7) * 2.0^-68,
@@ -1403,12 +1401,12 @@ function parse_mt37!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     alm = GPSCNAVMidiAlmanac(;
         PRN_a,
         WN_a = Int(get_bits(word, word_length, 128, 13)),
-        t_0a = Int(get_bits(word, word_length, 141, 8)) * 2^12,
+        t_oa = Int(get_bits(word, word_length, 141, 8)) * 2^12,
         l1_health = get_bit(word, word_length, 155),
         l2_health = get_bit(word, word_length, 156),
         l5_health = get_bit(word, word_length, 157),
         e = Int(get_bits(word, word_length, 158, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, 169, 11) * 2.0^-14 * GNSS_PI,
+        δ_i = get_twos_complement_num(word, word_length, 169, 11) * 2.0^-14 * GNSS_PI,
         Ω_dot = get_twos_complement_num(word, word_length, 180, 11) * 2.0^-33 * GNSS_PI,
         sqrt_A = Int(get_bits(word, word_length, 191, 17)) * 2.0^-4,
         Ω_0 = get_twos_complement_num(word, word_length, 208, 16) * 2.0^-15 * GNSS_PI,
@@ -1437,16 +1435,16 @@ function _cnav_cdc_packet(
     dc_data_type::Bool,
 )
     word_length = CNAV_MESSAGE_BITS
-    PRN_a = Int(get_bits(word, word_length, start, 8))
-    PRN_a == CNAV_DC_EMPTY_PRN && return nothing
+    PRN_ID = Int(get_bits(word, word_length, start, 8))
+    PRN_ID == CNAV_DC_EMPTY_PRN && return nothing
     GPSCNAVClockDifferentialCorrection(;
-        PRN_a,
+        PRN_ID,
         t_op_D,
         t_OD,
         dc_data_type,
         δa_f0 = get_twos_complement_num(word, word_length, start + 8, 13) * 2.0^-35,
         δa_f1 = get_twos_complement_num(word, word_length, start + 21, 8) * 2.0^-51,
-        UDRA_index = get_twos_complement_num(word, word_length, start + 29, 5),
+        UDRA = get_twos_complement_num(word, word_length, start + 29, 5),
     )
 end
 
@@ -1461,10 +1459,10 @@ function _cnav_edc_packet(
     dc_data_type::Bool,
 )
     word_length = CNAV_MESSAGE_BITS
-    PRN_a = Int(get_bits(word, word_length, start, 8))
-    PRN_a == CNAV_DC_EMPTY_PRN && return nothing
+    PRN_ID = Int(get_bits(word, word_length, start, 8))
+    PRN_ID == CNAV_DC_EMPTY_PRN && return nothing
     GPSCNAVEphemerisDifferentialCorrection(;
-        PRN_a,
+        PRN_ID,
         t_op_D,
         t_OD,
         dc_data_type,
@@ -1474,7 +1472,7 @@ function _cnav_edc_packet(
         Δi = get_twos_complement_num(word, word_length, start + 51, 12) * 2.0^-32 * GNSS_PI,
         ΔΩ = get_twos_complement_num(word, word_length, start + 63, 12) * 2.0^-32 * GNSS_PI,
         ΔA = get_twos_complement_num(word, word_length, start + 75, 12) * 2.0^-9,
-        UDRA_dot_index = get_twos_complement_num(word, word_length, start + 87, 5),
+        UDRA_dot = get_twos_complement_num(word, word_length, start + 87, 5),
     )
 end
 
@@ -1504,7 +1502,7 @@ function parse_mt13!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
         # flips the parity) and merge a correction for a nonexistent satellite. Same
         # rule as `parse_mt12` / `parse_mt31`.
         isnothing(packet) && break
-        set!(corrections, packet.PRN_a, packet)
+        set!(corrections, packet.PRN_ID, packet)
     end
     GPSCNAVData(raw; clock_corrections = corrections)
 end
@@ -1530,7 +1528,7 @@ function parse_mt14!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
         packet = _cnav_edc_packet(word, start + 1, t_op_D, t_OD, dc_data_type)
         # All-ones PRN: filler follows (see `parse_mt13!`), so `break`.
         isnothing(packet) && break
-        set!(corrections, packet.PRN_a, packet)
+        set!(corrections, packet.PRN_ID, packet)
     end
     GPSCNAVData(raw; ephemeris_corrections = corrections)
 end
@@ -1553,13 +1551,13 @@ function parse_mt34!(storage::GPSCNAVData, raw::GPSCNAVData, word::UInt320)
     if !isnothing(cdc)
         clock_corrections =
             writable_container(raw.clock_corrections, storage.clock_corrections)
-        set!(clock_corrections, cdc.PRN_a, cdc)
+        set!(clock_corrections, cdc.PRN_ID, cdc)
         raw = GPSCNAVData(raw; clock_corrections)
     end
     if !isnothing(edc)
         ephemeris_corrections =
             writable_container(raw.ephemeris_corrections, storage.ephemeris_corrections)
-        set!(ephemeris_corrections, edc.PRN_a, edc)
+        set!(ephemeris_corrections, edc.PRN_ID, edc)
         raw = GPSCNAVData(raw; ephemeris_corrections)
     end
     return raw

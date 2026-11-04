@@ -163,7 +163,7 @@ time_of_week = get_decoded_time_of_week(state)
 
 `get_broadcast_time_offset` folds away the five shapes the same quantity is
 broadcast in — Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
-`GNSS_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
+`GGTO_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
 keyed per system, and D1/D2's three epochless pairs named per system — including
 each ICD's "not available" sentinel:
 

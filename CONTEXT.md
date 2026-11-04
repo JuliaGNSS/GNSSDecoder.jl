@@ -86,7 +86,7 @@ code; this file is for naming and meaning only.
   Subframe = 300 bits = 10 × 30-bit words; word 1 = 15 raw bits + one
   BCH(15,11,1) block, words 2-10 = two bit-interleaved BCH(15,11,1) blocks.
   No IODs: `validate_data` promotes by broadcast-repetition voting keyed on
-  (t_0c, t_0e) plus a SOW-vs-elapsed-symbols screen.
+  (t_oc, t_oe) plus a SOW-vs-elapsed-symbols screen.
 - **BeiDou B1C** (`BeiDouB1C_D`) — 100 sps B-CNAV1 on the B1C data component
   (BDS-SIS-ICD-B1C-1.0). Frame = 1800 symbols = 18 s: subframe 1 = 72 symbols
   (PRN as BCH(21,6) ++ SOH as BCH(51,8), concatenated, no CRC); subframes 2+3
@@ -144,63 +144,79 @@ this repository does not have.
 
 Two rules, in this order:
 
- 1. **A quantity that is the same across signals gets one package-wide name**,
-    and the field documentation names the ICD symbol wherever that name departs
-    from it. One spelling per quantity is what lets a consumer read a clock, an
-    ephemeris or a UTC offset out of any decoder here without dispatching on the
-    constellation; a per-ICD spelling would push a naming difference into every
-    downstream reader as a real branch. `PositionVelocityTime.jl` evaluates the
-    clock polynomial as `data.a_f0 + data.a_f1 * (t - data.t_0c) + …` for every
-    decoder it supports, and that one expression only stays one expression while
-    the containers agree.
+ 1. **A raw data container uses the spelling of its own ICD**, with the sub-records
+    it holds (almanacs, differential corrections, HAS records, BGTO sets). The
+    package transcribes the symbols by fixed rules: a subscript becomes `_` plus
+    the subscript (`C_uc`, `A_0GGTO`, `SISAI_oe`), Greek letters stay Unicode (`Ω_0`,
+    `Δn`), `√A` is `sqrt_A`, an overdot is a `_dot` suffix (`Ω_dot`, `i_0_dot`), a
+    space, hyphen or bracketed argument inside a symbol becomes `_` (`t_op-D` is
+    `t_op_D`, `BGD(E1,E5a)` is `BGD_E1_E5a`, `SISA(E1,E5a)` is `SISA_E1_E5a`, `Mask ID`
+    is `Mask_ID`, `IOD Set ID` is `IOD_Set_ID`, `GNSS ID` is `GNSS_ID`, `DIF (B2a)` is
+    `DIF_B2a`), and any other character an identifier cannot hold is dropped
+    (`ISC_L1C/A` is `ISC_L1CA`).
+    A field list then checks against the ICD table it cites symbol by symbol, and a
+    reader who knows the ICD finds each quantity under the name the ICD gives it.
+    The **normalised records** (`BroadcastEphemeris`, `UTCParameters`,
+    `LeapSecondParameters`, `TimeOffsetParameters`, the ionosphere records, the
+    group delay and the range accuracy) give one package-wide name per quantity:
+    `t_0e`, `t_0c`, `a_f0`, `A_0`, `t_0`, `WN_0`, … A consumer that works across
+    constellations reads those records and never dispatches on a container; the
+    per-container reading lives once, in the methods that build each record.
  2. **A quantity that genuinely differs keeps its ICD name**, even where two
     ICDs' names then look alike or unalike. `SOW` (BDT seconds of week) is not
-    `TOW`; `ΔUT1` (BDS, UT1 − UTC) is not `ΔUT_GPS` (GPS, UT1 − GPS time);
-    `T_GD1`, `T_GD_B2ap` and `ISC_L5I5` are three different group delays.
+    `TOW`; `ΔUT1` (BDS, UT1 − UTC) is not `ΔUTGPS` (GPS, UT1 − GPS time);
+    `T_GD1`, `T_GDB2ap` and `ISC_L5I5` are three different group delays.
 
-The quantities where rule 1 bites — the ICDs disagree, so some ICD is departed
-from and the field lists say which:
+Where a raw container still departs from its ICD, the field documentation says so:
 
-| Quantity | ICD spellings | Package |
+| Field | ICD | Why it differs |
 | --- | --- | --- |
-| SV clock polynomial | GPS/Galileo `a_f0`…, BDS `a_0`… (but BDS midi almanac `af0`) | `a_f0`, `a_f1`, `a_f2` |
-| Clock reference epoch | GPS/BDS `t_oc`, Galileo `t_0c` | `t_0c` |
-| Ephemeris reference epoch | GPS/BDS `t_oe`, Galileo `t_0e` | `t_0e` |
-| Almanac reference epoch | GPS/BDS `t_oa`, Galileo `t_0a` | `t_0a` |
-| Data prediction epoch | GPS `t_op`, BDS `t_op` (B2b figure prints it inside SISAIoc; its LSB of 300 s is inferred — the block's parameter table is deferred — from the field's own "time of week" definition, the 11-bit width, and the `t_oc`/`t_oe`/GPS-`t_op` convention) | `t_op` |
-| UTC polynomial | GPS `A0`/`A0-n`, Galileo `A0`, BDS `A_0UTC` | `A_0UTC`, `A_1UTC`, `A_2UTC` |
-| UTC reference epoch | GPS/BDS `t_ot`, Galileo `t_0t` | `t_0t` |
-| UTC reference week | GPS `WN_t`/`WN_ot`, BDS `WN_ot`, Galileo `WN_0t` | `WN_0t` |
-| GNSS-GNSS offset polynomial | GPS `A0GGTO`…, BDS `A_0BGTO`… | `A_0GGTO`…, `A_0BGTO`… |
-| GNSS-offset target id | GPS CNAV `GNSS ID`, GPS L1C `GGTO ID`, BDS `GNSS ID` | `GNSS_ID` (L1C's `GGTO ID` since IRN-IS-800J-003, before it `GNSS ID`) |
-| Week number | GPS LNAV `WN` (was `trans_week` here) | `WN` |
-| Satellite identifier | Galileo `SVID`, GPS/BDS `PRN` | `SVID` in Galileo containers, `PRN_a` in almanac records |
-| Message type of the last frame | BDS `MesType`, GPS `Message type ID` | `last_message_type` |
-| Per-satellite almanac store | — (package-internal) | `almanacs` |
-| BDGIM ionosphere | BDS `α_1`…`α_9` | `α_bdgim_1`…`α_bdgim_9` |
+| HAS `validity_interval` | `VI`, an index | holds seconds; `VI` is only the index |
+| HAS `DCM` | `DCM`, the 2-bit field 0-3 | holds the multiplier 1-4 (Table 29), not the code |
+| `last_message_type`, `last_subframe_id` | `MesType`, `FraID` | bookkeeping |
+| GPS LNAV `IODE_subframe2`, `…3` | `IODE` in both | one name cannot hold both |
+| GPS CNAV, CNAV-2 `M_0`, `A_0`, … | `M_0-n`, `A_0-n` | satellite index `-n` dropped |
+| GPS CNAV-2 `t_oc` | none (IS-GPS-800J) | a copy of `t_oe`, named as on CNAV |
+| Galileo `E1B_SHS`, `E1B_DVS` | `E1-B` subscript `SHS`, `DVS` | hyphen of `E1-B` dropped |
+| Galileo `IOD_nav1`…`4` | `IOD_nav` | one copy per word or page type |
 
-The last row is rule 2 wearing rule 1's clothes: BDS writes `α` for BDGIM and
-GPS writes `α` for Klobuchar, so following both ICDs literally would give one
-name to two different models. The qualifier keeps them apart.
+The HAS cache records that mirror the message header (the page group and the held
+message) use the same `MID`, `MT`, `MS` as the message does.
+
+Reference epochs are the trap in transcribing: GPS and BeiDou write them with the
+letter **o** (`t_oe`, `t_oc`, `t_oa`, `t_ot`, `t_op`, `WN_ot`; GPS LNAV's week is
+`WN_t`), Galileo with the digit **0** (`t_0e`, `t_0c`, `t_0a`, `t_0t`, `WN_0t`), and
+the BeiDou BGTO set, `A_0UTC` and GPS `A_0GGTO` with the digit too (`WN_0BGTO`,
+`t_0BGTO`). So one BeiDou B-CNAV container holds `t_oe`, `t_oc`, `t_ot` and `t_0BGTO`
+side by side, and `t_ot` against `t_0t` is easy to mistype. The PDFs' text layers
+flatten subscripts, and a letter o in a subscript survives as a letter, so check a
+doubtful symbol on a rendered page.
 
 Where the whole set is the ICD's own spelling and no note is needed: the
 Keplerian elements and harmonic corrections (`M_0`, `sqrt_A`, `e`, `Ω_0`, `i_0`,
-`ω`, `Ω_dot`, `i_dot`, `Δn`, `C_uc` … `C_is`), which every ICD spells alike; and
-the per-signal integrity and health words, which no two constellations share
+`ω`, `Ω_dot`, `Δn`, `C_uc` … `C_is`), which every ICD spells alike (the inclination
+rate is `IDOT` on GPS and BeiDou D1/D2, `i_dot` on Galileo, `i_0_dot` on B-CNAV);
+and the per-signal integrity and health words, which no two constellations share
 (`SISAI_oe`, `SISMAI`, `HS`, `AIF`, `DIF`, `SIF`, `URAI`, `SatH1` for BeiDou;
-`E1B_SHS`, `E1B_DVS`, `BGD_E1_E5a` for Galileo; `URA_ED_index`, `ISC_L1CA` for
-GPS). Two cautions inside that second group, both learned the hard way against
-the documents:
+`E5a_SHS`, `E5b_DVS`, `BGD_E1_E5a` for Galileo; `URA_ED_index`, `ISC_L1CA` for
+GPS). Three cautions inside that second group, learned against the documents:
 
-  - Galileo signal health is `SHS`, not `HS`. The OS SIS ICD writes `E1BSHS` /
-    `E1-BSHS`, `E5bSHS`, `E5aSHS` (Tables 30, 46, 48-51, 82, 83, 86) — *Signal
-    Health Status*, S included. Only the underscore is this package's. The
-    `*_DVS` half needs no such warning; the ICD spells that one as we do.
-  - BeiDou writes its accuracy indices without underscores (`SISAIoe`,
-    `SISAIocb`, `SISMAI`) and this package inserts one for legibility, the same
-    departure as `E1B_DVS`. But `t_op` is *not* one of them: B2b §7.15 item (5)
-    calls it "`top`: the time of week for data prediction", so it keeps the
-    package-wide `t_op` and never a `SISAI_` prefix.
+  - Galileo signal health is `SHS`, not `HS`: *Signal Health Status*, S included (the
+    OS SIS ICD 2.2 renamed 2.1's `HS`). The ICD subscripts `SHS` and `DVS` (Tables 30,
+    46, 86), so `E5a_SHS` and `E5b_DVS` are the subscript rule; only `E1B_SHS` and
+    `E1B_DVS` depart, by dropping the hyphen of `E1-B`.
+  - BeiDou prints its accuracy indices with subscripts (`SISAI` with subscript
+    `oe`, `ocb`, `oc1`, `oc2`), so `SISAI_oe` is the subscript rule, not a
+    departure; `SISMAI` carries no subscript. `t_op` is *not* one of them: B2b
+    §7.15 item (5) calls it "`top`: the time of week for data prediction", so it is
+    `t_op` and never a `SISAI_` prefix. Its LSB of 300 s is inferred, as the block's
+    parameter table is deferred, from the field's own "time of week" definition, the
+    11-bit width, and the `t_oc`/`t_oe`/GPS-`t_op` convention.
+  - BeiDou's group-delay symbols are one subscript each (`T_GD1`, `T_GDB1Cp`,
+    `T_GDB2ap`, `T_GDB2bI`), not `T_GD_B1Cp`; and its BDGIM coefficients are
+    `α_1`…`α_9` as the ICD writes them. The same `α` is the Klobuchar coefficient on
+    GPS and BeiDou D1/D2 (s/π^n against TECu here), which no container mixes, so
+    read the ionosphere through the accessors rather than by field name.
 
 ## Group delays and positioning readiness
 
@@ -209,22 +225,22 @@ group delay **when that field rides in the block the gate already waits for**,
 and excludes it otherwise. The question is never "is it important" — it always
 is, at metre scale — but "does requiring it cost time to first fix".
 
-- **Required.** BeiDou B1C's `T_GD_B1Cp` and `ISC_B1Cd` are in the same
+- **Required.** BeiDou B1C's `T_GDB1Cp` and `ISC_B1Cd` are in the same
   CRC-protected subframe 2 as the ephemeris and clock, broadcast in every
-  18-second frame; BeiDou B2b's `T_GD_B2bI` is in the same MT30 as the clock;
+  18-second frame; BeiDou B2b's `T_GDB2bI` is in the same MT30 as the clock;
   BeiDou B1I/B3I's `T_GD1` is in the same D1 subframe 1 / D2 page 1 as the
   clock. All cost nothing extra, and all are needed because the BDS clock term
   `a_0` is referenced to **B3I**, not to the signal being tracked (B1I §5.2.4.10,
-  B1C §7.6.1, B2b §7.6) — a receiver that skips them eats a bias rather than
+  B1C §7.6.1, B2b §7.5.1) — a receiver that skips them eats a bias rather than
   losing a refinement.
-- **Excluded.** BeiDou B2a's `T_GD_B2ap` / `ISC_B2ad` are in MT30 alone while
+- **Excluded.** BeiDou B2a's `T_GDB2ap` / `ISC_B2ad` are in MT30 alone while
   the clock and IODC are in all of MT30-34, and the B2a ICD declines to schedule
   MT30: "the broadcast order of the B-CNAV2 message types may be dynamically
   adjusted, however Message Types 10 and 11 shall be broadcast continuously
   together" (§6.2). Gating on MT30 would gate on an unbounded interval. GPS
   CNAV's `T_GD` / `ISC_*` are excluded for the same reason.
 - **Never required.** A correction for a band this decoder is not on — B1C's
-  `T_GD_B2ap`, B1I/B3I's `T_GD2` (there is no B2I signal in GNSSSignals and none
+  `T_GDB2ap`, B1I/B3I's `T_GD2` (there is no B2I signal in GNSSSignals and none
   planned — JuliaGNSS/GNSSSignals.jl#156), `ISC_L5Q5` on an L1 fix. Such a field
   is still decoded and published; only the gate ignores it.
 
@@ -236,7 +252,7 @@ and the conservative side of the trade, because the alternative lets a B1I
 consumer see a "ready" decoder with no group delay.
 
 One further readiness condition, unrelated to group delays and on the B-CNAV
-signals only: the 2-bit `sat_type` encodes 1 = GEO, 2 = IGSO, 3 = MEO and
+signals only: the 2-bit `SatType` encodes 1 = GEO, 2 = IGSO, 3 = MEO and
 reserves 0 (B1C/B2a/B2b Table 7-6), and it is what selects the reference the
 broadcast ephemeris is expressed against — `A = A_ref + ΔA` with
 `A_ref = 27 906 100 m` for MEO against `42 162 200 m` for IGSO/GEO. A satellite
@@ -328,7 +344,7 @@ multiple subframes/pages carry a consistent ephemeris set before publishing.
   ephemeris pair by adjacent SOWs and the clock via IODC/IODE (`IODE == IODC &
   0xff`, §7.4.3); B-CNAV3 broadcasts no IODs (atomic messages); the legacy
   D1/D2 message has only AODC/AODE *ages*, so consistency comes from
-  broadcast-repetition voting keyed on (t_0c, t_0e).
+  broadcast-repetition voting keyed on (t_oc, t_oe).
 
 ## CRC-24Q
 

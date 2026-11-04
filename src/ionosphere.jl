@@ -74,9 +74,9 @@ $(TYPEDEF)
 The nine BDGIM coefficients of a BDS-3 B-CNAV message (B1C, B2a or B2b), in TECU. The
 caller supplies the user's epoch (Modified Julian Date).
 
-The names are the ICD's `α_1 … α_9` (BDS-SIS-ICD-B1C-1.0 Table 7-10), the data containers'
-`α_bdgim_1 … α_bdgim_9`, which arrive with each scale factor and sign applied (including
-`α_5`'s −2⁻³). [`get_bdgim_parameters`](@ref) returns it.
+The names are the ICD's `α_1 … α_9` (BDS-SIS-ICD-B1C-1.0 Table 7-10), as in the data
+containers, which hold them with each scale factor and sign applied (including `α_5`'s
+−2⁻³). [`get_bdgim_parameters`](@ref) returns it.
 
 # Fields
 
@@ -173,26 +173,26 @@ the legacy D1/D2 message (which broadcasts Klobuchar), and on GPS and Galileo.
 function get_bdgim_parameters(state::GNSSDecoderState{<:AbstractBeiDouCNAVData})
     d = state.data
     (
-        isnothing(d.α_bdgim_1) ||
-        isnothing(d.α_bdgim_2) ||
-        isnothing(d.α_bdgim_3) ||
-        isnothing(d.α_bdgim_4) ||
-        isnothing(d.α_bdgim_5) ||
-        isnothing(d.α_bdgim_6) ||
-        isnothing(d.α_bdgim_7) ||
-        isnothing(d.α_bdgim_8) ||
-        isnothing(d.α_bdgim_9)
+        isnothing(d.α_1) ||
+        isnothing(d.α_2) ||
+        isnothing(d.α_3) ||
+        isnothing(d.α_4) ||
+        isnothing(d.α_5) ||
+        isnothing(d.α_6) ||
+        isnothing(d.α_7) ||
+        isnothing(d.α_8) ||
+        isnothing(d.α_9)
     ) && return nothing
     BDGIMParameters(
-        something(d.α_bdgim_1),
-        something(d.α_bdgim_2),
-        something(d.α_bdgim_3),
-        something(d.α_bdgim_4),
-        something(d.α_bdgim_5),
-        something(d.α_bdgim_6),
-        something(d.α_bdgim_7),
-        something(d.α_bdgim_8),
-        something(d.α_bdgim_9),
+        something(d.α_1),
+        something(d.α_2),
+        something(d.α_3),
+        something(d.α_4),
+        something(d.α_5),
+        something(d.α_6),
+        something(d.α_7),
+        something(d.α_8),
+        something(d.α_9),
     )
 end
 get_bdgim_parameters(

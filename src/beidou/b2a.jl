@@ -106,15 +106,16 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     HS::Union{Nothing,Int64} = nothing
     """
-    B2a data integrity flag (0 = message error within predictive accuracy, §7.15)
+    B2a data integrity flag (0 = message error within predictive accuracy; the ICD writes
+    DIF(B2a) etc., §7.15)
     """
     DIF_B2a::Union{Nothing,Bool} = nothing
     """
-    B2a signal integrity flag (0 = signal normal, §7.15)
+    B2a signal integrity flag (0 = signal normal; the ICD writes SIF(B2a), §7.15)
     """
     SIF_B2a::Union{Nothing,Bool} = nothing
     """
-    B2a accuracy integrity flag (0 = SISMAI value valid, §7.15)
+    B2a accuracy integrity flag (0 = SISMAI value valid; the ICD writes AIF(B2a), §7.15)
     """
     AIF_B2a::Union{Nothing,Bool} = nothing
     """
@@ -122,15 +123,15 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     SISMAI::Union{Nothing,Int64} = nothing
     """
-    B1C data integrity flag (also broadcast on B-CNAV2, §7.15)
+    B1C data integrity flag (also broadcast on B-CNAV2; the ICD writes DIF(B1C), §7.15)
     """
     DIF_B1C::Union{Nothing,Bool} = nothing
     """
-    B1C signal integrity flag (§7.15)
+    B1C signal integrity flag (the ICD writes SIF(B1C), §7.15)
     """
     SIF_B1C::Union{Nothing,Bool} = nothing
     """
-    B1C accuracy integrity flag (§7.15)
+    B1C accuracy integrity flag (the ICD writes AIF(B1C), §7.15)
     """
     AIF_B1C::Union{Nothing,Bool} = nothing
 
@@ -140,13 +141,13 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     IODE::Union{Nothing,Int64} = nothing
     """
-    Ephemeris reference time (s, ×300; the ICD writes `toe`)
+    Ephemeris reference time (s, ×300)
     """
-    t_0e::Union{Nothing,Int64} = nothing
+    t_oe::Union{Nothing,Int64} = nothing
     """
     Satellite orbit type (2 bits: 1 = GEO, 2 = IGSO, 3 = MEO, 0 reserved; Table 7-8)
     """
-    sat_type::Union{Nothing,Int64} = nothing
+    SatType::Union{Nothing,Int64} = nothing
     """
     Semi-major axis difference at reference time (m; vs A_ref = 27906100 m MEO / 42162200 m IGSO-GEO)
     """
@@ -195,7 +196,7 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     Rate of inclination angle (rad/s)
     """
-    i_dot::Union{Nothing,Float64} = nothing
+    i_0_dot::Union{Nothing,Float64} = nothing
     """
     Amplitude of sine harmonic correction to inclination (rad)
     """
@@ -231,27 +232,27 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     IODC::Union{Nothing,Int64} = nothing
     """
-    Clock correction reference time (s, ×300; the ICD writes `toc`)
+    Clock correction reference time (s, ×300)
     """
-    t_0c::Union{Nothing,Int64} = nothing
+    t_oc::Union{Nothing,Int64} = nothing
     """
-    SV clock bias (s; the ICD names it `a_0`)
+    SV clock bias (s)
     """
-    a_f0::Union{Nothing,Float64} = nothing
+    a_0::Union{Nothing,Float64} = nothing
     """
-    SV clock drift (s/s; the ICD names it `a_1`)
+    SV clock drift (s/s)
     """
-    a_f1::Union{Nothing,Float64} = nothing
+    a_1::Union{Nothing,Float64} = nothing
     """
-    SV clock drift rate (s/s²; the ICD names it `a_2`)
+    SV clock drift rate (s/s²)
     """
-    a_f2::Union{Nothing,Float64} = nothing
+    a_2::Union{Nothing,Float64} = nothing
 
     # ---- Group delay (message type 30, §7.6) ----
     """
     Group delay differential of the B2a pilot component vs the B3I-referenced clock (s)
     """
-    T_GD_B2ap::Union{Nothing,Float64} = nothing
+    T_GDB2ap::Union{Nothing,Float64} = nothing
     """
     Group delay differential between the B2a data and pilot components (s)
     """
@@ -259,47 +260,46 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     Group delay differential of the B1C pilot component (s)
     """
-    T_GD_B1Cp::Union{Nothing,Float64} = nothing
+    T_GDB1Cp::Union{Nothing,Float64} = nothing
 
     # ---- BDGIM ionosphere (message type 30, §7.8) ----
     """
-    BDGIM parameter α₁ (TECu). The ICD names the nine `α_1` … `α_9`; the `bdgim`
-    qualifier is this package's, keeping them distinct from the Klobuchar
-    `α_0` … `α_3` of the other containers (see `b1c.jl`).
+    BDGIM parameter α₁ (TECu). Not the Klobuchar `α_1` of the other containers (see
+    `b1c.jl`).
     """
-    α_bdgim_1::Union{Nothing,Float64} = nothing
+    α_1::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₂ (TECu)
     """
-    α_bdgim_2::Union{Nothing,Float64} = nothing
+    α_2::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₃ (TECu)
     """
-    α_bdgim_3::Union{Nothing,Float64} = nothing
+    α_3::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₄ (TECu)
     """
-    α_bdgim_4::Union{Nothing,Float64} = nothing
+    α_4::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₅ (TECu; broadcast with scale −2⁻³, Table 7-10)
     """
-    α_bdgim_5::Union{Nothing,Float64} = nothing
+    α_5::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₆ (TECu)
     """
-    α_bdgim_6::Union{Nothing,Float64} = nothing
+    α_6::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₇ (TECu)
     """
-    α_bdgim_7::Union{Nothing,Float64} = nothing
+    α_7::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₈ (TECu)
     """
-    α_bdgim_8::Union{Nothing,Float64} = nothing
+    α_8::Union{Nothing,Float64} = nothing
     """
     BDGIM parameter α₉ (TECu)
     """
-    α_bdgim_9::Union{Nothing,Float64} = nothing
+    α_9::Union{Nothing,Float64} = nothing
 
     # ---- Earth orientation (message type 32, §7.11) ----
     """
@@ -349,13 +349,13 @@ Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     Δt_LS::Union{Nothing,Int64} = nothing
     """
-    Reference time of week for the UTC parameters (s, ×2⁴; the ICD writes `t_ot`)
+    Reference time of week for the UTC parameters (s, ×2⁴)
     """
-    t_0t::Union{Nothing,Int64} = nothing
+    t_ot::Union{Nothing,Int64} = nothing
     """
-    Reference week number for the UTC parameters (the ICD writes `WN_ot`)
+    Reference week number for the UTC parameters
     """
-    WN_0t::Union{Nothing,Int64} = nothing
+    WN_ot::Union{Nothing,Int64} = nothing
     """
     Leap second reference week number
     """
@@ -448,8 +448,8 @@ end
     SIF_B1C = data.SIF_B1C,
     AIF_B1C = data.AIF_B1C,
     IODE = data.IODE,
-    t_0e = data.t_0e,
-    sat_type = data.sat_type,
+    t_oe = data.t_oe,
+    SatType = data.SatType,
     ΔA = data.ΔA,
     A_dot = data.A_dot,
     Δn_0 = data.Δn_0,
@@ -461,7 +461,7 @@ end
     Ω_0 = data.Ω_0,
     i_0 = data.i_0,
     Ω_dot = data.Ω_dot,
-    i_dot = data.i_dot,
+    i_0_dot = data.i_0_dot,
     C_is = data.C_is,
     C_ic = data.C_ic,
     C_rs = data.C_rs,
@@ -470,22 +470,22 @@ end
     C_uc = data.C_uc,
     SOW_mt11 = data.SOW_mt11,
     IODC = data.IODC,
-    t_0c = data.t_0c,
-    a_f0 = data.a_f0,
-    a_f1 = data.a_f1,
-    a_f2 = data.a_f2,
-    T_GD_B2ap = data.T_GD_B2ap,
+    t_oc = data.t_oc,
+    a_0 = data.a_0,
+    a_1 = data.a_1,
+    a_2 = data.a_2,
+    T_GDB2ap = data.T_GDB2ap,
     ISC_B2ad = data.ISC_B2ad,
-    T_GD_B1Cp = data.T_GD_B1Cp,
-    α_bdgim_1 = data.α_bdgim_1,
-    α_bdgim_2 = data.α_bdgim_2,
-    α_bdgim_3 = data.α_bdgim_3,
-    α_bdgim_4 = data.α_bdgim_4,
-    α_bdgim_5 = data.α_bdgim_5,
-    α_bdgim_6 = data.α_bdgim_6,
-    α_bdgim_7 = data.α_bdgim_7,
-    α_bdgim_8 = data.α_bdgim_8,
-    α_bdgim_9 = data.α_bdgim_9,
+    T_GDB1Cp = data.T_GDB1Cp,
+    α_1 = data.α_1,
+    α_2 = data.α_2,
+    α_3 = data.α_3,
+    α_4 = data.α_4,
+    α_5 = data.α_5,
+    α_6 = data.α_6,
+    α_7 = data.α_7,
+    α_8 = data.α_8,
+    α_9 = data.α_9,
     t_EOP = data.t_EOP,
     PM_X = data.PM_X,
     PM_X_dot = data.PM_X_dot,
@@ -497,8 +497,8 @@ end
     A_1UTC = data.A_1UTC,
     A_2UTC = data.A_2UTC,
     Δt_LS = data.Δt_LS,
-    t_0t = data.t_0t,
-    WN_0t = data.WN_0t,
+    t_ot = data.t_ot,
+    WN_ot = data.WN_ot,
     WN_LSF = data.WN_LSF,
     DN = data.DN,
     Δt_LSF = data.Δt_LSF,
@@ -529,8 +529,8 @@ end
         SIF_B1C,
         AIF_B1C,
         IODE,
-        t_0e,
-        sat_type,
+        t_oe,
+        SatType,
         ΔA,
         A_dot,
         Δn_0,
@@ -542,7 +542,7 @@ end
         Ω_0,
         i_0,
         Ω_dot,
-        i_dot,
+        i_0_dot,
         C_is,
         C_ic,
         C_rs,
@@ -551,22 +551,22 @@ end
         C_uc,
         SOW_mt11,
         IODC,
-        t_0c,
-        a_f0,
-        a_f1,
-        a_f2,
-        T_GD_B2ap,
+        t_oc,
+        a_0,
+        a_1,
+        a_2,
+        T_GDB2ap,
         ISC_B2ad,
-        T_GD_B1Cp,
-        α_bdgim_1,
-        α_bdgim_2,
-        α_bdgim_3,
-        α_bdgim_4,
-        α_bdgim_5,
-        α_bdgim_6,
-        α_bdgim_7,
-        α_bdgim_8,
-        α_bdgim_9,
+        T_GDB1Cp,
+        α_1,
+        α_2,
+        α_3,
+        α_4,
+        α_5,
+        α_6,
+        α_7,
+        α_8,
+        α_9,
         t_EOP,
         PM_X,
         PM_X_dot,
@@ -578,8 +578,8 @@ end
         A_1UTC,
         A_2UTC,
         Δt_LS,
-        t_0t,
-        WN_0t,
+        t_ot,
+        WN_ot,
         WN_LSF,
         DN,
         Δt_LSF,
@@ -785,8 +785,8 @@ get_signal_type(::BeiDouB2aConstants) = BeiDouB2aI
 function is_ephemeris_decoded(data::BeiDouCNAV2Data)
     # Message type 10 (ephemeris I + IODE) ...
     !isnothing(data.IODE) &&
-        !isnothing(data.t_0e) &&
-        is_known_sat_type(data.sat_type) &&
+        !isnothing(data.t_oe) &&
+        is_known_sat_type(data.SatType) &&
         !isnothing(data.ΔA) &&
         !isnothing(data.A_dot) &&
         !isnothing(data.Δn_0) &&
@@ -798,7 +798,7 @@ function is_ephemeris_decoded(data::BeiDouCNAV2Data)
         !isnothing(data.Ω_0) &&
         !isnothing(data.i_0) &&
         !isnothing(data.Ω_dot) &&
-        !isnothing(data.i_dot) &&
+        !isnothing(data.i_0_dot) &&
         !isnothing(data.C_is) &&
         !isnothing(data.C_ic) &&
         !isnothing(data.C_rs) &&
@@ -824,18 +824,18 @@ function is_clock_correction_decoded(data::BeiDouCNAV2Data)
     # The clock block + IODC are carried identically in message types 30-34.
     #
     # T_GD/ISC are deliberately NOT required, unlike on B1C and B2b where the single-band
-    # group delay rides in the clock's own block. Here `T_GD_B2ap`, `ISC_B2ad` and
-    # `T_GD_B1Cp` are in MT30 *only* while clock and IODC are in all of MT30-34, so gating
+    # group delay rides in the clock's own block. Here `T_GDB2ap`, `ISC_B2ad` and
+    # `T_GDB1Cp` are in MT30 *only* while clock and IODC are in all of MT30-34, so gating
     # on them would make a fix wait for MT30, and BDS-SIS-ICD-B2a-1.0 §6.2 does not
     # schedule it: "The broadcast order of the B-CNAV2 message types may be dynamically
     # adjusted, however Message Types 10 and 11 shall be broadcast continuously
     # together." Only the MT10/11 pair has a guaranteed cadence. Same reasoning as the GPS
     # CNAV decoder's T_GD.
     !isnothing(data.IODC) &&
-        !isnothing(data.t_0c) &&
-        !isnothing(data.a_f0) &&
-        !isnothing(data.a_f1) &&
-        !isnothing(data.a_f2)
+        !isnothing(data.t_oc) &&
+        !isnothing(data.a_0) &&
+        !isnothing(data.a_1) &&
+        !isnothing(data.a_2)
 end
 
 # B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
@@ -848,18 +848,18 @@ get_broadcast_week(data::BeiDouCNAV2Data; approximate_year::Integer) = data.WN
 # As on B1C, but these terms ride in MT30 alone while the clock is in all of MT30-34, so
 # they are not gated and may be missing once the gate passes: then there is no group delay.
 function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aI)
-    (; T_GD_B2ap, ISC_B2ad) = state.data
+    (; T_GDB2ap, ISC_B2ad) = state.data
     (
         has_positioning_messages(state.data) &&
-        !isnothing(T_GD_B2ap) &&
+        !isnothing(T_GDB2ap) &&
         !isnothing(ISC_B2ad)
     ) || return nothing
-    something(T_GD_B2ap) + something(ISC_B2ad)
+    something(T_GDB2ap) + something(ISC_B2ad)
 end
 function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aQ)
-    T_GD_B2ap = state.data.T_GD_B2ap
-    (has_positioning_messages(state.data) && !isnothing(T_GD_B2ap)) || return nothing
-    something(T_GD_B2ap)
+    T_GDB2ap = state.data.T_GDB2ap
+    (has_positioning_messages(state.data) && !isnothing(T_GDB2ap)) || return nothing
+    something(T_GDB2ap)
 end
 
 """
@@ -1086,8 +1086,8 @@ function parse_b2a_mt10(raw::BeiDouCNAV2Data, word::UInt320)
         AIF_B1C = get_bit(word, word_length, 53),
         IODE = Int64(get_bits(word, word_length, 54, 8)),
         # Ephemeris I data block, bits 62-264 (Figure 6-11).
-        t_0e = Int64(get_bits(word, word_length, 62, 11)) * 300,
-        sat_type = Int64(get_bits(word, word_length, 73, 2)),
+        t_oe = Int64(get_bits(word, word_length, 62, 11)) * 300,
+        SatType = Int64(get_bits(word, word_length, 73, 2)),
         ΔA = get_twos_complement_num(word, word_length, 75, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 101, 25) * 2.0^-21,
         Δn_0 = get_twos_complement_num(word, word_length, 126, 17) * 2.0^-44 * GNSS_PI,
@@ -1120,7 +1120,7 @@ function parse_b2a_mt11(raw::BeiDouCNAV2Data, word::UInt320)
         Ω_0 = get_twos_complement_num(word, word_length, 43, 33) * 2.0^-32 * GNSS_PI,
         i_0 = get_twos_complement_num(word, word_length, 76, 33) * 2.0^-32 * GNSS_PI,
         Ω_dot = get_twos_complement_num(word, word_length, 109, 19) * 2.0^-44 * GNSS_PI,
-        i_dot = get_twos_complement_num(word, word_length, 128, 15) * 2.0^-44 * GNSS_PI,
+        i_0_dot = get_twos_complement_num(word, word_length, 128, 15) * 2.0^-44 * GNSS_PI,
         C_is = get_twos_complement_num(word, word_length, 143, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 159, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 175, 24) * 2.0^-8,
@@ -1171,11 +1171,11 @@ function parse_b2a_mt30(raw::BeiDouCNAV2Data, word::UInt320)
     BeiDouCNAV2Data(
         raw;
         IODC = Int64(get_bits(word, word_length, 112, 10)),
-        T_GD_B2ap = get_twos_complement_num(word, word_length, 122, 12) * 2.0^-34,
+        T_GDB2ap = get_twos_complement_num(word, word_length, 122, 12) * 2.0^-34,
         ISC_B2ad = get_twos_complement_num(word, word_length, 134, 12) * 2.0^-34,
         # BDGIM block, bits 146-219 (Figure 6-15, Table 7-10):
         beidou_bdgim_block(word, word_length, 146)...,
-        T_GD_B1Cp = get_twos_complement_num(word, word_length, 220, 12) * 2.0^-34,
+        T_GDB1Cp = get_twos_complement_num(word, word_length, 220, 12) * 2.0^-34,
     )
 end
 
@@ -1190,10 +1190,10 @@ function parse_b2a_mt31!(raw::BeiDouCNAV2Data, word::UInt320, spare::BeiDouCNAV2
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
     WN_a = Int(get_bits(word, word_length, 122, 13))
-    t_0a = Int(get_bits(word, word_length, 135, 8)) * 2^12
+    t_oa = Int(get_bits(word, word_length, 135, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     for start in (143, 181, 219)
-        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a)
+        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_oa)
         isnothing(packet) && continue
         almanacs = writable_container(almanacs, spare.reduced_almanacs)
         set!(almanacs, packet.PRN_a, packet)
@@ -1231,8 +1231,8 @@ function parse_b2a_mt33!(raw::BeiDouCNAV2Data, word::UInt320, spare::BeiDouCNAV2
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
     WN_a = Int(get_bits(word, word_length, 228, 13))
-    t_0a = Int(get_bits(word, word_length, 241, 8)) * 2^12
-    packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a)
+    t_oa = Int(get_bits(word, word_length, 241, 8)) * 2^12
+    packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_oa)
     raw = BeiDouCNAV2Data(
         raw;
         # BGTO block, bits 112-179 (Figure 6-19, Table 7-21).

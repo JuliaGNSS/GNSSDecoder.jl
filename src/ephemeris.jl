@@ -1,6 +1,6 @@
 # The broadcast ephemeris and clock, normalised across every message that carries one.
-# Per-message decoded fields keep their ICD names (RINEX writers read them); a propagator
-# reads this one record.
+# Per-message decoded fields keep their own ICD's names (RINEX writers read them); this
+# record gives one package-wide name per quantity, so a propagator reads it alone.
 
 """
 $(TYPEDEF)
@@ -240,7 +240,7 @@ end
 const BEIDOU_CNAV_A_REF_MEO = 27_906_100.0        # m
 const BEIDOU_CNAV_A_REF_IGSO_GEO = 42_162_200.0   # m
 
-# `sat_type` (B1C-1.0 and B2a-1.0 Table 7-8, B2b-1.0 Table 7-6): 3 MEO, 1 GEO, 2 IGSO.
+# `SatType` (B1C-1.0 and B2a-1.0 Table 7-8, B2b-1.0 Table 7-6): 3 MEO, 1 GEO, 2 IGSO.
 # The reserved 0 is kept out by the readiness gate (`is_known_sat_type`); it throws here
 # rather than pass for an IGSO.
 function beidou_cnav_reference_semi_major_axis(sat_type)
@@ -248,7 +248,7 @@ function beidou_cnav_reference_semi_major_axis(sat_type)
     (sat_type == 1 || sat_type == 2) && return BEIDOU_CNAV_A_REF_IGSO_GEO
     throw(
         ArgumentError(
-            "BeiDou sat_type $sat_type is reserved: no reference semi-major axis",
+            "BeiDou SatType $sat_type is reserved: no reference semi-major axis",
         ),
     )
 end
@@ -262,7 +262,7 @@ function broadcast_ephemeris(
         data,
         ephemeris_constants,
         is_geostationary,
-        beidou_cnav_reference_semi_major_axis(something(data.sat_type)) +
+        beidou_cnav_reference_semi_major_axis(something(data.SatType)) +
         something(data.ΔA),
         something(data.A_dot),
         something(data.Δn_0),
@@ -270,6 +270,42 @@ function broadcast_ephemeris(
         something(data.Ω_dot),
     )
 end
+
+# The reference epochs, the rate of inclination and the clock polynomial, which each ICD
+# spells its own way (`t_oe`/`t_0e`, `IDOT`/`i_dot`/`i_0_dot`, `a_f0`/`a_0`, ...): read
+# under the container's names, answered as one tuple so the builder below is generic.
+ephemeris_epochs_and_clock(data::AbstractGPSData) = (
+    something(data.t_oe),
+    something(data.IDOT),
+    something(data.t_oc),
+    something(data.a_f0),
+    something(data.a_f1),
+    something(data.a_f2),
+)
+ephemeris_epochs_and_clock(data::AbstractGalileoEphemerisData) = (
+    something(data.t_0e),
+    something(data.i_dot),
+    something(data.t_0c),
+    something(data.a_f0),
+    something(data.a_f1),
+    something(data.a_f2),
+)
+ephemeris_epochs_and_clock(data::BeiDouDNAVData) = (
+    something(data.t_oe),
+    something(data.IDOT),
+    something(data.t_oc),
+    something(data.a_0),
+    something(data.a_1),
+    something(data.a_2),
+)
+ephemeris_epochs_and_clock(data::AbstractBeiDouCNAVData) = (
+    something(data.t_oe),
+    something(data.i_0_dot),
+    something(data.t_oc),
+    something(data.a_0),
+    something(data.a_1),
+    something(data.a_2),
+)
 
 # Elements every message names alike, around the ones each states its own way. Positional,
 # so every argument arrives concretely typed.
@@ -283,8 +319,9 @@ function broadcast_ephemeris(
     Δn_0_dot,
     Ω_dot,
 )
+    t_0e, i_dot, t_0c, a_f0, a_f1, a_f2 = ephemeris_epochs_and_clock(data)
     BroadcastEphemeris(
-        something(data.t_0e),
+        t_0e,
         A,
         A_dot,
         Δn_0,
@@ -295,17 +332,17 @@ function broadcast_ephemeris(
         something(data.Ω_0),
         Ω_dot,
         something(data.i_0),
-        something(data.i_dot),
+        i_dot,
         something(data.C_rs),
         something(data.C_rc),
         something(data.C_us),
         something(data.C_uc),
         something(data.C_is),
         something(data.C_ic),
-        something(data.t_0c),
-        something(data.a_f0),
-        something(data.a_f1),
-        something(data.a_f2),
+        t_0c,
+        a_f0,
+        a_f1,
+        a_f2,
         ephemeris_constants.μ,
         ephemeris_constants.F,
         ephemeris_constants.Ω_dot_e,

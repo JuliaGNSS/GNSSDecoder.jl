@@ -156,18 +156,18 @@ almanac and Reduced CED parameters (Galileo OS SIS ICD, Issue 2.2).
 
 # Issue of Data (Word Types 1-4)
 
-  - `IOD_nav1::UInt`: Issue of Data from word type 1 (10-bit)
-  - `IOD_nav2::UInt`: Issue of Data from word type 2 (10-bit)
-  - `IOD_nav3::UInt`: Issue of Data from word type 3 (10-bit)
-  - `IOD_nav4::UInt`: Issue of Data from word type 4 (10-bit)
+  - `IOD_nav1::UInt`: The ICD's IOD_nav as broadcast in word type 1 (10-bit)
+  - `IOD_nav2::UInt`: The ICD's IOD_nav as broadcast in word type 2 (10-bit)
+  - `IOD_nav3::UInt`: The ICD's IOD_nav as broadcast in word type 3 (10-bit)
+  - `IOD_nav4::UInt`: The ICD's IOD_nav as broadcast in word type 4 (10-bit)
   - `num_pages_after_last_TOW::Int`: Pages decoded since last TOW update
   - `tow_anchor_bit_count::Int`: Bit-counter value when `TOW` was decoded
 
 # Signal Health and Data Validity (Word Type 5)
 
-  - `E1B_SHS::SignalHealth`: E1-B/C signal health status (0=OK, 1=out of service, 2=Extended Operations Mode, 3=in test)
+  - `E1B_SHS::SignalHealth`: E1-B/C signal health status (ICD E1-B_SHS, hyphen dropped; 0=OK, 1=out of service, 2=Extended Operations Mode, 3=in test)
   - `E5b_SHS::SignalHealth`: E5b signal health status
-  - `E1B_DVS::DataValidityStatus`: E1-B data validity (0=valid, 1=working without guarantee)
+  - `E1B_DVS::DataValidityStatus`: E1-B data validity (ICD E1-B_DVS, hyphen dropped; 0=valid, 1=working without guarantee)
   - `E5b_DVS::DataValidityStatus`: E5b data validity
 
 # Broadcast Group Delay (Word Type 5)
@@ -180,12 +180,12 @@ almanac and Reduced CED parameters (Galileo OS SIS ICD, Issue 2.2).
   - `a_i0::Float64`: Effective Ionisation Level 1st-order coefficient (sfu)
   - `a_i1::Float64`: Effective Ionisation Level 2nd-order coefficient (sfu/degree)
   - `a_i2::Float64`: Effective Ionisation Level 3rd-order coefficient (sfu/degree²)
-  - `iono_storm_flag_region1..5::Bool`: Ionospheric Disturbance (storm) flags for regions 1-5
+  - `SF_1..SF_5::Bool`: Ionospheric Disturbance (storm) flags for regions 1-5
 
 # GST-UTC Conversion (Word Type 6)
 
-  - `A_0UTC::Float64`: Constant term of polynomial (s; the ICD writes `A0`)
-  - `A_1UTC::Float64`: 1st-order term of polynomial (s/s; the ICD writes `A1`)
+  - `A_0::Float64`: Constant term of the GST-UTC polynomial (s)
+  - `A_1::Float64`: 1st-order term of the GST-UTC polynomial (s/s)
   - `Δt_LS::Int`: Leap Second count before leap second adjustment (s)
   - `t_0t::Int`: UTC data reference Time of Week (s)
   - `WN_0t::Int`: UTC data reference Week Number (8-bit, modulo 256)
@@ -271,14 +271,14 @@ Base.@kwdef struct GalileoINAVData <: AbstractGalileoEphemerisData
     a_i0::Union{Nothing,Float64} = nothing
     a_i1::Union{Nothing,Float64} = nothing
     a_i2::Union{Nothing,Float64} = nothing
-    iono_storm_flag_region1::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region2::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region3::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region4::Union{Nothing,Bool} = nothing
-    iono_storm_flag_region5::Union{Nothing,Bool} = nothing
+    SF_1::Union{Nothing,Bool} = nothing
+    SF_2::Union{Nothing,Bool} = nothing
+    SF_3::Union{Nothing,Bool} = nothing
+    SF_4::Union{Nothing,Bool} = nothing
+    SF_5::Union{Nothing,Bool} = nothing
 
-    A_0UTC::Union{Nothing,Float64} = nothing
-    A_1UTC::Union{Nothing,Float64} = nothing
+    A_0::Union{Nothing,Float64} = nothing
+    A_1::Union{Nothing,Float64} = nothing
     Δt_LS::Union{Nothing,Int} = nothing
     t_0t::Union{Nothing,Int} = nothing
     WN_0t::Union{Nothing,Int} = nothing
@@ -337,13 +337,13 @@ end
     a_i0 = data.a_i0,
     a_i1 = data.a_i1,
     a_i2 = data.a_i2,
-    iono_storm_flag_region1 = data.iono_storm_flag_region1,
-    iono_storm_flag_region2 = data.iono_storm_flag_region2,
-    iono_storm_flag_region3 = data.iono_storm_flag_region3,
-    iono_storm_flag_region4 = data.iono_storm_flag_region4,
-    iono_storm_flag_region5 = data.iono_storm_flag_region5,
-    A_0UTC = data.A_0UTC,
-    A_1UTC = data.A_1UTC,
+    SF_1 = data.SF_1,
+    SF_2 = data.SF_2,
+    SF_3 = data.SF_3,
+    SF_4 = data.SF_4,
+    SF_5 = data.SF_5,
+    A_0 = data.A_0,
+    A_1 = data.A_1,
     Δt_LS = data.Δt_LS,
     t_0t = data.t_0t,
     WN_0t = data.WN_0t,
@@ -397,13 +397,13 @@ end
         a_i0,
         a_i1,
         a_i2,
-        iono_storm_flag_region1,
-        iono_storm_flag_region2,
-        iono_storm_flag_region3,
-        iono_storm_flag_region4,
-        iono_storm_flag_region5,
-        A_0UTC,
-        A_1UTC,
+        SF_1,
+        SF_2,
+        SF_3,
+        SF_4,
+        SF_5,
+        A_0,
+        A_1,
         Δt_LS,
         t_0t,
         WN_0t,
@@ -815,11 +815,11 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 a_i0 = get_bits(data, 128, 7, 11) / 1 << 2
                 a_i1 = get_twos_complement_num(data, 128, 18, 11) / 1 << 8
                 a_i2 = get_twos_complement_num(data, 128, 29, 14) / 1 << 15
-                iono_storm_flag_region1 = get_bit(data, 128, 43)
-                iono_storm_flag_region2 = get_bit(data, 128, 44)
-                iono_storm_flag_region3 = get_bit(data, 128, 45)
-                iono_storm_flag_region4 = get_bit(data, 128, 46)
-                iono_storm_flag_region5 = get_bit(data, 128, 47)
+                SF_1 = get_bit(data, 128, 43)
+                SF_2 = get_bit(data, 128, 44)
+                SF_3 = get_bit(data, 128, 45)
+                SF_4 = get_bit(data, 128, 46)
+                SF_5 = get_bit(data, 128, 47)
                 BGD_E1_E5a = get_twos_complement_num(data, 128, 48, 10) * 2.0^-32
                 BGD_E1_E5b = get_twos_complement_num(data, 128, 58, 10) * 2.0^-32
                 E5b_SHS = SignalHealth(get_bits(data, 128, 68, 2))
@@ -837,11 +837,11 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                         a_i0,
                         a_i1,
                         a_i2,
-                        iono_storm_flag_region1,
-                        iono_storm_flag_region2,
-                        iono_storm_flag_region3,
-                        iono_storm_flag_region4,
-                        iono_storm_flag_region5,
+                        SF_1,
+                        SF_2,
+                        SF_3,
+                        SF_4,
+                        SF_5,
                         BGD_E1_E5a,
                         BGD_E1_E5b,
                         E5b_SHS,
@@ -855,8 +855,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     ),
                 )
             elseif data_type == 6
-                A_0UTC = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
-                A_1UTC = get_twos_complement_num(data, 128, 39, 24) * 2.0^-50
+                A_0 = get_twos_complement_num(data, 128, 7, 32) / 1 << 30
+                A_1 = get_twos_complement_num(data, 128, 39, 24) * 2.0^-50
                 Δt_LS = Int(get_twos_complement_num(data, 128, 63, 8))
                 t_0t = Int(get_bits(data, 128, 71, 8) * 3600)
                 WN_0t = Int(get_bits(data, 128, 79, 8))
@@ -870,8 +870,8 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     state;
                     raw_data = GalileoINAVData(
                         state.raw_data;
-                        A_0UTC,
-                        A_1UTC,
+                        A_0,
+                        A_1,
                         Δt_LS,
                         t_0t,
                         WN_0t,
@@ -891,7 +891,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 Δsqrt_A = get_twos_complement_num(data, 128, 29, 13) / 1 << 9
                 e = get_bits(data, 128, 42, 11) / 1 << 16
                 ω = get_twos_complement_num(data, 128, 53, 16) * GNSS_PI / 1 << 15
-                δi = get_twos_complement_num(data, 128, 69, 11) * GNSS_PI / 1 << 14
+                δ_i = get_twos_complement_num(data, 128, 69, 11) * GNSS_PI / 1 << 14
                 Ω_0 = get_twos_complement_num(data, 128, 80, 16) * GNSS_PI / 1 << 15
                 Ω_dot = get_twos_complement_num(data, 128, 96, 11) * GNSS_PI * 2.0^-33
                 M_0 = get_twos_complement_num(data, 128, 107, 16) * GNSS_PI / 1 << 15
@@ -900,7 +900,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                     Δsqrt_A,
                     e,
                     ω,
-                    δi,
+                    δ_i,
                     Ω_0,
                     Ω_dot,
                     M_0,
@@ -927,7 +927,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 Δsqrt_A = get_twos_complement_num(data, 128, 50, 13) / 1 << 9
                 e = get_bits(data, 128, 63, 11) / 1 << 16
                 ω = get_twos_complement_num(data, 128, 74, 16) * GNSS_PI / 1 << 15
-                δi = get_twos_complement_num(data, 128, 90, 11) * GNSS_PI / 1 << 14
+                δ_i = get_twos_complement_num(data, 128, 90, 11) * GNSS_PI / 1 << 14
                 Ω_0 = get_twos_complement_num(data, 128, 101, 16) * GNSS_PI / 1 << 15
                 Ω_dot = get_twos_complement_num(data, 128, 117, 11) * GNSS_PI * 2.0^-33
                 # Flush position-1 almanac if its WT7 partial is intact and IODa matches
@@ -947,7 +947,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                         almanacs = flush_almanac!(state, completed_pos1),
                     )
                 end
-                almanac_pos2 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, Ω_0, Ω_dot, IOD_a)
+                almanac_pos2 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δ_i, Ω_0, Ω_dot, IOD_a)
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;
@@ -971,7 +971,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                 Δsqrt_A = get_twos_complement_num(data, 128, 78, 13) / 1 << 9
                 e = get_bits(data, 128, 91, 11) / 1 << 16
                 ω = get_twos_complement_num(data, 128, 102, 16) * GNSS_PI / 1 << 15
-                δi = get_twos_complement_num(data, 128, 118, 11) * GNSS_PI / 1 << 14
+                δ_i = get_twos_complement_num(data, 128, 118, 11) * GNSS_PI / 1 << 14
                 completed_pos2 = GalileoAlmanac(
                     state.cache.almanac_chain_pos2;
                     M_0 = M_0_pos2,
@@ -990,7 +990,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GalileoINAVData}, ::Bool)
                         almanacs = flush_almanac!(state, completed_pos2),
                     )
                 end
-                almanac_pos3 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δi, IOD_a, WN_a, t_0a)
+                almanac_pos3 = GalileoAlmanac(; SVID, Δsqrt_A, e, ω, δ_i, IOD_a, WN_a, t_0a)
                 valid_SVID = SVID >= 1
                 state = GNSSDecoderState(
                     state;

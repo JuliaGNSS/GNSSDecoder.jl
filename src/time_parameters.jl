@@ -10,8 +10,10 @@ The broadcast offset of a system's time from UTC: the polynomial `A_0 + A_1·Δt
 (s) at `Δt` seconds from its reference epoch `(WN_0, t_0)`, on top of the leap seconds
 of [`LeapSecondParameters`](@ref). [`get_utc_parameters`](@ref) returns it. The fields are
 named as in [`TimeOffsetParameters`](@ref), the same polynomial toward another system's
-time; the ICDs write the UTC epoch `(WN_0t, t_0t)` and the coefficients `A_0UTC`,
-`A_1UTC`, `A_2UTC`.
+time. The decoders' data containers spell the UTC epoch and the coefficients as their ICD
+does: GPS `(WN_t, t_ot)` on LNAV and `(WN_ot, t_ot)` on CNAV and CNAV-2 with `A_0`, `A_1`,
+`A_2`; Galileo `(WN_0t, t_0t)` with `A_0`, `A_1`; BeiDou B-CNAV `(WN_ot, t_ot)` with
+`A_0UTC`, `A_1UTC`, `A_2UTC`.
 
 `WN_0` is a full week number on the decoder's own count, not the truncated field the
 message carries. `A_2` is broadcast by GPS CNAV and CNAV-2 and BeiDou B-CNAV, and is `0.0`
@@ -89,12 +91,13 @@ end
 The broadcast UTC parameters of the decoder's validated data, with the reference week
 resolved, or `nothing` until they and the decoder's week are decoded.
 
-Every message here truncates the reference week, the ICDs' `WN_0t`: GPS LNAV and Galileo
-to 8 bits, GPS CNAV, CNAV-2 and BeiDou B-CNAV to 13. It is lifted to the week nearest the
-decoder's own [`get_broadcast_week`](@ref), so a reference epoch a few days into the next
-week, while the decoded week still lags, lands in the next week rather than a modulus of
-weeks back. `approximate_year` is passed on to [`get_broadcast_week`](@ref), where it
-resolves the 1024-week rollover on GPS L1 C/A; it is ignored elsewhere.
+Every message here truncates the reference week (the ICDs' `WN_t`, `WN_ot` or `WN_0t`):
+GPS LNAV and Galileo to 8 bits, GPS CNAV, CNAV-2 and BeiDou B-CNAV to 13. It is lifted
+to the week nearest the decoder's own [`get_broadcast_week`](@ref), so a reference epoch
+a few days into the next week, while the decoded week still lags, lands in the next week
+rather than a modulus of weeks back. `approximate_year` is passed on to
+[`get_broadcast_week`](@ref), where it resolves the 1024-week rollover on GPS L1 C/A; it
+is ignored elsewhere.
 
 BeiDou D1/D2 reports its UTC set without a reference epoch (see [`UTCParameters`](@ref));
 Galileo E6-B broadcasts none and answers `nothing`.
@@ -141,7 +144,7 @@ in the cases [`get_broadcast_time_offset`](@ref) lists, which evaluates the same
 | Message                 | Broadcast                         | Targets           |
 |:----------------------- |:--------------------------------- |:----------------- |
 | Galileo I/NAV, F/NAV    | GGTO                              | `GPST()`          |
-| GPS CNAV, CNAV-2        | GGTO, for the system of `GNSS_ID` | `GST()`           |
+| GPS CNAV, CNAV-2        | GGTO, for the system of `GGTO_ID` | `GST()`           |
 | BeiDou B2a, B2b         | BGTO, for the system of `GNSS_ID` | `GPST()`, `GST()` |
 | BeiDou B1C              | BGTO, one set kept per system     | `GPST()`, `GST()` |
 | BeiDou D1/D2 (B1I, B3I) | without a reference epoch         | `GPST()`, `GST()` |
@@ -152,17 +155,55 @@ week on every message that broadcasts an offset needs no rollover resolution.
 get_time_offset_parameters(state::GNSSDecoderState, target::TimeSystem) =
     time_offset_parameters(state, target)
 
-# Each family defines the moduli of its own fields beside them.
-utc_parameters(data::GPSLNAVData, week::Int) =
-    utc_parameters(data, week, 0.0, LNAV_UTC_WN_MODULUS)
-utc_parameters(data::GPSCNAVData, week::Int) =
-    utc_parameters(data, week, data.A_2UTC, CNAV_UTC_WN_MODULUS)
-utc_parameters(data::GPSCNAV2Data, week::Int) =
-    utc_parameters(data, week, data.A_2UTC, CNAV2_UTC_WN_MODULUS)
-utc_parameters(data::AbstractGalileoEphemerisData, week::Int) =
-    utc_parameters(data, week, 0.0, GALILEO_UTC_WN_MODULUS)
-utc_parameters(data::AbstractBeiDouCNAVData, week::Int) =
-    utc_parameters(data, week, data.A_2UTC, BEIDOU_CNAV_UTC_WN_MODULUS)
+# Each family defines the moduli of its own fields beside them and reads the set under its
+# ICD's names: GPS LNAV `A_0`, `A_1`, `t_ot`, `WN_t`; GPS CNAV and CNAV-2 `A_0`, `A_1`,
+# `A_2`, `t_ot`, `WN_ot`; Galileo `A_0`, `A_1`, `t_0t`, `WN_0t`; BeiDou B-CNAV `A_0UTC`,
+# `A_1UTC`, `A_2UTC`, `t_ot`, `WN_ot`.
+utc_parameters(data::GPSLNAVData, week::Int) = utc_parameters(
+    data.A_0,
+    data.A_1,
+    0.0,
+    data.t_ot,
+    data.WN_t,
+    week,
+    LNAV_UTC_WN_MODULUS,
+)
+utc_parameters(data::GPSCNAVData, week::Int) = utc_parameters(
+    data.A_0,
+    data.A_1,
+    data.A_2,
+    data.t_ot,
+    data.WN_ot,
+    week,
+    CNAV_UTC_WN_MODULUS,
+)
+utc_parameters(data::GPSCNAV2Data, week::Int) = utc_parameters(
+    data.A_0,
+    data.A_1,
+    data.A_2,
+    data.t_ot,
+    data.WN_ot,
+    week,
+    CNAV2_UTC_WN_MODULUS,
+)
+utc_parameters(data::AbstractGalileoEphemerisData, week::Int) = utc_parameters(
+    data.A_0,
+    data.A_1,
+    0.0,
+    data.t_0t,
+    data.WN_0t,
+    week,
+    GALILEO_UTC_WN_MODULUS,
+)
+utc_parameters(data::AbstractBeiDouCNAVData, week::Int) = utc_parameters(
+    data.A_0UTC,
+    data.A_1UTC,
+    data.A_2UTC,
+    data.t_ot,
+    data.WN_ot,
+    week,
+    BEIDOU_CNAV_UTC_WN_MODULUS,
+)
 # D1/D2 broadcasts no reference epoch, so there is no week to resolve.
 function utc_parameters(data::BeiDouDNAVData, week::Int)
     (isnothing(data.A_0UTC) || isnothing(data.A_1UTC)) && return nothing
@@ -184,22 +225,23 @@ leap_second_parameters(data::AbstractBeiDouCNAVData, week::Int) =
 leap_second_parameters(data::BeiDouDNAVData, week::Int) =
     leap_second_parameters(data, week, DNAV_LSF_WN_MODULUS, 0)
 
-# A set with a reference epoch; `A_2` is `0.0` where none is broadcast. Checked field by
-# field, see `has_klobuchar_coefficients`.
-function utc_parameters(data, week::Int, A_2, WN_0t_modulus::Int)
+# A set with a reference epoch; `A_2` is `0.0` where none is broadcast. The fields arrive
+# as positional arguments, each checked in turn, so every `Union{Nothing,T}` narrows
+# without boxing (see `has_klobuchar_coefficients`).
+function utc_parameters(A_0, A_1, A_2, t_0, WN_0, week::Int, WN_0_modulus::Int)
     (
-        isnothing(data.A_0UTC) ||
-        isnothing(data.A_1UTC) ||
+        isnothing(A_0) ||
+        isnothing(A_1) ||
         isnothing(A_2) ||
-        isnothing(data.t_0t) ||
-        isnothing(data.WN_0t)
+        isnothing(t_0) ||
+        isnothing(WN_0)
     ) && return nothing
     UTCParameters(
-        something(data.A_0UTC),
-        something(data.A_1UTC),
+        something(A_0),
+        something(A_1),
         something(A_2),
-        Int(something(data.t_0t)),
-        resolve_reference_week(something(data.WN_0t), week, WN_0t_modulus),
+        Int(something(t_0)),
+        resolve_reference_week(something(WN_0), week, WN_0_modulus),
     )
 end
 

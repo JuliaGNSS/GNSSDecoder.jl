@@ -216,8 +216,8 @@ end
         @test d.t_op == golden.top_raw * 300
         @test d.l1c_health == false
         @test d.URA_ED_index == golden.ura_ed
-        @test d.t_0e == golden.toe_raw * 300
-        @test d.t_0c == golden.toe_raw * 300            # CNAV-2 shares one reference time
+        @test d.t_oe == golden.toe_raw * 300
+        @test d.t_oc == golden.toe_raw * 300            # CNAV-2 shares one reference time
         @test d.e ≈ golden.e_raw * 2.0^-34
         @test d.M_0 ≈ golden.M0_raw * 2.0^-32 * GNSSDecoder.GNSS_PI
         # Subframe 3 recorded as received pages (no field parsing — issue #39).
@@ -462,12 +462,12 @@ end
             _setbits!(b, 216, 13, -11)    # ISC_L5Q5
         end)
         d = st.data
-        @test d.A_0UTC ≈ 1000 * 2.0^-35
-        @test d.A_1UTC ≈ -500 * 2.0^-51
-        @test d.A_2UTC ≈ 3 * 2.0^-68
+        @test d.A_0 ≈ 1000 * 2.0^-35
+        @test d.A_1 ≈ -500 * 2.0^-51
+        @test d.A_2 ≈ 3 * 2.0^-68
         @test d.Δt_LS == 18
-        @test d.t_0t == 100 * 16
-        @test d.WN_0t == 2200
+        @test d.t_ot == 100 * 16
+        @test d.WN_ot == 2200
         @test d.WN_LSF == 2201
         @test d.DN == 6
         @test d.Δt_LSF == 19
@@ -494,11 +494,11 @@ end
         #
         # Spirent prints the 31-bit field as Delta_UT1 = UT1−UTC with the
         # pre-Rev-G scale 2⁻²⁴ (-0.25315952301025391 s). IS-GPS-800J Table 3.5-5
-        # redefines it as ΔUT_GPS = UT1−GPS with scale 2⁻²³ — exactly twice that.
+        # redefines it as ΔUTGPS = UT1−GPS with scale 2⁻²³ — exactly twice that.
         st = decode_with_sf3(build_sf3_page(7, 2) do b
             # GGTO — synthetic non-zero values (the capture carries no GGTO data:
             # GNSS ID = 0, all coefficients 0), kept to exercise the GGTO scaling.
-            _setbits!(b, 15, 3, 1)             # GNSS_ID = Galileo
+            _setbits!(b, 15, 3, 1)             # GGTO_ID = Galileo
             _setbits!(b, 18, 16, 50)           # tGGTO (scale 2^4)
             _setbits!(b, 34, 13, 2100)         # WNGGTO
             _setbits!(b, 47, 16, 800)          # A0GGTO
@@ -510,11 +510,11 @@ end
             _setbits!(b, 120, 15, 2779)        # PM_X_dot     -> 0.0013251304626464844
             _setbits!(b, 135, 21, 467600)      # PM_Y         -> 0.4459381103515625
             _setbits!(b, 156, 15, 843)         # PM_Y_dot     -> 0.00040197372436523438
-            _setbits!(b, 171, 31, -4247312)    # ΔUT_GPS raw  -> Spirent UT1−UTC @2⁻²⁴
-            _setbits!(b, 202, 19, -15502)      # ΔUT_GPS_dot  -> -0.00046199560165405273
+            _setbits!(b, 171, 31, -4247312)    # ΔUTGPS raw  -> Spirent UT1−UTC @2⁻²⁴
+            _setbits!(b, 202, 19, -15502)      # ΔUTGPS_dot  -> -0.00046199560165405273
         end)
         d = st.data
-        @test d.GNSS_ID == 1
+        @test d.GGTO_ID == 1
         @test d.t_GGTO == 50 * 16
         @test d.WN_GGTO == 2100
         @test d.A_0GGTO ≈ 800 * 2.0^-35
@@ -526,10 +526,10 @@ end
         @test d.PM_X_dot ≈ 0.0013251304626464844
         @test d.PM_Y ≈ 0.4459381103515625
         @test d.PM_Y_dot ≈ 0.00040197372436523438
-        # Rev-J ΔUT_GPS = 2 × Spirent's UT1−UTC (2⁻²³ vs Spirent's 2⁻²⁴); a
+        # Rev-J ΔUTGPS = 2 × Spirent's UT1−UTC (2⁻²³ vs Spirent's 2⁻²⁴); a
         # regression to 2⁻²⁴ would reproduce Spirent's value and FAIL here.
-        @test d.ΔUT_GPS ≈ 2 * -0.25315952301025391
-        @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273
+        @test d.ΔUTGPS ≈ 2 * -0.25315952301025391
+        @test d.ΔUTGPS_dot ≈ -0.00046199560165405273
     end
 
     @testset "SF3 page 3 — reduced almanac (multi-packet)" begin
@@ -539,7 +539,7 @@ end
             _setbits!(b, 28, 8, 30)       # toa (scale 2^12)
             # Packet 1 (bit 36): PRN 11
             _setbits!(b, 36, 8, 11)
-            _setbits!(b, 44, 8, 5)        # δA
+            _setbits!(b, 44, 8, 5)        # δ_A
             _setbits!(b, 52, 7, -3)       # Ω0
             _setbits!(b, 59, 7, 2)        # Φ0
             b[66] = false;
@@ -547,7 +547,7 @@ end
             b[68] = false  # L1/L2/L5 health
             # Packet 2 (bit 69): PRN 22
             _setbits!(b, 69, 8, 22)
-            _setbits!(b, 77, 8, -4)       # δA
+            _setbits!(b, 77, 8, -4)       # δ_A
             # Packet 3 (bit 102): PRN 0 ⇒ terminates list
             _setbits!(b, 102, 8, 0)
         end)
@@ -558,14 +558,14 @@ end
         @test !haskey(d.reduced_almanacs, 0)
         a = d.reduced_almanacs[11]
         @test a.WN_a == 2200
-        @test a.t_0a == 30 * 4096
-        @test a.δA ≈ 5 * 2.0^9
+        @test a.t_oa == 30 * 4096
+        @test a.δ_A ≈ 5 * 2.0^9
         @test a.Ω_0 ≈ -3 * 2.0^-6 * PI
         @test a.Φ_0 ≈ 2 * 2.0^-6 * PI
         @test a.l1_health == false
         @test a.l2_health == true
         @test a.l5_health == false
-        @test d.reduced_almanacs[22].δA ≈ -4 * 2.0^9
+        @test d.reduced_almanacs[22].δ_A ≈ -4 * 2.0^9
     end
 
     @testset "SF3 page 4 — midi almanac" begin
@@ -578,7 +578,7 @@ end
             b[45] = true;
             b[46] = false  # L1/L2/L5 health
             _setbits!(b, 47, 11, 100)     # e
-            _setbits!(b, 58, 11, -50)     # δi
+            _setbits!(b, 58, 11, -50)     # δ_i
             _setbits!(b, 69, 11, -7)      # Ω_dot
             _setbits!(b, 80, 17, 81920)   # √A
             _setbits!(b, 97, 16, 2000)    # Ω0
@@ -592,12 +592,12 @@ end
         @test haskey(d.midi_almanacs, 19)
         a = d.midi_almanacs[19]
         @test a.WN_a == 2150
-        @test a.t_0a == 40 * 4096
+        @test a.t_oa == 40 * 4096
         @test a.l1_health == false
         @test a.l2_health == true
         @test a.l5_health == false
         @test a.e ≈ 100 * 2.0^-16
-        @test a.δi ≈ -50 * 2.0^-14 * PI
+        @test a.δ_i ≈ -50 * 2.0^-14 * PI
         @test a.Ω_dot ≈ -7 * 2.0^-33 * PI
         @test a.sqrt_A ≈ 81920 * 2.0^-4
         @test a.Ω_0 ≈ 2000 * 2.0^-15 * PI
@@ -637,14 +637,14 @@ end
         @test c.dc_data_type == false
         @test c.δa_f0 ≈ 100 * 2.0^-35
         @test c.δa_f1 ≈ -10 * 2.0^-51
-        @test c.UDRA_index == 3
+        @test c.UDRA == 3
         @test c.Δα ≈ 50 * 2.0^-34
         @test c.Δβ ≈ -25 * 2.0^-34
         @test c.Δγ ≈ 7 * 2.0^-32 * PI
         @test c.Δi ≈ -3 * 2.0^-32 * PI
         @test c.ΔΩ ≈ 6 * 2.0^-32 * PI
         @test c.ΔA ≈ -8 * 2.0^-9
-        @test c.UDRA_dot_index == -2
+        @test c.UDRA_dot == -2
     end
 
     @testset "SF3 page 6 — text message" begin
@@ -671,7 +671,7 @@ end
         @test isnothing(d.midi_almanacs)
         @test isnothing(d.differential_corrections)
         @test isnothing(d.text_message)
-        @test isnothing(d.A_0UTC)
+        @test isnothing(d.A_0)
         @test isnothing(d.A_0GGTO)
     end
 
@@ -708,7 +708,7 @@ end
         @test d.ITOW == 36
         @test d.t_op == 259200
         @test d.l1c_health == false
-        @test d.t_0e == 264600
+        @test d.t_oe == 264600
         @test d.ΔA ≈ 922.048828125
         @test d.A_dot ≈ 0.0
         @test d.Δn_0 ≈ 0.0
@@ -724,7 +724,7 @@ end
 
         # Subframe 3 pages observed in the recording.
         @test d.Δt_LS == 18
-        @test d.A_0UTC ≈ 0.0
+        @test d.A_0 ≈ 0.0
         @test d.t_GGTO == 259200
         @test d.text_message == "Test text message for page: 2"
         @test d.num_sf3_pages_received == 68
@@ -735,13 +735,13 @@ end
         @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) == 31
         ra1 = d.reduced_almanacs[1]
         @test ra1.WN_a == 2106
-        @test ra1.t_0a == 507904
-        @test ra1.δA ≈ 1024.0
+        @test ra1.t_oa == 507904
+        @test ra1.δ_A ≈ 1024.0
         @test ra1.Ω_0 ≈ 0.296875 * π
         @test ra1.Φ_0 ≈ -0.140625 * π
         @test !ra1.l1_health && !ra1.l2_health && !ra1.l5_health
         ra2 = d.reduced_almanacs[2]
-        @test ra2.δA ≈ 1024.0
+        @test ra2.δ_A ≈ 1024.0
         @test ra2.Ω_0 ≈ -0.0625 * π
         @test ra2.Φ_0 ≈ -0.5625 * π
 
@@ -750,9 +750,9 @@ end
         @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) == 11
         ma1 = d.midi_almanacs[1]
         @test ma1.WN_a == 2106
-        @test ma1.t_0a == 507904
+        @test ma1.t_oa == 507904
         @test ma1.e ≈ 0.0
-        @test ma1.δi ≈ 0.00555419921875 * π
+        @test ma1.δ_i ≈ 0.00555419921875 * π
         @test ma1.Ω_dot ≈ 0.0
         @test ma1.sqrt_A ≈ 5153.6875
         @test ma1.Ω_0 ≈ 0.29632568359375 * π
@@ -794,7 +794,7 @@ end
         # Same constellation epoch, different satellite.
         @test d2.WN == 2106
         @test d2.ITOW == 36
-        @test d2.t_0e == 264600
+        @test d2.t_oe == 264600
         @test d2.TOI == 68
         @test is_sat_healthy(state2)
         @test d2.Ω_0 != d1.Ω_0  # PRN 2 broadcasts its own ephemeris ...
@@ -859,7 +859,7 @@ end
         @test length(d.midi_almanacs) == 11
         @test haskey(d.differential_corrections, 19)
         @test d.text_message == "Test text message for page: 2"
-        @test !isnothing(d.A_0UTC) && !isnothing(d.t_GGTO)
+        @test !isnothing(d.A_0) && !isnothing(d.t_GGTO)
 
         # A `copy` is independent: decoding into it leaves the original untouched.
         fresh = GPSL1C_DDecoderState(1)
