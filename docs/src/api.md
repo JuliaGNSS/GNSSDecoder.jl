@@ -195,6 +195,84 @@ get_broadcast_time_offset
 get_broadcast_time_offset_epoch
 ```
 
+## Broadcast Ephemeris
+
+The decoded data keeps every ephemeris field under its ICD name, which differs
+between the messages that state the orbit in Keplerian form (GPS LNAV, Galileo
+I/NAV and F/NAV, BeiDou D1/D2) and those that state it quasi-Keplerian, as
+deltas off reference values (GPS CNAV and CNAV-2, BeiDou B-CNAV).
+[`get_broadcast_ephemeris`](@ref) folds both into one record of plain numbers,
+with the reference values applied and the system's constants alongside, so one
+propagator covers every signal:
+
+```julia
+using GNSSDecoder
+ephemeris = get_broadcast_ephemeris(state)  # `nothing` until decoding is complete
+```
+
+```@docs
+BroadcastEphemeris
+get_broadcast_ephemeris
+```
+
+## Group Delay
+
+The broadcast satellite clock is stated for a reference signal or signal pair,
+and a range on any other signal needs that signal's group delay subtracted from
+the clock offset. Which broadcast terms apply, with which sign and scale,
+depends on the message and on the ranging signal, which may be a dataless pilot
+whose navigation data the decoder took from the band's data component — so the
+signal instance the range was measured on is passed in:
+
+```julia
+using GNSSDecoder, GNSSSignals
+signal = GalileoE5aQ()  # as the tracking loop holds it
+Δt_SV_E5a = Δt_SV - get_group_delay(state, signal)  # (f_E1/f_E5a)² · BGD_E1_E5a
+```
+
+A combination of ranges, such as the ionosphere-free one, takes the same
+combination of their group delays. The terms GPS CNAV, BeiDou B2a and, for the
+other civil signals, CNAV-2 broadcast apart from the clock can still be missing
+once a fix is possible;
+until they arrive this returns `nothing`, and the caller chooses whether to
+take the correction as zero or to wait.
+
+```@docs
+get_group_delay
+```
+
+## Range Accuracy
+
+Every message broadcasts the accuracy of the satellite's ranging signal as an
+index — GPS's user range accuracy (URA), Galileo's signal-in-space accuracy
+(SISA), BeiDou's URA — and each ICD states the metres an index stands for.
+[`get_range_accuracy`](@ref) returns those metres, `Inf` where the satellite
+broadcasts no accuracy prediction, so a positioning engine can weight its
+measurements by it and a navigation file can record it.
+
+```@docs
+get_range_accuracy
+```
+
+## Ionospheric Parameters
+
+Each constellation broadcasts the coefficients of its own ionospheric model:
+Klobuchar on GPS (every civil message), BeiDou's Klobuchar variant on D1/D2,
+NeQuick-G on Galileo I/NAV and F/NAV, and BDGIM on BeiDou B-CNAV. Each accessor
+answers on every decoder, with `nothing` where the message carries no such set
+or has not decoded it yet. The sets are not part of the positioning readiness
+gate; the models that evaluate them belong to the positioning engine.
+
+```@docs
+KlobucharParameters
+BeiDouKlobucharParameters
+NeQuickGParameters
+BDGIMParameters
+get_klobuchar_parameters
+get_nequick_g_parameters
+get_bdgim_parameters
+```
+
 ## UTC, Leap Seconds and Time Offsets
 
 The time parameters a navigation file records beside the ephemeris: the
@@ -264,8 +342,8 @@ dispatch. Three intermediate levels name families within a constellation:
 `AbstractGalileoEphemerisData` separates the ephemeris-bearing Galileo messages
 from E6-B's corrections-only data, and `AbstractGPSCNAVData` /
 `AbstractBeiDouCNAVData` name the modern civil message families (CNAV/CNAV-2
-and B-CNAV1/2/3), whose shared quasi-Keplerian ephemeris a consumer's
-propagator dispatches on.
+and B-CNAV1/2/3), which share a quasi-Keplerian ephemeris
+([`get_broadcast_ephemeris`](@ref) normalises it).
 
 ```@docs
 GNSSDecoder.AbstractGPSData

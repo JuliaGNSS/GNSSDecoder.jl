@@ -21,8 +21,8 @@ and CNAV-2 (`GPSCNAV2Data`, on L1C). The GPS counterpart of
 
 Unlike legacy LNAV (`GPSLNAVData`), both carry a full-width 13-bit week number and the
 quasi-Keplerian ephemeris as deltas off the fixed references `A_REF` and `Ω̇_REF`
-(IS-GPS-200N §30.3.3.1.1, IS-GPS-800J §3.5.3), so a consumer's propagator and week
-handling dispatch on this type rather than enumerating the two messages.
+(IS-GPS-200N §30.3.3.1.1, IS-GPS-800J §3.5.3), which [`get_broadcast_ephemeris`](@ref)
+applies through this type.
 """
 abstract type AbstractGPSCNAVData <: AbstractGPSData end
 
@@ -270,8 +270,10 @@ has been decoded, so no separate `nothing` guard is needed.
 
         If not, it is excluded, because requiring it would mean waiting for a message the
         ICD does not schedule: BeiDou B2a's `T_GD_B2ap` / `ISC_B2ad` are in MT30 alone
-        while the clock is in MT30-34, and the GPS CNAV `T_GD` and `ISC_*` arrive on their
-        own cadence.
+        while the clock is in MT30-34, and the GPS CNAV `T_GD` and `ISC_*` (message
+        type 30) and the CNAV-2 ISCs of the other civil signals (subframe 3 page 1) arrive
+        on their own cadence. CNAV-2's own `T_GD`, `ISC_L1CD` and `ISC_L1CP` ride in
+        subframe 2 with the ephemeris.
 
         Corrections for a band this decoder is not on (B1C's `T_GD_B2ap`, B1I/B3I's
         `T_GD2` since there is no B2I signal here, the GPS `ISC_L5Q5` on an L1 fix) are
@@ -863,6 +865,71 @@ function resolve_reference_week(
     half = modulus ÷ 2
     return Int(WN) - (mod(Int(WN) - Int(WN_0) + half, modulus) - half)
 end
+
+"""
+    get_group_delay(state::GNSSDecoderState, signal::AbstractGNSSSignal) -> Union{Nothing,Float64}
+
+Group delay (s) of the ranging `signal` against the reference the broadcast satellite
+clock is stated for, from the decoder's validated data. Subtract it from the clock
+polynomial's offset `Δt_SV` to get the clock offset on `signal`:
+`Δt_SV(signal) = Δt_SV - get_group_delay(state, signal)`. `nothing` until the validated
+data holds the set [`has_positioning_data`](@ref) requires and every term of the signal's
+correction has been decoded (see below).
+
+!!! note "Combining signals"
+
+    This is each signal's own (single-frequency) correction. A combination of ranges takes
+    the same combination of group delays: with `γ = (f₁/f₂)²`, the ionosphere-free pair's
+    is `(g₂ - γ·g₁) / (1 - γ)` for the group delays `g₁`, `g₂` returned here, as the ICDs
+    state their dual-frequency corrections (BDS-SIS-ICD-B2a-1.0 Eqs. 7-18 to 7-21). It
+    vanishes for the pair a clock is stated for (GPS L1/L2 P(Y), Galileo E1/E5b on I/NAV
+    and E1/E5a on F/NAV).
+
+`signal` is the GNSSSignals signal instance the range was measured on, as the tracking
+loop holds it. It may be a dataless pilot whose navigation data this decoder takes from the
+band's data component (GPS L5-Q and L1C-P, Galileo E1-C, E5a-Q and E5b-Q, BeiDou B1C and
+B2a pilots); the two need not share a correction, so the signal is asked for rather than
+read off the decoder:
+
+| Message                   | Ranging signal       | Group delay                                   |
+|:------------------------- |:-------------------- |:--------------------------------------------- |
+| GPS LNAV (L1 C/A)         | L1 C/A               | `T_GD`                                        |
+| GPS CNAV (L5, L2C)        | L5-I, L5-Q, L2 CM/CL | `T_GD - ISC_L5I5`, `- ISC_L5Q5`, `- ISC_L2C`  |
+| GPS CNAV-2 (L1C)          | L1C-D, L1C-P, L1 C/A | `T_GD - ISC_L1CD`, `- ISC_L1CP`, `- ISC_L1CA` |
+| Galileo I/NAV (E1-B, E5b) | E1-B/C, E5b-I/Q      | `(f_E1 / f)² · BGD_E1_E5b`                    |
+| Galileo F/NAV (E5a)       | E5a-I/Q              | `(f_E1 / f)² · BGD_E1_E5a`                    |
+| BeiDou D1/D2 (B1I, B3I)   | B1I, B3I             | `T_GD1`, `0`                                  |
+| BeiDou B-CNAV1 (B1C)      | B1C data, pilot      | `T_GD_B1Cp + ISC_B1Cd`, `T_GD_B1Cp`           |
+| BeiDou B-CNAV2 (B2a)      | B2a data, pilot      | `T_GD_B2ap + ISC_B2ad`, `T_GD_B2ap`           |
+| BeiDou B-CNAV3 (B2b)      | B2b-I                | `T_GD_B2bI`                                   |
+
+GPS states its clock for the L1 P(Y)/L2 P(Y) ionosphere-free pair, with an inter-signal
+correction per civil signal (IS-GPS-200 §20.3.3.3.3.2 and §30.3.3.3.1.1, IS-GPS-705
+§20.3.3.3.1.2, IS-GPS-800 §3.5.3.9.1). Galileo states it for an ionosphere-free pair (E1/E5b
+for I/NAV, E1/E5a for F/NAV); a single-frequency user on the pair's second band scales the
+BGD by the squared frequency ratio, 1.79 on E5a and 1.70 on E5b, exactly 1 on E1 (OS SIS
+ICD §5.1.5). BeiDou states it for B3I, which needs none, and publishes a group delay per
+signal from there, with the data components adding an ISC to their band's pilot
+(BDS-SIS-ICD-B1I-3.0 §5.2.4.10, BDS-SIS-ICD-B1C-1.0 §7.6 and the B2a/B2b counterparts).
+
+Most terms ride with the clock and are present once the gate passes, including CNAV-2's
+`T_GD`, `ISC_L1CD` and `ISC_L1CP` (subframe 2, with the ephemeris). GPS CNAV's `T_GD` and
+ISCs (message type 30), CNAV-2's ISCs of the other civil signals (`ISC_L1CA` and the L2/L5
+ones, subframe 3 page 1) and B2a's `T_GD_B2ap` and `ISC_B2ad` (message type 30) arrive on
+their own cadence; the gate does not wait for them (see [`has_positioning_data`](@ref)), so
+this returns `nothing` until they have. What to do meanwhile is the caller's choice: a
+single-frequency fix taking the correction as zero,
+`something(get_group_delay(state, signal), 0.0)`, is off by about a metre, and an
+ionosphere-free combination scales that by the missing range's coefficient (1.3 to 2.6 for
+the GPS and BeiDou pairs), so it may rather wait.
+
+Each message has methods for exactly the ranging signals it broadcasts a correction for
+(the table rows), whichever of its signals the decoder is on: an I/NAV decoder on E1-B
+answers for E5b ranges too, a CNAV-2 decoder for L1 C/A. Any other pairing, such as an E5a
+range on an I/NAV decoder, or any range on Galileo E6-B (no group delay), throws a
+`MethodError` rather than returning a plausible number.
+"""
+function get_group_delay end
 
 """
 Soft-symbol buffer accessor; the per-signal cache stores it as `soft_buffer`.

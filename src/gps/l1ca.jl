@@ -506,6 +506,12 @@ end
 # LNAV has no inter-GNSS offset; GGTO is CNAV / CNAV-2 only (`gps/cnav.jl`, `gps/l1c_d.jl`).
 time_offset_parameters(::GNSSDecoderState{<:GPSLNAVData}, ::TimeSystem) = nothing
 
+# LNAV carries T_GD alone: no ISCs (see `get_group_delay`).
+function get_group_delay(state::GNSSDecoderState{<:GPSLNAVData}, ::GPSL1CA)
+    has_positioning_messages(state.data) || return nothing
+    something(state.data.T_GD)
+end
+
 function has_positioning_messages(data::GPSLNAVData)
     !isnothing(data.integrity_status_flag) &&
         !isnothing(data.TOW) &&

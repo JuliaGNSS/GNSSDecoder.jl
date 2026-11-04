@@ -254,6 +254,11 @@ const GALILEO_GGTO_WN_MODULUS = 64
 const GALILEO_UTC_WN_MODULUS = 256
 const GALILEO_LSF_WN_MODULUS = 256
 
+# BGD scaling `(f_E1/f)²` for a single-frequency user: 1.79 on E5a, 1.70 on E5b, 1 on
+# E1 (OS SIS ICD §5.1.5). Omitting it leaves a metre-level error per satellite.
+galileo_group_delay_scaling(signal) =
+    (get_center_frequency(GalileoE1B) / get_center_frequency(signal))^2
+
 """
     galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,TimeOffsetParameters}
 

@@ -841,6 +841,23 @@ get_broadcast_time_of_week(data::BeiDouCNAV2Data) = data.SOW
 # B-CNAV2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
 get_broadcast_week(data::BeiDouCNAV2Data; approximate_year::Integer) = data.WN
 
+# As on B1C, but these terms ride in MT30 alone while the clock is in all of MT30-34, so
+# they are not gated and may be missing once the gate passes: then there is no group delay.
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aI)
+    (; T_GD_B2ap, ISC_B2ad) = state.data
+    (
+        has_positioning_messages(state.data) &&
+        !isnothing(T_GD_B2ap) &&
+        !isnothing(ISC_B2ad)
+    ) || return nothing
+    something(T_GD_B2ap) + something(ISC_B2ad)
+end
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::BeiDouB2aQ)
+    T_GD_B2ap = state.data.T_GD_B2ap
+    (has_positioning_messages(state.data) && !isnothing(T_GD_B2ap)) || return nothing
+    something(T_GD_B2ap)
+end
+
 """
 $(TYPEDSIGNATURES)
 

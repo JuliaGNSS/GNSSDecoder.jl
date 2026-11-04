@@ -651,6 +651,17 @@ end
 # B-CNAV1's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
 get_broadcast_week(data::BeiDouCNAV1Data; approximate_year::Integer) = data.WN
 
+# B-CNAV1: the B1C pilot's group delay, plus the data component's ISC (both in subframe
+# 2). `T_GD_B2ap` is unused: a B2a range carries a B2a decoder.
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV1Data}, ::BeiDouB1C_D)
+    has_positioning_messages(state.data) || return nothing
+    something(state.data.T_GD_B1Cp) + something(state.data.ISC_B1Cd)
+end
+function get_group_delay(state::GNSSDecoderState{<:BeiDouCNAV1Data}, ::BeiDouB1C_P)
+    has_positioning_messages(state.data) || return nothing
+    something(state.data.T_GD_B1Cp)
+end
+
 """
 $(TYPEDSIGNATURES)
 

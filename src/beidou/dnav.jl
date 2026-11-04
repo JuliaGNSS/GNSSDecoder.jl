@@ -735,6 +735,15 @@ get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
 # D1/D2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
 get_broadcast_week(data::BeiDouDNAVData; approximate_year::Integer) = data.WN
 
+# D1/D2 states its clock for B3I (no group delay needed); B1I uses T_GD1. T_GD2 is for
+# BDS-2's B2I, which this package does not decode.
+function get_group_delay(state::GNSSDecoderState{<:BeiDouDNAVData}, ::BeiDouB1I)
+    has_positioning_messages(state.data) || return nothing
+    something(state.data.T_GD1)
+end
+get_group_delay(state::GNSSDecoderState{<:BeiDouDNAVData}, ::BeiDouB3I) =
+    has_positioning_messages(state.data) ? 0.0 : nothing
+
 """
 $(TYPEDSIGNATURES)
 

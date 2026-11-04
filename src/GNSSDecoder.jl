@@ -68,12 +68,23 @@ export decode!,
     get_broadcast_week,
     get_broadcast_time_offset,
     get_broadcast_time_offset_epoch,
+    get_group_delay,
+    BroadcastEphemeris,
+    get_broadcast_ephemeris,
+    KlobucharParameters,
+    BeiDouKlobucharParameters,
+    NeQuickGParameters,
+    BDGIMParameters,
+    get_klobuchar_parameters,
+    get_nequick_g_parameters,
+    get_bdgim_parameters,
     UTCParameters,
     LeapSecondParameters,
     TimeOffsetParameters,
     get_utc_parameters,
     get_leap_second_parameters,
     get_time_offset_parameters,
+    get_range_accuracy,
     GNSSDecoderState,
     reset_decoder_state!
 
@@ -117,6 +128,9 @@ include("beidou/b3i.jl")
 include("beidou/b1c.jl")
 include("beidou/b2a.jl")
 include("beidou/b2b.jl")
+include("ephemeris.jl")
+include("ionosphere.jl")
 include("time_parameters.jl")
+include("range_accuracy.jl")
 include("precompile.jl")
 end
