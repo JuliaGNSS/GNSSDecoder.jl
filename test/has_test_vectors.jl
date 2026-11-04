@@ -53,7 +53,7 @@ const HAS_ANNEX_C_PAGE_HEX = "fffc17b8de11ef1d27adf5c5d0911e23ed151a4630009cabaf
 Header fields the ICD decodes from `HAS_ANNEX_C_PAGE_HEX` (Annex C table).
 """
 const HAS_ANNEX_C_HEADER =
-    (HAS_status = 0, message_type = 1, message_id = 15, message_size = 15, page_id = 55)
+    (HASS = 0, MT = 1, MID = 15, MS = 15, page_id = 55)
 
 """
 The 53 HAS Encoded Page octets the ICD lists for `HAS_ANNEX_C_PAGE_HEX`
@@ -92,9 +92,9 @@ orbit corrections, code biases and phase biases (flag sequence "110011"), with
 the 15 received encoded pages and the message they reassemble to.
 """
 const HAS_EXAMPLE_1 = (
-    message_id = 15,
-    message_type = 1,
-    message_size = 15,
+    MID = 15,
+    MT = 1,
+    MS = 15,
     page_ids = Int[55, 56, 57, 58, 59, 174, 175, 176, 187, 188, 239, 240, 241, 252, 253],
     encoded_pages_hex = [
         "847bc749eb7d7174244788fb4546918c00272aebc15492cc6eb55a5880e261bae3171a23dd0be562fc8d6fd88e6229c29e7d8c99df",   # Page ID 55
@@ -140,9 +140,9 @@ decode (k = 2) and the Delta Clock Multiplier semantics. The ICD does not state
 this example's Message ID; 0 is used here.
 """
 const HAS_EXAMPLE_2 = (
-    message_id = 0,
-    message_type = 1,
-    message_size = 2,
+    MID = 0,
+    MT = 1,
+    MS = 2,
     page_ids = Int[61, 151],
     encoded_pages_hex = [
         "cb56b07e135478006537f8cc42c9803df5cbc4313a55781a8d6f818d1129b5db164cf7a9a49f77e5e106e54b33a55c8bcd74fbfd94",   # Page ID 61

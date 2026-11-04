@@ -199,19 +199,19 @@ Almanac data for one BeiDou satellite, decoded from a single D1 almanac page
 expanded-almanac identification `AmEpID` is `11`, subframe 5 pages 11-23 for SV 31-63
 by time sharing, BDS-SIS-ICD-B1I-3.0 §5.2.4.13-§5.2.4.15).
 
-Angles are in radians (broadcast semicircles scaled by the ICD's π). `δi` is relative
+Angles are in radians (broadcast semicircles scaled by the ICD's π). `δ_i` is relative
 to the reference inclination i₀ = 0.3 semicircles for MEO/IGSO and 0 for GEO (Table 5-15
 note).
 
 # Fields
 
   - `sqrt_A::Float64`: Square root of semi-major axis (√m)
-  - `a_f0::Float64`: Satellite clock bias (s; the ICD names it `a_0`)
-  - `a_f1::Float64`: Satellite clock rate (s/s; the ICD names it `a_1`)
+  - `a_0::Float64`: Satellite clock bias (s)
+  - `a_1::Float64`: Satellite clock rate (s/s)
   - `Ω_0::Float64`: Longitude of ascending node at reference time (rad)
   - `e::Float64`: Eccentricity (dimensionless)
-  - `δi::Float64`: Correction of orbit reference inclination at reference time (rad)
-  - `t_0a::Int`: Almanac reference time (s, scale 2¹²), from this page
+  - `δ_i::Float64`: Correction of orbit reference inclination at reference time (rad)
+  - `t_oa::Int`: Almanac reference time (s, scale 2¹²), from this page
   - `Ω_dot::Float64`: Rate of right ascension (rad/s)
   - `ω::Float64`: Argument of perigee (rad)
   - `M_0::Float64`: Mean anomaly at reference time (rad)
@@ -220,8 +220,8 @@ note).
 
 !!! note "Use this record's own reference epoch"
 
-    `t_0a` and `WN_a` here belong to *this* entry. `BeiDouDNAVData` also carries a
-    `t_0a`/`WN_a` pair, the global one most recently broadcast in subframe 5 page 8.
+    `t_oa` and `WN_a` here belong to *this* entry. `BeiDouDNAVData` also carries a
+    `t_oa`/`WN_a` pair, the global one most recently broadcast in subframe 5 page 8.
     The almanac cycle is 24 pages over 12 minutes, so the two can disagree across an
     almanac changeover; pairing an entry with the global epoch would then use the wrong
     reference time. Prefer the entry's own fields, as [`BeiDouReducedAlmanac`](@ref)
@@ -233,12 +233,12 @@ BDS-SIS-ICD-B1I-3.0, Tables 5-12 and 5-14
 """
 Base.@kwdef struct BeiDouDNAVAlmanac
     sqrt_A::Union{Nothing,Float64} = nothing
-    a_f0::Union{Nothing,Float64} = nothing
-    a_f1::Union{Nothing,Float64} = nothing
+    a_0::Union{Nothing,Float64} = nothing
+    a_1::Union{Nothing,Float64} = nothing
     Ω_0::Union{Nothing,Float64} = nothing
     e::Union{Nothing,Float64} = nothing
-    δi::Union{Nothing,Float64} = nothing
-    t_0a::Union{Nothing,Int} = nothing
+    δ_i::Union{Nothing,Float64} = nothing
+    t_oa::Union{Nothing,Int} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
@@ -274,10 +274,10 @@ coefficients, `a_0` arrives on page 3 and `a_1`/`a_2`/`AODE` on pages 3-4
     (§5.2.4.5, Table 5-4). Not converted to metres (see `GPSLNAVData.URA_index`);
     index 15 is "no accuracy prediction".
   - `WN::Int64`: BDT week number (0-8191, weeks since 2006-01-01, §5.2.4.4)
-  - `t_0c::Int64`: Clock correction reference time (s, scale 2³; the ICD writes `toc`)
-  - `a_f0::Float64`: Clock bias (s, scale 2⁻³³; the ICD names it `a_0`)
-  - `a_f1::Float64`: Clock rate (s/s, scale 2⁻⁵⁰; the ICD names it `a_1`)
-  - `a_f2::Float64`: Clock drift rate (s/s², scale 2⁻⁶⁶; the ICD names it `a_2`)
+  - `t_oc::Int64`: Clock correction reference time (s, scale 2³)
+  - `a_0::Float64`: Clock bias (s, scale 2⁻³³)
+  - `a_1::Float64`: Clock rate (s/s, scale 2⁻⁵⁰)
+  - `a_2::Float64`: Clock drift rate (s/s², scale 2⁻⁶⁶)
   - `T_GD1::Float64`: B1I equipment group delay differential (s, broadcast in 0.1 ns)
   - `T_GD2::Float64`: B2I equipment group delay differential (s, broadcast in 0.1 ns)
   - `α_0..α_3, β_0..β_3::Float64`: Klobuchar ionospheric model parameters (§5.2.4.7)
@@ -288,8 +288,8 @@ coefficients, `a_0` arrives on page 3 and `a_1`/`a_2`/`AODE` on pages 3-4
 D2 page 3 is the clock page; the ephemeris starts on page 4 with `Δn` and
 `C_uc` (Figure 5-14-4).
 
-  - `t_0e::Int64`: Ephemeris reference time (s, scale 2³; the ICD writes `toe`; split
-    across subframes 2 and 3 in D1 and assembled once both parts are present)
+  - `t_oe::Int64`: Ephemeris reference time (s, scale 2³; split across
+    subframes 2 and 3 in D1 and assembled once both parts are present)
   - `sqrt_A::Float64`: Square root of semi-major axis (√m, scale 2⁻¹⁹)
   - `e::Float64`: Eccentricity (scale 2⁻³³)
   - `ω::Float64`: Argument of perigee (rad)
@@ -298,7 +298,7 @@ D2 page 3 is the clock page; the ephemeris starts on page 4 with `Δn` and
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
   - `Ω_dot::Float64`: Rate of right ascension (rad/s)
   - `i_0::Float64`: Inclination at reference time (rad)
-  - `i_dot::Float64`: Rate of inclination (IDOT, rad/s)
+  - `IDOT::Float64`: Rate of inclination (rad/s)
   - `C_uc, C_us::Float64`: Harmonic corrections to argument of latitude (rad, scale 2⁻³¹)
   - `C_rc, C_rs::Float64`: Harmonic corrections to orbit radius (m, scale 2⁻⁶)
   - `C_ic, C_is::Float64`: Harmonic corrections to inclination (rad, scale 2⁻³¹)
@@ -309,15 +309,15 @@ D2 page 3 is the clock page; the ephemeris starts on page 4 with `Δn` and
     plus SV 31-63 when the expanded almanac is broadcast). One preallocated
     slot per SV ID; a decoded page overwrites its SV's slot in place.
 
-  - `health::SlotDictionary{UInt16,64}`: Per-SVID 9-bit satellite health
-    information words (Table 5-16; 0 = fully healthy). One preallocated slot
+  - `Hea::SlotDictionary{UInt16,64}`: Per-SVID 9-bit satellite health
+    information words `Hea_i` (Table 5-16; 0 = fully healthy). One preallocated slot
     per SV ID; a decoded health page overwrites its SVs' slots in place.
 
   - `AmEpID::Int64`: Identification of expanded almanacs (§5.2.4.14)
 
   - `WN_a::Int64`: Almanac week number (modulo 256, §5.2.4.16)
 
-  - `t_0a::Int64`: Almanac reference time from subframe 5 page 8 (s, scale 2¹²)
+  - `t_oa::Int64`: Almanac reference time from subframe 5 page 8 (s, scale 2¹²)
 
   - `A_0GPS, A_1GPS::Float64`: BDT-GPS time offset (s, s/s; §5.2.4.19)
 
@@ -348,10 +348,10 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     AODC::Union{Nothing,Int64} = nothing
     URAI::Union{Nothing,Int64} = nothing
     WN::Union{Nothing,Int64} = nothing
-    t_0c::Union{Nothing,Int64} = nothing
-    a_f0::Union{Nothing,Float64} = nothing
-    a_f1::Union{Nothing,Float64} = nothing
-    a_f2::Union{Nothing,Float64} = nothing
+    t_oc::Union{Nothing,Int64} = nothing
+    a_0::Union{Nothing,Float64} = nothing
+    a_1::Union{Nothing,Float64} = nothing
+    a_2::Union{Nothing,Float64} = nothing
     T_GD1::Union{Nothing,Float64} = nothing
     T_GD2::Union{Nothing,Float64} = nothing
     α_0::Union{Nothing,Float64} = nothing
@@ -364,12 +364,12 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     β_3::Union{Nothing,Float64} = nothing
     AODE::Union{Nothing,Int64} = nothing
 
-    # Ephemeris. In D1 t_0e is split: 2 MSBs in subframe 2, 15 LSBs in subframe 3
-    # (Figures 5-9/5-10); the staging halves live here so `t_0e` appears only once both
+    # Ephemeris. In D1 t_oe is split: 2 MSBs in subframe 2, 15 LSBs in subframe 3
+    # (Figures 5-9/5-10); the staging halves live here so `t_oe` appears only once both
     # have arrived.
-    t_0e_msb2::Union{Nothing,Int64} = nothing
-    t_0e_lsb15::Union{Nothing,Int64} = nothing
-    t_0e::Union{Nothing,Int64} = nothing
+    t_oe_msb2::Union{Nothing,Int64} = nothing
+    t_oe_lsb15::Union{Nothing,Int64} = nothing
+    t_oe::Union{Nothing,Int64} = nothing
     sqrt_A::Union{Nothing,Float64} = nothing
     e::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
@@ -378,7 +378,7 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     Ω_0::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     i_0::Union{Nothing,Float64} = nothing
-    i_dot::Union{Nothing,Float64} = nothing
+    IDOT::Union{Nothing,Float64} = nothing
     C_uc::Union{Nothing,Float64} = nothing
     C_us::Union{Nothing,Float64} = nothing
     C_rc::Union{Nothing,Float64} = nothing
@@ -388,10 +388,10 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
 
     # D1 subframes 4/5: almanac, health, time offsets
     almanacs::Union{Nothing,SlotDictionary{BeiDouDNAVAlmanac,64}} = nothing
-    health::Union{Nothing,SlotDictionary{UInt16,64}} = nothing
+    Hea::Union{Nothing,SlotDictionary{UInt16,64}} = nothing
     AmEpID::Union{Nothing,Int64} = nothing
     WN_a::Union{Nothing,Int64} = nothing
-    t_0a::Union{Nothing,Int64} = nothing
+    t_oa::Union{Nothing,Int64} = nothing
     A_0GPS::Union{Nothing,Float64} = nothing
     A_1GPS::Union{Nothing,Float64} = nothing
     A_0Gal::Union{Nothing,Float64} = nothing
@@ -420,10 +420,10 @@ const DNAV_LSF_WN_MODULUS = 256
     AODC = data.AODC,
     URAI = data.URAI,
     WN = data.WN,
-    t_0c = data.t_0c,
-    a_f0 = data.a_f0,
-    a_f1 = data.a_f1,
-    a_f2 = data.a_f2,
+    t_oc = data.t_oc,
+    a_0 = data.a_0,
+    a_1 = data.a_1,
+    a_2 = data.a_2,
     T_GD1 = data.T_GD1,
     T_GD2 = data.T_GD2,
     α_0 = data.α_0,
@@ -435,9 +435,9 @@ const DNAV_LSF_WN_MODULUS = 256
     β_2 = data.β_2,
     β_3 = data.β_3,
     AODE = data.AODE,
-    t_0e_msb2 = data.t_0e_msb2,
-    t_0e_lsb15 = data.t_0e_lsb15,
-    t_0e = data.t_0e,
+    t_oe_msb2 = data.t_oe_msb2,
+    t_oe_lsb15 = data.t_oe_lsb15,
+    t_oe = data.t_oe,
     sqrt_A = data.sqrt_A,
     e = data.e,
     ω = data.ω,
@@ -446,7 +446,7 @@ const DNAV_LSF_WN_MODULUS = 256
     Ω_0 = data.Ω_0,
     Ω_dot = data.Ω_dot,
     i_0 = data.i_0,
-    i_dot = data.i_dot,
+    IDOT = data.IDOT,
     C_uc = data.C_uc,
     C_us = data.C_us,
     C_rc = data.C_rc,
@@ -454,10 +454,10 @@ const DNAV_LSF_WN_MODULUS = 256
     C_ic = data.C_ic,
     C_is = data.C_is,
     almanacs = data.almanacs,
-    health = data.health,
+    Hea = data.Hea,
     AmEpID = data.AmEpID,
     WN_a = data.WN_a,
-    t_0a = data.t_0a,
+    t_oa = data.t_oa,
     A_0GPS = data.A_0GPS,
     A_1GPS = data.A_1GPS,
     A_0Gal = data.A_0Gal,
@@ -479,10 +479,10 @@ const DNAV_LSF_WN_MODULUS = 256
         AODC,
         URAI,
         WN,
-        t_0c,
-        a_f0,
-        a_f1,
-        a_f2,
+        t_oc,
+        a_0,
+        a_1,
+        a_2,
         T_GD1,
         T_GD2,
         α_0,
@@ -494,9 +494,9 @@ const DNAV_LSF_WN_MODULUS = 256
         β_2,
         β_3,
         AODE,
-        t_0e_msb2,
-        t_0e_lsb15,
-        t_0e,
+        t_oe_msb2,
+        t_oe_lsb15,
+        t_oe,
         sqrt_A,
         e,
         ω,
@@ -505,7 +505,7 @@ const DNAV_LSF_WN_MODULUS = 256
         Ω_0,
         Ω_dot,
         i_0,
-        i_dot,
+        IDOT,
         C_uc,
         C_us,
         C_rc,
@@ -513,10 +513,10 @@ const DNAV_LSF_WN_MODULUS = 256
         C_ic,
         C_is,
         almanacs,
-        health,
+        Hea,
         AmEpID,
         WN_a,
-        t_0a,
+        t_oa,
         A_0GPS,
         A_1GPS,
         A_0Gal,
@@ -533,7 +533,7 @@ const DNAV_LSF_WN_MODULUS = 256
 end
 
 # The default struct `==` is reference equality, which fails for the mutable `almanacs`
-# and `health` `SlotDictionary` fields even when contents match, so compare
+# and `Hea` `SlotDictionary` fields even when contents match, so compare
 # field-by-field (as `GPSLNAVData` does).
 #
 # This is equality of the *published* data only; subframe voting uses
@@ -639,7 +639,7 @@ end
 # One almanac and one health slot per SV ID (1-63).
 preallocated_data(::Type{BeiDouDNAVData}) = BeiDouDNAVData(;
     almanacs = SlotDictionary{BeiDouDNAVAlmanac,64}(),
-    health = SlotDictionary{UInt16,64}(),
+    Hea = SlotDictionary{UInt16,64}(),
 )
 
 function Base.:(==)(a::BeiDouDNAVCache, b::BeiDouDNAVCache)
@@ -657,7 +657,7 @@ packed_buffer_type(::GNSSDecoderState{<:BeiDouDNAVData}) = UInt320
 # both signals (§5.2.4.10), so a B1I user must apply `T_GD1` (a metre-scale bias), and it
 # rides in the same subframe 1 (D1) / page 1 (D2) as the clock, so requiring it costs no
 # time to first fix. `T_GD2` is the *B2I* differential: decoded and published, but never
-# gated on (like B1C's `T_GD_B2ap`), because nothing here can consume it. GNSSSignals has
+# gated on (like B1C's `T_GDB2ap`), because nothing here can consume it. GNSSSignals has
 # no B2I signal and none is planned (JuliaGNSS/GNSSSignals.jl#156, won't-implement);
 # BDS-2 retired 13 of its last 15 satellites in April 2026.
 #
@@ -669,16 +669,16 @@ function is_dnav_clock_and_health_decoded(data::BeiDouDNAVData)
         !isnothing(data.AODC) &&
         !isnothing(data.URAI) &&
         !isnothing(data.WN) &&
-        !isnothing(data.t_0c) &&
-        !isnothing(data.a_f0) &&
-        !isnothing(data.a_f1) &&
-        !isnothing(data.a_f2) &&
+        !isnothing(data.t_oc) &&
+        !isnothing(data.a_0) &&
+        !isnothing(data.a_1) &&
+        !isnothing(data.a_2) &&
         !isnothing(data.T_GD1) &&
         !isnothing(data.AODE)
 end
 
 function is_dnav_ephemeris_decoded(data::BeiDouDNAVData)
-    !isnothing(data.t_0e) &&
+    !isnothing(data.t_oe) &&
         !isnothing(data.sqrt_A) &&
         !isnothing(data.e) &&
         !isnothing(data.ω) &&
@@ -687,7 +687,7 @@ function is_dnav_ephemeris_decoded(data::BeiDouDNAVData)
         !isnothing(data.Ω_0) &&
         !isnothing(data.Ω_dot) &&
         !isnothing(data.i_0) &&
-        !isnothing(data.i_dot) &&
+        !isnothing(data.IDOT) &&
         !isnothing(data.C_uc) &&
         !isnothing(data.C_us) &&
         !isnothing(data.C_rc) &&
@@ -732,7 +732,7 @@ $(TYPEDSIGNATURES)
 D1/D2 NAV has no orbit-type field, so the only orbit fact available is the PRN
 partition GNSSSignals' `is_beidou_geo` encodes, which the ICD uses to select D1 or D2
 (BDS-SIS-ICD-B1I-3.0 Table 4-1, §5.1.1). IGSO and MEO satellites are indistinguishable
-and both report `nothing`; the B-CNAV signals answer all three classes from `sat_type`.
+and both report `nothing`; the B-CNAV signals answer all three classes from `SatType`.
 """
 get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
     GNSSSignals.is_beidou_geo(state.prn) ? geostationary_orbit : nothing
@@ -895,7 +895,7 @@ function decode_d1_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         AODC = Int64(dnav_bits(content, 44, 5)),
         URAI,
         WN = Int64(dnav_bits(content, 61, 13)),
-        t_0c = Int64(dnav_bits(content, 74, 17)) << 3,
+        t_oc = Int64(dnav_bits(content, 74, 17)) << 3,
         T_GD1 = dnav_signed(content, 99, 10) * 1.0e-10,   # 0.1 ns → s
         T_GD2 = dnav_signed(content, 109, 10) * 1.0e-10,  # 0.1 ns → s
         α_0 = dnav_signed(content, 127, 8) / (1 << 30),
@@ -906,29 +906,29 @@ function decode_d1_subframe1(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         β_1 = dnav_signed(content, 183, 8) * Float64(1 << 14),
         β_2 = dnav_signed(content, 191, 8) * Float64(1 << 16),
         β_3 = dnav_signed(content, 199, 8) * Float64(1 << 16),
-        a_f2 = dnav_signed(content, 215, 11) / 2.0^66,
-        a_f0 = dnav_signed(content, 226, 24) / 2.0^33,
-        a_f1 = dnav_signed(content, 258, 22) / 2.0^50,
+        a_2 = dnav_signed(content, 215, 11) / 2.0^66,
+        a_0 = dnav_signed(content, 226, 24) / 2.0^33,
+        a_1 = dnav_signed(content, 258, 22) / 2.0^50,
         AODE = Int64(dnav_bits(content, 288, 5)),
     )
     GNSSDecoderState(state; raw_data = data)
 end
 
-# Assemble the 17-bit t_0e (× 2³ s) from its subframe-2 MSBs and subframe-3
+# Assemble the 17-bit t_oe (× 2³ s) from its subframe-2 MSBs and subframe-3
 # LSBs, but only when the two halves provably belong to one ephemeris.
 #
 # D1 has no issue-of-data stamp to pair the halves, only adjacency: subframe 3 follows
 # subframe 2 6 s later in the same frame, and the ICD changes the ephemeris at frame
 # boundaries. So the halves match iff subframe 2 was the immediately preceding decoded
 # subframe. Otherwise the stored MSBs belong to an earlier frame, and pairing them with
-# fresh LSBs would fabricate a plausible t_0e that is in neither ephemeris.
+# fresh LSBs would fabricate a plausible t_oe that is in neither ephemeris.
 function with_assembled_t_0e(data::BeiDouDNAVData, prev_subframe_id::Int)
     prev_subframe_id == 2 || return data
     # Locals: Julia 1.10 does not narrow a field read through `isnothing`.
-    msb2 = data.t_0e_msb2
-    lsb15 = data.t_0e_lsb15
+    msb2 = data.t_oe_msb2
+    lsb15 = data.t_oe_lsb15
     (msb2 === nothing || lsb15 === nothing) && return data
-    BeiDouDNAVData(data; t_0e = (msb2 << 15 | lsb15) << 3)
+    BeiDouDNAVData(data; t_oe = (msb2 << 15 | lsb15) << 3)
 end
 
 function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
@@ -942,11 +942,11 @@ function decode_d1_subframe2(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
         C_rc = dnav_signed(content, 199, 18) / (1 << 6),
         C_rs = dnav_signed(content, 225, 18) / (1 << 6),
         sqrt_A = Int64(dnav_bits(content, 251, 32)) / 2.0^19,
-        t_0e_msb2 = Int64(dnav_bits(content, 291, 2)),
-        # These MSBs open a new pairing: drop the previous frame's LSBs and the t_0e
+        t_oe_msb2 = Int64(dnav_bits(content, 291, 2)),
+        # These MSBs open a new pairing: drop the previous frame's LSBs and the t_oe
         # assembled from them.
-        t_0e_lsb15 = nothing,
-        t_0e = nothing,
+        t_oe_lsb15 = nothing,
+        t_oe = nothing,
     )
     GNSSDecoderState(state; raw_data = data)
 end
@@ -954,14 +954,14 @@ end
 function decode_d1_subframe3(state::GNSSDecoderState{<:BeiDouDNAVData}, content)
     data = BeiDouDNAVData(
         state.raw_data;
-        # Bits 3-17 of t_0e: 10 middle bits (word 2) and 5 LSBs (word 3), contiguous in
+        # Bits 3-17 of t_oe: 10 middle bits (word 2) and 5 LSBs (word 3), contiguous in
         # content (Figure 5-10).
-        t_0e_lsb15 = Int64(dnav_bits(content, 43, 15)),
+        t_oe_lsb15 = Int64(dnav_bits(content, 43, 15)),
         i_0 = dnav_signed(content, 66, 32) * GNSS_PI / 2.0^31,
         C_ic = dnav_signed(content, 106, 18) / 2.0^31,
         Ω_dot = dnav_signed(content, 132, 24) * GNSS_PI / 2.0^43,
         C_is = dnav_signed(content, 164, 18) / 2.0^31,
-        i_dot = dnav_signed(content, 190, 14) * GNSS_PI / 2.0^43,
+        IDOT = dnav_signed(content, 190, 14) * GNSS_PI / 2.0^43,
         Ω_0 = dnav_signed(content, 212, 32) * GNSS_PI / 2.0^31,
         ω = dnav_signed(content, 252, 32) * GNSS_PI / 2.0^31,
     )
@@ -984,16 +984,16 @@ function decode_d1_almanac_page(state::GNSSDecoderState{<:BeiDouDNAVData}, conte
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
     entry = @split_nothing WN_a BeiDouDNAVAlmanac(;
         sqrt_A = sqrt_A_raw / (1 << 11),
-        a_f1 = dnav_signed(content, 91, 11) / 2.0^38,
-        a_f0 = dnav_signed(content, 102, 11) / (1 << 20),
+        a_1 = dnav_signed(content, 91, 11) / 2.0^38,
+        a_0 = dnav_signed(content, 102, 11) / (1 << 20),
         Ω_0 = dnav_signed(content, 121, 24) * GNSS_PI / (1 << 23),
         e = Int64(dnav_bits(content, 153, 17)) / (1 << 21),
-        δi = dnav_signed(content, 170, 16) * GNSS_PI / (1 << 19),
-        t_0a = Int64(dnav_bits(content, 194, 8)) << 12,
+        δ_i = dnav_signed(content, 170, 16) * GNSS_PI / (1 << 19),
+        t_oa = Int64(dnav_bits(content, 194, 8)) << 12,
         Ω_dot = dnav_signed(content, 202, 17) * GNSS_PI / 2.0^38,
         ω = dnav_signed(content, 227, 24) * GNSS_PI / (1 << 23),
         M_0 = dnav_signed(content, 259, 24) * GNSS_PI / (1 << 23),
-        # Snapshot the reference week now: the page has its own t_0a but no week, and
+        # Snapshot the reference week now: the page has its own t_oa but no week, and
         # the global `WN_a` moves on at the next almanac changeover.
         WN_a,
     )
@@ -1012,13 +1012,13 @@ function decode_d1_health_page(
     first_sv_id::Int,
     count::Int,
 )
-    health = writable_container(state.raw_data.health, state.cache.storage.raw.health)
+    Hea = writable_container(state.raw_data.Hea, state.cache.storage.raw.Hea)
     start = dnav_content_position(51)
     for k = 0:(count-1)
         code = UInt16(get_bits(content, DNAV_CONTENT_BITS, start + 9k, 9))
-        set!(health, Int(first_sv_id + k), code)
+        set!(Hea, Int(first_sv_id + k), code)
     end
-    GNSSDecoderState(state; raw_data = BeiDouDNAVData(state.raw_data; health))
+    GNSSDecoderState(state; raw_data = BeiDouDNAVData(state.raw_data; Hea))
 end
 
 # Record the AmEpID broadcast at the tail of every subframe 4 page and
@@ -1054,7 +1054,7 @@ function decode_d1_subframe5_page8(state, content)
         WN_a = Int64(dnav_bits(content, 190, 8)),
         # toa here is split 5 MSBs / 3 LSBs across words 7/8 (Figure 5-11-3),
         # contiguous in the content domain.
-        t_0a = Int64(dnav_bits(content, 198, 8)) << 12,
+        t_oa = Int64(dnav_bits(content, 198, 8)) << 12,
     )
     GNSSDecoderState(state; raw_data = data)
 end
@@ -1182,7 +1182,7 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
         AODC = Int64(dnav_bits(c(1), 48, 5)),
         URAI,
         WN = Int64(dnav_bits(c(1), 65, 13)),
-        t_0c = Int64(dnav_bits(c(1), 78, 17)) << 3,
+        t_oc = Int64(dnav_bits(c(1), 78, 17)) << 3,
         T_GD1 = dnav_signed(c(1), 103, 10) * 1.0e-10,
         T_GD2 = dnav_signed(c(1), 121, 10) * 1.0e-10,
         α_0 = sext(dnav_bits(c(2), 47, 6) << 2 | dnav_bits(c(2), 61, 2), 8) / (1 << 30),
@@ -1194,9 +1194,9 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
         β_2 = sext(dnav_bits(c(2), 111, 2) << 6 | dnav_bits(c(2), 121, 6), 8) *
               Float64(1 << 16),
         β_3 = dnav_signed(c(2), 127, 8) * Float64(1 << 16),
-        a_f0 = sext(dnav_bits(c(3), 101, 12) << 12 | dnav_bits(c(3), 121, 12), 24) / 2.0^33,
-        a_f1 = sext(a_1_raw, 22) / 2.0^50,
-        a_f2 = sext(a_2_raw, 11) / 2.0^66,
+        a_0 = sext(dnav_bits(c(3), 101, 12) << 12 | dnav_bits(c(3), 121, 12), 24) / 2.0^33,
+        a_1 = sext(a_1_raw, 22) / 2.0^50,
+        a_2 = sext(a_2_raw, 11) / 2.0^66,
         AODE = Int64(dnav_bits(c(4), 92, 5)),
         Δn = dnav_signed(c(4), 97, 16) * GNSS_PI / 2.0^43,
         C_uc = sext(C_uc_raw, 18) / 2.0^31,
@@ -1212,16 +1212,16 @@ function parse_d2_pages(state::GNSSDecoderState{<:BeiDouDNAVData}, pages)
         sqrt_A = Int64(sqrt_A_raw) / 2.0^19,
         C_ic = sext(C_ic_raw, 18) / 2.0^31,
         C_is = dnav_signed(c(7), 63, 18) / 2.0^31,
-        t_0e = Int64(t_0e_raw) << 3,
-        t_0e_msb2 = Int64(t_0e_raw >> 15),
-        t_0e_lsb15 = Int64(t_0e_raw & 0x7FFF),
+        t_oe = Int64(t_0e_raw) << 3,
+        t_oe_msb2 = Int64(t_0e_raw >> 15),
+        t_oe_lsb15 = Int64(t_0e_raw & 0x7FFF),
         i_0 = sext(i_0_raw, 32) * GNSS_PI / 2.0^31,
         C_rc = sext(C_rc_raw, 18) / (1 << 6),
         C_rs = dnav_signed(c(8), 92, 18) / (1 << 6),
         Ω_dot = sext(Ω_dot_raw, 24) * GNSS_PI / 2.0^43,
         Ω_0 = sext(Ω_0_raw, 32) * GNSS_PI / 2.0^31,
         ω = sext(ω_raw, 32) * GNSS_PI / 2.0^31,
-        i_dot = sext(i_dot_raw, 14) * GNSS_PI / 2.0^43,
+        IDOT = sext(i_dot_raw, 14) * GNSS_PI / 2.0^43,
     )
     GNSSDecoderState(state; raw_data = data)
 end
@@ -1279,7 +1279,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:BeiDouDNAVData}, buffer)
         is_dnav_SOW_from_this_subframe(state) || return state
         # `last_subframe_id` is updated *after* the parsers run so they see the preceding
         # FraID: `decode_d1_subframe3` needs it to prove subframe 2 came immediately
-        # before (the two halves of `t_0e` then form one ephemeris).
+        # before (the two halves of `t_oe` then form one ephemeris).
         if fra_id == 1
             state = decode_d1_subframe1(state, content)
         elseif fra_id == 2
@@ -1303,7 +1303,7 @@ end
 #
 # The legacy message has no issue-of-data stamps: AODC/AODE are *ages*, so consistency
 # cannot be gated on an IODC/IODE match as in GPS L1 C/A. The dataset key is the
-# (t_0c, t_0e) pair; the ICD guarantees both change whenever their parameter sets do
+# (t_oc, t_oe) pair; the ICD guarantees both change whenever their parameter sets do
 # (§5.2.4.9/§5.2.4.12: "the value of toc/toe shall monotonically increase over the week
 # and shall change if any of the parameters change"). Broadcast-repetition voting, as in
 # GPS L1 C/A, guards against BCH(15,11,1) mis-corrections (one error per 15-bit block
@@ -1311,13 +1311,13 @@ end
 
 function dnav_compare_data(data::BeiDouDNAVData, new_data::BeiDouDNAVData)
     data.WN == new_data.WN &&
-        data.t_0c == new_data.t_0c &&
-        data.a_f0 == new_data.a_f0 &&
-        data.a_f1 == new_data.a_f1 &&
-        data.a_f2 == new_data.a_f2 &&
+        data.t_oc == new_data.t_oc &&
+        data.a_0 == new_data.a_0 &&
+        data.a_1 == new_data.a_1 &&
+        data.a_2 == new_data.a_2 &&
         data.T_GD1 == new_data.T_GD1 &&
         data.T_GD2 == new_data.T_GD2 &&
-        data.t_0e == new_data.t_0e &&
+        data.t_oe == new_data.t_oe &&
         data.sqrt_A == new_data.sqrt_A &&
         data.e == new_data.e &&
         data.ω == new_data.ω &&
@@ -1326,7 +1326,7 @@ function dnav_compare_data(data::BeiDouDNAVData, new_data::BeiDouDNAVData)
         data.Ω_0 == new_data.Ω_0 &&
         data.Ω_dot == new_data.Ω_dot &&
         data.i_0 == new_data.i_0 &&
-        data.i_dot == new_data.i_dot &&
+        data.IDOT == new_data.IDOT &&
         data.C_uc == new_data.C_uc &&
         data.C_us == new_data.C_us &&
         data.C_rc == new_data.C_rc &&
@@ -1335,7 +1335,7 @@ function dnav_compare_data(data::BeiDouDNAVData, new_data::BeiDouDNAVData)
         data.C_is == new_data.C_is
 end
 
-dnav_dataset_key(data::BeiDouDNAVData) = (data.t_0c, data.t_0e)
+dnav_dataset_key(data::BeiDouDNAVData) = (data.t_oc, data.t_oe)
 
 # Promote `raw_data` to validated `data`, re-anchoring the time-reference counter to the
 # epoch the SOW stamps, so a consumer reads the current time as

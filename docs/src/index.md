@@ -62,7 +62,7 @@ true
 ```
 
 In a real application, you would decode soft bits from a tracking loop. With
-`Tracking.jl` v2, take them from `get_soft_bits`, which returns the
+a tracking loop such as `Tracking.jl`, take them from `get_soft_bits`, which returns the
 polarity-corrected, amplitude-weighted soft bits for the tracked satellite:
 
 ```julia
@@ -157,11 +157,12 @@ for correction in state.data.orbit_corrections.corrections
 end
 ```
 
-`δ_radial`, `δ_in_track` and `δ_cross_track` are in the satellite-centred NTW
-frame and must be rotated into ECEF before use (HAS SIS ICD §7.2); each block
-carries its own `validity_interval` in seconds from the message's `TOH`, and the
-`mask_id` / `IOD_set_id` that tie it to a satellite set and a broadcast
-ephemeris issue.
+The HAS records spell their fields out, each documented with its HAS SIS ICD symbol:
+`δ_radial`, `δ_in_track` and `δ_cross_track` (the ICD's `DR`, `DIT` and `DCT`) are in
+the satellite-centred NTW frame and must be rotated
+into ECEF before use (HAS SIS ICD §7.2); each block carries its own `validity_interval`
+in seconds from the message's `TOH`, and the `mask_id` / `IOD_set_id` that tie it to a
+satellite set and a broadcast ephemeris issue.
 
 ### GPS L1C-D Decoding
 
@@ -324,6 +325,15 @@ false
 
 ## Data Fields
 
+Each data container names its fields as its own ICD does (`t_oe` on GPS and BeiDou,
+`t_0e` on Galileo), so the tables below differ between constellations. For one name per
+quantity across constellations read the normalised records instead:
+[`get_broadcast_ephemeris`](@ref), [`get_utc_parameters`](@ref),
+[`get_leap_second_parameters`](@ref), [`get_inter_system_time_offset_parameters`](@ref),
+[`get_klobuchar_parameters`](@ref), [`get_nequick_g_parameters`](@ref),
+[`get_bdgim_parameters`](@ref), [`get_group_delay`](@ref) and
+[`get_range_accuracy`](@ref).
+
 ### GPS L1 Data
 
 After successful decoding, `state.data` contains:
@@ -333,12 +343,12 @@ After successful decoding, `state.data` contains:
 | `TOW` | Time of Week (seconds) |
 | `WN` | Transmission week number (modulo 1024) |
 | `sv_health` | Raw 6-bit satellite health word (0 = healthy) |
-| `t_0e`, `t_0c` | Reference times for ephemeris and clock |
+| `t_oe`, `t_oc` | Reference times for ephemeris and clock |
 | `e` | Eccentricity |
 | `sqrt_A` | Square root of semi-major axis |
 | `M_0` | Mean anomaly at reference time |
 | `Ω_0`, `ω` | Longitude of ascending node, argument of perigee |
-| `i_0`, `i_dot` | Inclination and rate |
+| `i_0`, `IDOT` | Inclination and rate |
 | `Δn`, `Ω_dot` | Mean motion difference, rate of right ascension |
 | `C_rs`, `C_rc`, `C_us`, `C_uc`, `C_is`, `C_ic` | Harmonic correction terms |
 | `a_f0`, `a_f1`, `a_f2` | Clock correction coefficients |
@@ -365,7 +375,7 @@ C/NAV carries corrections rather than an ephemeris — see
 
 | Field | Description |
 |-------|-------------|
-| `HAS_status` | HAS service status (test / operational / do not use) |
+| `HASS` | HAS service status (test / operational / do not use) |
 | `message` | The most recently completed [`GalileoHASMessage`](@ref), header included (`TOH`, `mask_id`, `IOD_set_id`) |
 | `masks` | Every received [`GalileoHASMask`](@ref), keyed by Mask ID |
 | `orbit_corrections` | Latest orbit corrections (radial / in-track / cross-track) |
@@ -380,9 +390,9 @@ CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
 | Field | Description |
 |-------|-------------|
 | `TOI`, `ITOW`, `WN` | Time of interval, interval time of week, week number |
-| `t_0e`, `ΔA`, `e`, `M_0`, `ω`, `Ω_0`, `i_0`, … | Clock and ephemeris (CED) parameters |
+| `t_oe`, `ΔA`, `e`, `M_0`, `ω`, `Ω_0`, `i_0`, … | Clock and ephemeris (CED) parameters |
 | `α_0..α_3`, `β_0..β_3` | Klobuchar ionospheric coefficients (subframe-3 page 1) |
-| `A_0UTC`, `Δt_LS`, … | UTC parameters (page 1) |
+| `A_0`, `Δt_LS`, … | UTC parameters (page 1) |
 | `A_0GGTO`, `t_GGTO`, … | GPS/GNSS time offset and EOP (page 2) |
 | `reduced_almanacs`, `midi_almanacs` | Per-SV almanac dictionaries (pages 3/4) |
 | `differential_corrections` | Per-SV differential corrections (page 5) |

@@ -67,7 +67,7 @@
             (GalileoE5aDecoderState(1), GalileoFNAVData),
             (BeiDouB1IDecoderState(20), BeiDouDNAVData),
         )
-            s = complete_state(state, D; keplerian...)
+            s = complete_state(state, D; icd_fields(D, keplerian)...)
             ephemeris = get_broadcast_ephemeris(s)
             @test ephemeris isa BroadcastEphemeris
             test_shared(ephemeris, s)
@@ -78,7 +78,11 @@
             @test !ephemeris.is_geostationary
         end
         # BeiDou D1/D2 tells its GEOs apart by PRN.
-        geo = complete_state(BeiDouB1IDecoderState(1), BeiDouDNAVData; keplerian...)
+        geo = complete_state(
+            BeiDouB1IDecoderState(1),
+            BeiDouDNAVData;
+            icd_fields(BeiDouDNAVData, keplerian)...,
+        )
         @test get_broadcast_ephemeris(geo).is_geostationary
     end
 
@@ -96,7 +100,7 @@
             (GPSL2CMDecoderState(1), GPSCNAVData),
             (GPSL1C_DDecoderState(1), GPSCNAV2Data),
         )
-            s = complete_state(state, D; quasi...)
+            s = complete_state(state, D; icd_fields(D, quasi)...)
             ephemeris = get_broadcast_ephemeris(s)
             test_shared(ephemeris, s)
             # Off A_REF and Ω̇_REF (IS-GPS-200N §30.3.3.1.3).
@@ -129,9 +133,9 @@
                 s = complete_state(
                     state,
                     D;
-                    quasi...,
+                    icd_fields(D, quasi)...,
                     overrides...,
-                    sat_type = Int64(sat_type),
+                    SatType = Int64(sat_type),
                 )
                 ephemeris = get_broadcast_ephemeris(s)
                 test_shared(ephemeris, s)
@@ -144,7 +148,7 @@
         # The reserved orbit type has no reference axis; the gate keeps it out.
         @test_throws ArgumentError GNSSDecoder.beidou_cnav_reference_semi_major_axis(0)
         @test !has_positioning_data(
-            complete_state(BeiDouB1CDecoderState(20), BeiDouCNAV1Data; sat_type = Int64(0)),
+            complete_state(BeiDouB1CDecoderState(20), BeiDouCNAV1Data; SatType = Int64(0)),
         )
     end
 

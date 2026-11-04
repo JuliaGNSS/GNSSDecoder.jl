@@ -44,11 +44,11 @@
             C_rc_raw = 666,
             C_rs_raw = -777,
             sqrt_A_raw = 888,
-            t_0e_msb2 = 0,
+            t_oe_msb2 = 0,
         )
         d1_sf3 = (
             SOW = SOW0 + 12,
-            t_0e_lsb15 = 900,
+            t_oe_lsb15 = 900,
             i_0_raw = -999,
             C_ic_raw = 123,
             Ω_dot_raw = -456,
@@ -78,9 +78,9 @@
         @test has_positioning_data(state)
         @test is_sat_healthy(state)
         @test state.data.WN == 900
-        @test state.data.t_0c == 7200
-        @test state.data.t_0e == 7200
-        @test state.data.a_f0 == -100 / 2.0^33
+        @test state.data.t_oc == 7200
+        @test state.data.t_oe == 7200
+        @test state.data.a_0 == -100 / 2.0^33
         @test state.data.Δn == -111 * PI / 2.0^43
         @test state.data.ω == -6789 * PI / 2.0^31
         @test state.data.URAI == 0

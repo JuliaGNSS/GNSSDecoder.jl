@@ -72,7 +72,7 @@ end
 Almanac data for one Galileo satellite.
 
 The almanac provides reduced-precision orbital and clock parameters for predicting
-satellite positions and selecting satellites for tracking. `Δsqrt_A` and `δi` are
+satellite positions and selecting satellites for tracking. `Δsqrt_A` and `δ_i` are
 relative to the nominal constellation (`A_nominal = 29 600 000 m`, `i_nominal = 56°`;
 OS SIS ICD Issue 2.2 Table 1). Both the I/NAV decoder (word types 7-10) and the F/NAV
 decoder (page types 5-6) produce this record; they populate different signal-health
@@ -84,7 +84,7 @@ fields.
   - `Δsqrt_A::Float64`: Difference of √(semi-major axis) from nominal (√m)
   - `e::Float64`: Eccentricity (dimensionless)
   - `ω::Float64`: Argument of perigee (rad)
-  - `δi::Float64`: Inclination delta from nominal (rad)
+  - `δ_i::Float64`: Inclination delta from nominal (rad)
   - `Ω_0::Float64`: Longitude of ascending node at weekly epoch (rad)
   - `Ω_dot::Float64`: Rate of change of right ascension (rad/s)
   - `M_0::Float64`: Mean anomaly at reference time (rad)
@@ -101,7 +101,7 @@ fields.
 # Reference
 
 Galileo OS SIS ICD, Issue 2.2, Table 86 (the almanac parameters, shared by
-I/NAV and F/NAV); bit allocations in Tables 51-54 (I/NAV word types 7-10) and
+I/NAV and F/NAV); bit allocations in Tables 48-51 (I/NAV word types 7-10) and
 Tables 34-35 (F/NAV page types 5-6)
 """
 Base.@kwdef struct GalileoAlmanac
@@ -109,7 +109,7 @@ Base.@kwdef struct GalileoAlmanac
     Δsqrt_A::Union{Nothing,Float64} = nothing
     e::Union{Nothing,Float64} = nothing
     ω::Union{Nothing,Float64} = nothing
-    δi::Union{Nothing,Float64} = nothing
+    δ_i::Union{Nothing,Float64} = nothing
     Ω_0::Union{Nothing,Float64} = nothing
     Ω_dot::Union{Nothing,Float64} = nothing
     M_0::Union{Nothing,Float64} = nothing
@@ -129,7 +129,7 @@ end
     Δsqrt_A = a.Δsqrt_A,
     e = a.e,
     ω = a.ω,
-    δi = a.δi,
+    δ_i = a.δ_i,
     Ω_0 = a.Ω_0,
     Ω_dot = a.Ω_dot,
     M_0 = a.M_0,
@@ -147,7 +147,7 @@ end
         Δsqrt_A,
         e,
         ω,
-        δi,
+        δ_i,
         Ω_0,
         Ω_dot,
         M_0,

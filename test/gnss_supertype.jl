@@ -82,7 +82,7 @@
     # The modern civil message families are named one level down as well: CNAV
     # and CNAV-2 share the quasi-Keplerian ephemeris and full-width week that
     # legacy LNAV lacks, and the three B-CNAV messages share the same plus the
-    # broadcast `sat_type` and the BDGIM set, which D1/D2 lacks — so a
+    # broadcast `SatType` and the BDGIM set, which D1/D2 lacks — so a
     # consumer's propagator dispatches on the family type instead of
     # enumerating messages.
     @test GNSSDecoder.AbstractGPSCNAVData <: GNSSDecoder.AbstractGPSData

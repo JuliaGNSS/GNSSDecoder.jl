@@ -182,7 +182,7 @@ function dnav_test_d1_subframe2_content(;
     C_rc_raw,
     C_rs_raw,
     sqrt_A_raw,
-    t_0e_msb2,
+    t_oe_msb2,
 )
     dnav_test_content(
         (DNAV_TEST_PREAMBLE, 11),
@@ -197,13 +197,13 @@ function dnav_test_d1_subframe2_content(;
         (C_rc_raw, 18),
         (C_rs_raw, 18),
         (sqrt_A_raw, 32),
-        (t_0e_msb2, 2),
+        (t_oe_msb2, 2),
     )
 end
 
 function dnav_test_d1_subframe3_content(;
     SOW,
-    t_0e_lsb15,
+    t_oe_lsb15,
     i_0_raw,
     C_ic_raw,
     Ω_dot_raw,
@@ -217,7 +217,7 @@ function dnav_test_d1_subframe3_content(;
         (0, 4),
         (3, 3),          # FraID = 3
         (SOW, 20),
-        (t_0e_lsb15, 15),
+        (t_oe_lsb15, 15),
         (i_0_raw, 32),
         (C_ic_raw, 18),
         (Ω_dot_raw, 24),

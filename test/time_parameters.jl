@@ -11,14 +11,14 @@
 
     @testset "GPS LNAV: 8-bit weeks against a 10-bit week" begin
         # GPS week 2304 (March 2024) is 256 as broadcast, and a multiple of 256.
-        lnav(WN, WN_0t, WN_LSF = WN_0t) = GNSSDecoderState(
+        lnav(WN, WN_t, WN_LSF = WN_t) = GNSSDecoderState(
             GPSL1CADecoderState(1);
             data = GPSLNAVData(;
                 WN = Int64(WN),
-                A_0UTC = 1.0e-9,
-                A_1UTC = 2.0e-15,
-                t_0t = Int64(405504),
-                WN_0t = Int64(WN_0t),
+                A_0 = 1.0e-9,
+                A_1 = 2.0e-15,
+                t_ot = Int64(405504),
+                WN_t = Int64(WN_t),
                 Δt_LS = Int64(18),
                 Δt_LSF = Int64(18),
                 WN_LSF = Int64(WN_LSF),
@@ -47,11 +47,11 @@
     @testset "GPS CNAV and CNAV-2: 13-bit weeks" begin
         fields(WN, WN_0t) = (;
             WN = Int64(WN),
-            A_0UTC = 1.0e-9,
-            A_1UTC = 2.0e-15,
-            A_2UTC = 3.0e-20,
-            t_0t = Int64(345600),
-            WN_0t = Int64(WN_0t),
+            A_0 = 1.0e-9,
+            A_1 = 2.0e-15,
+            A_2 = 3.0e-20,
+            t_ot = Int64(345600),
+            WN_ot = Int64(WN_0t),
             Δt_LS = Int64(18),
             Δt_LSF = Int64(19),
             WN_LSF = Int64(WN_0t),
@@ -78,8 +78,8 @@
         # GST week 1280 is a multiple of both 256 and 64.
         fields(WN, WN_0t, WN_0G) = (;
             WN = Int64(WN),
-            A_0UTC = 4.0e-9,
-            A_1UTC = 5.0e-15,
+            A_0 = 4.0e-9,
+            A_1 = 5.0e-15,
             t_0t = 3600 * 24,
             WN_0t = WN_0t,
             Δt_LS = 18,
@@ -166,8 +166,8 @@
                 A_0UTC = 1.0e-9,
                 A_1UTC = 2.0e-15,
                 A_2UTC = 3.0e-20,
-                t_0t = Int64(345600),
-                WN_0t = Int64(WN_0t),
+                t_ot = Int64(345600),
+                WN_ot = Int64(WN_0t),
                 Δt_LS = Int64(4),
                 Δt_LSF = Int64(5),
                 WN_LSF = Int64(WN_0t),
@@ -180,10 +180,10 @@
     end
 
     @testset "Inter-system offsets of GPS and BeiDou" begin
-        # GPS CNAV and CNAV-2: one GGTO set, to the system its `GNSS_ID` names.
-        ggto_fields(WN, WN_GGTO, GNSS_ID) = (;
+        # GPS CNAV and CNAV-2: one GGTO set, to the system its `GGTO_ID` names.
+        ggto_fields(WN, WN_GGTO, GGTO_ID) = (;
             WN = Int64(WN),
-            GNSS_ID = Int64(GNSS_ID),
+            GGTO_ID = Int64(GGTO_ID),
             A_0GGTO = 1.0e-9,
             A_1GGTO = 2.0e-15,
             A_2GGTO = 3.0e-20,
@@ -194,9 +194,9 @@
             (GPSL5IDecoderState(1), GPSCNAVData),
             (GPSL1C_DDecoderState(1), GPSCNAV2Data),
         )
-            cnav(WN, WN_GGTO, GNSS_ID = 1) = GNSSDecoderState(
+            cnav(WN, WN_GGTO, GGTO_ID = 1) = GNSSDecoderState(
                 decoder;
-                data = Data(; ggto_fields(WN, WN_GGTO, GNSS_ID)...),
+                data = Data(; ggto_fields(WN, WN_GGTO, GGTO_ID)...),
             )
             s = cnav(2348, 2348)
             @test get_inter_system_time_offset_parameters(s, GST()) ==
@@ -297,8 +297,8 @@
         no_week = GNSSDecoderState(
             GalileoE1BDecoderState(1);
             data = GalileoINAVData(;
-                A_0UTC = 4.0e-9,
-                A_1UTC = 5.0e-15,
+                A_0 = 4.0e-9,
+                A_1 = 5.0e-15,
                 t_0t = 0,
                 WN_0t = 0,
                 A_0G = 6.0e-9,
@@ -316,10 +316,10 @@
             GPSL1CADecoderState(1);
             data = GPSLNAVData(;
                 WN = Int64(256),
-                A_0UTC = 1.0e-9,
-                A_1UTC = 2.0e-15,
-                t_0t = Int64(0),
-                WN_0t = Int64(0),
+                A_0 = 1.0e-9,
+                A_1 = 2.0e-15,
+                t_ot = Int64(0),
+                WN_t = Int64(0),
                 Δt_LS = Int64(18),
                 Δt_LSF = Int64(18),
                 WN_LSF = Int64(0),

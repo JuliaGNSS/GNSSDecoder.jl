@@ -55,17 +55,17 @@ Compose a 24-bit HAS Page Header (HAS SIS ICD Table 7: HASS, reserved, MT, MID, 
 """
 function e6b_header(;
     has_status = 1,
-    message_type = 1,
-    message_id = 3,
-    message_size = 4,
+    MT = 1,
+    MID = 3,
+    MS = 4,
     page_id = 40,
 )
     bits = Bool[]
     galileo_push_field!(bits, has_status, 2)
     galileo_push_field!(bits, 0, 2)                    # reserved
-    galileo_push_field!(bits, message_type, 2)
-    galileo_push_field!(bits, message_id, 5)
-    galileo_push_field!(bits, message_size - 1, 5)     # "0" = 1 page (Table 8)
+    galileo_push_field!(bits, MT, 2)
+    galileo_push_field!(bits, MID, 5)
+    galileo_push_field!(bits, MS - 1, 5)     # "0" = 1 page (Table 8)
     galileo_push_field!(bits, page_id, 8)
     value = UInt32(0)
     for b in bits
@@ -94,14 +94,14 @@ end
 Pages of one Annex D example, wrapped in HAS Page Headers. `has_status` defaults
 to operational so the decoder reports the satellite as usable.
 """
-function e6b_example_pages(example; has_status = 1, message_id = example.message_id)
+function e6b_example_pages(example; has_status = 1, MID = example.MID)
     map(enumerate(example.page_ids)) do (index, page_id)
         octets = hex2bytes(example.encoded_pages_hex[index])
         header = e6b_header(;
             has_status,
-            message_type = example.message_type,
-            message_id,
-            message_size = example.message_size,
+            MT = example.MT,
+            MID,
+            MS = example.MS,
             page_id,
         )
         e6b_page_bits(header, octets)
@@ -166,15 +166,15 @@ end
     @test decoder.cache.page_counter[] == 1
     # MS = 15, so one page cannot complete the message; it must be held.
     groups = decoder.cache.page_groups
-    @test haskey(groups, HAS_ANNEX_C_HEADER.message_id)
-    group = groups[HAS_ANNEX_C_HEADER.message_id]
-    @test group.message_type == HAS_ANNEX_C_HEADER.message_type
-    @test group.message_size == HAS_ANNEX_C_HEADER.message_size
+    @test haskey(groups, HAS_ANNEX_C_HEADER.MID)
+    group = groups[HAS_ANNEX_C_HEADER.MID]
+    @test group.MT == HAS_ANNEX_C_HEADER.MT
+    @test group.MS == HAS_ANNEX_C_HEADER.MS
     @test length(group.page_ids) == 1
     @test group.page_ids[1] == HAS_ANNEX_C_HEADER.page_id
     @test group.octets[1, :] == hex2bytes(HAS_ANNEX_C_ENCODED_PAGE_HEX)
     # HAS status 0 = test mode: decoded, but not reported as usable.
-    @test decoder.raw_data.HAS_status == GNSSDecoder.has_test_mode
+    @test decoder.raw_data.HASS == GNSSDecoder.has_test_mode
     @test !is_sat_healthy(decoder)
     @test isnothing(decoder.data.message)
 end
@@ -189,9 +189,9 @@ end
         octets = rand(rng, UInt8, 53)
         header = e6b_header(;
             has_status = 1,
-            message_type = 1,
-            message_id = 7,
-            message_size = 4,
+            MT = 1,
+            MID = 7,
+            MS = 4,
             page_id = 200,
         )
         bits = e6b_page_bits(header, octets)
@@ -222,9 +222,9 @@ end
             octets = hex2bytes(example.encoded_pages_hex[index])
             group = GNSSDecoder.e6b_collect_page!(
                 cache,
-                example.message_id,
-                example.message_type,
-                example.message_size,
+                example.MID,
+                example.MT,
+                example.MS,
                 page_id,
             ) do row
                 row .= octets
@@ -232,8 +232,8 @@ end
         end
         # Only the last page completes the group.
         @test !isnothing(group)
-        @test length(group.page_ids) == example.message_size
-        octets = Vector{UInt8}(undef, example.message_size * 53)
+        @test length(group.page_ids) == example.MS
+        octets = Vector{UInt8}(undef, example.MS * 53)
         @test GNSSDecoder.e6b_reassemble_message!(
             octets,
             GNSSDecoder.RSErasureScratch(32),
@@ -250,7 +250,7 @@ end
     @test decoder.cache.page_counter[] == 15
     # A completed message clears its page group.
     @test isempty(decoder.cache.page_groups)
-    @test decoder.raw_data.HAS_status == GNSSDecoder.has_operational_mode
+    @test decoder.raw_data.HASS == GNSSDecoder.has_operational_mode
     @test is_sat_healthy(decoder)
     # Corrections are published immediately (nothing left to corroborate).
     @test decoder.data == decoder.raw_data
@@ -376,7 +376,7 @@ end
     @test decoder.cache.page_counter[] == 17
 
     message = decoder.data.message
-    @test message.message_id == HAS_EXAMPLE_2.message_id
+    @test message.message_id == HAS_EXAMPLE_2.MID
     @test message.message_size == 2
     # ICD Annex D: TOH 7, flags [0 0 1 0 0 0], Mask ID 0, IOD Set ID 11.
     @test message.TOH == 7
@@ -451,7 +451,7 @@ end
     # single-valued header fields, nor replace a block of the same kind that the
     # newer message carried. Example 1 is the message that just completed here, so
     # it — not the held example 2 — is the one published as "most recent".
-    @test decoder.data.message.message_id == HAS_EXAMPLE_1.message_id
+    @test decoder.data.message.message_id == HAS_EXAMPLE_1.MID
     @test decoder.data.message.TOH == 0
     @test decoder.data.message.mask_id == 0
     @test decoder.data.message.IOD_set_id == 11
@@ -505,15 +505,15 @@ function e6b_mt1_header_bits(;
     clock_subset = false,
     code_bias = false,
     phase_bias = false,
-    mask_id = 0,
-    IOD_set_id = 0,
+    Mask_ID = 0,
+    IOD_Set_ID = 0,
 )
     bits = Bool[]
     galileo_push_field!(bits, TOH, 12)
     append!(bits, (mask, orbit, clock_full, clock_subset, code_bias, phase_bias))
     galileo_push_field!(bits, 0, 4)          # reserved
-    galileo_push_field!(bits, mask_id, 5)
-    galileo_push_field!(bits, IOD_set_id, 5)
+    galileo_push_field!(bits, Mask_ID, 5)
+    galileo_push_field!(bits, IOD_Set_ID, 5)
     @assert length(bits) == 32
     bits
 end
@@ -545,7 +545,7 @@ end
         # ID, which would then satisfy later Mask Flag = 0 messages instead of
         # holding them until the genuine mask arrives.
         bits = vcat(
-            e6b_mt1_header_bits(; mask = true, mask_id = 7),
+            e6b_mt1_header_bits(; mask = true, Mask_ID = 7),
             galileo_push_field!(Bool[], 0, 4),      # Nsys = 0
             galileo_push_field!(Bool[], 0, 6),      # reserved
         )
@@ -553,7 +553,7 @@ end
         # Positive control: the same message with Nsys = 1 parses, so the
         # rejection above is the zero and not the framing.
         bits = vcat(
-            e6b_mt1_header_bits(; mask = true, mask_id = 7),
+            e6b_mt1_header_bits(; mask = true, Mask_ID = 7),
             galileo_push_field!(Bool[], 1, 4),
             one_gps_system,
             galileo_push_field!(Bool[], 0, 6),
@@ -569,7 +569,7 @@ end
         # correcting no constellation is vacuous and would otherwise publish an
         # empty `clock_subset_corrections` over a good one.
         bits = vcat(
-            e6b_mt1_header_bits(; mask = true, clock_subset = true, mask_id = 3),
+            e6b_mt1_header_bits(; mask = true, clock_subset = true, Mask_ID = 3),
             galileo_push_field!(Bool[], 1, 4),
             one_gps_system,
             galileo_push_field!(Bool[], 0, 6),
@@ -583,7 +583,7 @@ end
         @test isnothing(message.clock_subset_corrections)
         # Positive control: Nsys_sub = 1 for the masked GPS satellite decodes.
         bits = vcat(
-            e6b_mt1_header_bits(; mask = true, clock_subset = true, mask_id = 3),
+            e6b_mt1_header_bits(; mask = true, clock_subset = true, Mask_ID = 3),
             galileo_push_field!(Bool[], 1, 4),
             one_gps_system,
             galileo_push_field!(Bool[], 0, 6),
@@ -633,9 +633,9 @@ end
     held = decoder.cache.pending_message[]
     @test !isnothing(held)
     # The slot carries its own Message Type now, rather than assuming MT1.
-    @test held.message_type == 1
-    @test held.message_id == HAS_EXAMPLE_2.message_id
-    @test held.message_size == HAS_EXAMPLE_2.message_size
+    @test held.MT == 1
+    @test held.MID == HAS_EXAMPLE_2.MID
+    @test held.MS == HAS_EXAMPLE_2.MS
 
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream(fill(dummy, 150)))
     @test isnothing(decoder.cache.pending_message[])
@@ -654,7 +654,7 @@ end
         GalileoE6BDecoderState(1),
         e6b_symbol_stream(e6b_example_pages(HAS_EXAMPLE_1)[1:14]),
     )
-    @test length(partial.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 14
+    @test length(partial.cache.page_groups[HAS_EXAMPLE_1.MID].page_ids) == 14
     @test partial.cache != empty_state.cache
     @test partial != empty_state
 
@@ -682,32 +682,32 @@ end
         # Received and counted (they are seconds of signal), but never stored.
         @test decoder.cache.page_counter[] == 2
         @test isempty(decoder.cache.page_groups)
-        @test isnothing(decoder.raw_data.HAS_status)
+        @test isnothing(decoder.raw_data.HASS)
     end
 
     @testset "reserved page ID and message type are discarded" begin
         for header in (
             e6b_header(;
                 has_status = 1,
-                message_type = 1,
-                message_id = 3,
-                message_size = 4,
+                MT = 1,
+                MID = 3,
+                MS = 4,
                 page_id = 0,
             ),
             e6b_header(;
                 has_status = 1,
-                message_type = 2,
-                message_id = 3,
-                message_size = 4,
+                MT = 2,
+                MID = 3,
+                MS = 4,
                 page_id = 40,
             ),
-            # Page IDs message_size+1 … 32 are the message's zero padding and are
+            # Page IDs MS+1 … 32 are the message's zero padding and are
             # never transmitted (ICD §6.3).
             e6b_header(;
                 has_status = 1,
-                message_type = 1,
-                message_id = 3,
-                message_size = 4,
+                MT = 1,
+                MID = 3,
+                MS = 4,
                 page_id = 30,
             ),
         )
@@ -719,7 +719,7 @@ end
             @test decoder.cache.page_counter[] == 1
             @test isempty(decoder.cache.page_groups)
             # The status is still read from a structurally valid page.
-            @test decoder.raw_data.HAS_status == GNSSDecoder.has_operational_mode
+            @test decoder.raw_data.HASS == GNSSDecoder.has_operational_mode
         end
     end
 
@@ -727,14 +727,14 @@ end
         decoder = GalileoE6BDecoderState(1)
         header = e6b_header(;
             has_status = 2,
-            message_type = 1,
-            message_id = 3,
-            message_size = 4,
+            MT = 1,
+            MID = 3,
+            MS = 4,
             page_id = 40,
         )
         decoder =
             e6b_decode_stream(decoder, e6b_symbol_stream([e6b_page_bits(header, octets)]))
-        @test decoder.raw_data.HAS_status == GNSSDecoder.has_status_reserved
+        @test decoder.raw_data.HASS == GNSSDecoder.has_status_reserved
         @test isempty(decoder.cache.page_groups)
         @test !is_sat_healthy(decoder)
     end
@@ -743,9 +743,9 @@ end
         decoder = GalileoE6BDecoderState(1)
         header = e6b_header(;
             has_status = 1,
-            message_type = 1,
-            message_id = 3,
-            message_size = 4,
+            MT = 1,
+            MID = 3,
+            MS = 4,
             page_id = 40,
         )
         page = e6b_page_bits(header, octets)
@@ -758,9 +758,9 @@ end
         first_page = e6b_page_bits(
             e6b_header(;
                 has_status = 1,
-                message_type = 1,
-                message_id = 3,
-                message_size = 4,
+                MT = 1,
+                MID = 3,
+                MS = 4,
                 page_id = 40,
             ),
             octets,
@@ -768,16 +768,16 @@ end
         second_page = e6b_page_bits(
             e6b_header(;
                 has_status = 1,
-                message_type = 1,
-                message_id = 3,
-                message_size = 5,
+                MT = 1,
+                MID = 3,
+                MS = 5,
                 page_id = 41,
             ),
             octets,
         )
         decoder = e6b_decode_stream(decoder, e6b_symbol_stream([first_page, second_page]))
         group = decoder.cache.page_groups[3]
-        @test group.message_size == 5
+        @test group.MS == 5
         @test length(group.page_ids) == 1
         @test group.page_ids[1] == 41
     end
@@ -787,9 +787,9 @@ end
         page = e6b_page_bits(
             e6b_header(;
                 has_status = 1,
-                message_type = 1,
-                message_id = 3,
-                message_size = 3,
+                MT = 1,
+                MID = 3,
+                MS = 3,
                 page_id = 40,
             ),
             octets,
@@ -815,15 +815,15 @@ end
     stop = e6b_page_bits(
         e6b_header(;
             has_status = 3,
-            message_type = 1,
-            message_id = 3,
-            message_size = 4,
+            MT = 1,
+            MID = 3,
+            MS = 4,
             page_id = 40,
         ),
         hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1]),
     )
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream([stop]))
-    @test decoder.data.HAS_status == GNSSDecoder.has_do_not_use
+    @test decoder.data.HASS == GNSSDecoder.has_do_not_use
     @test !is_sat_healthy(decoder)
     @test isnothing(decoder.data.orbit_corrections)
     @test isnothing(decoder.data.code_biases)
@@ -852,9 +852,9 @@ end
     partial = e6b_page_bits(
         e6b_header(;
             has_status = 1,
-            message_type = 1,
-            message_id = 9,
-            message_size = 4,
+            MT = 1,
+            MID = 9,
+            MS = 4,
             page_id = 77,
         ),
         hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1]),
@@ -871,7 +871,7 @@ end
     @test isnothing(decoder.data.orbit_corrections)
     # Masks survive — they change only when the corrected set does.
     @test haskey(decoder.raw_data.masks, 0)
-    @test decoder.raw_data.HAS_status == GNSSDecoder.has_operational_mode
+    @test decoder.raw_data.HASS == GNSSDecoder.has_operational_mode
 
     # And a clock-only message decodes straight away on the surviving mask.
     decoder =
@@ -883,8 +883,8 @@ end
     pages = e6b_example_pages(HAS_EXAMPLE_1)
     decoder =
         e6b_decode_stream(GalileoE6BDecoderState(1), e6b_symbol_stream(pages[1:(end-1)]))
-    message_id = HAS_EXAMPLE_1.message_id
-    @test length(decoder.cache.page_groups[message_id].page_ids) == length(pages) - 1
+    MID = HAS_EXAMPLE_1.MID
+    @test length(decoder.cache.page_groups[MID].page_ids) == length(pages) - 1
     old_counter = decoder.cache.page_counter[]
     masks = decoder.raw_data.masks
 
@@ -894,14 +894,14 @@ end
     @test isempty(decoder.cache.soft_buffer)
     @test isnothing(decoder.num_bits_since_time_reference)
     @test !decoder.is_polarity_inverted
-    @test length(decoder.cache.page_groups[message_id].page_ids) == length(pages) - 1
+    @test length(decoder.cache.page_groups[MID].page_ids) == length(pages) - 1
     @test decoder.raw_data.masks === masks
 
     # The final encoded page can come from a different satellite and completes
     # the HAS message assembled from the first satellite's pages.
     decoder = e6b_decode_stream(decoder, e6b_symbol_stream(pages[end:end]))
     @test isempty(decoder.cache.page_groups)
-    @test decoder.data.message.message_id == message_id
+    @test decoder.data.message.message_id == MID
     @test haskey(decoder.raw_data.masks, 0)
 
     # An orphaned, reassembled message also survives handover and is released
@@ -923,7 +923,7 @@ end
 
 @testset "Galileo E6-B decode! is allocation-free" begin
     octets = hex2bytes(HAS_EXAMPLE_1.encoded_pages_hex[1])
-    header(; kwargs...) = e6b_header(; has_status = 1, message_type = 1, kwargs...)
+    header(; kwargs...) = e6b_header(; has_status = 1, MT = 1, kwargs...)
     page(; kwargs...) = e6b_page_bits(header(; kwargs...), octets)
     dummy = e6b_page_bits(0xAF3BC3, octets)
     example_1 = e6b_example_pages(HAS_EXAMPLE_1)
@@ -932,7 +932,7 @@ end
     # page is the message itself) defining Mask ID 3 and carrying a Clock Subset
     # block — the one content block the Annex D examples do not exercise.
     subset_bits = vcat(
-        e6b_mt1_header_bits(; TOH = 30, mask = true, clock_subset = true, mask_id = 3),
+        e6b_mt1_header_bits(; TOH = 30, mask = true, clock_subset = true, Mask_ID = 3),
         galileo_push_field!(Bool[], 1, 4),
         e6b_system_mask_bits(;
             GNSS_ID = 0,
@@ -953,31 +953,31 @@ end
         zeros(UInt8, GNSSDecoder.E6B_OCTETS_PER_PAGE - length(subset_octets)),
     )
     subset_page = e6b_page_bits(
-        header(; message_id = 21, message_size = 1, page_id = 1),
+        header(; MID = 21, MS = 1, page_id = 1),
         subset_octets,
     )
     stop = e6b_page_bits(
-        e6b_header(; has_status = 3, message_id = 3, message_size = 4, page_id = 40),
+        e6b_header(; has_status = 3, MID = 3, MS = 4, page_id = 40),
         octets,
     )
     reserved_status = e6b_page_bits(
-        e6b_header(; has_status = 2, message_id = 3, message_size = 4, page_id = 40),
+        e6b_header(; has_status = 2, MID = 3, MS = 4, page_id = 40),
         octets,
     )
     pages = vcat(
         example_2,                              # held: its mask is unknown
-        [page(; message_id = 9, message_size = 4, page_id = 77)],
+        [page(; MID = 9, MS = 4, page_id = 77)],
         fill(dummy, 150),                       # expires the held message and group 9
         example_2,                              # held again
         example_1,                              # defines Mask ID 0 and releases it
         example_2,                              # parses straight on the known mask
         [subset_page],                          # a second mask and a clock subset
         [dummy, reserved_status],
-        [page(; message_id = 3, message_size = 4, page_id = 0)],     # reserved Page ID
-        [page(; message_id = 3, message_size = 4, page_id = 30)],    # zero padding
-        [page(; message_id = 3, message_size = 4, page_id = 40)],
-        [page(; message_id = 3, message_size = 4, page_id = 40)],    # duplicate
-        [page(; message_id = 3, message_size = 5, page_id = 41)],    # restarts group
+        [page(; MID = 3, MS = 4, page_id = 0)],     # reserved Page ID
+        [page(; MID = 3, MS = 4, page_id = 30)],    # zero padding
+        [page(; MID = 3, MS = 4, page_id = 40)],
+        [page(; MID = 3, MS = 4, page_id = 40)],    # duplicate
+        [page(; MID = 3, MS = 5, page_id = 41)],    # restarts group
         [stop],                                 # "do not use": everything goes
         example_1,
         example_2,
@@ -1021,8 +1021,8 @@ end
     snapshot = copy(partial)
     next_pages = e6b_symbol_stream(example_1[4:6])
     partial = decode!(partial, next_pages, length(next_pages))
-    @test length(snapshot.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 3
-    @test length(partial.cache.page_groups[HAS_EXAMPLE_1.message_id].page_ids) == 6
+    @test length(snapshot.cache.page_groups[HAS_EXAMPLE_1.MID].page_ids) == 3
+    @test length(partial.cache.page_groups[HAS_EXAMPLE_1.MID].page_ids) == 6
 end
 
 @testset "Galileo HAS inline mask types" begin
@@ -1054,6 +1054,6 @@ end
     b.octets[2] = 7
     @test a != b
     b.octets[2] = 2
-    b.message_id = 1
+    b.MID = 1
     @test a != b
 end

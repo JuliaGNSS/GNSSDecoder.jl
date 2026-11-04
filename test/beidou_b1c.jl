@@ -121,7 +121,7 @@ const _B1C_G = (
     IODC = 517,
     IODE = 5,
     t_oe_raw = 1200,
-    sat_type = 3,
+    SatType = 3,
     ΔA_raw = -8000,
     A_dot_raw = 1024,
     Δn_0_raw = -5000,
@@ -161,7 +161,7 @@ function _golden_sf2_bits(g = _B1C_G)
             (8, g.IODE),
             # Ephemeris I (Figure 6-12)
             (11, g.t_oe_raw),
-            (2, g.sat_type),
+            (2, g.SatType),
             (26, g.ΔA_raw),
             (25, g.A_dot_raw),
             (17, g.Δn_0_raw),
@@ -240,7 +240,7 @@ function _golden_sf3_page1_bits(; HS = 0)
 end
 
 """
-Page type 2: SISAI_oc + WN_a/t_0a + four reduced almanacs (Figure 6-9).
+Page type 2: SISAI_oc + WN_a/t_oa + four reduced almanacs (Figure 6-9).
 """
 function _golden_sf3_page2_bits()
     red(prn) = [(6, prn), (2, 3), (8, -30), (7, 20), (7, -25), (8, 48)]
@@ -249,7 +249,7 @@ function _golden_sf3_page2_bits()
         vcat(
             _sf3_header(2),
             [(11, 900), (5, 7), (3, 2), (3, 3)],       # SISAI_oc
-            [(13, 812), (8, 100)],                     # WN_a, t_0a
+            [(13, 812), (8, 100)],                     # WN_a, t_oa
             red(7),
             red(8),
             [(6, 0), (2, 0), (8, 0), (7, 0), (7, 0), (8, 0)],
@@ -399,9 +399,9 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = 0))
+        @test !GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; SatType = 0))
         @test all(
-            GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_subframe2_decoded(BeiDouCNAV1Data(d; SatType = t)) for t = 1:3
         )
         @test !state.is_polarity_inverted
         # The SOH stamps the leading edge of *this* subframe 1 (ICD §7.3), so
@@ -417,8 +417,8 @@ end
         @test d.IODC == 517
         @test d.IODE == 5
         # Ephemeris (ICD Table 7-8 scale factors).
-        @test d.t_0e == 1200 * 300
-        @test d.sat_type == 3
+        @test d.t_oe == 1200 * 300
+        @test d.SatType == 3
         @test d.ΔA ≈ -8000 * 2.0^-9
         @test d.A_dot ≈ 1024 * 2.0^-21
         @test d.Δn_0 ≈ -5000 * 2.0^-44 * 3.1415926535898
@@ -429,7 +429,7 @@ end
         @test d.Ω_0 ≈ -1122334455 * 2.0^-32 * 3.1415926535898
         @test d.i_0 ≈ 666777888 * 2.0^-32 * 3.1415926535898
         @test d.Ω_dot ≈ -100000 * 2.0^-44 * 3.1415926535898
-        @test d.i_dot ≈ -4000 * 2.0^-44 * 3.1415926535898
+        @test d.i_0_dot ≈ -4000 * 2.0^-44 * 3.1415926535898
         @test d.C_is ≈ -2000 * 2.0^-30
         @test d.C_ic ≈ 1500 * 2.0^-30
         @test d.C_rs ≈ -300000 * 2.0^-8
@@ -437,13 +437,13 @@ end
         @test d.C_us ≈ -80000 * 2.0^-30
         @test d.C_uc ≈ 70000 * 2.0^-30
         # Clock + group delay (Tables 7-5, 7-6).
-        @test d.t_0c == 1200 * 300
-        @test d.a_f0 ≈ -1000000 * 2.0^-34
-        @test d.a_f1 ≈ 200000 * 2.0^-50
-        @test d.a_f2 ≈ -500 * 2.0^-66
-        @test d.T_GD_B2ap ≈ -100 * 2.0^-34
+        @test d.t_oc == 1200 * 300
+        @test d.a_0 ≈ -1000000 * 2.0^-34
+        @test d.a_1 ≈ 200000 * 2.0^-50
+        @test d.a_2 ≈ -500 * 2.0^-66
+        @test d.T_GDB2ap ≈ -100 * 2.0^-34
         @test d.ISC_B1Cd ≈ 50 * 2.0^-34
-        @test d.T_GD_B1Cp ≈ -75 * 2.0^-34
+        @test d.T_GDB1Cp ≈ -75 * 2.0^-34
         # Page header fields (all pages carried HS=0, AIF=1, SISMAI=5).
         @test d.HS == 0
         @test d.DIF === false
@@ -457,21 +457,21 @@ end
         @test d.SISAI_oc2 == 3
         @test is_sat_healthy(state)
         # Page 1: BDGIM iono (Table 7-10; α₅ scale −2⁻³) + BDT-UTC (Table 7-20).
-        @test d.α_bdgim_1 ≈ 800 * 2.0^-3
-        @test d.α_bdgim_2 ≈ -40 * 2.0^-3
-        @test d.α_bdgim_3 ≈ 16 * 2.0^-3
-        @test d.α_bdgim_4 ≈ 24 * 2.0^-3
-        @test d.α_bdgim_5 ≈ -(32 * 2.0^-3)
-        @test d.α_bdgim_6 ≈ -8 * 2.0^-3
-        @test d.α_bdgim_7 ≈ 12 * 2.0^-3
-        @test d.α_bdgim_8 ≈ -16 * 2.0^-3
-        @test d.α_bdgim_9 ≈ 20 * 2.0^-3
+        @test d.α_1 ≈ 800 * 2.0^-3
+        @test d.α_2 ≈ -40 * 2.0^-3
+        @test d.α_3 ≈ 16 * 2.0^-3
+        @test d.α_4 ≈ 24 * 2.0^-3
+        @test d.α_5 ≈ -(32 * 2.0^-3)
+        @test d.α_6 ≈ -8 * 2.0^-3
+        @test d.α_7 ≈ 12 * 2.0^-3
+        @test d.α_8 ≈ -16 * 2.0^-3
+        @test d.α_9 ≈ 20 * 2.0^-3
         @test d.A_0UTC ≈ -12000 * 2.0^-35
         @test d.A_1UTC ≈ 3000 * 2.0^-51
         @test d.A_2UTC ≈ -50 * 2.0^-68
         @test d.Δt_LS == 4
-        @test d.t_0t == 30000 * 2^4
-        @test d.WN_0t == 800
+        @test d.t_ot == 30000 * 2^4
+        @test d.WN_ot == 800
         @test d.WN_LSF == 801
         @test d.DN == 3
         @test d.Δt_LSF == 5
@@ -479,13 +479,13 @@ end
         @test length(d.reduced_almanacs) == 3
         red = d.reduced_almanacs[7]
         @test red.PRN_a == 7
-        @test red.sat_type == 3
+        @test red.SatType == 3
         @test red.WN_a == 812
-        @test red.t_0a == 100 * 2^12
-        @test red.δA ≈ -30 * 2.0^9
+        @test red.t_oa == 100 * 2^12
+        @test red.δ_A ≈ -30 * 2.0^9
         @test red.Ω_0 ≈ 20 * 2.0^-6 * 3.1415926535898
         @test red.Φ_0 ≈ -25 * 2.0^-6 * 3.1415926535898
-        @test red.health == 48
+        @test red.Health == 48
         @test haskey(d.reduced_almanacs, 8) && haskey(d.reduced_almanacs, 9)
         # Page 3: EOP (Table 7-18) + BGTO for GPS (Table 7-21).
         @test d.t_EOP == 20000 * 2^4
@@ -506,11 +506,11 @@ end
         @test length(d.midi_almanacs) == 1
         alm = d.midi_almanacs[25]
         @test alm.PRN_a == 25
-        @test alm.sat_type == 2
+        @test alm.SatType == 2
         @test alm.WN_a == 812
-        @test alm.t_0a == 100 * 2^12
+        @test alm.t_oa == 100 * 2^12
         @test alm.e ≈ 500 * 2.0^-16
-        @test alm.δi ≈ -256 * 2.0^-14 * 3.1415926535898
+        @test alm.δ_i ≈ -256 * 2.0^-14 * 3.1415926535898
         @test alm.sqrt_A ≈ 103894 * 2.0^-4
         @test alm.Ω_0 ≈ -20000 * 2.0^-15 * 3.1415926535898
         @test alm.Ω_dot ≈ -60 * 2.0^-33 * 3.1415926535898
@@ -518,7 +518,7 @@ end
         @test alm.M_0 ≈ -15000 * 2.0^-15 * 3.1415926535898
         @test alm.a_f0 ≈ -800 * 2.0^-20
         @test alm.a_f1 ≈ 100 * 2.0^-37
-        @test alm.health == 64
+        @test alm.Health == 64
         @test d.num_sf3_pages_received == 4
         # Signal metadata forwarding.
         @test get_signal_type(state) == BeiDouB1C_D

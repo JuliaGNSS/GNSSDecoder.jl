@@ -93,7 +93,7 @@ end
         @test d.l5_health == false
         @test d.t_op == 30_000
         @test d.URA_ED_index == 0
-        @test d.t_0e == 30_000
+        @test d.t_oe == 30_000
         @test d.ΔA == 0.0
         @test d.A_dot == 0.0
         @test d.Δn_0 ≈ 100 * 2.0^-44 * PI
@@ -154,7 +154,7 @@ end
         @test d.l5_health == false
         @test d.t_op == 259200
         @test d.URA_ED_index == 0
-        @test d.t_0e == 264600
+        @test d.t_oe == 264600
         @test d.ΔA ≈ 922.048828125
         @test d.A_dot ≈ 0.0
         @test d.Δn_0 ≈ 3.7252334550430533e-9 * π
@@ -169,7 +169,7 @@ end
         @test d.Ω_0 ≈ 0.51429651258513331 * π
         @test d.i_0 ≈ 0.34116418519988656 * π
         @test d.ΔΩ_dot ≈ 3.7252334550430533e-9 * π
-        @test d.i_dot ≈ 9.9987573776161298e-11 * π
+        @test d.IDOT ≈ 9.9987573776161298e-11 * π
         @test d.C_is ≈ 4.0000304579734802e-6
         @test d.C_ic ≈ 2.9997900128364563e-6
         @test d.C_rs ≈ 6.0
@@ -181,7 +181,7 @@ end
         @test d.URA_NED0_index == 0
         @test d.URA_NED1_index == 0
         @test d.URA_NED2_index == 0
-        @test d.t_0c == 264600
+        @test d.t_oc == 264600
         @test d.a_f0 ≈ 6.4874766394495964e-6
         @test d.a_f1 ≈ 1.0324008314910316e-9
         @test d.a_f2 ≈ 4.4322184811207421e-16
@@ -204,23 +204,23 @@ end
 
         # Message type 32 — EOP. Spirent's reference decoder predates
         # IS-GPS-705J and prints the 31-bit field as ΔUT1 with the old 2⁻²⁴
-        # scale (-0.25315952301025391 s); 705J defines it as ΔUT_GPS with
+        # scale (-0.25315952301025391 s); 705J defines it as ΔUTGPS with
         # scale 2⁻²³ (Table 20-VII), i.e. exactly twice that.
         @test d.t_EOP == 259200
         @test d.PM_X ≈ 0.10612583160400391
         @test d.PM_X_dot ≈ 0.0013251304626464844
         @test d.PM_Y ≈ 0.4459381103515625
         @test d.PM_Y_dot ≈ 0.00040197372436523438
-        @test d.ΔUT_GPS ≈ 2 * -0.25315952301025391
-        @test d.ΔUT_GPS_dot ≈ -0.00046199560165405273  # rate scale unchanged in 705J
+        @test d.ΔUTGPS ≈ 2 * -0.25315952301025391
+        @test d.ΔUTGPS_dot ≈ -0.00046199560165405273  # rate scale unchanged in 705J
 
         # Message type 33 — UTC.
-        @test d.A_0UTC ≈ 9.5364521257579327e-7
-        @test d.A_1UTC ≈ 1.8185453143360064e-12
-        @test d.A_2UTC ≈ 0.0
+        @test d.A_0 ≈ 9.5364521257579327e-7
+        @test d.A_1 ≈ 1.8185453143360064e-12
+        @test d.A_2 ≈ 0.0
         @test d.Δt_LS == 18
-        @test d.t_0t == 507904
-        @test d.WN_0t == 2106
+        @test d.t_ot == 507904
+        @test d.WN_ot == 2106
         @test d.WN_LSF == 2104
         @test d.DN == 2
         @test d.Δt_LSF == 18
@@ -228,7 +228,7 @@ end
         # Message type 35 — GGTO.
         @test d.t_GGTO == 259200
         @test d.WN_GGTO == 2106
-        @test d.GNSS_ID == 0
+        @test d.GGTO_ID == 0
         @test d.A_0GGTO ≈ 0.0
         @test d.A_1GGTO ≈ 0.0
         @test d.A_2GGTO ≈ 0.0
@@ -238,13 +238,13 @@ end
         @test !isnothing(d.reduced_almanacs) && length(d.reduced_almanacs) == 11
         ra1 = d.reduced_almanacs[1]
         @test ra1.WN_a == 2106
-        @test ra1.t_0a == 507904
-        @test ra1.δA ≈ 1024.0
+        @test ra1.t_oa == 507904
+        @test ra1.δ_A ≈ 1024.0
         @test ra1.Ω_0 ≈ 0.296875 * π
         @test ra1.Φ_0 ≈ -0.140625 * π
         @test !ra1.l1_health && !ra1.l2_health && !ra1.l5_health
         ra5 = d.reduced_almanacs[5]
-        @test ra5.δA ≈ 1024.0
+        @test ra5.δ_A ≈ 1024.0
         @test ra5.Ω_0 ≈ -0.765625 * π
         @test ra5.Φ_0 ≈ -0.234375 * π
         ra11 = d.reduced_almanacs[11]
@@ -256,9 +256,9 @@ end
         @test !isnothing(d.midi_almanacs) && length(d.midi_almanacs) == 1
         ma = d.midi_almanacs[26]
         @test ma.WN_a == 2106
-        @test ma.t_0a == 507904
+        @test ma.t_oa == 507904
         @test ma.e ≈ 0.0
-        @test ma.δi ≈ 0.00555419921875 * π
+        @test ma.δ_i ≈ 0.00555419921875 * π
         @test ma.Ω_dot ≈ 0.0
         # Spirent's dump prints the truncated "5153"; the transmitted 17-bit
         # field is 82459 = 5153.6875 (matches the same constellation's L1C-D
@@ -280,7 +280,7 @@ end
         @test cdc1.t_OD == 259200
         @test cdc1.δa_f0 ≈ 0.0
         @test cdc1.δa_f1 ≈ 0.0
-        @test cdc1.UDRA_index == 0
+        @test cdc1.UDRA == 0
         cdc7 = d.clock_corrections[7]  # from message type 34
         @test cdc7.t_op_D == 259200
         @test cdc7.t_OD == 259200
@@ -294,7 +294,7 @@ end
         @test edc3.Δi ≈ 0.0
         @test edc3.ΔΩ ≈ 0.0
         @test edc3.ΔA ≈ 0.0
-        @test edc3.UDRA_dot_index == 0
+        @test edc3.UDRA_dot == 0
 
         # Text messages (the simulator broadcasts "Spirent Communications
         # L2C test text message." across pages; the first cycle carries
