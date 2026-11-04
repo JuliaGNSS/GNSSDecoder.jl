@@ -108,6 +108,191 @@ end
         @test !is_sat_healthy(state)
     end
 
+    @testset "Message type 40: GPS ISM Packet (IRN-IS-705J-004)" begin
+        # Decode MT40 messages carrying `packets` (one each, consecutive TOW counts)
+        # followed by a message type 10 whose preamble lets the last one sync.
+        function decode_ism(packets...)
+            messages = [
+                build_mt40(; tow_count = 1233 + k, packet) for
+                (k, packet) in enumerate(packets)
+            ]
+            mt10 = build_mt10(; tow_count = 1234 + length(packets))
+            stream = fec_encode_soft(CNAVTestEncoder(), reduce(vcat, [messages; [mt10]]))
+            decode!(GPSL5IDecoderState(9), stream, length(stream)).raw_data
+        end
+        hours = 3600.0
+
+        @testset "CRC-32Q" begin
+            # The catalogue check value of CRC-32/AIXM (same polynomial, init 0, no
+            # reflection, no xor-out) over ASCII "123456789".
+            message = codeunits("123456789")
+            word = foldl((acc, b) -> (acc << 8) | UInt128(b), message; init = UInt128(0))
+            @test GNSSDecoder.crc32q(word, 72, 1, 72) == 0x3010bf7f
+            bits = [((b >> (7 - i)) & 0x01) == 0x01 for b in message for i = 0:7]
+            @test ism_crc32q(bits) == 0x3010bf7f
+        end
+
+        @testset "every field" begin
+            packet = build_ism_packet()
+            d = decode_ism(packet)
+            @test d.last_message_type == 40
+            @test d.TOW == 1234 * 6
+            ism = d.ism
+            @test ism isa GNSSDecoder.GPSIntegritySupportMessage
+            @test ism.WN_ISM == 2345
+            @test ism.TOW_ISM == 7 * 4 * 3600
+            @test ism.t_correl ≈ 0.67hours        # code 0011
+            @test ism.β_nom ≈ 0.4                 # 4 × 0.1 m
+            @test ism.γ_nom ≈ 0.25                # 5 × 0.05
+            @test ism.R_sat ≈ 1.00e-5 / hours     # code 0110
+            @test ism.MFD_sat ≈ 1.0hours          # code 0010
+            @test ism.R_const ≈ 1.00e-6 / hours   # code 0111
+            @test ism.MFD_const ≈ 0.5hours        # code 0001
+            @test ism.Service_Level == 3          # code 010
+            @test ism.GPS_PRN_Inclusion_Mask == UInt64(0x5555_5555_5555_5555 >> 1)
+            @test ism.ISM_CRC == ism_crc32q(packet[1:204])
+            @test ism.ISM_CRC == foldl((acc, b) -> 2acc + b, packet[205:236]; init = 0)
+        end
+
+        @testset "smallest codes" begin
+            ism = decode_ism(
+                build_ism_packet(;
+                    WN_ISM = 0,
+                    TOW_ISM = 0,
+                    t_correl = 0,
+                    β_nom = 0,
+                    γ_nom = 0,
+                    R_sat = 0,
+                    MFD_sat = 0,
+                    R_const = 0,
+                    MFD_const = 0,
+                    service_level = 0,
+                    mask = 0,
+                ),
+            ).ism
+            @test ism.WN_ISM == 0
+            @test ism.TOW_ISM == 0
+            @test ism.t_correl ≈ 0.25hours
+            @test ism.β_nom == 0.0
+            @test ism.γ_nom == 0.0
+            @test ism.R_sat ≈ 1.00e-8 / hours
+            @test ism.MFD_sat ≈ 0.25hours
+            @test ism.R_const ≈ 3.16e-10 / hours
+            @test ism.MFD_const ≈ 0.25hours
+            @test ism.Service_Level == 1
+            @test ism.GPS_PRN_Inclusion_Mask == 0
+        end
+
+        @testset "largest defined codes" begin
+            # Reserved For ISM all ones too: the decoder must not read it.
+            ism = decode_ism(
+                build_ism_packet(;
+                    WN_ISM = 8191,
+                    TOW_ISM = 41,
+                    t_correl = 14,
+                    β_nom = 15,
+                    γ_nom = 15,
+                    R_sat = 8,
+                    MFD_sat = 6,
+                    R_const = 8,
+                    MFD_const = 6,
+                    service_level = 4,
+                    mask = typemax(UInt64) >> 1,
+                    reserved = -1,  # all ones
+                ),
+            ).ism
+            @test ism.WN_ISM == 8191
+            @test ism.TOW_ISM == 164 * 3600       # valid range ends at 164 hours
+            @test ism.t_correl ≈ 12.0hours
+            @test ism.β_nom ≈ 1.5
+            @test ism.γ_nom ≈ 0.75
+            @test ism.R_sat ≈ 1.00e-4 / hours
+            @test ism.MFD_sat ≈ 8.0hours
+            @test ism.R_const ≈ 3.16e-6 / hours
+            @test ism.MFD_const ≈ 8.0hours
+            @test ism.Service_Level == 5
+            @test ism.GPS_PRN_Inclusion_Mask == typemax(UInt64) >> 1
+        end
+
+        @testset "Reserved codes decode as nothing" begin
+            for (R_sat, MFD, R_const, t_correl, service_level) in
+                ((9, 7, 9, 15, 5), (15, 15, 15, 15, 7))
+                ism = decode_ism(
+                    build_ism_packet(;
+                        t_correl,
+                        R_sat,
+                        MFD_sat = MFD,
+                        R_const,
+                        MFD_const = MFD,
+                        service_level,
+                    ),
+                ).ism
+                @test isnothing(ism.t_correl)
+                @test isnothing(ism.R_sat)
+                @test isnothing(ism.MFD_sat)
+                @test isnothing(ism.R_const)
+                @test isnothing(ism.MFD_const)
+                @test isnothing(ism.Service_Level)
+            end
+        end
+
+        @testset "PRN Inclusion Mask follows Table 30-XIc" begin
+            # Set packet bit 55 (PRN 1) or 117 (PRN 63) alone, then re-CRC.
+            for (packet_bit, expected) in ((55, UInt64(1) << 62), (117, UInt64(1)))
+                packet = build_ism_packet(; mask = 0)
+                packet[packet_bit] = true
+                setbits!(packet, 205, 32, ism_crc32q(packet[1:204]))
+                @test decode_ism(packet).ism.GPS_PRN_Inclusion_Mask == expected
+            end
+        end
+
+        @testset "packets the decoder must not publish" begin
+            valid = build_ism_packet()
+            crc = ism_crc32q(valid[1:204])
+            corrupted_data = copy(valid)
+            corrupted_data[30] = !corrupted_data[30]   # a β_nom bit, CRC unchanged
+            rejected = (
+                build_ism_packet(; ism_crc = crc ⊻ 0x0000_0001),
+                corrupted_data,
+                build_ism_packet(; gnss_id = 0b0000),  # test packet, valid CRC
+                build_ism_packet(; gnss_id = 0b0001),  # reserved GNSS ID
+                build_ism_packet(; gnss_id = 0b1111),
+            )
+            for packet in rejected
+                d = decode_ism(packet)
+                @test d.last_message_type == 40
+                @test d.TOW == 1234 * 6
+                @test isnothing(d.ism)
+            end
+
+            # The pre-IRN-004 layout (IS-GPS-705J Table 20-XIa): GNSS ID 0100, fields
+            # from bit 43, the 63-bit mask at 89-151, filler, and a 32-bit CRC at
+            # 245-276 over bits 39-244. Message bits 243-274 hold no ISM CRC of the
+            # new packet, so the message is rejected rather than misread.
+            old = falses(236)
+            setbits!(old, 1, 4, 0b0100)
+            setbits!(old, 5, 13, 2345)
+            setbits!(old, 48, 3, 2)
+            setbits!(old, 51, 63, UInt64(0x5555_5555_5555_5555 >> 1))
+            old_crc = ism_crc32q(old[1:206])
+            setbits!(old, 207, 30, old_crc >> 2)  # bits 245-274
+            mt40 = build_mt40(; packet = old, reserved = old_crc & 0x3)  # 275-276
+            mt10 = build_mt10(; tow_count = 1235)
+            stream = fec_encode_soft(CNAVTestEncoder(), [mt40; mt10])
+            d = decode!(GPSL5IDecoderState(9), stream, length(stream)).raw_data
+            @test d.last_message_type == 40
+            @test isnothing(d.ism)
+
+            # A rejected packet leaves the previous valid one in place; a later valid
+            # one replaces it.
+            other = build_ism_packet(; service_level = 3)
+            d = decode_ism(valid, rejected[1], rejected[3])
+            @test d.ism == decode_ism(valid).ism
+            d = decode_ism(valid, other)
+            @test d.ism.Service_Level == 4
+        end
+    end
+
     @testset "Phase-inverted stream decodes with is_polarity_inverted" begin
         enc = CNAVTestEncoder()
         stream =

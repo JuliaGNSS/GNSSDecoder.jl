@@ -50,9 +50,10 @@ include("allocation_utils.jl")
     include("reset_for_another_satellite.jl")
     include("bit_fiddling.jl")
     include("gpsl1.jl")
-    include("gps_l1c_d.jl")
-    # Shared CNAV transmit-chain helpers, consumed by both the L5I and L2C tests.
+    # Shared CNAV transmit-chain helpers, consumed by the L5I and L2C tests, and the
+    # ISM Packet builder, consumed by the L1C-D subframe 3 page 8 tests as well.
     include("cnav_test_utils.jl")
+    include("gps_l1c_d.jl")
     include("gps_l5i.jl")
     include("gps_l2cm.jl")
     # Shared Galileo transmit-chain helpers (the K=7 NSC encoder every Galileo

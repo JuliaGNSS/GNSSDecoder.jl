@@ -105,28 +105,79 @@ function build_mt10(;
 end
 
 """
-Build a CNAV message type 40 (Integrity Support Message, IS-GPS-705J
-Fig 20-14a) with a valid CRC. The recordings carry none, so the allocation
-tests append this one to reach the ISM parser.
+    ism_crc32q(bits) -> UInt32
+
+Reference CRC-32Q (test-only): the remainder of `bits` (first bit = highest power),
+right-padded with 32 zeros, divided by g(X) = X³² + X³¹ + X²⁴ + X²² + X¹⁶ + X¹⁴ + X⁸ +
+X⁷ + X⁵ + X³ + X + 1, by long division as IS-GPS-200 §30.3.3.10.1.2.2.13 (IRN-IS-200N-004)
+writes it.
 """
-function build_mt40(; prn = 9, tow_count = 1234, mask = UInt64(0x5555_5555_5555_5555 >> 1))
+function ism_crc32q(bits::AbstractVector{Bool})
+    g = [k in (32, 31, 24, 22, 16, 14, 8, 7, 5, 3, 1, 0) for k = 32:-1:0]
+    m = [collect(bits); falses(32)]
+    for i = 1:length(bits)
+        m[i] && (m[i:(i+32)] .⊻= g)
+    end
+    return UInt32(foldl((acc, b) -> 2acc + b, m[(end-31):end]; init = 0))
+end
+
+"""
+    build_ism_packet(; kwargs...) -> BitVector
+
+A 236-bit GPS ISM Packet (IS-GPS-200 Figure 30-19, Table 30-XIa, as amended by
+IRN-IS-200N-004), every field given as its raw code. `ism_crc = nothing` computes the
+ISM CRC over packet bits 1-204; an integer writes that value instead.
+"""
+function build_ism_packet(;
+    gnss_id = 0b0100,
+    WN_ISM = 2345,
+    TOW_ISM = 7,
+    t_correl = 3,
+    β_nom = 4,
+    γ_nom = 5,
+    R_sat = 6,
+    MFD_sat = 2,
+    R_const = 7,
+    MFD_const = 1,
+    service_level = 2,
+    mask = UInt64(0x5555_5555_5555_5555 >> 1),
+    reserved = 0,
+    ism_crc = nothing,
+)
+    bits = falses(236)
+    setbits!(bits, 1, 4, gnss_id)       # GNSS ID
+    setbits!(bits, 5, 13, WN_ISM)
+    setbits!(bits, 18, 6, TOW_ISM)
+    setbits!(bits, 24, 4, t_correl)
+    setbits!(bits, 28, 4, β_nom)
+    setbits!(bits, 32, 4, γ_nom)
+    setbits!(bits, 36, 4, R_sat)
+    setbits!(bits, 40, 4, MFD_sat)
+    setbits!(bits, 44, 4, R_const)
+    setbits!(bits, 48, 4, MFD_const)
+    setbits!(bits, 52, 3, service_level)
+    setbits!(bits, 55, 63, mask)        # GPS PRN Inclusion Mask, PRN 1 first
+    setbits!(bits, 118, 64, reserved)   # Reserved For ISM, bits 118-204 (low 64 here)
+    setbits!(bits, 205, 32, something(ism_crc, ism_crc32q(bits[1:204])))
+    return bits
+end
+
+"""
+Build a CNAV message type 40 (Integrity Support Message, IRN-IS-705J-004 Figure 20-14a)
+around `packet`, the 236-bit ISM Packet at bits 39-274, then the two reserved bits
+275-276 and a valid CRC-24Q. The
+recordings carry none, so the allocation tests append this one to reach the ISM
+parser.
+"""
+function build_mt40(; prn = 9, tow_count = 1234, packet = build_ism_packet(), reserved = 0)
     bits = falses(300)
     setbits!(bits, 1, 8, 0b10001011)   # preamble
     setbits!(bits, 9, 6, prn)
     setbits!(bits, 15, 6, 40)          # message type 40
     setbits!(bits, 21, 17, tow_count)
     setbits!(bits, 38, 1, 0)           # alert
-    setbits!(bits, 39, 4, 1)           # GNSS ID
-    setbits!(bits, 43, 13, 2345)       # WN_ISM
-    setbits!(bits, 56, 6, 7)           # TOW_ISM
-    setbits!(bits, 62, 4, 3)           # t_correl
-    setbits!(bits, 66, 4, 4)           # b_nom
-    setbits!(bits, 70, 4, 5)           # γ_nom
-    setbits!(bits, 74, 4, 6)           # R_sat
-    setbits!(bits, 78, 4, 7)           # P_const
-    setbits!(bits, 82, 4, 8)           # MFD
-    setbits!(bits, 86, 3, 2)           # service level
-    setbits!(bits, 89, 63, mask)       # SV mask
+    bits[39:274] = packet              # ISM Packet
+    setbits!(bits, 275, 2, reserved)   # reserved
     setbits!(bits, 277, 24, crc24q(collect(bits[1:276])))
     return collect(bits)
 end
@@ -164,7 +215,7 @@ function test_cnav_decode_allocation_free(make_state, messages)
     @test length(d.ephemeris_corrections) == 3
     @test d.text_mt15 == "Spirent Communications L2C te"
     @test d.text_mt36 == "Spirent Communicat"
-    @test d.ism.service_level == 2
+    @test d.ism.Service_Level == 3
 
     # The polarity-inverted stream (message complemented after the Viterbi)
     # is allocation-free as well.
