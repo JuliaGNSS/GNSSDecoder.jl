@@ -95,26 +95,6 @@ Base.@kwdef struct BeiDouB2bConstants <: AbstractGNSSConstants
     Trailing next-frame preamble segment retained for sync (16 symbols)
     """
     preamble_length::Int = B2B_PREAMBLE_SYMBOLS
-    """
-    Mathematical constant π (BDS-SIS-ICD-B2b-1.0 Table 7-13)
-    """
-    PI::Float64 = GNSS_PI
-    """
-    BDCS Earth rotation rate (rad/s) — differs from the WGS-84 value
-    """
-    Ω_dot_e::Float64 = BEIDOU_EARTH_ROTATION_RATE
-    """
-    Speed of light (m/s)
-    """
-    c::Float64 = SPEED_OF_LIGHT
-    """
-    BDCS Earth gravitational parameter (m³/s²)
-    """
-    μ::Float64 = BEIDOU_μ
-    """
-    Relativistic correction constant F = -2√μ/c² (s/√m, ICD §7.4.2)
-    """
-    F::Float64 = -4.442807309e-10
 end
 
 # ---- Decoded data container --------------------------------------------------
@@ -513,7 +493,7 @@ B-CNAV3 frame sync (BDS-SIS-ICD-B2b-1.0 §6.2.1). Three gates, cheapest first:
 
  1. The 16-bit preamble `0xEB90` must appear at both ends of the 1016-symbol
     window (start of this frame and start of the next), both upright or both
-    inverted (the shared `find_preamble` rule).
+    inverted (the shared `find_preamble_in_deque` rule).
  2. The 6 unencoded PRN symbols following the preamble must hard-decode (in
     the resolved polarity) to the decoder's own PRN — they are known a
     priori, so they act as a free 6-symbol preamble extension.
@@ -593,8 +573,6 @@ function decode_syncro_sequence(
 )
     word = sync.word
     word_length = B2B_MESSAGE_BITS
-    PI = state.constants.PI
-
     message_type = Int(get_bits(word, word_length, 1, 6))
     # 20-bit SOW count in seconds (LSB 1 s), stamping the current frame's
     # leading edge (Table 7-2: effective range 0..604799 s). One frame is
@@ -614,17 +592,17 @@ function decode_syncro_sequence(
     raw = BeiDouB2bData(state.raw_data; last_message_type = message_type, SOW)
 
     raw = if message_type == 10
-        parse_b2b_mt10(raw, word, PI)
+        parse_b2b_mt10(raw, word)
     elseif message_type == 30
-        parse_b2b_mt30(raw, word, PI)
+        parse_b2b_mt30(raw, word)
     elseif message_type == 40
-        parse_b2b_mt40!(raw, word, PI, state.cache.storage.raw)
+        parse_b2b_mt40!(raw, word, state.cache.storage.raw)
     else
         raw  # reserved/invalid message type (Table 7-1): header only
     end
     # SOW refers to the start of the frame just decoded; that epoch lies
     # The symbol counter is deliberately NOT re-armed here (the same split as
-    # `b2a.jl`, for the same reason): `get_time_of_week` reads the *validated*
+    # `b2a.jl`, for the same reason): `get_broadcast_time_of_week` reads the *validated*
     # `data.SOW`, so the counter must anchor to the last frame `validate_data`
     # promoted, not to the last frame that passed CRC. Re-arming per frame while
     # the published SOW stands still makes `tow + num_bits/rate` read a whole
@@ -638,7 +616,7 @@ end
 """
 Message type 10 — complete ephemeris + integrity flags (Figures 6-3, 6-6, 6-7).
 """
-function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512, PI::Float64)
+function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512)
     word_length = B2B_MESSAGE_BITS
     BeiDouB2bData(
         raw;
@@ -647,18 +625,18 @@ function parse_b2b_mt10(raw::BeiDouB2bData, word::UInt512, PI::Float64)
         sat_type = Int64(get_bits(word, word_length, 42, 2)),
         ΔA = get_twos_complement_num(word, word_length, 44, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 70, 25) * 2.0^-21,
-        Δn_0 = get_twos_complement_num(word, word_length, 95, 17) * 2.0^-44 * PI,
-        Δn_0_dot = get_twos_complement_num(word, word_length, 112, 23) * 2.0^-57 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 135, 33) * 2.0^-32 * PI,
+        Δn_0 = get_twos_complement_num(word, word_length, 95, 17) * 2.0^-44 * GNSS_PI,
+        Δn_0_dot = get_twos_complement_num(word, word_length, 112, 23) * 2.0^-57 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, 135, 33) * 2.0^-32 * GNSS_PI,
         # Through `Int64`: converting the `UInt512`-typed field to `Float64`
         # directly goes through a `BigInt` (an allocation); 33 bits fit exactly.
         e = Int64(get_bits(word, word_length, 168, 33)) * 2.0^-34,
-        ω = get_twos_complement_num(word, word_length, 201, 33) * 2.0^-32 * PI,
+        ω = get_twos_complement_num(word, word_length, 201, 33) * 2.0^-32 * GNSS_PI,
         # Ephemeris II (bits 234-455, Figure 6-7):
-        Ω_0 = get_twos_complement_num(word, word_length, 234, 33) * 2.0^-32 * PI,
-        i_0 = get_twos_complement_num(word, word_length, 267, 33) * 2.0^-32 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 300, 19) * 2.0^-44 * PI,
-        i_dot = get_twos_complement_num(word, word_length, 319, 15) * 2.0^-44 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, 234, 33) * 2.0^-32 * GNSS_PI,
+        i_0 = get_twos_complement_num(word, word_length, 267, 33) * 2.0^-32 * GNSS_PI,
+        Ω_dot = get_twos_complement_num(word, word_length, 300, 19) * 2.0^-44 * GNSS_PI,
+        i_dot = get_twos_complement_num(word, word_length, 319, 15) * 2.0^-44 * GNSS_PI,
         C_is = get_twos_complement_num(word, word_length, 334, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 350, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 366, 24) * 2.0^-8,
@@ -677,7 +655,7 @@ end
 Message type 30 — clock, T_GD, BDGIM ionosphere, BDT-UTC, EOP, SISAI, health
 (Figures 6-4, 6-8 through 6-11, 6-13).
 """
-function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512, PI::Float64)
+function parse_b2b_mt30(raw::BeiDouB2bData, word::UInt512)
     word_length = B2B_MESSAGE_BITS
     BeiDouB2bData(
         raw;
@@ -709,12 +687,7 @@ Overwrites each broadcast PRN's slot of `raw.midi_almanacs` /
 `raw.reduced_almanacs` in place — or, while a store is still `nothing`, of the
 preallocated one in `spare`.
 """
-function parse_b2b_mt40!(
-    raw::BeiDouB2bData,
-    word::UInt512,
-    PI::Float64,
-    spare::BeiDouB2bData,
-)
+function parse_b2b_mt40!(raw::BeiDouB2bData, word::UInt512, spare::BeiDouB2bData)
     word_length = B2B_MESSAGE_BITS
     # Almanac reference week/time for the five reduced almanacs (bits 251-271,
     # Table 7-15) — kept on the data container as the raw broadcast and copied
@@ -731,7 +704,7 @@ function parse_b2b_mt40!(
     )
     # Midi almanac (bits 95-250, Figure 6-15, Table 7-11). PRN_a = 0 marks an
     # empty block (no almanac broadcast in this frame).
-    alm = beidou_midi_almanac(word, word_length, 95, PI)
+    alm = beidou_midi_almanac(word, word_length, 95)
     if !isnothing(alm)
         midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
         set!(midi_almanacs, alm.PRN_a, alm)
@@ -740,14 +713,8 @@ function parse_b2b_mt40!(
     # Five 38-bit reduced almanacs (bits 272-461, Figure 6-12, Table 7-14).
     reduced = raw.reduced_almanacs
     for j = 0:4
-        packet = beidou_reduced_almanac(
-            word,
-            word_length,
-            272 + 38j,
-            WN_a_reduced,
-            t_0a_reduced,
-            PI,
-        )
+        packet =
+            beidou_reduced_almanac(word, word_length, 272 + 38j, WN_a_reduced, t_0a_reduced)
         isnothing(packet) && continue  # empty block
         reduced = writable_container(reduced, spare.reduced_almanacs)
         set!(reduced, packet.PRN_a, packet)
@@ -800,7 +767,7 @@ end
 
 # B-CNAV3 broadcasts the seconds of week as a 20-bit count with LSB 1 s (see
 # `decode_syncro_sequence` on why the English Table 7-2 scale of 3 is a misprint).
-get_time_of_week(data::BeiDouB2bData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouB2bData) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -840,7 +807,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2bData})
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW; the symbol counter re-anchors to
         # this frame's sync epoch with it, so the pair `data.SOW` + counter that
-        # `get_time_of_week` consumers combine always describes one frame. Runs
+        # `get_broadcast_time_of_week` consumers combine always describes one frame. Runs
         # right after `decode_syncro_sequence`, so `raw_data.SOW` is the
         # just-decoded frame's.
         return GNSSDecoderState(
@@ -895,7 +862,7 @@ binary image of the ICD's 64-ary LDPC(162, 81) code, and validates the
 
 ```julia
 state = BeiDouB2bDecoderState(26)        # PRN 26
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end

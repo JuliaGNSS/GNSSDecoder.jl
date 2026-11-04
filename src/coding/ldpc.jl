@@ -9,7 +9,6 @@
 # Included after `crc.jl` (consumes `crc24q`) and before the per-signal
 # decoders that call it.
 
-import Aff3ct
 using Aff3ct: LDPCMatrix, LDPCBPDecoder
 
 """

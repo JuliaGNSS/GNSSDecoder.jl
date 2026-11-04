@@ -1,7 +1,4 @@
-using Test
 using Random
-using GNSSDecoder
-using GNSSSignals
 using GNSSDecoder: crc24q
 
 # GPS L2C broadcasts the same CNAV message as GPS L5I (IS-GPS-200N §30 ≡

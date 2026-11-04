@@ -340,18 +340,21 @@ xor-out 0. Shared across signals — implemented once in this package.
 ## Signal metadata
 
 Facts about the *signal* a decoder demodulates — its name and ids, band,
-constellation, navigation-message symbol rate, time scale — as opposed to the
-navigation *data* it decodes. All of it lives in GNSSSignals and none of it is
-restated here: each signal file states the constants → signal mapping
-(`get_signal_type`) and `src/gnss.jl` forwards GNSSSignals' accessors for a
-`GNSSDecoderState` through it.
+constellation, bit rate as tracked (`get_bit_rate`, the channel symbol rate),
+time scale — as opposed to the navigation *data* it decodes. All of it lives in
+GNSSSignals and none of it is restated here: each signal file states the
+constants → signal mapping (`get_signal_type`) and `src/gnss.jl` forwards
+GNSSSignals' accessors for a `GNSSDecoderState` through it.
 
 The mapping names the data-bearing component of a signal pair, since that is
 what carries the navigation message (`GPSL2CM`, not the `GPSL2CL` pilot;
-`GalileoE5aI`, not `GalileoE5aQ`), and reports the signal an approximation
-approximates (the E1B BOC(1,1) decoder is a `GalileoE1B`). It is keyed on the
-constants type because that, not the data type, is what tells apart decoders
-sharing a data container: L5-I and L2C-M both decode into a `GPSCNAVData`.
+`GalileoE5aI`, not `GalileoE5aQ`). Replica variants use the canonical
+data-component type: both E1B BOC(1,1) and full CBOC decoders report `GalileoE1B`.
+The decoder does not retain the tracking replica. Forwarded signal names and
+ids describe the broadcast component; `get_modulation` on the tracking signal
+distinguishes replicas and is not forwarded. The mapping is keyed on the
+constants type because that, not the data type, tells apart decoders sharing a
+data container: L5-I and L2C-M both decode into a `GPSCNAVData`.
 
 ## Time system
 

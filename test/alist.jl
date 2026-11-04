@@ -1,12 +1,9 @@
-using Test
 using Random
 # Import the module for the qualified `Aff3ct.decode` call, and bring only the
 # LDPC names into scope. `using Aff3ct` would also export `decode` and
 # `ViterbiDecoder`, clashing with `GNSSDecoder.decode` and the `ViterbiDecoder`
 # package already in scope from runtests.jl.
-import Aff3ct
 using Aff3ct: LDPCMatrix, LDPCEncoder, LDPCBPDecoder, encode
-using GNSSDecoder
 
 # Re-run the generator helper to materialise the SF2 / SF3 `.alist` files
 # in a temporary directory, then byte-compare against the committed files.

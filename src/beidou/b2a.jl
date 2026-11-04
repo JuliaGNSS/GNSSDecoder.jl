@@ -68,27 +68,6 @@ Base.@kwdef struct BeiDouB2aConstants <: AbstractGNSSConstants
     Preamble bit pattern (MSB-first packing of `111000100100110111101000`)
     """
     preamble::UInt64 = B2A_PREAMBLE
-    """
-    Mathematical constant π (ICD Table 7-9)
-    """
-    PI::Float64 = GNSS_PI
-    """
-    BDCS Earth rotation rate (rad/s, ICD Table 7-9 — differs from WGS-84)
-    """
-    Ω_dot_e::Float64 = BEIDOU_EARTH_ROTATION_RATE
-    """
-    Speed of light (m/s, ICD §7.5.2)
-    """
-    c::Float64 = SPEED_OF_LIGHT
-    """
-    BDCS geocentric gravitational constant (m³/s², ICD Table 7-9)
-    """
-    μ::Float64 = BEIDOU_μ
-    """
-    Relativistic correction constant F = −2√μ/c² (s/√m, ICD §7.5.2; same value
-    as Galileo's GTRF constant because μ agrees)
-    """
-    F::Float64 = -4.442807309e-10
 end
 
 # ---- Data container -----------------------------------------------------------
@@ -776,7 +755,7 @@ matching this decoder's PRN, and dispatched to per-message-type parsers
 
 ```julia
 state = BeiDouB2aDecoderState(19)         # PRN 19
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -852,10 +831,8 @@ end
 _b2a_sow_adjacent(::Nothing, ::Union{Nothing,Integer}) = false
 _b2a_sow_adjacent(::Integer, ::Nothing) = false
 
-function _b2a_sow_adjacent(sow_a::Integer, sow_b::Integer)
-    Δ = mod(sow_a - sow_b, SECONDS_PER_WEEK)
-    min(Δ, SECONDS_PER_WEEK - Δ) == 3
-end
+_b2a_sow_adjacent(sow_a::Integer, sow_b::Integer) =
+    abs(fold_week_crossover(sow_a - sow_b)) == 3
 
 function is_clock_correction_decoded(data::BeiDouB2aData)
     # The clock block + IODC are carried identically in message types 30-34.
@@ -881,7 +858,7 @@ end
 
 # B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
 # scaled at parse (§7.3, Table 7-2).
-get_time_of_week(data::BeiDouB2aData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouB2aData) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -1011,8 +988,6 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     isnothing(word) && return state  # silently drop on CRC failure
 
     word_length = B2A_MESSAGE_BITS
-    PI = state.constants.PI
-
     # PRN gate (ICD §7.1): the message states the transmitting satellite's PRN.
     prn = Int(get_bits(word, word_length, 1, 6))
     prn == state.prn || return state
@@ -1024,26 +999,26 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     raw = BeiDouB2aData(state.raw_data; last_message_type = message_id, SOW)
 
     raw = if message_id == 10
-        parse_b2a_mt10(raw, word, PI)
+        parse_b2a_mt10(raw, word)
     elseif message_id == 11
-        parse_b2a_mt11(raw, word, PI)
+        parse_b2a_mt11(raw, word)
     elseif message_id == 30
         parse_b2a_mt30(raw, word)
     elseif message_id == 31
-        parse_b2a_mt31!(raw, word, PI, state.cache.storage.raw)
+        parse_b2a_mt31!(raw, word, state.cache.storage.raw)
     elseif message_id == 32
         parse_b2a_mt32(raw, word)
     elseif message_id == 33
-        parse_b2a_mt33!(raw, word, PI, state.cache.storage.raw)
+        parse_b2a_mt33!(raw, word, state.cache.storage.raw)
     elseif message_id == 34
         parse_b2a_mt34(raw, word)
     elseif message_id == 40
-        parse_b2a_mt40!(raw, word, PI, state.cache.storage.raw)
+        parse_b2a_mt40!(raw, word, state.cache.storage.raw)
     else
         raw  # unknown/reserved message type: header only
     end
 
-    # The symbol counter is deliberately NOT re-armed here. `get_time_of_week`
+    # The symbol counter is deliberately NOT re-armed here. `get_broadcast_time_of_week`
     # reads the *validated* `data.SOW`, which only advances when `validate_data`
     # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
     # that carries a new ephemeris-I block until its partner arrives. Re-arming
@@ -1082,7 +1057,7 @@ function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
     if is_decoding_completed_for_positioning(state.raw_data)
         # Promotion publishes this frame's SOW, so the symbol counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits/rate` (see `get_time_of_week`) to stay on the true
+        # `tow + num_bits/rate` (see `get_broadcast_time_of_week`) to stay on the true
         # time through frames the gate skips. The frame was decoded (checked
         # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
@@ -1106,7 +1081,7 @@ end
 """
 Message type 10 — WN, integrity flags, IODE, ephemeris I (ICD Fig 6-3 / 6-11, Table 7-8).
 """
-function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320, PI::Float64)
+function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     SOW = raw.SOW
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
@@ -1126,11 +1101,11 @@ function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320, PI::Float64)
         sat_type = Int64(get_bits(word, word_length, 73, 2)),
         ΔA = get_twos_complement_num(word, word_length, 75, 26) * 2.0^-9,
         A_dot = get_twos_complement_num(word, word_length, 101, 25) * 2.0^-21,
-        Δn_0 = get_twos_complement_num(word, word_length, 126, 17) * 2.0^-44 * PI,
-        Δn_0_dot = get_twos_complement_num(word, word_length, 143, 23) * 2.0^-57 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 166, 33) * 2.0^-32 * PI,
+        Δn_0 = get_twos_complement_num(word, word_length, 126, 17) * 2.0^-44 * GNSS_PI,
+        Δn_0_dot = get_twos_complement_num(word, word_length, 143, 23) * 2.0^-57 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, 166, 33) * 2.0^-32 * GNSS_PI,
         e = Int64(get_bits(word, word_length, 199, 33)) * 2.0^-34,
-        ω = get_twos_complement_num(word, word_length, 232, 33) * 2.0^-32 * PI,
+        ω = get_twos_complement_num(word, word_length, 232, 33) * 2.0^-32 * GNSS_PI,
         SOW_mt10 = SOW,
     )
 end
@@ -1138,7 +1113,7 @@ end
 """
 Message type 11 — HS, integrity flags, ephemeris II (ICD Fig 6-4 / 6-12, Table 7-8).
 """
-function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320, PI::Float64)
+function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     SOW = raw.SOW
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
@@ -1153,10 +1128,10 @@ function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320, PI::Float64)
         SIF_B1C = get_bit(word, word_length, 41),
         AIF_B1C = get_bit(word, word_length, 42),
         # Ephemeris II data block, bits 43-264 (Figure 6-12).
-        Ω_0 = get_twos_complement_num(word, word_length, 43, 33) * 2.0^-32 * PI,
-        i_0 = get_twos_complement_num(word, word_length, 76, 33) * 2.0^-32 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 109, 19) * 2.0^-44 * PI,
-        i_dot = get_twos_complement_num(word, word_length, 128, 15) * 2.0^-44 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, 43, 33) * 2.0^-32 * GNSS_PI,
+        i_0 = get_twos_complement_num(word, word_length, 76, 33) * 2.0^-32 * GNSS_PI,
+        Ω_dot = get_twos_complement_num(word, word_length, 109, 19) * 2.0^-44 * GNSS_PI,
+        i_dot = get_twos_complement_num(word, word_length, 128, 15) * 2.0^-44 * GNSS_PI,
         C_is = get_twos_complement_num(word, word_length, 143, 16) * 2.0^-30,
         C_ic = get_twos_complement_num(word, word_length, 159, 16) * 2.0^-30,
         C_rs = get_twos_complement_num(word, word_length, 175, 24) * 2.0^-8,
@@ -1223,12 +1198,7 @@ Message type 31 — clock, IODC, three reduced almanacs (ICD Fig 6-6 / 6-17).
 Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
 while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt31!(
-    raw::BeiDouB2aData,
-    word::UInt320,
-    PI::Float64,
-    spare::BeiDouB2aData,
-)
+function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1236,7 +1206,7 @@ function parse_b2a_mt31!(
     t_0a = Int(get_bits(word, word_length, 135, 8)) * 2^12
     almanacs = raw.reduced_almanacs
     for start in (143, 181, 219)
-        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a, PI)
+        packet = beidou_reduced_almanac(word, word_length, start, WN_a, t_0a)
         isnothing(packet) && continue
         almanacs = writable_container(almanacs, spare.reduced_almanacs)
         set!(almanacs, packet.PRN_a, packet)
@@ -1269,18 +1239,13 @@ Message type 33 — clock, BGTO, one reduced almanac, IODC (ICD Fig 6-8 / 6-17 /
 Overwrites the almanac PRN's slot of `raw.reduced_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt33!(
-    raw::BeiDouB2aData,
-    word::UInt320,
-    PI::Float64,
-    spare::BeiDouB2aData,
-)
+function parse_b2a_mt33!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
     WN_a = Int(get_bits(word, word_length, 228, 13))
     t_0a = Int(get_bits(word, word_length, 241, 8)) * 2^12
-    packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a, PI)
+    packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a)
     raw = BeiDouB2aData(
         raw;
         # BGTO block, bits 112-179 (Figure 6-19, Table 7-21).
@@ -1318,18 +1283,13 @@ Message type 40 — SISAIoe, SISAIoc, one midi almanac (ICD Fig 6-10 / 6-14 / 6-
 Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b2a_mt40!(
-    raw::BeiDouB2aData,
-    word::UInt320,
-    PI::Float64,
-    spare::BeiDouB2aData,
-)
+function parse_b2a_mt40!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = BeiDouB2aData(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
     raw = _parse_b2a_sisai_oc_block(raw, word, 48)
     # Midi almanac block, bits 70-225 (Figure 6-20, Table 7-13).
-    alm = beidou_midi_almanac(word, word_length, 70, PI)
+    alm = beidou_midi_almanac(word, word_length, 70)
     isnothing(alm) && return raw
     midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
     set!(midi_almanacs, alm.PRN_a, alm)

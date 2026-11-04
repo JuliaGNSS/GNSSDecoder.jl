@@ -102,24 +102,20 @@ of [`AbstractGPSCNAVData`](@ref).
 """
 abstract type AbstractBeiDouCNAVData <: AbstractBeiDouData end
 
-# Physical constants common to every GNSS handled here. Each per-signal
-# `*Constants` struct exposes these as fields (so the orbit/clock math reads
-# `state.constants.PI` etc.); the defaults are sourced from here to keep a single
-# source of truth. Constellation-specific values that genuinely differ by
-# reference frame — the Earth gravitational parameter μ and the relativistic
-# correction F — are *not* here: GPS uses WGS-84 values and Galileo the GTRF
-# values, defined alongside each constellation.
+# Physical constants common to every GNSS handled here. Constellation-specific
+# values that genuinely differ by reference frame — the Earth gravitational
+# parameter μ and the relativistic correction F — are *not* here: GPS uses
+# WGS-84 values and Galileo the GTRF values, defined alongside each
+# constellation.
 #
 # `GNSS_PI` is deliberately the truncated value the ICDs fix for the
-# semicircle→radian scaling (IS-GPS-200 Table 20-IV; Galileo OS SIS ICD Table 68),
-# *not* `Base.π` — broadcast angular quantities must be scaled with exactly this
-# value to reproduce the transmitted numbers bit-for-bit.
+# semicircle→radian scaling, *not* `Base.π`: every ICD states 3.1415926535898
+# (IS-GPS-200 Table 20-IV; Galileo OS SIS ICD Table 68; BDS-SIS-ICD-B1I-3.0 and
+# B3I-1.0 Table 5-11, B1C-1.0 and B2a-1.0 Table 7-9, B2b-1.0 Table 7-7) —
+# broadcast angular quantities must be scaled with exactly this value to
+# reproduce the transmitted numbers bit-for-bit.
 const GNSS_PI = 3.1415926535898
-const SPEED_OF_LIGHT = 2.99792458e8        # m/s
 const EARTH_ROTATION_RATE = 7.2921151467e-5  # rad/s (WGS-84 and GTRF agree)
-
-# Every constellation here counts time as a week number plus a time of week.
-const SECONDS_PER_WEEK = 604_800
 
 """
 $(TYPEDEF)
@@ -327,7 +323,7 @@ is_decoding_completed_for_positioning(state::GNSSDecoderState) =
 # A decoder state is 1:1 with the signal whose navigation message it
 # demodulates, so everything GNSSSignals already knows about that signal — what
 # it is called, which constellation and band it belongs to, how fast its
-# navigation message runs, which time scale its week numbers and times of week
+# navigation message runs, which time system its week numbers and times of week
 # are counted in — is knowable from the state alone. Restating any of it here
 # would be a second source of truth to keep in sync, so instead each signal file
 # states the *one* fact that is genuinely ours (the constants → signal mapping,
@@ -356,10 +352,13 @@ signals (`GPSCNAVConstants{:GPSL5I}` vs `GPSCNAVConstants{:GPSL2CM}`).
 
 The mapping names the data-bearing component of a signal pair, since that is
 what carries the navigation message: `GPSL2CM` (not the `GPSL2CL` pilot) and
-`GalileoE5aI` (not the `GalileoE5aQ` pilot). A decoder built from an
-approximation of a signal reports the signal it approximates — the E1B BOC(1,1)
-decoder state is a `GalileoE1B`, since the approximation is a
-tracking/acquisition concern and the I/NAV stream it decodes is identical.
+`GalileoE5aI` (not the `GalileoE5aQ` pilot). Replica variants map to the same
+canonical type: `GalileoE1B()` (default BOC(1,1)) and `GalileoE1B(CBOC)` both
+construct a decoder reporting `GalileoE1B`, as the decoder does not retain which
+replica supplied its symbols. Forwarded `get_signal_id` and `get_signal_name`
+therefore report `:GalileoE1B` and `"Galileo E1B"` for both. Replica identity
+belongs to the tracking signal (GNSSSignals' `get_modulation`); modulation is not
+forwarded for a decoder.
 
 # Examples
 
@@ -379,19 +378,17 @@ get_code_length(get_signal_type(GPSL1CADecoderState(1)))  # 1023
 # The GNSSSignals accessors a decoder state can answer for itself, forwarded
 # through `get_signal_type`: identity (`get_signal_id` / `get_signal_name`,
 # `get_constellation_id` / `get_constellation_name`, `get_band` / `get_band_id` /
-# `get_band_name`), the navigation-message symbol rate (`get_data_frequency`),
-# and the time scale the decoded week numbers and times of week are referenced
-# to (`get_time_system` and friends — the epochs `get_system_start_time` (UTC
-# label) and `get_tai_system_start_time` (the same instant on the continuous
-# TAI scale, GNSSSignals 4.1) and the TAI offset `get_tai_offset` are what turn
-# a decoded WN/TOW pair into an absolute instant, and the Galileo epoch is 13 s
+# `get_band_name`),
+# and the time system the decoded week numbers and times of week are referenced
+# to (`get_time_system` and friends — the Galileo epoch
+# is 13 s
 # shy of a UTC midnight *and* anchored to GPS Time rather than to UTC, so
 # sourcing them rather than restating them matters).
 #
 # These extend GNSSSignals' own functions rather than introducing GNSSDecoder
 # names, so a caller already doing `using GNSSSignals` needs no new import and
 # can query a decoder state exactly as it queries a signal. Accessors that
-# describe the *code* (`get_code_length`, `get_code_frequency`,
+# describe the *code* (`get_code_length`, `get_chip_rate`,
 # `get_carrier_phase_offset`, …) are deliberately not forwarded: they belong to
 # acquisition and tracking, not to a symbol-domain decoder, and remain one
 # `get_signal_type(state)` away.
@@ -403,17 +400,18 @@ for accessor in (
     :get_band,
     :get_band_id,
     :get_band_name,
-    :get_data_frequency,
     :get_time_system,
     :get_time_system_id,
     :get_time_system_name,
-    :get_system_start_time,
-    :get_tai_system_start_time,
-    :get_tai_offset,
 )
     @eval @inline GNSSSignals.$accessor(state::GNSSDecoderState) =
         GNSSSignals.$accessor(get_signal_type(state))
 end
+
+# The symbol rate is the satellite's: a BeiDou B1I or B3I GEO satellite broadcasts its
+# D2 message at 500 Hz, where the signal's rate is D1's 50 Hz, so the PRN goes along.
+@inline GNSSSignals.get_bit_rate(state::GNSSDecoderState) =
+    GNSSSignals.get_bit_rate(get_signal_type(state), state.prn)
 
 # ---- Satellite and time metadata --------------------------------------------
 #
@@ -513,7 +511,8 @@ get_orbit_class(::GNSSDecoderState{<:AbstractGalileoData}) = medium_earth_orbit
 $(TYPEDSIGNATURES)
 
 Seconds of week that the decoder's validated navigation data stamps, or
-`nothing` before a time has been decoded.
+`nothing` before a time has been decoded. It is the time the message broadcasts
+for the epoch it stamps, not the current one (see below).
 
 Every signal here broadcasts one, but four of them do not broadcast it as
 seconds: GPS L1C-D counts two-hour intervals plus 18-second TOI steps, BeiDou
@@ -544,8 +543,8 @@ L1C-D; the *current* frame for the BeiDou signals). So the current time of week
 is the same expression on every signal:
 
 ```julia
-tow = get_time_of_week(state)
-now = tow + state.num_bits_after_valid_syncro_sequence / get_data_frequency(state)
+tow = get_broadcast_time_of_week(state)
+now = tow + state.num_bits_after_valid_syncro_sequence / get_bit_rate(state)
 ```
 
 Because it reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, this
@@ -558,16 +557,16 @@ cross-subframe consistency check — the same gate
 
   - [`get_time_offset`](@ref): relating that time to another constellation's
 """
-get_time_of_week(state::GNSSDecoderState) = get_time_of_week(state.data)
+get_broadcast_time_of_week(state::GNSSDecoderState) = get_broadcast_time_of_week(state.data)
 
 """
 $(TYPEDEF)
 
-One broadcast time offset between two GNSS time scales, normalised across the
+One broadcast time offset between two GNSS time systems, normalised across the
 five shapes the ICDs state it in. [`get_time_offset`](@ref) returns it.
 
 The offset at a time `t` (seconds of week) in week `WN` of the *broadcasting*
-satellite's own time scale is
+satellite's own time system is
 
 ```julia
 Δτ = t - t_0 + 604800 * (WN - WN_0)
@@ -589,7 +588,7 @@ convert a seconds-of-week reading, *subtract*: `t_target = t_own - Δt`.
     nanoseconds against a BDT-to-GPST offset of 14 seconds.
 
     `A_0` is the sum of both, so the subtraction above is true as written. The
-    defined part is `get_tai_offset(target) - get_tai_offset(get_time_system(state))`,
+    defined part is `get_time_system_offset(target, get_time_system(state))`,
     every one of these scales being a fixed offset from TAI with no leap seconds
     of its own; the broadcast part stays available raw on the decoded data
     (`data.A_0BGTO`, `data.A_0G`, `data.A_0GGTO`), which is where this package
@@ -618,7 +617,7 @@ convert a seconds-of-week reading, *subtract*: `t_target = t_own - Δt`.
     This converts a time *of week*; it says nothing about which week. The scales
     do not share a week origin — BDT week 0 is GPS week 1356, exactly 9492 days
     later — so a full `(WN, TOW)` conversion also needs the epoch difference
-    from `get_system_start_time`, and must carry the rollover when adding `Δt`
+    from `get_week_start_epoch`, and must carry the rollover when adding `Δt`
     crosses a week boundary.
 
 Signals that broadcast fewer terms are widened rather than given a separate
@@ -677,7 +676,7 @@ end
 """
     get_time_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
-The broadcast offset from this satellite's own time scale to `target`, as a
+The broadcast offset from this satellite's own time system to `target`, as a
 [`GNSSTimeOffset`](@ref), or `nothing` when this decoder has no such offset.
 
 `target` is a `GNSSSignals.TimeSystem` — `GPST()`, `GST()` or `BDT()`. The
@@ -723,7 +722,7 @@ end
 # See Also
 
   - [`GNSSTimeOffset`](@ref): the returned record, and the sign convention
-  - [`get_time_of_week`](@ref): the `t` the polynomial is evaluated at
+  - [`get_broadcast_time_of_week`](@ref): the `t` the polynomial is evaluated at
 """
 function get_time_offset end
 
@@ -737,7 +736,7 @@ function get_time_offset end
                           t_0, WN_0, WN, WN_0_modulus) -> Union{Nothing,GNSSTimeOffset}
 
 Assemble a [`GNSSTimeOffset`](@ref) from one message's broadcast coefficients,
-adding the defined whole-second offset between this decoder's time scale and
+adding the defined whole-second offset between this decoder's time system and
 `target` to the broadcast bias.
 
 Every `get_time_offset` method routes through this rather than calling the
@@ -748,7 +747,7 @@ test that does not run a BeiDou decoder. Putting the addition where the record
 is built means there is one place to be right instead of six.
 
 The scales here are all fixed offsets from TAI with no leap seconds of their
-own, so the term is a constant per pair and `get_tai_offset` is its whole
+own, so the term is a constant per pair and `get_time_system_offset` is its whole
 source; nothing needs a leap-second table.
 
 The arguments are positional on purpose. `t_0`, `WN_0` and `WN` are
@@ -773,7 +772,7 @@ function broadcast_time_offset(
     # numbering cannot be evaluated against, and `Δτ` needs `WN` anyway, so
     # there is no usable offset yet rather than one with an unresolved epoch.
     isnothing(reference_week) && !isnothing(WN_0) && return nothing
-    defined = ustrip(s, get_tai_offset(target) - get_tai_offset(get_time_system(state)))
+    defined = get_time_system_offset(target, get_time_system(state))
     GNSSTimeOffset(
         target,
         A_0 + defined,
@@ -961,10 +960,9 @@ end
     try_sync(state) -> Union{Nothing,Unsigned}
 
 Default per-signal sync hook: hard-slice the deque into a packed-bit buffer
-(via `pack_buffer`) and run the `find_preamble` bit-pattern
-check (preamble visible at both ends of the candidate syncro sequence, in
-either polarity). Returns the packed buffer on a match, or `nothing` if there
-is no sync. Returning the buffer lets the caller reuse it without recomputing
+(via `pack_buffer`) on a preamble match (preamble visible at both ends of the
+candidate syncro sequence, in either polarity; see `find_preamble_in_deque`).
+Returns the packed buffer on a match, or `nothing` if there is no sync. Returning the buffer lets the caller reuse it without recomputing
 and keeps it out of mutable cache state.
 
 Per-signal overrides (e.g. GPS L1C-D's TOI BCH match in a later slice)
@@ -973,8 +971,7 @@ override this method.
 function try_sync(state::GNSSDecoderState)
     # Match the preamble on the few symbols at either end first, and pack the
     # whole window only on a match: packing it (hundreds of symbols) for every
-    # incoming symbol is otherwise most of the per-symbol cost. The match is
-    # `find_preamble`'s, so the packed buffer then always passes it.
+    # incoming symbol is otherwise most of the per-symbol cost.
     constants = state.constants
     isnothing(
         find_preamble_in_deque(
@@ -988,33 +985,16 @@ function try_sync(state::GNSSDecoderState)
 end
 
 """
-    find_preamble(buffer, constants) -> Bool
-
-Bit-pattern preamble check on a packed-bit buffer. Mirrors the v1
-implementation: the preamble must be visible at *both* the oldest 8 bits
-(start of this subframe) and the newest 8 bits (start of next subframe),
-either both upright OR both inverted (180-degree polarity ambiguity).
-"""
-function find_preamble(buffer, constants::AbstractGNSSConstants)
-    mask = calc_preamble_mask(constants)
-    buffer & mask == constants.preamble &&
-    (buffer >> constants.syncro_sequence_length) & mask == constants.preamble ||
-        buffer & mask == ~constants.preamble & mask &&
-        (buffer >> constants.syncro_sequence_length) & mask == ~constants.preamble & mask
-end
-
-"""
     find_preamble_in_deque(deque, preamble, preamble_length, syncro_sequence_length)
         -> Union{Nothing,Bool}
 
-Soft-domain counterpart of [`find_preamble`](@ref): match the preamble at both
-ends of the candidate window by slicing the soft-symbol deque directly, rather
-than hard-slicing the whole window into a packed integer first.
+Match the preamble at both ends of the candidate window — the start of this
+subframe and the start of the next — by slicing the soft-symbol deque directly,
+rather than hard-slicing the whole window into a packed integer first.
 
 Returns `nothing` when there is no sync, and otherwise the resolved polarity —
-`true` when both ends carry the *inverted* preamble. The rule is `find_preamble`'s:
-both ends must match, and in a common polarity, which is what resolves the
-180-degree carrier ambiguity.
+`true` when both ends carry the *inverted* preamble. Both ends must match, and in
+a common polarity, which is what resolves the 180-degree carrier ambiguity.
 
 This is the form every FEC-bearing decoder wants. The default `pack_buffer` path
 would shift a window-wide integer once per symbol to expose a preamble sitting at
@@ -1125,8 +1105,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Decode GNSS navigation message soft symbols, **overwriting** the storage `state`
-holds, and return the updated state. Allocates nothing.
+Decode the soft bits of a GNSS navigation message, **overwriting** the storage
+`state` holds, and return the updated state. Allocates nothing.
 
 `decode!` writes straight into the buffers that `state` was constructed with —
 the soft-symbol buffer, the FEC scratch, the voting tallies in `state.cache`,
@@ -1154,9 +1134,15 @@ Processes incoming soft symbols from a GNSS signal, detecting preambles and
 decoding synchronization sequences to extract navigation data. The function
 handles both normal and 180-degree phase-shifted signals automatically.
 
-# Soft-symbol convention
+# Soft-bit convention
 
-`soft_symbols` is an `AbstractVector{<:Real}`; `Float32` is canonical. The sign
+`soft_bits` are what a tracking loop hands over, such as TrackingLoops'
+`get_soft_bits`: one per channel symbol as tracked, before any error-correction
+decoding (the bits GNSSSignals' `get_bit_rate` counts). With forward error
+correction they are not the message's bits; the decoded message bits exist only
+inside this package.
+
+`soft_bits` is an `AbstractVector{<:Real}`; `Float32` is canonical. The sign
 carries the bit decision and the magnitude carries confidence (standard LLR
 convention):
 
@@ -1177,15 +1163,11 @@ convention):
     scale (`≈ 2·r/σ²`) for best performance at marginal SNR — but still need not
     be normalized to a fixed range.
 
-Glue from `Tracking.jl`: feed `get_soft_bits` (polarity-corrected,
-amplitude-weighted soft bits) for every signal. See `CONTEXT.md` for the full
-glossary.
-
 # Arguments
 
   - `state::GNSSDecoderState`: Current decoder state
-  - `soft_symbols::AbstractVector{<:Real}`: Soft symbols to consume, oldest first
-  - `num_symbols::Int`: Number of leading entries of `soft_symbols` to process
+  - `soft_bits::AbstractVector{<:Real}`: Soft bits to consume, oldest first
+  - `num_bits::Int`: Number of leading entries of `soft_bits` to process
 
 # Keywords
 
@@ -1206,28 +1188,33 @@ glossary.
 """
 function decode!(
     state::GNSSDecoderState,
-    soft_symbols::AbstractVector{<:Real},
-    num_symbols::Int;
+    soft_bits::AbstractVector{<:Real},
+    num_bits::Int;
     decode_once::Bool = false,
 )
-    num_symbols <= length(soft_symbols) ||
-        throw(ArgumentError("num_symbols exceeds length(soft_symbols)"))
-    num_bits = state.num_bits_after_valid_syncro_sequence
+    num_bits <= length(soft_bits) ||
+        throw(ArgumentError("num_bits exceeds length(soft_bits)"))
+    num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence
     next = 1
-    while next <= num_symbols
-        next, buffer, num_bits =
-            push_until_sync!(state, soft_symbols, next, num_symbols, num_bits)
+    while next <= num_bits
+        next, buffer, num_bits_after_valid_syncro_sequence = push_until_sync!(
+            state,
+            soft_bits,
+            next,
+            num_bits,
+            num_bits_after_valid_syncro_sequence,
+        )
         isnothing(buffer) && break
-        state = with_symbol_counter(state, num_bits)
+        state = with_symbol_counter(state, num_bits_after_valid_syncro_sequence)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
         state = decode_syncro_sequence(state, resolved_buffer)
         if !decode_once || !is_decoding_completed_for_positioning(state.data)
             state = validate_data(state)
         end
         state = drain_after_sync!(state)
-        num_bits = state.num_bits_after_valid_syncro_sequence
+        num_bits_after_valid_syncro_sequence = state.num_bits_after_valid_syncro_sequence
     end
-    return with_symbol_counter(state, num_bits)
+    return with_symbol_counter(state, num_bits_after_valid_syncro_sequence)
 end
 
 """

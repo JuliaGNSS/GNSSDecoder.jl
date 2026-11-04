@@ -1,6 +1,4 @@
-using Test
 using Random
-using GNSSDecoder
 using DataStructures: CircularDeque
 using GNSSDecoder:
     BCH_TOI_CODEWORDS,

@@ -17,6 +17,10 @@ A Julia package for decoding GNSS (Global Navigation Satellite System) navigatio
 - **BeiDou B2a**: Decodes the 200 sps B-CNAV2 data stream from the B2a data component
 - **BeiDou B2b**: Decodes the 1000 sps B-CNAV3 data stream from the B2b_I signal
 
+GNSSSignals uses BOC(1,1) replicas by default for Galileo E1 and the GPS L1C
+pilot. `GNSSDecoderState(GalileoE1B(), prn)` and
+`GNSSDecoderState(GalileoE1B(CBOC), prn)` decode the same I/NAV message.
+
 ## Installation
 
 ```julia
@@ -28,8 +32,8 @@ Pkg.add("GNSSDecoder")
 
 ### GPS L1 C/A Decoding
 
-Initialize a decoder and process soft symbols from your tracking loop. The
-decoder consumes `Float32` soft symbols where the sign carries the bit
+Initialize a decoder and process soft bits from your tracking loop. The
+decoder consumes `Float32` soft bits where the sign carries the bit
 decision (positive ⇒ bit 0, negative ⇒ bit 1) and the magnitude carries
 confidence (AFF3CT LLR convention):
 
@@ -45,16 +49,16 @@ julia> typeof(state)
 GNSSDecoderState{GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
 ```
 
-Process incoming soft symbols and check the decoder state:
+Process incoming soft bits and check the decoder state:
 
 ```jldoctest gps_example
-julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft symbols
+julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
 8
 ```
 
-In a real application, you would decode soft symbols from a tracking loop. With
+In a real application, you would decode soft bits from a tracking loop. With
 `Tracking.jl` v2, take them from `get_soft_bits`, which returns the
 polarity-corrected, amplitude-weighted soft bits for the tracked satellite:
 
@@ -63,7 +67,7 @@ for i in 1:iterations
     # Track signal (e.g., with Tracking.jl)
     track_state = track!(measurement, track_state)
 
-    # Soft symbols for this satellite (Float32; sign = bit, magnitude = confidence)
+    # Soft bits for this satellite (Float32; sign = bit, magnitude = confidence)
     soft_symbols = get_soft_bits(track_state, state.prn)
 
     # Decode navigation message
@@ -89,7 +93,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B}, GNSSDecoder.GalileoINAVCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -174,7 +178,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -199,7 +203,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder.GPSCNAVCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -223,7 +227,7 @@ julia> state.prn
 julia> typeof(state)
 GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecoder.GPSCNAVCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -245,7 +249,7 @@ julia> state = BeiDouB1IDecoderState(20);  # PRN 20: MEO/IGSO, D1 NAV
 julia> typeof(state)
 GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GNSSDecoder.BeiDouDNAVCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10
@@ -259,7 +263,7 @@ the code definition exact but the decoder weaker than a non-binary one: expect
 of the order of a dB less sensitivity than an FFT-QSPA decoder would give,
 visible as a raised frame-erasure rate at low C/N₀ rather than as bad data (a
 failed decode is dropped by the CRC gate). The belief-propagation stage is also
-scale-sensitive, so feed confidence-weighted soft symbols on a roughly LLR-like
+scale-sensitive, so feed confidence-weighted soft bits on a roughly LLR-like
 scale (`≈ 2·r/σ²`) for best sensitivity — see [`decode!`](@ref):
 
 ```jldoctest b2a_example
@@ -270,7 +274,7 @@ julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
 julia> typeof(state)
 GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
 
-julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft symbols
+julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
 julia> GNSSDecoder.num_bits_buffered(state)
 10

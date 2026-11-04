@@ -20,10 +20,6 @@
 # 52-symbol subframe-1 segment of the *next* frame (1852 total) so the BCH
 # match can be confirmed at both ends of the window before locking.
 
-# `import Aff3ct` for the qualified `Aff3ct.decode` call (it would clash with
-# `GNSSDecoder.decode`); bring only the LDPC constructors into scope by name.
-import Aff3ct
-using Aff3ct: LDPCMatrix, LDPCBPDecoder
 
 """
 Total symbols accumulated before a sync attempt: 1800 (one frame) + 52 (next subframe-1).
@@ -80,7 +76,7 @@ const L1C_D_PRN_SLOTS = 256
 """
     GPSL1C_DConstants
 
-WGS 84 constants and CNAV-2 message structure parameters for GPS L1C-D decoding.
+CNAV-2 message structure parameters for GPS L1C-D decoding.
 
 The frame is modelled through the generic streaming framework: `preamble_length`
 is the 52-symbol subframe-1 BCH segment of the *next* frame retained at the tail
@@ -104,26 +100,6 @@ Base.@kwdef struct GPSL1C_DConstants <: AbstractGNSSConstants
     Trailing next-frame subframe-1 BCH segment retained for sync (52 symbols)
     """
     preamble_length::Int = L1C_D_SUBFRAME1_LENGTH
-    """
-    Mathematical constant π (IS-GPS-800J)
-    """
-    PI::Float64 = GNSS_PI
-    """
-    WGS 84 Earth rotation rate (rad/s)
-    """
-    Ω_dot_e::Float64 = EARTH_ROTATION_RATE
-    """
-    Speed of light (m/s)
-    """
-    c::Float64 = SPEED_OF_LIGHT
-    """
-    WGS 84 Earth gravitational parameter (m³/s²)
-    """
-    μ::Float64 = GPS_μ
-    """
-    Relativistic correction constant (s/√m)
-    """
-    F::Float64 = GPS_F
 end
 
 """
@@ -766,7 +742,7 @@ the paired `WN` is still the old week) is folded by the `mod`; a consumer
 combining this with `WN` inherits that one-frame-per-week ambiguity, which is
 also the ICD's.
 """
-function get_time_of_week(data::GPSL1C_DData)
+function get_broadcast_time_of_week(data::GPSL1C_DData)
     (isnothing(data.ITOW) || isnothing(data.toi)) && return nothing
     itow = Int(data.ITOW) + (data.toi == 0)
     return mod(
@@ -814,7 +790,7 @@ parity matrices in `data/`.
 
 ```julia
 state = GPSL1C_DDecoderState(1)            # PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -959,7 +935,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:GPSL1C_DData}, sync::B
     # `toi` advances with every locked frame, but `ITOW` only refreshes when a
     # subframe 2 clears LDPC+CRC. The frame at `toi = 1` is the first to
     # broadcast the new interval's `ITOW` (the one at `toi = 0` still carries
-    # the old one; see `get_time_of_week`), so carry the interval across here,
+    # the old one; see `get_broadcast_time_of_week`), so carry the interval across here,
     # or a noisy subframe 2 from that frame on promotes a time of week exactly
     # 7200 s low. A later decoded subframe 2 overwrites this with the broadcast
     # value either way. Continuity above makes `prev_toi == 0` here. The week
@@ -1037,9 +1013,6 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     word = ldpc_decode_word(state.cache.sf2_ldpc, sf2_symbols, UInt600)
     isnothing(word) && return state, false  # silently drop on CRC failure
     word_length = L1C_D_SF2_INFO_BITS
-
-    PI = state.constants.PI
-
     WN = Int(get_bits(word, word_length, 1, 13))
     ITOW = Int(get_bits(word, word_length, 14, 8))
     t_op = Int(get_bits(word, word_length, 22, 11)) * 300
@@ -1048,17 +1021,17 @@ function decode_subframe2(state::GNSSDecoderState{<:GPSL1C_DData}, sf2_symbols)
     t_0e = Int(get_bits(word, word_length, 39, 11)) * 300
     ΔA = get_twos_complement_num(word, word_length, 50, 26) * 2.0^-9
     A_dot = get_twos_complement_num(word, word_length, 76, 25) * 2.0^-21
-    Δn_0 = get_twos_complement_num(word, word_length, 101, 17) * 2.0^-44 * PI
-    Δn_0_dot = get_twos_complement_num(word, word_length, 118, 23) * 2.0^-57 * PI
-    M_0 = get_twos_complement_num(word, word_length, 141, 33) * 2.0^-32 * PI
+    Δn_0 = get_twos_complement_num(word, word_length, 101, 17) * 2.0^-44 * GNSS_PI
+    Δn_0_dot = get_twos_complement_num(word, word_length, 118, 23) * 2.0^-57 * GNSS_PI
+    M_0 = get_twos_complement_num(word, word_length, 141, 33) * 2.0^-32 * GNSS_PI
     # 33-bit field: convert through Int64 explicitly (a platform Int would
     # overflow on 32-bit), matching the BeiDou B-CNAV parsers.
     e = Int64(get_bits(word, word_length, 174, 33)) * 2.0^-34
-    ω = get_twos_complement_num(word, word_length, 207, 33) * 2.0^-32 * PI
-    Ω_0 = get_twos_complement_num(word, word_length, 240, 33) * 2.0^-32 * PI
-    i_0 = get_twos_complement_num(word, word_length, 273, 33) * 2.0^-32 * PI
-    ΔΩ_dot = get_twos_complement_num(word, word_length, 306, 17) * 2.0^-44 * PI
-    i_dot = get_twos_complement_num(word, word_length, 323, 15) * 2.0^-44 * PI
+    ω = get_twos_complement_num(word, word_length, 207, 33) * 2.0^-32 * GNSS_PI
+    Ω_0 = get_twos_complement_num(word, word_length, 240, 33) * 2.0^-32 * GNSS_PI
+    i_0 = get_twos_complement_num(word, word_length, 273, 33) * 2.0^-32 * GNSS_PI
+    ΔΩ_dot = get_twos_complement_num(word, word_length, 306, 17) * 2.0^-44 * GNSS_PI
+    i_dot = get_twos_complement_num(word, word_length, 323, 15) * 2.0^-44 * GNSS_PI
     C_is = get_twos_complement_num(word, word_length, 338, 16) * 2.0^-30
     C_ic = get_twos_complement_num(word, word_length, 354, 16) * 2.0^-30
     C_rs = get_twos_complement_num(word, word_length, 370, 24) * 2.0^-8
@@ -1147,15 +1120,15 @@ function decode_subframe3(state::GNSSDecoderState{<:GPSL1C_DData}, sf3_symbols)
     word_length = L1C_D_SF3_INFO_BITS
     page = Int(get_bits(word, word_length, 9, 6))  # bits 1-8 PRN, bits 9-14 page (IS-GPS-800J §3.5.4)
     raw = if page == L1C_D_SF3_PAGE_UTC_IONO
-        parse_sf3_page1(raw, word, state.constants.PI)
+        parse_sf3_page1(raw, word)
     elseif page == L1C_D_SF3_PAGE_GGTO_EOP
-        parse_sf3_page2(raw, word, state.constants.PI)
+        parse_sf3_page2(raw, word)
     elseif page == L1C_D_SF3_PAGE_REDUCED_ALMANAC
-        parse_sf3_page3(raw, state.cache.storage.raw, word, state.constants.PI)
+        parse_sf3_page3(raw, state.cache.storage.raw, word)
     elseif page == L1C_D_SF3_PAGE_MIDI_ALMANAC
-        parse_sf3_page4(raw, state.cache.storage.raw, word, state.constants.PI)
+        parse_sf3_page4(raw, state.cache.storage.raw, word)
     elseif page == L1C_D_SF3_PAGE_DIFF_CORRECTION
-        parse_sf3_page5(raw, state.cache.storage.raw, word, state.constants.PI)
+        parse_sf3_page5(raw, state.cache.storage.raw, word)
     elseif page == L1C_D_SF3_PAGE_TEXT
         parse_sf3_page6(raw, word)
     else
@@ -1168,7 +1141,7 @@ end
 """
 Subframe 3, page 1 — UTC + Klobuchar iono + ISC (IS-GPS-800J Fig 3.5-2, Table 3.5-3).
 """
-function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288, PI::Float64)
+function parse_sf3_page1(raw::GPSL1C_DData, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     GPSL1C_DData(
         raw;
@@ -1203,7 +1176,7 @@ end
 """
 Subframe 3, page 2 — GGTO + EOP (IS-GPS-800J Fig 3.5-3, Tables 3.5-4/3.5-5).
 """
-function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288, PI::Float64)
+function parse_sf3_page2(raw::GPSL1C_DData, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     GPSL1C_DData(
         raw;
@@ -1231,13 +1204,7 @@ end
 """
 Decode one 33-bit reduced-almanac packet starting at 1-based bit `start` (IS-GPS-800J Fig 3.5-9).
 """
-function _reduced_almanac_packet(
-    word::UInt288,
-    start::Int,
-    WN_a::Int,
-    t_0a::Int,
-    PI::Float64,
-)
+function _reduced_almanac_packet(word::UInt288, start::Int, WN_a::Int, t_0a::Int)
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, start, 8))
     # PRNa == 0 marks an empty packet; per IS-GPS-800J §3.5.4.3.5.1.1 all
@@ -1249,8 +1216,8 @@ function _reduced_almanac_packet(
         WN_a,
         t_0a,
         δA = get_twos_complement_num(word, word_length, start + 8, 8) * 2.0^9,
-        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * PI,
-        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, start + 16, 7) * 2.0^-6 * GNSS_PI,
+        Φ_0 = get_twos_complement_num(word, word_length, start + 23, 7) * 2.0^-6 * GNSS_PI,
         l1_health = get_bit(word, word_length, start + 30),
         l2_health = get_bit(word, word_length, start + 31),
         l5_health = get_bit(word, word_length, start + 32),
@@ -1263,19 +1230,14 @@ Subframe 3, page 3 — six reduced-almanac packets (IS-GPS-800J Fig 3.5-4).
 Each packet **overwrites** its PRN's slot of `raw.reduced_almanacs` in place,
 or — on the first page 3 — of the preallocated `storage.reduced_almanacs`.
 """
-function parse_sf3_page3(
-    raw::GPSL1C_DData,
-    storage::GPSL1C_DData,
-    word::UInt288,
-    PI::Float64,
-)
+function parse_sf3_page3(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
     almanacs = writable_container(raw.reduced_almanacs, storage.reduced_almanacs)
     word_length = L1C_D_SF3_INFO_BITS
     WN_a = Int(get_bits(word, word_length, 15, 13))
     t_0a = Int(get_bits(word, word_length, 28, 8)) * 2^12
     # Six 33-bit packets at bits 36, 69, 102, 135, 168, 201.
     for start in (36, 69, 102, 135, 168, 201)
-        packet = _reduced_almanac_packet(word, start, WN_a, t_0a, PI)
+        packet = _reduced_almanac_packet(word, start, WN_a, t_0a)
         isnothing(packet) && break  # PRNa==0 ⇒ rest of page is filler (§3.5.4.3.5.1.1)
         # Overwrites this PRN's slot of the preallocated store in place.
         set!(almanacs, packet.PRN_a, packet)
@@ -1290,12 +1252,7 @@ Subframe 3, page 4 — one Midi almanac (IS-GPS-800J Fig 3.5-5, Table 3.5-7).
 The almanac **overwrites** its PRN's slot of `raw.midi_almanacs` in place, or —
 on the first page 4 — of the preallocated `storage.midi_almanacs`.
 """
-function parse_sf3_page4(
-    raw::GPSL1C_DData,
-    storage::GPSL1C_DData,
-    word::UInt288,
-    PI::Float64,
-)
+function parse_sf3_page4(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     PRN_a = Int(get_bits(word, word_length, 36, 8))
     PRN_a == 0 && return raw  # empty almanac
@@ -1307,12 +1264,12 @@ function parse_sf3_page4(
         l2_health = get_bit(word, word_length, 45),
         l5_health = get_bit(word, word_length, 46),
         e = Int(get_bits(word, word_length, 47, 11)) * 2.0^-16,
-        δi = get_twos_complement_num(word, word_length, 58, 11) * 2.0^-14 * PI,
-        Ω_dot = get_twos_complement_num(word, word_length, 69, 11) * 2.0^-33 * PI,
+        δi = get_twos_complement_num(word, word_length, 58, 11) * 2.0^-14 * GNSS_PI,
+        Ω_dot = get_twos_complement_num(word, word_length, 69, 11) * 2.0^-33 * GNSS_PI,
         sqrt_A = Int(get_bits(word, word_length, 80, 17)) * 2.0^-4,
-        Ω_0 = get_twos_complement_num(word, word_length, 97, 16) * 2.0^-15 * PI,
-        ω = get_twos_complement_num(word, word_length, 113, 16) * 2.0^-15 * PI,
-        M_0 = get_twos_complement_num(word, word_length, 129, 16) * 2.0^-15 * PI,
+        Ω_0 = get_twos_complement_num(word, word_length, 97, 16) * 2.0^-15 * GNSS_PI,
+        ω = get_twos_complement_num(word, word_length, 113, 16) * 2.0^-15 * GNSS_PI,
+        M_0 = get_twos_complement_num(word, word_length, 129, 16) * 2.0^-15 * GNSS_PI,
         a_f0 = get_twos_complement_num(word, word_length, 145, 11) * 2.0^-20,
         a_f1 = get_twos_complement_num(word, word_length, 156, 10) * 2.0^-37,
     )
@@ -1328,12 +1285,7 @@ The packet **overwrites** its PRN's slot of `raw.differential_corrections` in
 place, or — on the first page 5 — of the preallocated
 `storage.differential_corrections`.
 """
-function parse_sf3_page5(
-    raw::GPSL1C_DData,
-    storage::GPSL1C_DData,
-    word::UInt288,
-    PI::Float64,
-)
+function parse_sf3_page5(raw::GPSL1C_DData, storage::GPSL1C_DData, word::UInt288)
     word_length = L1C_D_SF3_INFO_BITS
     # Page-level fields precede the 126-bit CDC+EDC packet. Layout (Fig 3.5-6):
     # bit 15 t_op-D (11, scale 300), bit 26 t_OD (11, scale 300),
@@ -1353,9 +1305,18 @@ function parse_sf3_page5(
     edc_start_bit = 72
     Δα = get_twos_complement_num(word, word_length, edc_start_bit + 8, 14) * 2.0^-34
     Δβ = get_twos_complement_num(word, word_length, edc_start_bit + 22, 14) * 2.0^-34
-    Δγ = get_twos_complement_num(word, word_length, edc_start_bit + 36, 15) * 2.0^-32 * PI
-    Δi = get_twos_complement_num(word, word_length, edc_start_bit + 51, 12) * 2.0^-32 * PI
-    ΔΩ = get_twos_complement_num(word, word_length, edc_start_bit + 63, 12) * 2.0^-32 * PI
+    Δγ =
+        get_twos_complement_num(word, word_length, edc_start_bit + 36, 15) *
+        2.0^-32 *
+        GNSS_PI
+    Δi =
+        get_twos_complement_num(word, word_length, edc_start_bit + 51, 12) *
+        2.0^-32 *
+        GNSS_PI
+    ΔΩ =
+        get_twos_complement_num(word, word_length, edc_start_bit + 63, 12) *
+        2.0^-32 *
+        GNSS_PI
     ΔA = get_twos_complement_num(word, word_length, edc_start_bit + 75, 12) * 2.0^-9
     UDRA_dot_index = get_twos_complement_num(word, word_length, edc_start_bit + 87, 5)
     differential_correction = GPSL1C_DDifferentialCorrection(;

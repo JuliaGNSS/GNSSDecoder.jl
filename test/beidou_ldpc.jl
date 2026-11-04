@@ -1,8 +1,5 @@
-using Test
 using Random
-import Aff3ct
 using Aff3ct: LDPCMatrix, LDPCBPDecoder
-using GNSSDecoder
 
 # The BeiDou B-CNAV 64-ary LDPC pipeline: ICD-transcribed GF(2^6) matrices
 # (`scripts/beidou_ldpc_coords.jl`) → binary-image `.alist` artefacts in

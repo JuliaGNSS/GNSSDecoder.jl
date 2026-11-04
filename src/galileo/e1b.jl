@@ -5,9 +5,9 @@
 # word-type parser are the shared I/NAV core in `galileo/inav.jl` — the very
 # same message is broadcast on E5b-I, which the ICD states uses "the same page
 # layout" with only the page sequencing differing (§4.3.1). This file holds only
-# what is specific to E1-B: the constants alias, the decoder-state constructors
-# (including the BOC(1,1) approximation), the signal mapping, and the health
-# check, which reports the E1-B/C facet of word type 5.
+# what is specific to E1-B: the constants alias, the decoder-state constructors,
+# the signal mapping, and the health check, which reports the E1-B/C facet of
+# word type 5.
 
 """
     GalileoE1BConstants
@@ -44,7 +44,7 @@ container, also used by the E5b decoder).
 
 ```julia
 state = GalileoE1BDecoderState(1)  # Create decoder for PRN 1
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Use state.data for positioning
 end
@@ -70,18 +70,8 @@ function GalileoE1BDecoderState(prn)
     )
 end
 
-function GNSSDecoderState(system::GalileoE1B, prn)
-    GalileoE1BDecoderState(prn)
-end
-
-# GalileoE1B_BOC11 is the BOC(1,1) approximation of Galileo E1B — a lower
-# sampling-rate replica many software receivers substitute for the full
-# CBOC(6,1,1/11) spec (see GNSSSignals.jl `GalileoE1B_BOC11`). It carries the
-# *identical* I/NAV navigation message: same 4092-chip primary code, same
-# 250 bps data rate, same page/word structure. The modulation difference is a
-# tracking/acquisition concern only, so decoding reuses the E1B decoder
-# unchanged.
-function GNSSDecoderState(system::GalileoE1B_BOC11, prn)
+# The default BOC(1,1) and full CBOC replicas carry identical I/NAV symbols.
+function GNSSDecoderState(::GalileoE1B, prn)
     GalileoE1BDecoderState(prn)
 end
 
@@ -89,9 +79,9 @@ end
 # `GalileoINAVData`, so the signal is keyed on the constants type
 # (`GalileoINAVConstants{:GalileoE1B}` vs `{:GalileoE5bI}`) — the only thing that
 # tells the two decoders apart. Both the full CBOC E1B and its BOC(1,1)
-# approximation report `GalileoE1B`: the approximation is a
-# tracking/acquisition concern and the I/NAV stream is identical. Signal
-# metadata is forwarded through this mapping (see `src/gps/l1ca.jl`).
+# approximation report `GalileoE1B`; the decoder does not retain which tracking
+# replica produced the stream (see `src/gnss.jl`). Signal metadata is forwarded
+# through this mapping (see `src/gps/l1ca.jl`).
 get_signal_type(::GalileoE1BConstants) = GalileoE1B
 
 """
@@ -127,7 +117,7 @@ reports the E5b facet of the same word type 5.
 
 ```julia
 state = GalileoE1BDecoderState(1)
-state = decode!(state, soft_symbols, num_symbols)
+state = decode!(state, soft_bits, num_bits)
 if is_sat_healthy(state)
     # Safe to use for positioning
 end

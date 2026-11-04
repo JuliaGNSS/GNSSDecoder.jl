@@ -1,6 +1,4 @@
-using Test
 using Random
-using GNSSDecoder
 using GNSSDecoder: deinterleave!, interleave!
 
 @testset "Block deinterleaver" begin

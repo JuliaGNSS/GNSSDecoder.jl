@@ -3,7 +3,7 @@
 # `dnav_test_utils.jl`). Field values are checked against the ICD scalings
 # applied to the raw integers fed into the encoder (BDS-SIS-ICD-B1I-3.0 §5.2.4).
 
-using GNSSSignals: Hz
+using Unitful: Hz
 
 @testset "BeiDou B1I" begin
     PI = GNSSDecoder.GNSS_PI
@@ -537,7 +537,7 @@ using GNSSSignals: Hz
         ]
 
         state = BeiDouB1IDecoderState(4)   # PRN 4 is a GEO satellite ⇒ D2
-        @test GNSSDecoder.is_beidou_geo(4)
+        @test GNSSSignals.is_beidou_geo(4)
         # One 3-second frame per page: subframe 1 carries the page, subframes
         # 2-5 (integrity/differential, out of scope) are fed as zero-filled
         # filler so the SOW spacing between subframe-1 decodes is genuine.
@@ -667,7 +667,7 @@ using GNSSSignals: Hz
         state = BeiDouB1IDecoderState(20)
         @test get_signal_type(state) == BeiDouB1I
         @test GNSSDecoderState(BeiDouB1I(), 20) == state
-        @test get_data_frequency(state) == get_data_frequency(BeiDouB1I)
+        @test get_bit_rate(state) == get_bit_rate(BeiDouB1I)
         @test get_time_system_name(state) == "BeiDou Time"
         @test get_constellation_name(state) == get_constellation_name(BeiDouB1I)
 
@@ -675,13 +675,12 @@ using GNSSSignals: Hz
         # demodulates: GEO PRNs broadcast D2 at 500 sps, ten times the
         # type-level D1 answer (BDS-SIS-ICD-B1I-3.0 §5.1.1).
         geo_state = BeiDouB1IDecoderState(3)
-        @test get_data_frequency(geo_state) == 10 * get_data_frequency(BeiDouB1I)
-        @test get_data_frequency(BeiDouB3IDecoderState(59)) ==
-              10 * get_data_frequency(BeiDouB3I)
+        @test get_bit_rate(geo_state) == 10 * get_bit_rate(BeiDouB1I)
+        @test get_bit_rate(BeiDouB3IDecoderState(59)) == 10 * get_bit_rate(BeiDouB3I)
         # Stated absolutely too, so the accessor cannot drift with whatever the
         # signal type happens to answer.
-        @test get_data_frequency(state) == 50Hz
-        @test get_data_frequency(geo_state) == 500Hz
+        @test get_bit_rate(state) == 50Hz
+        @test get_bit_rate(geo_state) == 500Hz
 
         # Every BeiDou constructor rejects an out-of-range PRN rather than
         # building a decoder that can never sync.
