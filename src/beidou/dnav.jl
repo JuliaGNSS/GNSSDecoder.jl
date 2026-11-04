@@ -629,6 +629,13 @@ function BeiDouDNAVCache(cache::BeiDouDNAVCache; sow_is_fresh = cache.sow_is_fre
     )
 end
 
+# For another satellite (`reset_decoder_state!(state, prn)`): its voting tally. The
+# D2 pages and the SOW freshness are cleared by every reset.
+function clear_satellite_cache(cache::BeiDouDNAVCache)
+    empty!(cache.old_data)
+    return cache
+end
+
 # One almanac and one health slot per SV ID (1-63).
 preallocated_data(::Type{BeiDouDNAVData}) = BeiDouDNAVData(;
     almanacs = SlotDictionary{BeiDouDNAVAlmanac,64}(),

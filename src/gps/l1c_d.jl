@@ -657,6 +657,10 @@ struct GPSL1C_DCache <: AbstractGNSSCache
     storage::DataStorage{GPSCNAV2Data}
 end
 
+# Nothing satellite-specific (see `reset_decoder_state!(state, prn)`): the buffers are
+# FEC scratch, refilled every frame.
+clear_satellite_cache(cache::GPSL1C_DCache) = cache
+
 function GPSL1C_DCache()
     # The CNAV-2 LDPC codes are systematic with codeword layout [info | parity]
     # (IS-GPS-800J §3.2.3.4: H = [[A B T] [C D E]] acts on [info; parity]);
