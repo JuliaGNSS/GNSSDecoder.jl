@@ -63,7 +63,7 @@ code; this file is for naming and meaning only.
   Reserved(14) + HAS Page(448) + CRC-24Q(24), the CRC over the leading 462.
   Uniquely among the signals here it carries *no ephemeris at all*: the HAS
   message is a set of corrections to another signal's broadcast navigation data,
-  so `is_decoding_completed_for_positioning` is always `false` and
+  so `has_positioning_data` is always `false` and
   `is_sat_healthy` reports the HAS *service* status instead of a satellite
   health bit. Also uniquely, one message spans *satellites*: it is cut into
   k ≤ 32 pages of 424 bits, encoded with a systematic RS(255, 32) code over
@@ -204,7 +204,7 @@ the documents:
 
 ## Group delays and positioning readiness
 
-`is_decoding_completed_for_positioning` requires a signal's own single-band
+`has_positioning_data` requires a signal's own single-band
 group delay **when that field rides in the block the gate already waits for**,
 and excludes it otherwise. The question is never "is it important" — it always
 is, at metre scale — but "does requiring it cost time to first fix".

@@ -492,7 +492,7 @@ get_broadcast_time_of_week(data::GPSLNAVData) = data.TOW
 # (`gps/cnav.jl`, `gps/l1c_d.jl`).
 get_time_offset(::GNSSDecoderState{<:GPSLNAVData}, ::TimeSystem) = nothing
 
-function is_decoding_completed_for_positioning(data::GPSLNAVData)
+function has_positioning_messages(data::GPSLNAVData)
     !isnothing(data.integrity_status_flag) &&
         !isnothing(data.TOW) &&
         !isnothing(data.alert_flag) &&
@@ -830,7 +830,7 @@ function decode_sync_unit(state::GNSSDecoderState{<:GPSLNAVData}, buffer)
             # Raw URA index, unconverted (Table 20-I maps it to a bound; 15 means "no
             # accuracy prediction"). Mapping 15 to `nothing` was indistinguishable
             # from "subframe 1 not decoded" and kept the SV out of
-            # `is_decoding_completed_for_positioning` forever.
+            # `has_positioning_data` forever.
             URA_index = Int64(get_bits(word3, 30, 13, 4))
 
             # Satellite Health
@@ -1480,7 +1480,7 @@ end
 
 function validate_data(state::GNSSDecoderState{<:GPSLNAVData})
     IODC = state.raw_data.IODC
-    if is_decoding_completed_for_positioning(state.raw_data) &&
+    if has_positioning_messages(state.raw_data) &&
        IODC !== nothing &&
        IODC & 0xff == state.raw_data.IODE_subframe2 == state.raw_data.IODE_subframe3
         state = confirm_data(state)

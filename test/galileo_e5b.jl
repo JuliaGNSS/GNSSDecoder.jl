@@ -136,7 +136,7 @@ inav_symbol_stream(parts::Vector{Vector{Bool}}) =
     @test get_time_system(decoder) == get_time_system(GalileoE1BDecoderState(21))
     @test hasmethod(GNSSDecoderState, Tuple{GalileoE5bI,Int})
     @test !hasmethod(GNSSDecoderState, Tuple{GalileoE5bQ,Int})
-    @test !is_decoding_completed_for_positioning(decoder)
+    @test !has_positioning_data(decoder)
     @test !is_sat_healthy(decoder)
 end
 
@@ -308,6 +308,6 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test collect(keys(allocations.state.data.almanacs)) == [19, 20, 21]
 end

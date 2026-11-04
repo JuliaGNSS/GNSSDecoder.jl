@@ -228,16 +228,21 @@ function deques_equal(a::CircularDeque{T}, b::CircularDeque{T}) where {T}
     return true
 end
 
+# `has_positioning_messages(data)`, one method per message container, checks the required
+# message set alone; publishing validated data and its accessors gate on that, not on the
+# time anchor.
 """
 $(TYPEDSIGNATURES)
 
 Whether a decoder has recovered the minimum navigation data a positioning engine needs
 from this satellite: a time of week, a full ephemeris set and the SV clock-correction
 polynomial (plus, on signals that carry them in the same required set, the broadcast week
-number and single-band group delay). Dispatches on the validated
-[`data`](@ref GNSSDecoderState), so it becomes `true` only once the required message set
-has passed CRC/parity **and** the cross-subframe issue-of-data check that promotes
-`raw_data` to `data`.
+number and single-band group delay). Reads the validated [`data`](@ref GNSSDecoderState),
+so it becomes `true` only once the required message set has passed CRC/parity **and** the
+cross-subframe issue-of-data check that promotes `raw_data` to `data`. It also requires the
+time anchor [`num_bits_since_time_reference`](@ref GNSSDecoderState), so whenever it is
+`true`, [`get_decoded_time_of_week`](@ref) returns a number. Always `false` on Galileo
+E6-B, whose HAS corrections apply to another signal's data and form no positioning set.
 
 This is the readiness gate a receiver (e.g. `PositionVelocityTime.jl`) should pair with
 [`is_sat_healthy`](@ref): when it is `true`, the health field `is_sat_healthy` inspects
@@ -275,8 +280,8 @@ has been decoded, so no separate `nothing` guard is needed.
       - **Alert flag.** `is_sat_healthy` reflects the broadcast health bits only; check the
         L1 C/A alert flag (or equivalent) separately.
 """
-is_decoding_completed_for_positioning(state::GNSSDecoderState) =
-    is_decoding_completed_for_positioning(state.data)
+has_positioning_data(state::GNSSDecoderState) =
+    has_positioning_messages(state.data) && !isnothing(state.num_bits_since_time_reference)
 
 # ---- Signal metadata --------------------------------------------------------
 #
@@ -470,28 +475,51 @@ Galileo E6-B always answers `nothing`: C/NAV carries HAS corrections stamped wit
 
 # The epoch it denotes, and reading the current time
 
-Every signal's value is the time of the epoch that
+The value is the time of the epoch that
 [`num_bits_since_time_reference`](@ref GNSSDecoderState) is anchored to; the anchor is set
 per signal at promotion time to the frame the broadcast field stamps (the *next* subframe
-for GPS LNAV, CNAV and L1C-D; the *current* frame for BeiDou). So the current time of week
-is the same expression on every signal:
+for GPS LNAV, CNAV and L1C-D; the *current* frame for BeiDou). The current time of week is
+available through [`get_decoded_time_of_week`](@ref):
 
 ```julia
-using Unitful: Hz, ustrip
-tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
+time_of_week = get_decoded_time_of_week(state)
 ```
 
 It reads [`data`](@ref GNSSDecoderState) rather than `raw_data`, so it returns a time only
 once the message set has passed CRC/parity and the cross-subframe consistency check (the
-gate [`is_decoding_completed_for_positioning`](@ref) reports). Call it on `state.raw_data`
-for an unvalidated time.
+data gate of [`has_positioning_data`](@ref)). Call it on `state.raw_data` for an unvalidated
+time.
 
 # See Also
 
   - [`get_time_offset`](@ref): relating that time to another constellation's
 """
 get_broadcast_time_of_week(state::GNSSDecoderState) = get_broadcast_time_of_week(state.data)
+
+"""
+    get_decoded_time_of_week(state::GNSSDecoderState) -> Union{Nothing,Float64}
+
+Time at the last channel symbol consumed by [`decode!`](@ref), in seconds relative to the
+week of [`get_broadcast_time_of_week`](@ref): the validated broadcast stamp advanced by the
+channel-symbol count at the decoder's symbol rate. `nothing` when the stamp or its time
+anchor is unavailable, including on Galileo E6-B.
+
+Deliberately not reduced modulo one week: it can exceed 604800 when symbols arrive past a
+week boundary before a new stamp is validated. Keep it paired with the decoded week
+number; wrapping it alone would lose the week carry. It may inherit a temporarily lagging
+week field.
+
+This is the uncorrected satellite time. A ranging consumer adds the residual code/carrier
+phase and applies satellite clock and group-delay corrections. Vector tracking may adjust
+the time-reference counter to align it with its code phase; the counter does not report the
+age of the last preamble.
+"""
+function get_decoded_time_of_week(state::GNSSDecoderState)
+    stamp = get_broadcast_time_of_week(state)
+    count = state.num_bits_since_time_reference
+    (isnothing(stamp) || isnothing(count)) && return nothing
+    Float64(stamp) + count / ustrip(Hz, get_bit_rate(state))
+end
 
 """
 $(TYPEDEF)
@@ -1042,13 +1070,8 @@ bit decision and the magnitude the confidence (standard LLR convention):
 
   - `state::GNSSDecoderState`: Current decoder state
   - `soft_bits::AbstractVector{<:Real}`: Soft bits to consume, oldest first
-  - `num_bits::Int`: Number of leading entries of `soft_bits` to process
-
-# Keywords
-
-  - `decode_once::Bool=false`: If `true`, stops once all required positioning
-    data has been validated (subframes 1-3 for GPS L1 C/A; word types 1-5 for
-    Galileo E1B)
+  - `num_bits::Int=length(soft_bits)`: Number of leading symbols to process;
+    pass an explicit count when the vector contains unused trailing entries.
 
 # Returns
 
@@ -1064,9 +1087,9 @@ bit decision and the magnitude the confidence (standard LLR convention):
 function decode!(
     state::GNSSDecoderState,
     soft_bits::AbstractVector{<:Real},
-    num_bits::Int;
-    decode_once::Bool = false,
+    num_bits::Int = length(soft_bits),
 )
+    num_bits >= 0 || throw(ArgumentError("num_bits must be nonnegative"))
     num_bits <= length(soft_bits) ||
         throw(ArgumentError("num_bits exceeds length(soft_bits)"))
     num_bits_since_time_reference = state.num_bits_since_time_reference
@@ -1083,9 +1106,7 @@ function decode!(
         state = with_num_bits_since_time_reference(state, num_bits_since_time_reference)
         state, resolved_buffer = complement_buffer_if_necessary(state, buffer)
         state = decode_sync_unit(state, resolved_buffer)
-        if !decode_once || !is_decoding_completed_for_positioning(state.data)
-            state = validate_data(state)
-        end
+        state = validate_data(state)
         state = drain_after_sync!(state)
         num_bits_since_time_reference = state.num_bits_since_time_reference
     end

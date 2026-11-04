@@ -335,8 +335,8 @@ radians on decode, and all fields are `Union{Nothing,…}` until first decoded.
 Carried **only** by message type 30, broadcast far less often than clock/ephemeris
 (max interval 288 s on L2C / 144 s on L5, vs 48 s / 24 s; IS-GPS-200 Table 30-XII,
 IS-GPS-705J Table 20-XII). They may still be `nothing` when positioning is otherwise
-ready: `is_decoding_completed_for_positioning` deliberately does not wait for them, so
-code applying these corrections must handle `nothing` (treat as 0).
+ready: `has_positioning_data` deliberately does not wait for them, so code applying
+these corrections must handle `nothing` (treat as 0).
 
   - `T_GD::Float64`: L1/L2 P(Y) inter-signal correction (seconds).
   - `ISC_L1CA,ISC_L2C,ISC_L5I5,ISC_L5Q5::Float64`: inter-signal corrections (s).
@@ -803,7 +803,7 @@ broadcasting one for `target`.
 get_time_offset(state::GNSSDecoderState{<:GPSCNAVData}, target::TimeSystem) =
     gps_ggto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::GPSCNAVData)
+function has_positioning_messages(data::GPSCNAVData)
     !isnothing(data.TOW) && is_ephemeris_decoded(data) && is_clock_correction_decoded(data)
 end
 
@@ -1618,7 +1618,7 @@ Promotion **overwrites** the preallocated validated stores in `state.cache.stora
 (`publish_data`), so `data` never shares a container with `raw_data`.
 """
 function validate_data(state::GNSSDecoderState{<:GPSCNAVData})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),

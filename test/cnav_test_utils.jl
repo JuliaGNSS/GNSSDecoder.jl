@@ -155,7 +155,7 @@ function test_cnav_decode_allocation_free(make_state, messages)
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
     state = allocations.state
-    @test is_decoding_completed_for_positioning(state)
+    @test has_positioning_data(state)
     d = state.data
     @test d.last_message_type == 40
     @test length(d.reduced_almanacs) == 11

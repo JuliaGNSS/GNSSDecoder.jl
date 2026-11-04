@@ -197,8 +197,7 @@ fields are `Union{Nothing,…}` until first decoded.
   - `IODC::Int64`: Issue of data, clock (10 bits).
   - `IODE::Int64`: Issue of data, ephemeris (8 bits). May differ from the 8 LSBs of
     `IODC` even within one CRC-protected subframe 2: §7.4.3 says a user "shall use the
-    preceding matched pair" until they agree. `is_decoding_completed_for_positioning`
-    enforces the match.
+    preceding matched pair" until they agree. `has_positioning_data` enforces the match.
 
 # Ephemeris (Figure 6-12/6-13, Table 7-8)
 
@@ -239,8 +238,7 @@ fields are `Union{Nothing,…}` until first decoded.
 
     The clock is referenced to B3I (§7.6.1), so reaching the B1C data component means
     adding `T_GD_B1Cp` and then `ISC_B1Cd`. Both ride in the same CRC-protected subframe 2
-    as the clock, so `is_decoding_completed_for_positioning` requires them; `T_GD_B2ap` is
-    not required.
+    as the clock, so `has_positioning_data` requires them; `T_GD_B2ap` is not required.
 
 # Subframe 3 page header (Figures 6-8 .. 6-11, §7.14-7.17)
 
@@ -690,11 +688,11 @@ end
 # as `b2a.jl`).
 #
 # The group delays are required here, unlike on most signals (policy on
-# `is_decoding_completed_for_positioning` in src/gnss.jl): ICD §7.6 references the clock
-# to B3I, so a B1C receiver must add `T_GD_B1Cp` and `ISC_B1Cd` (a metre-scale bias). Both
-# are in the same CRC-protected subframe 2, so requiring them costs no time to first fix.
-# `T_GD_B2ap` is the B2a pilot's delta and not required.
-function is_decoding_completed_for_positioning(data::BeiDouCNAV1Data)
+# `has_positioning_data` in src/gnss.jl): ICD §7.6 references the clock to B3I, so a B1C
+# receiver must add `T_GD_B1Cp` and `ISC_B1Cd` (a metre-scale bias). Both are in the same
+# CRC-protected subframe 2, so requiring them costs no time to first fix. `T_GD_B2ap` is
+# the B2a pilot's delta and not required.
+function has_positioning_messages(data::BeiDouCNAV1Data)
     !isnothing(data.SOH) &&
         !isnothing(data.HS) &&
         is_subframe2_decoded(data) &&
@@ -1191,9 +1189,8 @@ end
     validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
 
 Promote `raw_data` to `data` once the positioning set is complete (SOH, subframe 2,
-subframe-3 health status) and IODE/IODC match
-([`is_decoding_completed_for_positioning`](@ref)), publishing it and arming the streaming
-counter. The BCH match happens in `try_sync` on every frame, and
+subframe-3 health status) and IODE/IODC match ([`has_positioning_data`](@ref)), publishing
+it and arming the streaming counter. The BCH match happens in `try_sync` on every frame, and
 SOH continuity in [`decode_sync_unit`](@ref).
 
 `publish_data` overwrites the preallocated validated containers, so `data` never shares
@@ -1206,7 +1203,7 @@ the *next* frame, so `gps/l1c_d.jl` anchors to `preamble_length` alone; that anc
 would report the time 18 s early.
 """
 function validate_data(state::GNSSDecoderState{<:BeiDouCNAV1Data})
-    if is_decoding_completed_for_positioning(state.raw_data)
+    if has_positioning_messages(state.raw_data)
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),

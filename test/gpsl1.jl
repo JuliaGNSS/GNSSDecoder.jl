@@ -752,7 +752,7 @@ end
     @test allocations.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.warm == 0 skip = !CHECK_ALLOCATIONS
     @test allocations.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test is_decoding_completed_for_positioning(allocations.state)
+    @test has_positioning_data(allocations.state)
     @test !isnothing(allocations.state.data.almanacs)
     @test copy_decode_allocations(() -> GPSL1CADecoderState(25), symbols) == 0 skip =
         !CHECK_ALLOCATIONS
@@ -760,7 +760,7 @@ end
     # A `copy` is independent: decoding into it leaves the original untouched.
     state = GPSL1CADecoderState(25)
     decoded = decode!(copy(state), symbols, length(symbols))
-    @test is_decoding_completed_for_positioning(decoded)
+    @test has_positioning_data(decoded)
     @test state == GPSL1CADecoderState(25)
     @test GNSSDecoder.num_symbols_buffered(state) == 0
 end

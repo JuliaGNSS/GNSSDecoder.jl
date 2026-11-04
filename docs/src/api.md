@@ -13,7 +13,7 @@ Construct a decoder from its GNSSSignals signal and satellite PRN:
 ```julia
 using GNSSDecoder, GNSSSignals
 state = GNSSDecoderState(GPSL1CA(), 25)
-state = decode!(state, soft_bits, length(soft_bits))
+state = decode!(state, soft_bits)
 ```
 
 The signal-specific constructors below are conveniences for the same states.
@@ -70,14 +70,15 @@ is_sat_healthy
 
 ## Positioning Readiness
 
-Pair [`is_decoding_completed_for_positioning`](@ref) with [`is_sat_healthy`](@ref)
+Pair [`has_positioning_data`](@ref) with [`is_sat_healthy`](@ref)
 to gate use of a satellite in a fix: the first confirms the required navigation
-data set has been decoded and validated, the second that the satellite is
+data set has been decoded and validated and that the decoded time is available
+([`get_decoded_time_of_week`](@ref)), the second that the satellite is
 broadcasting healthy. See the docstring for what it deliberately does *not*
 gate on (ephemeris freshness, second-order corrections, the alert flag).
 
 ```@docs
-is_decoding_completed_for_positioning
+has_positioning_data
 ```
 
 ## Signal Metadata
@@ -144,16 +145,14 @@ defines — so it is done here, once per signal, rather than in every consumer.
 | [`get_broadcast_time_of_week`](@ref) | seconds of week at the epoch the message stamps | no time has been decoded and validated yet |
 | [`get_time_offset`](@ref) | offset to another constellation's time system, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
 
-`get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
-or `SOW` on most signals, `ITOW·7200 + TOI·18` on GPS L1C-D, and
-`HOW·3600 + SOH·18` on BeiDou B1C — and pairs with the state's time-reference counter to
-give the current time on every signal with one expression:
+`get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW` or
+`SOW` on most signals, `ITOW·7200 + TOI·18` on GPS L1C-D, and `HOW·3600 + SOH·18` on BeiDou
+B1C — and pairs with the state's time-reference counter in `get_decoded_time_of_week`, which
+returns the uncorrected time at the last consumed symbol:
 
 ```julia
 using GNSSDecoder, GNSSSignals
-using Unitful: Hz, ustrip
-tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_since_time_reference / ustrip(Hz, get_bit_rate(state))
+time_of_week = get_decoded_time_of_week(state)
 ```
 
 `get_time_offset` folds away the five shapes the same quantity is broadcast in —
@@ -181,6 +180,7 @@ would never see it.
 OrbitClass
 get_orbit_class
 get_broadcast_time_of_week
+get_decoded_time_of_week
 GNSSTimeOffset
 get_time_offset
 ```

@@ -964,7 +964,7 @@ end
 # Never: C/NAV carries no ephemeris, clock polynomial or week number. HAS corrects the
 # navigation data of another signal (I/NAV or LNAV, per the mask's Navigation Message
 # Index), so a positioning engine pairs E6-B with an I/NAV or LNAV decoder.
-is_decoding_completed_for_positioning(::GalileoE6BData) = false
+has_positioning_messages(::GalileoE6BData) = false
 
 # C/NAV stamps blocks with a time *of hour* and broadcasts no week number; see the
 # `GalileoE6BData` docstring on why times stay on the blocks.

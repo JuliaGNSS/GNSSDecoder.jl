@@ -176,8 +176,8 @@ const GALILEO_ALMANAC_SLOTS = 64
 # `GalileoE6BData` is deliberately *not* an `AbstractGalileoEphemerisData`: C/NAV
 # carries HAS corrections to another signal's ephemeris and has no orbital fields
 # (dispatching on the wider supertype would raise a `FieldError`), so it defines
-# `is_decoding_completed_for_positioning` itself. Health-status and positioning-readiness
-# checks differ per signal and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.
+# `has_positioning_messages` itself. Health-status and positioning-readiness checks
+# differ per signal and stay in `inav.jl` / `e5a.jl` / `e6b.jl`.
 function is_ephemeris_decoded(data::AbstractGalileoEphemerisData)
     !isnothing(data.t_0e) &&
         !isnothing(data.M_0) &&
