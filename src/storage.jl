@@ -423,7 +423,7 @@ either `nothing` or not: the expression is duplicated under
 each copy.
 
 This is for keyword calls that rebuild a data container from an optional
-(`Union{Nothing,T}`) value, e.g. `GPSL1CAData(raw_data; TOW)` with a `TOW` that
+(`Union{Nothing,T}`) value, e.g. `GPSLNAVData(raw_data; TOW)` with a `TOW` that
 may be `nothing`. On Julia 1.10 the keyword `NamedTuple` of such a call has a
 non-concrete type, and the keyword sorter then takes its generic, allocating
 path; splitting the union at the call site keeps every copy concrete. `n`

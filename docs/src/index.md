@@ -46,7 +46,7 @@ julia> state.prn  # Access PRN
 1
 
 julia> typeof(state)
-GNSSDecoderState{GPSL1CAData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
+GNSSDecoderState{GPSLNAVData, GNSSDecoder.GPSL1CAConstants, GNSSDecoder.GPSL1CACache}
 ```
 
 Process incoming soft bits and check the decoder state:
@@ -54,7 +54,7 @@ Process incoming soft bits and check the decoder state:
 ```jldoctest gps_example
 julia> state = decode!(state, Float32[+1, -1, -1, -1, +1, -1, +1, +1], 8);  # Decode 8 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Symbols are now buffered
+julia> GNSSDecoder.num_symbols_buffered(state)  # Symbols are now buffered
 8
 ```
 
@@ -95,7 +95,7 @@ GNSSDecoderState{GalileoINAVData, GNSSDecoder.GalileoINAVConstants{:GalileoE1B},
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -132,7 +132,7 @@ julia> using GNSSDecoder
 
 julia> state = GalileoE6BDecoderState(1);
 
-julia> state.constants.syncro_sequence_length   # 1000 symbols = 1 s per page
+julia> state.constants.sync_unit_length   # 1000 symbols = 1 s per page
 1000
 
 julia> is_decoding_completed_for_positioning(state)   # corrections, not an ephemeris
@@ -176,11 +176,11 @@ julia> state.prn
 1
 
 julia> typeof(state)
-GNSSDecoderState{GPSL1C_DData, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
+GNSSDecoderState{GPSCNAV2Data, GNSSDecoder.GPSL1C_DConstants, GNSSDecoder.GPSL1C_DCache}
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -205,7 +205,7 @@ GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL5I}, GNSSDecoder
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -229,7 +229,7 @@ GNSSDecoderState{GPSCNAVData, GNSSDecoder.GPSCNAVConstants{:GPSL2CM}, GNSSDecode
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -251,7 +251,7 @@ GNSSDecoderState{BeiDouDNAVData, GNSSDecoder.BeiDouDNAVConstants{:BeiDouB1I}, GN
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -272,11 +272,11 @@ julia> using GNSSDecoder
 julia> state = BeiDouB2aDecoderState(30);  # Initialize decoder for PRN 30
 
 julia> typeof(state)
-GNSSDecoderState{BeiDouB2aData, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
+GNSSDecoderState{BeiDouCNAV2Data, GNSSDecoder.BeiDouB2aConstants, GNSSDecoder.BeiDouB2aCache}
 
 julia> state = decode!(state, Float32[+1, -1, +1, +1, -1, -1, -1, -1, -1, +1], 10);  # Decode 10 soft bits
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 10
 ```
 
@@ -294,12 +294,12 @@ julia> state = GPSL1CADecoderState(1);
 
 julia> state = decode!(state, Float32[+1, +1, +1, +1, +1, +1, +1, +1], 8);  # Some decoding
 
-julia> GNSSDecoder.num_bits_buffered(state)
+julia> GNSSDecoder.num_symbols_buffered(state)
 8
 
 julia> state = reset_decoder_state!(state);  # Reset after signal loss
 
-julia> GNSSDecoder.num_bits_buffered(state)  # Buffers are cleared
+julia> GNSSDecoder.num_symbols_buffered(state)  # Buffers are cleared
 0
 
 julia> state.prn  # PRN is preserved
@@ -375,11 +375,11 @@ C/NAV carries corrections rather than an ephemeris — see
 ### GPS L1C-D Data
 
 CNAV-2 clock-and-ephemeris data plus the subframe-3 page payloads — see
-[`GPSL1C_DData`](@ref) for the full field list:
+[`GPSCNAV2Data`](@ref) for the full field list:
 
 | Field | Description |
 |-------|-------------|
-| `toi`, `ITOW`, `WN` | Time of interval, interval time of week, week number |
+| `TOI`, `ITOW`, `WN` | Time of interval, interval time of week, week number |
 | `t_0e`, `ΔA`, `e`, `M_0`, `ω`, `Ω_0`, `i_0`, … | Clock and ephemeris (CED) parameters |
 | `α_0..α_3`, `β_0..β_3` | Klobuchar ionospheric coefficients (subframe-3 page 1) |
 | `A_0UTC`, `Δt_LS`, … | UTC parameters (page 1) |

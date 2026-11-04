@@ -45,8 +45,8 @@ end
         @test state_a.prn == 13
         @test state_a == state_b
         @test state_a.data == GPSCNAVData()
-        @test isnothing(state_a.num_bits_after_valid_syncro_sequence)
-        @test !state_a.is_shifted_by_180_degrees
+        @test isnothing(state_a.num_bits_since_time_reference)
+        @test !state_a.is_polarity_inverted
     end
 
     @testset "Window Viterbi round-trips the continuous FEC" begin
@@ -92,7 +92,7 @@ end
         @test d.l2_health == false
         @test d.l5_health == false
         @test d.t_op == 30_000
-        @test d.ura_ed_index == 0
+        @test d.URA_ED_index == 0
         @test d.t_0e == 30_000
         @test d.ΔA == 0.0
         @test d.A_dot == 0.0
@@ -102,18 +102,18 @@ end
         @test d.ω ≈ -54321 * 2.0^-32 * PI
         @test d.integrity_status_flag == true
         @test d.l2c_phasing == false
-        @test !state.is_shifted_by_180_degrees
+        @test !state.is_polarity_inverted
         # Positioning needs message types 11 and 30 as well.
         @test !GNSSDecoder.is_decoding_completed_for_positioning(d)
         @test !is_sat_healthy(state)
     end
 
-    @testset "Phase-inverted stream decodes with is_shifted_by_180_degrees" begin
+    @testset "Phase-inverted stream decodes with is_polarity_inverted" begin
         enc = CNAVTestEncoder()
         stream =
             fec_encode_soft(enc, [falses(20); build_mt10(); build_mt10(; tow_count = 1235)])
         state = decode!(GPSL5IDecoderState(9), -stream, length(stream))
-        @test state.is_shifted_by_180_degrees
+        @test state.is_polarity_inverted
         @test state.raw_data.last_message_type == 10
         @test state.raw_data.WN == 2345
     end
@@ -128,8 +128,8 @@ end
         @test isempty(state.cache.soft_buffer)
         @test isnothing(state.raw_data.TOW)
         @test isnothing(state.data.TOW)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
-        @test !state.is_shifted_by_180_degrees
+        @test isnothing(state.num_bits_since_time_reference)
+        @test !state.is_polarity_inverted
         # raw_data keeps WN, ephemeris fields, etc.
         @test state.raw_data.WN == 2345
     end
@@ -153,7 +153,7 @@ end
         @test d.l2_health == false
         @test d.l5_health == false
         @test d.t_op == 259200
-        @test d.ura_ed_index == 0
+        @test d.URA_ED_index == 0
         @test d.t_0e == 264600
         @test d.ΔA ≈ 922.048828125
         @test d.A_dot ≈ 0.0
@@ -178,9 +178,9 @@ end
         @test d.C_uc ≈ 1.0002404451370239e-6
 
         # Message types 30-37 — shared clock block.
-        @test d.ura_ned0_index == 0
-        @test d.ura_ned1_index == 0
-        @test d.ura_ned2_index == 0
+        @test d.URA_NED0_index == 0
+        @test d.URA_NED1_index == 0
+        @test d.URA_NED2_index == 0
         @test d.t_0c == 264600
         @test d.a_f0 ≈ 6.4874766394495964e-6
         @test d.a_f1 ≈ 1.0324008314910316e-9
@@ -322,13 +322,13 @@ end
         # Of the 26 encoded messages the last cannot complete (its sync
         # window needs the next message's first 16 symbols), so 25 decode.
         state = decode!(GPSL5IDecoderState(25), stream, length(stream))
-        @test !state.is_shifted_by_180_degrees
+        @test !state.is_polarity_inverted
         assert_spirent_golden(state)
 
         # Polarity-inverted stream must decode identically with the
         # 180°-flip flag set.
         state_inv = decode!(GPSL5IDecoderState(25), -stream, length(stream))
-        @test state_inv.is_shifted_by_180_degrees
+        @test state_inv.is_polarity_inverted
         @test state_inv.data == state.data
 
         # Mid-stream acquisition at an arbitrary (odd) symbol offset: the

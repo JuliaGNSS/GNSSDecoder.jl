@@ -204,7 +204,7 @@ end
             b2b_frame_symbols(b2b_mt40_message(); prn),
         ]
         state = b2b_decode_frames(state, frames)
-        @test !state.is_shifted_by_180_degrees
+        @test !state.is_polarity_inverted
 
         # MT10 — ephemeris + integrity:
         d = state.raw_data
@@ -312,13 +312,13 @@ end
         # A reserved orbit type (0) leaves the semi-major axis unknowable: it
         # is what selects the `A_ref` the broadcast `ΔA` corrects, so the
         # satellite must not be used (ICD Table 7-6).
-        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = 0))
+        @test !GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = 0))
         @test all(
-            GNSSDecoder.is_ephemeris_decoded(BeiDouB2bData(d; sat_type = t)) for t = 1:3
+            GNSSDecoder.is_ephemeris_decoded(BeiDouCNAV3Data(d; sat_type = t)) for t = 1:3
         )
         # The SOW stamps this frame's preamble, so the armed counter spans the
         # frame plus the next preamble: 1000 + 16 = 1016 symbols = 1.016 s.
-        @test state.num_bits_after_valid_syncro_sequence == 1016
+        @test state.num_bits_since_time_reference == 1016
         @test state.data.SOW == B2B_SOW_FIELD_BASE + 2
         @test state.data.last_message_type == 40
         @test is_sat_healthy(state)
@@ -331,7 +331,7 @@ end
     # once MT10 and MT30 are in, so this is defensive — it is the same split that
     # fixes a live once-per-message-cycle 3-second error on B2a, whose MT10/MT11
     # adjacency gate really does skip promotions (see src/beidou/b2b.jl).
-    @testset "Only promotion arms the symbol counter" begin
+    @testset "Only promotion arms the time-reference counter" begin
         state = BeiDouB2bDecoderState(prn)
         # MT10 alone: ephemeris, but neither the clock nor the week number, so
         # `is_decoding_completed_for_positioning` is still false.
@@ -341,14 +341,14 @@ end
         )
         @test state.raw_data.SOW == 5000                              # frame decoded ...
         @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)   # ... armed nothing
+        @test isnothing(state.num_bits_since_time_reference)   # ... armed nothing
         # A second decoded frame does not arm it either.
         state = b2b_decode_frames(
             state,
             [b2b_frame_symbols(b2b_mt10_message(; sow_field = 5001); prn)],
         )
         @test state.raw_data.SOW == 5001
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
+        @test isnothing(state.num_bits_since_time_reference)
         # The MT30 that completes the set promotes, and arms the counter to the
         # frame plus next-frame preamble whose SOW it just published.
         state = b2b_decode_frames(
@@ -356,7 +356,7 @@ end
             [b2b_frame_symbols(b2b_mt30_message(; sow_field = 5002); prn)],
         )
         @test state.data.SOW == 5002
-        @test state.num_bits_after_valid_syncro_sequence == 1016
+        @test state.num_bits_since_time_reference == 1016
     end
 
     @testset "SOW stamps each frame; unhealthy satellite is flagged" begin
@@ -412,7 +412,7 @@ end
             b2b_frame_symbols(b2b_mt30_message(); prn, invert = true),
         ]
         state = b2b_decode_frames(state, frames; invert = true)
-        @test state.is_shifted_by_180_degrees
+        @test state.is_polarity_inverted
         @test state.raw_data.t_0e == 1200 * 300
         @test state.raw_data.a_f0 == -400000 * 2.0^-34
         @test is_decoding_completed_for_positioning(state)
@@ -478,13 +478,13 @@ end
         @test state.raw_data.t_0e == 1200 * 300  # ephemeris survives for warm restart
         @test isnothing(state.data.SOW)
         @test !is_decoding_completed_for_positioning(state)
-        @test isnothing(state.num_bits_after_valid_syncro_sequence)
-        @test GNSSDecoder.num_bits_buffered(state) == 0
+        @test isnothing(state.num_bits_since_time_reference)
+        @test GNSSDecoder.num_symbols_buffered(state) == 0
     end
 
     @testset "GNSSDecoderState(::BeiDouB2bI, prn) dispatch" begin
         state = GNSSDecoderState(BeiDouB2bI(), prn)
-        @test state isa GNSSDecoderState{BeiDouB2bData}
+        @test state isa GNSSDecoderState{BeiDouCNAV3Data}
         @test state.prn == prn
     end
 end

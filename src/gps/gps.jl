@@ -21,7 +21,7 @@ const GPS_GGTO_ID_GALILEO = 1
 const GPS_GGTO_WN_MODULUS = 8192
 
 """
-    gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id) -> Union{Nothing,GNSSTimeOffset}
+    gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
 
 Normalise the GGTO parameter set that CNAV (message type 35) and CNAV-2
 (subframe 3 page 2) broadcast into a [`GNSSTimeOffset`](@ref), or `nothing`
@@ -30,15 +30,14 @@ when the set is absent, marked unavailable, or refers to a system other than
 
 Both messages carry one set at a time, tagged with the system it refers to, so
 which target is answerable is the satellite's choice at the moment of asking.
-`ggto_id` is that broadcast tag, passed in because the two messages name the
-same field differently (`GNSS_ID` on CNAV, `GGTO_ID` on CNAV-2).
+The tag is the `GNSS_ID` field, which both messages' data types name alike.
 """
-function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem, ggto_id)
+function gps_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     data = state.data
     # GNSS Type ID 001 is the only assigned reachable target: 000 is "no data
     # available" and the reserved codes are to be read as unusable rather than
     # guessed at.
-    (ggto_id == GPS_GGTO_ID_GALILEO && target === GST()) || return nothing
+    (data.GNSS_ID == GPS_GGTO_ID_GALILEO && target === GST()) || return nothing
     # Decoded together from one message, so all present or all `nothing`. Each is
     # checked anyway, to narrow it for the call below (see `galileo_ggto_offset`).
     (; A_0GGTO, A_1GGTO, A_2GGTO, t_GGTO, WN_GGTO) = data

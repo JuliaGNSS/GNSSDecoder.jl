@@ -172,7 +172,7 @@ from and the field lists say which:
 | UTC reference epoch | GPS/BDS `t_ot`, Galileo `t_0t` | `t_0t` |
 | UTC reference week | GPS `WN_t`/`WN_ot`, BDS `WN_ot`, Galileo `WN_0t` | `WN_0t` |
 | GNSS-GNSS offset polynomial | GPS `A0GGTO`…, BDS `A_0BGTO`… | `A_0GGTO`…, `A_0BGTO`… |
-| GNSS-offset target id | GPS CNAV `GNSS ID`, GPS L1C `GGTO ID`, BDS `GNSS ID` | `GNSS_ID`; `GGTO_ID` on L1C-D only, which IRN-IS-800J-003 renamed |
+| GNSS-offset target id | GPS CNAV `GNSS ID`, GPS L1C `GGTO ID`, BDS `GNSS ID` | `GNSS_ID` (L1C's `GGTO ID` since IRN-IS-800J-003, before it `GNSS ID`) |
 | Week number | GPS LNAV `WN` (was `trans_week` here) | `WN` |
 | Satellite identifier | Galileo `SVID`, GPS/BDS `PRN` | `SVID` in Galileo containers, `PRN_a` in almanac records |
 | Message type of the last frame | BDS `MesType`, GPS `Message type ID` | `last_message_type` |
@@ -188,7 +188,7 @@ Keplerian elements and harmonic corrections (`M_0`, `sqrt_A`, `e`, `Ω_0`, `i_0`
 `ω`, `Ω_dot`, `i_dot`, `Δn`, `C_uc` … `C_is`), which every ICD spells alike; and
 the per-signal integrity and health words, which no two constellations share
 (`SISAI_oe`, `SISMAI`, `HS`, `AIF`, `DIF`, `SIF`, `URAI`, `SatH1` for BeiDou;
-`E1B_SHS`, `E1B_DVS`, `BGD_E1_E5a` for Galileo; `ura_ed_index`, `ISC_L1CA` for
+`E1B_SHS`, `E1B_DVS`, `BGD_E1_E5a` for Galileo; `URA_ED_index`, `ISC_L1CA` for
 GPS). Two cautions inside that second group, both learned the hard way against
 the documents:
 
@@ -276,7 +276,7 @@ The same word means different things in different ICDs. Within this codebase:
   the HAS Page ID names the latter. For BeiDou
   B1I/B3I: the Pnum-stamped cycle position of a D1 subframe 4/5 (1-24) or a
   D2 subframe (Pnum1 1-10). For B1C: a PageID-typed subframe 3 (1-4).
-- **syncro sequence** — package-internal: the smallest navigable unit the
+- **sync unit** — package-internal: the smallest navigable unit the
   decoder synchronises on (subframe for GPS L1 C/A and BeiDou B1I/B3I, page
   for Galileo — including one C/NAV page on E6-B — frame for L1C-D, B1C, B2a,
   and B2b, message for L5I).
@@ -309,7 +309,7 @@ multiple subframes/pages carry a consistent ephemeris set before publishing.
 
 - **IODC** — L1 C/A clock: 10 bits. Subframe 1 holds the full IODC; subframes
   2 and 3 carry an 8-bit IODE that must match IODC[3:10].
-- **IODE_Sub_2 / IODE_Sub_3** — L1 C/A 8-bit ephemeris IODs; must equal each
+- **IODE_subframe2 / IODE_subframe3** — L1 C/A 8-bit ephemeris IODs; must equal each
   other and the lower 8 bits of IODC.
 - **IODnav** — Galileo I/NAV: 10 bits, present in word types 1–4. All four
   must match for a publishable ephemeris. Galileo HAS corrections name it as
@@ -411,7 +411,7 @@ lives in the `cache`.
   frame N+1, in either polarity.
 - **BeiDou B2a**: fixed 24-symbol preamble `0xE24DE8` at both ends of the
   600-symbol frame window, either polarity; the LDPC + CRC-24Q + own-PRN
-  gates then confirm inside `decode_syncro_sequence`.
+  gates then confirm inside `decode_sync_unit`.
 - **BeiDou B2b**: fixed 16-symbol preamble `0xEB90` at both ends of the
   1000-symbol frame window, either polarity, strengthened by the 6 unencoded
   own-PRN symbols and the LDPC + CRC-24Q gate before any state is updated.

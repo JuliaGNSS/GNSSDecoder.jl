@@ -135,19 +135,19 @@ defines — so it is done here, once per signal, rather than in every consumer.
 | [`get_time_offset`](@ref) | offset to another constellation's time system, as a [`GNSSTimeOffset`](@ref) | this satellite is not broadcasting one for that target |
 
 `get_broadcast_time_of_week` folds away the four spellings the ICDs use — a plain `TOW`
-or `SOW` on most signals, `ITOW·7200 + toi·18` on GPS L1C-D, and
-`HOW·3600 + soh·18` on BeiDou B1C — and pairs with the state's symbol counter to
+or `SOW` on most signals, `ITOW·7200 + TOI·18` on GPS L1C-D, and
+`HOW·3600 + SOH·18` on BeiDou B1C — and pairs with the state's time-reference counter to
 give the current time on every signal with one expression:
 
 ```julia
 using GNSSDecoder, GNSSSignals
 tow = get_broadcast_time_of_week(state)
-now = tow + state.num_bits_after_valid_syncro_sequence / get_bit_rate(state)
+now = tow + state.num_bits_since_time_reference / get_bit_rate(state)
 ```
 
 `get_time_offset` folds away the five shapes the same quantity is broadcast in —
 Galileo's two-term GPS-only GGTO, the GPS CNAV and CNAV-2 GGTOs tagged by a
-`GNSS_ID`/`GGTO_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
+`GNSS_ID` code, BeiDou B2a/B2b's single tagged BGTO set, B1C's set
 keyed per system, and D1/D2's three epochless pairs named per system — including
 each ICD's "not available" sentinel:
 
@@ -224,7 +224,7 @@ GNSSDecoder.AbstractBeiDouCNAVData
 
 ```@docs
 GNSSDecoder.GPSL1CAConstants
-GPSL1CAData
+GPSLNAVData
 GPSL1CAAlmanac
 ```
 
@@ -254,7 +254,7 @@ DataValidityStatus
 
 ```@docs
 GNSSDecoder.GalileoE5aConstants
-GNSSDecoder.GalileoE5aData
+GNSSDecoder.GalileoFNAVData
 ```
 
 ### Galileo E6-B (C/NAV — High Accuracy Service)
@@ -290,7 +290,7 @@ HASStatus
 
 ```@docs
 GNSSDecoder.GPSL1C_DConstants
-GPSL1C_DData
+GPSCNAV2Data
 GPSL1C_DReducedAlmanac
 GPSL1C_DMidiAlmanac
 GPSL1C_DDifferentialCorrection
@@ -337,7 +337,7 @@ BeiDouDNAVAlmanac
 
 ```@docs
 GNSSDecoder.BeiDouB1CConstants
-BeiDouB1CData
+BeiDouCNAV1Data
 BeiDouB1CBGTO
 ```
 
@@ -345,14 +345,14 @@ BeiDouB1CBGTO
 
 ```@docs
 GNSSDecoder.BeiDouB2aConstants
-BeiDouB2aData
+BeiDouCNAV2Data
 ```
 
 ### BeiDou B2b
 
 ```@docs
 GNSSDecoder.BeiDouB2bConstants
-BeiDouB2bData
+BeiDouCNAV3Data
 ```
 
 ### BeiDou shared almanac records
