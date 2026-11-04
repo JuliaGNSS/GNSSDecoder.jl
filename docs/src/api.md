@@ -377,6 +377,15 @@ HASStatus
 
 ### GPS L1C-D
 
+Subframe 3 page 8, the Integrity Support Message, is decoded as IRN-IS-800J-004
+(16 June 2026) lays it out: the same 236-bit ISM Packet as CNAV message type 40
+(IS-GPS-200 §30.3.3.10) at page bits 15-250, into `GPSCNAV2Data.ism` of type
+[`GPSIntegritySupportMessage`](@ref GNSSDecoder.GPSIntegritySupportMessage).
+Test packets (GNSS ID `0000`), reserved GNSS IDs and ISM CRC mismatches are
+ignored and keep the previous packet. The earlier page layout (IS-GPS-800J Table
+3.5-9) is not decoded; unlike message type 40, its ISM CRC sits where the
+packet's does, so the CRC alone does not reject it.
+
 ```@docs
 GPSCNAV2Data
 GNSSDecoder.GPSL1C_DReducedAlmanac
@@ -391,13 +400,22 @@ GPS L5I and GPS L2C carry the identical CNAV message, so they share the decoded
 decoders differ only in which signal-health bit [`is_sat_healthy`](@ref)
 reports.
 
+Message type 40, the Integrity Support Message, is decoded as IRN-IS-705J-004
+and IRN-IS-200N-004 (16 June 2026) lay it out: a 236-bit ISM Packet defined in
+IS-GPS-200 §30.3.3.10 (Figure 30-19, Table 30-XIa) at message bits 39-274, the
+packet GPS L1C-D carries in subframe 3 page 8 (same record type). The
+earlier layout of IS-GPS-705J Table 20-XIa (`b_nom`, `P_const`, one `MFD`) is
+deleted by those notices without a transition period or a format indicator, so
+it is not decoded: such a message fails the packet's ISM CRC and is ignored, as
+are test packets (GNSS ID `0000`) and reserved GNSS IDs.
+
 ```@docs
 GPSCNAVData
 GNSSDecoder.GPSCNAVReducedAlmanac
 GNSSDecoder.GPSCNAVMidiAlmanac
 GNSSDecoder.GPSCNAVClockDifferentialCorrection
 GNSSDecoder.GPSCNAVEphemerisDifferentialCorrection
-GNSSDecoder.GPSCNAVIntegritySupportMessage
+GNSSDecoder.GPSIntegritySupportMessage
 ```
 
 

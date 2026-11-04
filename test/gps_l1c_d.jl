@@ -658,6 +658,149 @@ end
         @test st.data.text_message == msg
     end
 
+    # The 236-bit ISM Packet (`build_ism_packet`, test/cnav_test_utils.jl) at bits 15-250
+    # of subframe 3 page 8 (IRN-IS-800J-004 Figure 3.5-8a), after the PRN and page number.
+    ism_page(packet; prn = 7) = build_sf3_page(b -> (b[15:250] = packet), prn, 8)
+
+    @testset "SF3 page 8 — ISM Packet (IRN-IS-800J-004)" begin
+        hours = 3600.0
+
+        @testset "every field" begin
+            packet = build_ism_packet()
+            st = decode_with_sf3(ism_page(packet))
+            ism = st.data.ism
+            @test ism isa GNSSDecoder.GPSIntegritySupportMessage
+            @test st.raw_data.ism == ism
+            @test ism.WN_ISM == 2345
+            @test ism.TOW_ISM == 7 * 4 * 3600
+            @test ism.t_correl ≈ 0.67hours        # code 0011
+            @test ism.β_nom ≈ 0.4                 # 4 × 0.1 m
+            @test ism.γ_nom ≈ 0.25                # 5 × 0.05
+            @test ism.R_sat ≈ 1.00e-5 / hours     # code 0110
+            @test ism.MFD_sat ≈ 1.0hours          # code 0010
+            @test ism.R_const ≈ 1.00e-6 / hours   # code 0111
+            @test ism.MFD_const ≈ 0.5hours        # code 0001
+            @test ism.Service_Level == 3          # code 010
+            @test ism.GPS_PRN_Inclusion_Mask == UInt64(0x5555_5555_5555_5555 >> 1)
+            @test ism.ISM_CRC == ism_crc32q(packet[1:204])
+            # The other subframe 3 stores are untouched.
+            @test isnothing(st.data.text_message)
+            @test isnothing(st.data.A_0)
+        end
+
+        @testset "largest defined codes, Reserved For ISM all ones" begin
+            ism =
+                decode_with_sf3(
+                    ism_page(
+                        build_ism_packet(;
+                            WN_ISM = 8191,
+                            TOW_ISM = 41,
+                            t_correl = 14,
+                            β_nom = 15,
+                            γ_nom = 15,
+                            R_sat = 8,
+                            MFD_sat = 6,
+                            R_const = 8,
+                            MFD_const = 6,
+                            service_level = 4,
+                            mask = typemax(UInt64) >> 1,
+                            reserved = -1,
+                        ),
+                    ),
+                ).data.ism
+            @test ism.WN_ISM == 8191
+            @test ism.TOW_ISM == 164 * 3600
+            @test ism.t_correl ≈ 12.0hours
+            @test ism.β_nom ≈ 1.5
+            @test ism.γ_nom ≈ 0.75
+            @test ism.R_sat ≈ 1.00e-4 / hours
+            @test ism.MFD_sat ≈ 8.0hours
+            @test ism.R_const ≈ 3.16e-6 / hours
+            @test ism.MFD_const ≈ 8.0hours
+            @test ism.Service_Level == 5
+            @test ism.GPS_PRN_Inclusion_Mask == typemax(UInt64) >> 1
+        end
+
+        @testset "Reserved codes decode as nothing" begin
+            ism =
+                decode_with_sf3(
+                    ism_page(
+                        build_ism_packet(;
+                            t_correl = 15,
+                            R_sat = 9,
+                            MFD_sat = 7,
+                            R_const = 9,
+                            MFD_const = 7,
+                            service_level = 5,
+                        ),
+                    ),
+                ).data.ism
+            @test isnothing(ism.t_correl)
+            @test isnothing(ism.R_sat)
+            @test isnothing(ism.MFD_sat)
+            @test isnothing(ism.R_const)
+            @test isnothing(ism.MFD_const)
+            @test isnothing(ism.Service_Level)
+        end
+
+        # A packet the ICD says to ignore or calls invalid, on a page that passes the
+        # subframe CRC-24Q: counted as a page, but no ISM.
+        corrupted_payload = build_ism_packet()
+        corrupted_payload[30] = !corrupted_payload[30]  # after the ISM CRC is computed
+        corrupted_ism_crc = build_ism_packet()
+        corrupted_ism_crc[236] = !corrupted_ism_crc[236]
+        rejected = (;
+            test_packet = build_ism_packet(; gnss_id = 0b0000),
+            reserved_gnss_id_0001 = build_ism_packet(; gnss_id = 0b0001),
+            reserved_gnss_id_1111 = build_ism_packet(; gnss_id = 0b1111),
+            corrupted_ism_crc,
+            corrupted_payload,
+        )
+
+        @testset "rejected: $name" for (name, packet) in pairs(rejected)
+            st = decode_with_sf3(ism_page(packet))
+            @test st.data.num_sf3_pages_received >= 1
+            @test isnothing(st.data.ism)
+            @test isnothing(st.raw_data.ism)
+        end
+
+        @testset "a rejected packet keeps the previous ISM" begin
+            earlier = build_ism_packet(; WN_ISM = 100, service_level = 0)  # Level 1
+            later = build_ism_packet(; WN_ISM = 200, service_level = 2)  # Level 3
+            state = decode!(
+                GPSL1C_DDecoderState(7),
+                build_stream(120, 3, build_payload(sf2_info, ism_page(earlier))),
+                3 * 1800,
+            )
+            @test state.data.ism.WN_ISM == 100
+            @test state.data.ism.Service_Level == 1
+            previous = state.data.ism
+            pages = state.raw_data.num_sf3_pages_received
+            for (k, (name, packet)) in enumerate(pairs(rejected))
+                toi0 = 123 + 3 * (k - 1)
+                stream = build_stream(toi0, 3, build_payload(sf2_info, ism_page(packet)))
+                state = decode!(state, stream, length(stream))
+                @test state.raw_data.num_sf3_pages_received > pages  # really decoded
+                pages = state.raw_data.num_sf3_pages_received
+                @test state.raw_data.ism == previous
+                @test state.data.ism == previous
+            end
+            # A valid packet replaces it.
+            toi0 = 123 + 3 * length(rejected)
+            stream = build_stream(toi0, 3, build_payload(sf2_info, ism_page(later)))
+            state = decode!(state, stream, length(stream))
+            @test state.data.ism.WN_ISM == 200
+            @test state.data.ism.Service_Level == 3
+        end
+
+        @testset "GPSCNAV2Data copy constructor carries ism" begin
+            ism = decode_with_sf3(ism_page(build_ism_packet())).data.ism
+            data = GPSCNAV2Data(GPSCNAV2Data(; ism); TOI = 3)
+            @test data.ism == ism
+            @test GPSCNAV2Data(data; ism = nothing).ism === nothing
+        end
+    end
+
     @testset "SF3 unknown/reserved page is ignored but still counted" begin
         # Page 7 is reserved (SV config); page 9+ is undefined. Both must be
         # silently ignored — no exception — while the page counter increments.
@@ -817,7 +960,7 @@ end
     @testset "GPS L1C-D decode! is allocation-free" begin
         # The PRN 1 recording carries subframe 2 and subframe-3 pages 1, 2, 3
         # (reduced almanacs), 4 (Midi almanacs) and 6 (text); synthetic frames
-        # add a page 5 (differential correction), a reserved page, a TOI
+        # add a page 5 (differential correction), a reserved page, a page 8 (ISM), a TOI
         # discontinuity (mid-stream reset), a cold start at TOI ≥ 256 (the BCH
         # complement retry) and a frame whose subframe 2 fails CRC-24Q under
         # both branches. Each TOI jump resets the decoder, which drops the
@@ -833,11 +976,13 @@ end
             _setbits!(b, 80, 14, 50)
         end
         reserved = build_sf3_page(_ -> nothing, 7, 7)
+        page8 = ism_page(build_ism_packet())
         undecodable = build_payload(build_sf2_bits(corrupt = true), sf3_info)
         symbols = vcat(
             recording,
             build_stream(120, 4, build_payload(sf2_info, page5)),
             build_stream(200, 4, build_payload(sf2_info, reserved)),
+            build_stream(204, 4, build_payload(sf2_info, page8)),
             _frame_symbols(300, payload),
             _frame_symbols(301, undecodable),
             build_stream(302, 3, payload),
@@ -860,6 +1005,7 @@ end
         @test haskey(d.differential_corrections, 19)
         @test d.text_message == "Test text message for page: 2"
         @test !isnothing(d.A_0) && !isnothing(d.t_GGTO)
+        @test d.ism.Service_Level == 3
 
         # A `copy` is independent: decoding into it leaves the original untouched.
         fresh = GPSL1C_DDecoderState(1)

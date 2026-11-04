@@ -11,7 +11,8 @@
 # `is_sat_healthy`).
 #
 # Field offsets/scales are cited to IS-GPS-705J; the same definitions appear in
-# IS-GPS-200N §30 (e.g. Fig 30-1 ≡ Fig 20-1).
+# IS-GPS-200N §30 (e.g. Fig 30-1 ≡ Fig 20-1). Message type 40 follows IRN-IS-705J-004,
+# which moves its content into the ISM Packet of IS-GPS-200 §30.3.3.10 (IRN-IS-200N-004).
 #
 # Unlike Galileo E1B pages, the CNAV FEC is convolved *continuously* across message
 # boundaries (no tail bits, no encoder reset), so the preamble is visible only after FEC
@@ -233,38 +234,6 @@ Base.@kwdef struct GPSCNAVEphemerisDifferentialCorrection
     UDRA_dot::Int
 end
 
-"""
-    GPSCNAVIntegritySupportMessage
-
-Integrity Support Message from CNAV message type 40 (ARAIM), complete in a
-single message (IS-GPS-705J Figure 20-14a, Table 20-XIa).
-
-# Fields
-
-  - `GNSS_ID::Int`: GNSS identifier the ISM applies to.
-  - `WN_ISM::Int`, `TOW_ISM::Int`: ISM reference week / time-of-week counts.
-  - `t_correl::Int`, `b_nom::Int`, `γ_nom::Int`, `R_sat::Int`, `P_const::Int`,
-    `MFD::Int`, `service_level::Int`: encoded ARAIM parameter indices.
-  - `mask::UInt64`: 63-bit SV mask (MSB = PRN 1).
-
-# Reference
-
-IS-GPS-705J, Figure 20-14a, Table 20-XIa.
-"""
-Base.@kwdef struct GPSCNAVIntegritySupportMessage
-    GNSS_ID::Int
-    WN_ISM::Int
-    TOW_ISM::Int
-    t_correl::Int
-    b_nom::Int
-    γ_nom::Int
-    R_sat::Int
-    P_const::Int
-    MFD::Int
-    service_level::Int
-    mask::UInt64
-end
-
 # Slots of the keyed stores in `GPSCNAVData`, one per ICD key value. Almanac packets
 # (message types 12, 31, 37) have a 6-bit PRN_a (1-63, 0 = empty); differential-correction
 # packets (13, 14, 34) an 8-bit PRN ID (0-254, all-ones = empty), IS-GPS-705J Figures
@@ -388,11 +357,14 @@ promotion to `data` overwrites the separate validated stores.
     page (29 ASCII characters, control chars stripped).
   - `text_mt36::CStaticString{18}`, `text_page_mt36::Int64`: message type 36 text
     page (18 ASCII characters, control chars stripped).
-  - `ism::GPSCNAVIntegritySupportMessage`: message type 40 Integrity Support Message.
+  - `ism::GPSIntegritySupportMessage`: message type 40 Integrity Support Message,
+    the most recent GPS ISM Packet whose ISM CRC matched (IRN-IS-705J-004 layout).
 
 # Reference
 
-IS-GPS-705J, Figures 20-1 through 20-17 and Tables 20-I through 20-XIa.
+IS-GPS-705J, Figures 20-1 through 20-17 and Tables 20-I through 20-XI; message type 40
+as amended by IRN-IS-705J-004, its ISM Packet in IS-GPS-200 §30.3.3.10 as amended by
+IRN-IS-200N-004.
 """
 Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     last_message_type::Int = 0
@@ -495,7 +467,7 @@ Base.@kwdef struct GPSCNAVData <: AbstractGPSCNAVData
     text_mt36::Union{Nothing,CStaticString{CNAV_MT36_TEXT_CHARS}} = nothing
     text_page_mt36::Union{Nothing,Int64} = nothing
 
-    ism::Union{Nothing,GPSCNAVIntegritySupportMessage} = nothing
+    ism::Union{Nothing,GPSIntegritySupportMessage} = nothing
 end
 
 # `WN_ot` and `WN_LSF` are 13 bits (IS-GPS-705J Figure 20-10, MT33), as `WN`: see
@@ -1609,27 +1581,21 @@ function parse_mt36(raw::GPSCNAVData, word::UInt320)
 end
 
 """
-Message type 40 — Integrity Support Message (IS-GPS-705J Fig 20-14a).
+Message type 40 — Integrity Support Message: header, the 236-bit ISM Packet at bits
+39-274, two reserved bits and the CRC (IRN-IS-705J-004 Figure 20-14a ≡ IRN-IS-200N-004
+Figure 30-14a).
+
+IRN-IS-705J-004 / IRN-IS-200N-004 (16 June 2026) delete the earlier layout (Table
+20-XIa: `b_nom`, `P_const`, one `MFD`, the mask at bits 89-151 and a DO-246E CRC at
+245-276) without a transition period or a format indicator; GNSS ID `0100` names GPS
+in both. Only the amended layout is decoded. An earlier-layout message carries no ISM
+CRC at packet bits 205-236 (message bits 243-274), so it fails the check (but for a
+2⁻³² coincidence) and leaves `ism` as it was, as does a test packet or a reserved GNSS
+ID.
 """
 function parse_mt40(raw::GPSCNAVData, word::UInt320)
-    word_length = CNAV_MESSAGE_BITS
-    # 63-bit SV mask (MSB = PRN 1) at bits 89-151, one contiguous field (IS-GPS-705J
-    # Figure 20-14a only *draws* it across a row boundary).
-    mask = UInt64(get_bits(word, word_length, 89, 63))
-    ism = GPSCNAVIntegritySupportMessage(;
-        GNSS_ID = Int(get_bits(word, word_length, 39, 4)),
-        WN_ISM = Int(get_bits(word, word_length, 43, 13)),
-        TOW_ISM = Int(get_bits(word, word_length, 56, 6)),
-        t_correl = Int(get_bits(word, word_length, 62, 4)),
-        b_nom = Int(get_bits(word, word_length, 66, 4)),
-        γ_nom = Int(get_bits(word, word_length, 70, 4)),
-        R_sat = Int(get_bits(word, word_length, 74, 4)),
-        P_const = Int(get_bits(word, word_length, 78, 4)),
-        MFD = Int(get_bits(word, word_length, 82, 4)),
-        service_level = Int(get_bits(word, word_length, 86, 3)),
-        mask,
-    )
-    GPSCNAVData(raw; ism)
+    ism = gps_ism_packet(word, CNAV_MESSAGE_BITS, 39)
+    isnothing(ism) ? raw : GPSCNAVData(raw; ism)
 end
 
 """

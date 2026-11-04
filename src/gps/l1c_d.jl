@@ -10,8 +10,8 @@
 #
 # Subframe 2 carries clock and ephemeris (IS-GPS-800J Figure 3.5-1 / Table 3.5-1).
 # Subframe 3 is paged: pages 1-6 (UTC + ionosphere + ISC, GGTO + EOP, reduced almanac,
-# midi almanac, differential correction, text; Figures 3.5-2 to 3.5-7) are parsed;
-# other pages are counted only.
+# midi almanac, differential correction, text; Figures 3.5-2 to 3.5-7) and page 8 (the
+# ISM Packet, IRN-IS-800J-004 Figure 3.5-8a) are parsed; other pages are counted only.
 #
 # The soft-symbol `CircularDeque` holds one frame (1800) plus the 52-symbol subframe-1
 # segment of the *next* frame (1852), so the BCH match is confirmed at both ends of
@@ -60,6 +60,7 @@ const L1C_D_SF3_PAGE_REDUCED_ALMANAC = 3  # Figure 3.5-4: 6 reduced-almanac pack
 const L1C_D_SF3_PAGE_MIDI_ALMANAC = 4     # Figure 3.5-5: one Midi almanac
 const L1C_D_SF3_PAGE_DIFF_CORRECTION = 5  # Figure 3.5-6: clock+ephemeris DC
 const L1C_D_SF3_PAGE_TEXT = 6             # Figure 3.5-7: 29 ASCII characters
+const L1C_D_SF3_PAGE_ISM = 8  # IRN-IS-800J-004 Figure 3.5-8a: ISM Packet at bits 15-250
 
 # Characters in a page-6 text message (IS-GPS-800J Figure 3.5-7).
 const L1C_D_TEXT_LENGTH = 29
@@ -244,11 +245,11 @@ end
 Decoded GPS L1C-D (CNAV-2) navigation message data.
 
 Subframe-2 clock, ephemeris and accuracy parameters (IS-GPS-800J Figure 3.5-1 /
-Table 3.5-1), subframe-3 pages 1-6 (Figures 3.5-2 to 3.5-7) and the count of
-CRC-valid subframe-3 pages. Field names are those of IS-GPS-800J (see CONTEXT.md,
-Field naming). The ICD's satellite suffix `-n` (`M0-n`, `af0-n`, `WNa-n`, …) is dropped
-throughout. Semi-circle quantities are converted to radians (times π); all fields are
-`Union{Nothing,…}` until first decoded.
+Table 3.5-1), subframe-3 pages 1-6 (Figures 3.5-2 to 3.5-7) and 8 (IRN-IS-800J-004
+Figure 3.5-8a) and the count of CRC-valid subframe-3 pages. Field names are those of
+IS-GPS-800J (see CONTEXT.md, Field naming). The ICD's satellite suffix `-n` (`M0-n`,
+`af0-n`, `WNa-n`, …) is dropped throughout. Semi-circle quantities are converted to
+radians (times π); all fields are `Union{Nothing,…}` until first decoded.
 
 # Sync / timing
 
@@ -305,7 +306,8 @@ throughout. Semi-circle quantities are converted to radians (times π); all fiel
 
 Pages are parsed after their CRC passes, dispatching on the 6-bit page number (bits
 9-14; bits 1-8 are the transmitting PRN). Layouts follow IS-GPS-800J as amended by
-IRN-IS-800J-003. `num_sf3_pages_received` counts every CRC-valid page, parsed or not.
+IRN-IS-800J-003, page 8 as amended by IRN-IS-800J-004. `num_sf3_pages_received` counts
+every CRC-valid page, parsed or not.
 
 ## Page 1 — UTC + Klobuchar iono + ISC
 
@@ -344,13 +346,25 @@ Keyed by the 8-bit `PRN_a` / `PRN_ID`, one preallocated slot per value
   - `text_message::CStaticString{29}`: up to 29 ASCII characters (control chars
     stripped), stored inline; compares equal to the matching `String`.
 
+## Page 8 — Integrity Support Message (IRN-IS-800J-004)
+
+IRN-IS-800J-004 replaces the page's own ISM fields (IS-GPS-800J Table 3.5-9) with the
+236-bit ISM Packet of IS-GPS-200 §30.3.3.10 at bits 15-250, the same packet CNAV message
+type 40 carries (see `parse_sf3_page8`).
+
+  - `ism::GPSIntegritySupportMessage`: the most recent GPS ISM Packet whose ISM
+    CRC matched; a test packet, a reserved GNSS ID or a CRC mismatch keeps the
+    previous one.
+
 ## Counters
 
   - `num_sf3_pages_received::Int`: Count of CRC-valid subframe-3 pages received.
 
 # Reference
 
-IS-GPS-800J, Figures 3.5-1 through 3.5-10 and Tables 3.5-1, 3.5-3 … 3.5-8.
+IS-GPS-800J, Figures 3.5-1 through 3.5-10 and Tables 3.5-1, 3.5-3 … 3.5-8; subframe 3
+page 8 as amended by IRN-IS-800J-004, its ISM Packet in IS-GPS-200 §30.3.3.10 as
+amended by IRN-IS-200N-004.
 """
 Base.@kwdef struct GPSCNAV2Data <: AbstractGPSCNAVData
     TOI::Union{Nothing,Int} = nothing
@@ -446,6 +460,9 @@ Base.@kwdef struct GPSCNAV2Data <: AbstractGPSCNAVData
     # --- Subframe 3, page 6: text (IS-GPS-800J Fig 3.5-7) ---
     text_message::Union{Nothing,CStaticString{L1C_D_TEXT_LENGTH}} = nothing
 
+    # --- Subframe 3, page 8: ISM Packet (IRN-IS-800J-004 Fig 3.5-8a) ---
+    ism::Union{Nothing,GPSIntegritySupportMessage} = nothing
+
     num_sf3_pages_received::Int = 0
 end
 
@@ -530,6 +547,7 @@ const CNAV2_LSF_WN_MODULUS = 8192
     midi_almanacs = data.midi_almanacs,
     differential_corrections = data.differential_corrections,
     text_message = data.text_message,
+    ism = data.ism,
     num_sf3_pages_received = data.num_sf3_pages_received,
 )
     GPSCNAV2Data(
@@ -607,6 +625,7 @@ const CNAV2_LSF_WN_MODULUS = 8192
         midi_almanacs,
         differential_corrections,
         text_message,
+        ism,
         num_sf3_pages_received,
     )
 end
@@ -1093,7 +1112,7 @@ end
 # of a preallocated store in place. Layouts follow IS-GPS-800J as amended by
 # IRN-IS-800J-003, which for page 1 only restores Greek letters the base PDF rendered as
 # question marks; the four ISC fields at bits 177/190/203/216 are already in base Rev J
-# (Figure 3.5-2, Table 6.2-18).
+# (Figure 3.5-2, Table 6.2-18). Page 8 follows IRN-IS-800J-004 (`parse_sf3_page8`).
 
 function decode_subframe3(state::GNSSDecoderState{<:GPSCNAV2Data}, sf3_symbols)
     word = ldpc_decode_word(state.cache.sf3_ldpc, sf3_symbols, UInt288)
@@ -1119,8 +1138,10 @@ function decode_subframe3(state::GNSSDecoderState{<:GPSCNAV2Data}, sf3_symbols)
         parse_sf3_page5(raw, state.cache.storage.raw, word)
     elseif page == L1C_D_SF3_PAGE_TEXT
         parse_sf3_page6(raw, word)
+    elseif page == L1C_D_SF3_PAGE_ISM
+        parse_sf3_page8(raw, word)
     else
-        raw  # unsupported/reserved page (e.g. 7 SV-config, 8 ISM): counted, ignored
+        raw  # unsupported/reserved page (e.g. 7 SV-config): counted, ignored
     end
 
     GNSSDecoderState(state; raw_data = raw)
@@ -1352,6 +1373,27 @@ function parse_sf3_page6(raw::GPSCNAV2Data, word::UInt288)
     # `i`-th printable position; the tail stays NUL, where a `CStaticString` ends.
     units = ntuple(i -> _text_printable_char(word, i), Val(L1C_D_TEXT_LENGTH))
     GPSCNAV2Data(raw; text_message = CStaticString(units))
+end
+
+"""
+Subframe 3, page 8 — Integrity Support Message: PRN (bits 1-8), page number (9-14), the
+236-bit ISM Packet at bits 15-250 and the CRC (IRN-IS-800J-004 Figure 3.5-8a).
+
+IRN-IS-800J-004 (16 June 2026) replaces the page's GNSS ID through ISM CRC (IS-GPS-800J
+Table 3.5-9, bits 15-250) with the ISM Packet of IS-GPS-200 §30.3.3.10, the one CNAV
+message type 40 carries, so it is decoded by the same `gps_ism_packet` under the same
+rules: a test packet, a reserved GNSS ID or an ISM CRC mismatch leaves `ism` as it was.
+
+Only the amended layout is decoded. Unlike message type 40, the earlier page 8 cannot
+be told from it: its ISM CRC (DO-246E) sits at bits 219-250 over bits 15-218, exactly
+where the packet's ISM CRC sits and over the same bits, and only its GNSS ID, `WN_ISM`,
+`TOW_ISM` and `t_correl` keep their place and meaning in the packet. If that CRC is the
+packet's CRC-32Q, an earlier-layout page with GNSS ID `0100` passes and is misread from
+`b_nom` on; the notice gives no format indicator to tell them apart.
+"""
+function parse_sf3_page8(raw::GPSCNAV2Data, word::UInt288)
+    ism = gps_ism_packet(word, L1C_D_SF3_INFO_BITS, 15)
+    isnothing(ism) ? raw : GPSCNAV2Data(raw; ism)
 end
 
 """
