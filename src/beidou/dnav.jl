@@ -406,6 +406,10 @@ Base.@kwdef struct BeiDouDNAVData <: AbstractBeiDouData
     DN::Union{Nothing,Int64} = nothing
 end
 
+# D1/D2 broadcasts no UTC reference week, and `WN_LSF` in 8 bits (BDS-SIS-ICD-B1I-3.0
+# §5.2.4.18): see `get_leap_second_parameters`.
+const DNAV_LSF_WN_MODULUS = 256
+
 @inline function BeiDouDNAVData(
     data::BeiDouDNAVData;
     last_subframe_id = data.last_subframe_id,
@@ -729,6 +733,9 @@ get_orbit_class(state::GNSSDecoderState{<:BeiDouDNAVData}) =
 # D1/D2 broadcasts the seconds of week outright (LSB 1 s, §5.2.4.3/§5.3.3.1).
 get_broadcast_time_of_week(data::BeiDouDNAVData) = data.SOW
 
+# D1/D2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouDNAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -746,7 +753,10 @@ Expect `nothing` in practice: all three sections are marked "(Not broadcast
 temporarily)" in BDS-SIS-ICD-B1I-3.0, and the B-CNAV signals carry the BGTO that
 replaced them.
 """
-function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::TimeSystem)
+function inter_system_time_offset_parameters(
+    state::GNSSDecoderState{<:BeiDouDNAVData},
+    target::TimeSystem,
+)
     data = state.data
     A_0, A_1 =
         target === GPST() ? (data.A_0GPS, data.A_1GPS) :
@@ -754,8 +764,7 @@ function get_time_offset(state::GNSSDecoderState{<:BeiDouDNAVData}, target::Time
     # Each section carries both or neither; `A_1` is checked to narrow its type (see
     # `galileo_ggto_offset`).
     (isnothing(A_0) || isnothing(A_1)) && return nothing
-    broadcast_time_offset(
-        state,
+    assemble_inter_system_time_offset_parameters(
         target,
         A_0,
         A_1,

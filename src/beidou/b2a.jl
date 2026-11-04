@@ -838,6 +838,9 @@ end
 # scaled at parse (§7.3, Table 7-2).
 get_broadcast_time_of_week(data::BeiDouCNAV2Data) = data.SOW
 
+# B-CNAV2's week number is 13 bits from BDT's 2006 origin, absolute until 2163.
+get_broadcast_week(data::BeiDouCNAV2Data; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -845,7 +848,10 @@ The BDT-to-`target` offset from message type 33, or `nothing` when this satellit
 currently broadcasting one for `target`. One set at a time, tagged by `GNSS_ID`; see
 `beidou_bgto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV2Data}, target::TimeSystem) =
+inter_system_time_offset_parameters(
+    state::GNSSDecoderState{<:BeiDouCNAV2Data},
+    target::TimeSystem,
+) =
     beidou_bgto_offset(state, target)
 
 function has_positioning_messages(data::BeiDouCNAV2Data)

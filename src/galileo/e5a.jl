@@ -361,6 +361,9 @@ end
 # F/NAV broadcasts the time of week as seconds (page types 1-4).
 get_broadcast_time_of_week(data::GalileoFNAVData) = data.TOW
 
+# F/NAV's week number is 12 bits from GST's 1999 origin, absolute until 2078.
+get_broadcast_week(data::GalileoFNAVData; approximate_year::Integer) = data.WN
+
 """
 $(TYPEDSIGNATURES)
 
@@ -368,7 +371,10 @@ The GST-to-GPS time offset from F/NAV page type 4, or `nothing` when the
 satellite is not broadcasting a valid GGTO or `target` is not `GPST()`.
 See `galileo_ggto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:GalileoFNAVData}, target::TimeSystem) =
+inter_system_time_offset_parameters(
+    state::GNSSDecoderState{<:GalileoFNAVData},
+    target::TimeSystem,
+) =
     galileo_ggto_offset(state, target)
 
 function has_positioning_messages(data::GalileoFNAVData)

@@ -1,4 +1,4 @@
-using GNSSSignals: Hz, get_time_system_offset
+using Unitful: Hz
 using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_earth_orbit
 
 @testset "Satellite and time accessors" begin
@@ -27,7 +27,9 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             @test get_orbit_class(state) isa Union{Nothing,GNSSDecoder.OrbitClass}
             @test isnothing(get_broadcast_time_of_week(state))   # nothing decoded yet
             for target in (GPST(), GST(), BDT())
-                @test isnothing(get_time_offset(state, target))
+                @test isnothing(
+                    GNSSDecoder.inter_system_time_offset_parameters(state, target),
+                )
             end
         end
     end
@@ -133,6 +135,69 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
         @test isnothing(get_broadcast_time_of_week(GalileoE6BData()))
     end
 
+    @testset "week number" begin
+        for state in all_states()
+            @test isnothing(get_broadcast_week(state; approximate_year = 2026))   # nothing decoded yet
+            # No default year, on any signal: the decoder never reads the clock.
+            @test_throws UndefKeywordError get_broadcast_week(state)
+        end
+
+        # LNAV's 10-bit week is resolved to the 1024-week cycle nearest the
+        # middle of `approximate_year`.
+        l1ca(WN) = GNSSDecoderState(GPSL1CADecoderState(1); data = GPSLNAVData(; WN))
+        @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 2023) == 2248
+        @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 2003) == 1224
+        @test get_broadcast_week(l1ca(Int64(200)); approximate_year = 1985) == 200
+        # Either side of the 2019-04-07 rollover (GPS week 2048).
+        @test get_broadcast_week(l1ca(Int64(1023)); approximate_year = 2019) == 2047
+        @test get_broadcast_week(l1ca(Int64(0)); approximate_year = 2019) == 2048
+        # Within ±9 years of the observation every year selects the same cycle.
+        for year = 2015:2031
+            @test get_broadcast_week(l1ca(Int64(2348 - 2048)); approximate_year = year) ==
+                  2348
+        end
+        # The data form reads the same week, so raw data can be asked too.
+        @test get_broadcast_week(GPSLNAVData(; WN = Int64(200)); approximate_year = 2023) ==
+              2248
+
+        # Every other message broadcasts an absolute week; `approximate_year`
+        # is ignored.
+        for (state, data) in (
+            (GPSL1C_DDecoderState(1), GPSCNAV2Data(; WN = Int64(2348))),
+            (GPSL5IDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
+            (GPSL2CMDecoderState(1), GPSCNAVData(; WN = Int64(2348))),
+            (GalileoE1BDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
+            (GalileoE5bDecoderState(1), GalileoINAVData(; WN = Int64(1324))),
+            (GalileoE5aDecoderState(1), GalileoFNAVData(; WN = Int64(1324))),
+            (BeiDouB1IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
+            (BeiDouB3IDecoderState(20), BeiDouDNAVData(; WN = Int64(992))),
+            (BeiDouB1CDecoderState(20), BeiDouCNAV1Data(; WN = Int64(992))),
+            (BeiDouB2aDecoderState(20), BeiDouCNAV2Data(; WN = Int64(992))),
+            (BeiDouB2bDecoderState(20), BeiDouCNAV3Data(; WN = Int64(992))),
+        )
+            s = GNSSDecoderState(state; data)
+            @test get_broadcast_week(s; approximate_year = 2026) == data.WN
+            @test get_broadcast_week(s; approximate_year = 1990) == data.WN
+        end
+
+        # C/NAV broadcasts no week number.
+        @test isnothing(
+            get_broadcast_week(GalileoE6BDecoderState(1); approximate_year = 2026),
+        )
+
+        # A decoded week dates on TAI through the decoder's own time system.
+        for (state, system) in (
+            (GPSL1CADecoderState(1), GPST()),
+            (GalileoE1BDecoderState(1), GST()),
+            (BeiDouB1IDecoderState(20), BDT()),
+        )
+            @test get_week_start_epoch(state, 992) == get_week_start_epoch(system, 992)
+        end
+        # BDT week 0 begins 14 s into GPS week 1356 (1356 weeks after the GPS epoch).
+        @test get_week_start_epoch(BeiDouB1IDecoderState(20), 0) -
+              get_week_start_epoch(GPSL1CADecoderState(1), 1356) == 14
+    end
+
     @testset "inter-system time offset" begin
         # Galileo: GGTO is GPS-only, two-term, and absent as a set of all-ones.
         scaled = GNSSDecoder.galileo_ggto(0x1234, 0x0abc, 0x10, 0x05)
@@ -148,13 +213,9 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 GalileoE5aDecoderState(1);
                 data,
             )
-            offset = get_time_offset(state, GPST())
+            offset = GNSSDecoder.inter_system_time_offset_parameters(state, GPST())
             @test offset.target === GPST()
-            # GST and GPST are both TAI - 19 s, so the defined offset is zero
-            # and `A_0` is the broadcast coefficient unchanged. This is the case
-            # that hides the BeiDou bug, so it is asserted as an equality on
-            # purpose rather than left implicit.
-            @test get_time_system_offset(GPST(), GST()) == 0
+            # `A_0` is the broadcast coefficient unchanged.
             @test offset.A_0 == scaled.A_0G
             @test offset.A_1 == scaled.A_1G
             @test offset.A_2 == 0.0        # GGTO has no quadratic term
@@ -166,13 +227,13 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             @test mod(offset.WN_0, 64) == scaled.WN_0G
             @test abs(WN_now - offset.WN_0) <= 32
             # Galileo broadcasts no offset to any other scale.
-            @test isnothing(get_time_offset(state, GST()))
-            @test isnothing(get_time_offset(state, BDT()))
+            @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(state, GST()))
+            @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(state, BDT()))
         end
         # All four fields all ones: "GGTO not valid" (OS SIS ICD 5.1.8).
         absent = GNSSDecoder.galileo_ggto(0xffff, 0x0fff, 0xff, 0x3f)
         @test isnothing(
-            get_time_offset(
+            GNSSDecoder.inter_system_time_offset_parameters(
                 GNSSDecoderState(
                     GalileoE1BDecoderState(1);
                     data = GalileoINAVData(; absent...),
@@ -201,22 +262,21 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 ),
             )
                 s = GNSSDecoderState(state; data)
-                offset = get_time_offset(s, target)
+                offset = GNSSDecoder.inter_system_time_offset_parameters(s, target)
                 @test offset.target === target
-                # BDT is TAI - 33 s and both targets are TAI - 19 s, so the
-                # defined part of the offset is -14 s and the broadcast
-                # coefficient is only the steering residual on top of it. A
-                # 16-bit field at 2^-35 s spans +/- 0.95 us and could not carry
-                # 14 s even if the ICD meant it to.
-                @test offset.A_0 == bgto.A_0BGTO - 14.0
-                @test offset.A_0 ≈ -14.0 atol = 1e-6
+                # The steering residual as broadcast, without the -14 s between
+                # BDT's count and the target's.
+                @test offset.A_0 == bgto.A_0BGTO
                 @test offset.A_1 == bgto.A_1BGTO
                 @test offset.A_2 == bgto.A_2BGTO
                 @test offset.t_0 == bgto.t_0BGTO
                 @test offset.WN_0 == bgto.WN_0BGTO
                 # Only the tagged system is answerable.
                 for other in (GPST(), GST(), BDT())
-                    other === target || @test isnothing(get_time_offset(s, other))
+                    other === target ||
+                        @test isnothing(
+                            GNSSDecoder.inter_system_time_offset_parameters(s, other),
+                        )
                 end
             end
         end
@@ -232,7 +292,7 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 ),
             )
             for target in (GPST(), GST(), BDT())
-                @test isnothing(get_time_offset(s, target))
+                @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(s, target))
             end
         end
 
@@ -262,10 +322,10 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             BeiDouB1CDecoderState(20);
             data = BeiDouCNAV1Data(; WN = Int64(901), bgtos),
         )
-        @test get_time_offset(s, GPST()).A_0 == 1.0e-9 - 14.0
-        @test get_time_offset(s, GST()).A_0 == 4.0e-9 - 14.0
-        @test get_time_offset(s, GST()).WN_0 == 901
-        @test isnothing(get_time_offset(s, BDT()))
+        @test GNSSDecoder.inter_system_time_offset_parameters(s, GPST()).A_0 == 1.0e-9
+        @test GNSSDecoder.inter_system_time_offset_parameters(s, GST()).A_0 == 4.0e-9
+        @test GNSSDecoder.inter_system_time_offset_parameters(s, GST()).WN_0 == 901
+        @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(s, BDT()))
 
         # BeiDou D1/D2: named per system, two-term, and with no reference epoch.
         s = GNSSDecoderState(
@@ -277,15 +337,15 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 A_1Gal = 4.5e-14,
             ),
         )
-        gps = get_time_offset(s, GPST())
-        @test (gps.A_0, gps.A_1, gps.A_2) == (1.5e-9 - 14.0, 2.5e-14, 0.0)
+        gps = GNSSDecoder.inter_system_time_offset_parameters(s, GPST())
+        @test (gps.A_0, gps.A_1, gps.A_2) == (1.5e-9, 2.5e-14, 0.0)
         @test isnothing(gps.t_0) && isnothing(gps.WN_0)
-        gal = get_time_offset(s, GST())
-        @test (gal.A_0, gal.A_1) == (3.5e-9 - 14.0, 4.5e-14)
-        @test isnothing(get_time_offset(s, BDT()))
+        gal = GNSSDecoder.inter_system_time_offset_parameters(s, GST())
+        @test (gal.A_0, gal.A_1) == (3.5e-9, 4.5e-14)
+        @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(s, BDT()))
         # Unlike the tagged shapes, both are answerable at once.
-        @test !isnothing(get_time_offset(s, GPST())) &&
-              !isnothing(get_time_offset(s, GST()))
+        @test !isnothing(GNSSDecoder.inter_system_time_offset_parameters(s, GPST())) &&
+              !isnothing(GNSSDecoder.inter_system_time_offset_parameters(s, GST()))
 
         # GPS: the single GGTO set is tagged, and CNAV, CNAV-2 and the L2C
         # carriage of message type 35 all use one table — 0 no data available,
@@ -316,16 +376,20 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
             ),
         )
             galileo = GNSSDecoderState(state; data = mk(1))
-            offset = get_time_offset(galileo, GST())
+            offset = GNSSDecoder.inter_system_time_offset_parameters(galileo, GST())
             @test offset.A_0 == 1.0e-9     # GPST and GST are both TAI - 19 s
             @test offset.A_2 == 3.0e-20     # GPS GGTO is the one three-term shape
-            @test isnothing(get_time_offset(galileo, GPST()))
-            @test isnothing(get_time_offset(galileo, BDT()))
+            @test isnothing(
+                GNSSDecoder.inter_system_time_offset_parameters(galileo, GPST()),
+            )
+            @test isnothing(GNSSDecoder.inter_system_time_offset_parameters(galileo, BDT()))
             # 0 no data, 2 GLONASS (no TimeSystem), 3-7 reserved: none answerable.
             for id in (0, 2, 3, 4, 7)
                 unusable = GNSSDecoderState(state; data = mk(id))
                 for target in (GPST(), GST(), BDT())
-                    @test isnothing(get_time_offset(unusable, target))
+                    @test isnothing(
+                        GNSSDecoder.inter_system_time_offset_parameters(unusable, target),
+                    )
                 end
             end
         end
@@ -369,28 +433,31 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 data = GalileoINAVData(; scaled...),
             )
             @test isnothing(without.data.WN)
-            @test isnothing(get_time_offset(without, GPST()))
+            @test isnothing(
+                GNSSDecoder.inter_system_time_offset_parameters(without, GPST()),
+            )
             with = GNSSDecoderState(
                 GalileoE1BDecoderState(1);
                 data = GalileoINAVData(; WN = Int64(1234), scaled...),
             )
-            @test !isnothing(get_time_offset(with, GPST()))
+            @test !isnothing(GNSSDecoder.inter_system_time_offset_parameters(with, GPST()))
             # BeiDou D1/D2 broadcasts no reference epoch at all, so it is
             # unaffected by the week being unknown.
             dnav = GNSSDecoderState(
                 BeiDouB1IDecoderState(20);
                 data = BeiDouDNAVData(; A_0GPS = 1.5e-9, A_1GPS = 2.5e-14),
             )
-            offset = get_time_offset(dnav, GPST())
+            offset = GNSSDecoder.inter_system_time_offset_parameters(dnav, GPST())
             @test !isnothing(offset)
             @test isnothing(offset.WN_0) && isnothing(offset.t_0)
         end
 
         # The contract itself, on every decoder that answers, rather than the
-        # arithmetic of any one of them: `t_target = t_own - Δt` must hold for
-        # the *defined* part of the offset, which is the part no message
-        # carries. Broadcasting zero coefficients isolates it.
-        @testset "defined scale offset is included" begin
+        # arithmetic of any one of them: `A_0` is the coefficient as broadcast,
+        # and the whole seconds between the scales, which no message carries,
+        # are left to `get_time_system_offset`. Broadcasting zero coefficients
+        # isolates them: from BeiDou they are 14 s, so adding them would show.
+        @testset "defined scale offset is left out" begin
             zeroed = (;
                 A_0GGTO = 0.0,
                 A_1GGTO = 0.0,
@@ -477,24 +544,90 @@ using GNSSDecoder: geostationary_orbit, inclined_geosynchronous_orbit, medium_ea
                 ),
             ]
             for (state, target) in cases
-                offset = get_time_offset(state, target)
-                own = get_time_system(state)
-                # A zero broadcast bias must still leave the defined offset,
-                # which is what `t_target = t_own - Δt` needs to be true.
-                expected = get_time_system_offset(target, own)
-                @test offset.A_0 == expected
-                # And that is 0 for every GPS/Galileo pair but -14 s for BeiDou,
-                # so a suite that only exercised Galileo would pass either way.
-                @test expected == (own === BDT() ? -14.0 : 0.0)
+                offset = GNSSDecoder.inter_system_time_offset_parameters(state, target)
+                @test offset.A_0 == 0.0
                 # Read per satellite per epoch by a navigation solver, so it
                 # must not allocate once an offset is decoded (issue #101).
-                @test time_offset_allocations(state, target) == 0
+                @test inter_system_time_offset_allocations(state, target) == 0
             end
+        end
+
+        @testset "evaluated at a time of week" begin
+            # B2b's BGTO: the reference week (900) is a week before the decoder's
+            # (901), and the evaluation adds that week from the decoder's own WN.
+            b2b = GNSSDecoderState(
+                BeiDouB2bDecoderState(20);
+                data = BeiDouCNAV3Data(;
+                    WN = Int64(901),
+                    GNSS_ID = Int64(1),
+                    WN_0BGTO = Int64(900),
+                    t_0BGTO = Int64(345600),
+                    A_0BGTO = 1.0e-9,
+                    A_1BGTO = 2.0e-14,
+                    A_2BGTO = 3.0e-20,
+                ),
+            )
+            t = 100_000.0
+            Δτ = t - 345600 + 604800 * (901 - 900)
+            @test get_broadcast_inter_system_time_offset(b2b, GPST(), t) ≈
+                  1.0e-9 + 2.0e-14 * Δτ + 3.0e-20 * Δτ^2
+            # It is the record's polynomial, against the decoder's week.
+            offset = GNSSDecoder.inter_system_time_offset_parameters(b2b, GPST())
+            @test get_broadcast_inter_system_time_offset(b2b, GPST(), t) ==
+                  offset.A_0 + offset.A_1 * Δτ + offset.A_2 * Δτ^2
+            # D1/D2 has no reference epoch: the argument is the time of week itself.
+            dnav = GNSSDecoderState(
+                BeiDouB1IDecoderState(20);
+                data = BeiDouDNAVData(; A_0GPS = 1.5e-9, A_1GPS = 2.5e-14),
+            )
+            @test get_broadcast_inter_system_time_offset(dnav, GPST(), t) ==
+                  1.5e-9 + 2.5e-14 * t
+            # The record is `get_inter_system_time_offset_parameters`: no two-argument form.
+            @test_throws MethodError get_broadcast_inter_system_time_offset(b2b, GPST())
+            # No offset, no value.
+            @test isnothing(get_broadcast_inter_system_time_offset(b2b, GST(), t))
+            @test isnothing(
+                get_broadcast_inter_system_time_offset(GPSL1CADecoderState(1), GPST(), t),
+            )
+            # Read per satellite per epoch: allocation-free.
+            function allocations(state, target, t)
+                get_broadcast_inter_system_time_offset(state, target, t)
+                @allocated get_broadcast_inter_system_time_offset(state, target, t)
+            end
+            @test allocations(b2b, GPST(), t) == 0
+            @test allocations(dnav, GPST(), t) == 0
+
+            # The reference epoch the polynomial is extrapolated from, for the caller
+            # to judge its age by: B2b's week 900, 345600 s, on BDT.
+            @test get_broadcast_inter_system_time_offset_epoch(b2b, GPST()) ==
+                  get_week_start_epoch(BDT(), 900) + 345600
+            @test get_week_start_epoch(BDT(), 901) + t -
+                  get_broadcast_inter_system_time_offset_epoch(b2b, GPST()) == Δτ
+            # D1/D2 carries none, and no offset has none.
+            @test isnothing(get_broadcast_inter_system_time_offset_epoch(dnav, GPST()))
+            @test isnothing(get_broadcast_inter_system_time_offset_epoch(b2b, GST()))
+            # The record carries the same epoch, and D1/D2's record none.
+            p = get_inter_system_time_offset_parameters(b2b, GPST())
+            @test (p.WN_0, p.t_0) == (900, 345600)
+            p = get_inter_system_time_offset_parameters(dnav, GPST())
+            @test isnothing(p.t_0) && isnothing(p.WN_0)
+            # Allocation-free like the value: a solver reads both per satellite per epoch.
+            function epoch_allocations(state, target)
+                get_broadcast_inter_system_time_offset_epoch(state, target)
+                @allocated get_broadcast_inter_system_time_offset_epoch(state, target)
+            end
+            @test epoch_allocations(b2b, GPST()) == 0
+            @test epoch_allocations(dnav, GPST()) == 0
         end
 
         # GPS L1 C/A carries UTC parameters but no inter-GNSS offset.
         for target in (GPST(), GST(), BDT())
-            @test isnothing(get_time_offset(GPSL1CADecoderState(1), target))
+            @test isnothing(
+                GNSSDecoder.inter_system_time_offset_parameters(
+                    GPSL1CADecoderState(1),
+                    target,
+                ),
+            )
         end
     end
 end

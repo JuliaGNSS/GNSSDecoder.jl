@@ -242,6 +242,11 @@ Base.@kwdef struct GPSLNAVData <: AbstractGPSData
     WN_a::Union{Nothing,Int64} = nothing
 end
 
+# `WN_0t` and `WN_LSF` are broadcast in 8 bits (IS-GPS-200N Figure 20-1, subframe 4
+# page 18), against a 10-bit `WN`: see `get_utc_parameters`.
+const LNAV_UTC_WN_MODULUS = 256
+const LNAV_LSF_WN_MODULUS = 256
+
 @inline function GPSLNAVData(
     data::GPSLNAVData;
     last_subframe_id = data.last_subframe_id,
@@ -488,9 +493,21 @@ end
 # `TOW` is already in seconds (the 17-bit HOW count is scaled by 6 at parse).
 get_broadcast_time_of_week(data::GPSLNAVData) = data.TOW
 
-# LNAV carries UTC parameters but no inter-GNSS offset; GGTO is CNAV / CNAV-2 only
-# (`gps/cnav.jl`, `gps/l1c_d.jl`).
-get_time_offset(::GNSSDecoderState{<:GPSLNAVData}, ::TimeSystem) = nothing
+# Resolve the 10-bit week's 1024-week rollover against `approximate_year` (see
+# `get_broadcast_week`): the cycle that puts `WN` nearest the middle of that year.
+const LNAV_WN_MODULUS = 1024
+
+function get_broadcast_week(data::GPSLNAVData; approximate_year::Integer)
+    isnothing(data.WN) && return nothing
+    anchor = Date(approximate_year, 6, 30) - Date(DateTime(get_week_start_epoch(GPST(), 0)))
+    weeks_at_anchor = Dates.value(anchor) ÷ 7
+    cycles = round(Int, (weeks_at_anchor - data.WN) / LNAV_WN_MODULUS)
+    return cycles * LNAV_WN_MODULUS + data.WN
+end
+
+# LNAV has no inter-GNSS offset; GGTO is CNAV / CNAV-2 only (`gps/cnav.jl`, `gps/l1c_d.jl`).
+inter_system_time_offset_parameters(::GNSSDecoderState{<:GPSLNAVData}, ::TimeSystem) =
+    nothing
 
 function has_positioning_messages(data::GPSLNAVData)
     !isnothing(data.integrity_status_flag) &&

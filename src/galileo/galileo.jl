@@ -245,16 +245,20 @@ GalileoViterbiScratch(K::Int, N::Int) = GalileoViterbiScratch(
     Vector{Int32}(undef, K),
 )
 
-# The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits 123-128, F/NAV
-# page type 4) against a 12-bit `WN`. It is the one reference week narrower than the week
-# it is subtracted from, so it is wrong rather than merely rollover-fragile if left as
-# broadcast; see `resolve_reference_week`.
+# The GGTO reference week is broadcast in 6 bits (I/NAV word type 10 bits 123-128,
+# F/NAV page type 4) against a 12-bit `WN`; see `resolve_reference_week`.
 const GALILEO_GGTO_WN_MODULUS = 64
 
-"""
-    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem) -> Union{Nothing,GNSSTimeOffset}
+# `WN_0t` and `WN_LSF` are broadcast in 8 bits (I/NAV word type 6, F/NAV page type 4)
+# against a 12-bit `WN`: see `get_utc_parameters`.
+const GALILEO_UTC_WN_MODULUS = 256
+const GALILEO_LSF_WN_MODULUS = 256
 
-Normalise a decoded GGTO into a [`GNSSTimeOffset`](@ref), or `nothing` when the
+"""
+    galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
+        -> Union{Nothing,InterSystemTimeOffsetParameters}
+
+Normalise a decoded GGTO into an `InterSystemTimeOffsetParameters`, or `nothing` when the
 satellite is not broadcasting one or `target` is not GPS time.
 
 The only Galileo GNSS Time Offset is GST to GPST (OS SIS ICD Issue 2.2 §5.1.8), so
@@ -275,8 +279,7 @@ function galileo_ggto_offset(state::GNSSDecoderState, target::TimeSystem)
     (; A_0G, A_1G, t_0G, WN_0G) = data
     (isnothing(A_0G) || isnothing(A_1G) || isnothing(t_0G) || isnothing(WN_0G)) &&
         return nothing
-    broadcast_time_offset(
-        state,
+    assemble_inter_system_time_offset_parameters(
         target,
         A_0G,
         A_1G,
