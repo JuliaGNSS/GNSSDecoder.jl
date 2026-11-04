@@ -227,7 +227,7 @@ Base.@kwdef struct GalileoE6BConstants <: AbstractGNSSConstants
     """
     Page length drained after each decoded page (1000 symbols)
     """
-    syncro_sequence_length::Int = E6B_PAGE_SYMBOLS
+    sync_unit_length::Int = E6B_PAGE_SYMBOLS
     """
     Synchronisation pattern 0xB770 = `1011011101110000` (ICD §2.3.1), MSB first
     """
@@ -1007,7 +1007,7 @@ Use `state.data.orbit_corrections`, `.clock_corrections`, `.code_biases` and
 `.phase_biases` (each with its own validity interval and `IOD_set_id`) together
 with the corresponding ephemeris decoder instead.
 """
-is_decoding_completed_for_positioning(data::GalileoE6BData) = false
+is_decoding_completed_for_positioning(::GalileoE6BData) = false
 
 # C/NAV stamps each HAS correction block with a time *of hour*, not a time of
 # week, and broadcasts no week number to place it in — see the type docstring on
@@ -1552,7 +1552,7 @@ function reset_decoder_state!(state::GNSSDecoderState{<:GalileoE6BData})
         state;
         raw_data,
         data = GalileoE6BData(),
-        num_bits_after_valid_syncro_sequence = nothing,
+        num_bits_since_time_reference = nothing,
     )
 end
 
@@ -1567,7 +1567,7 @@ $(TYPEDEF)
 
 Result of a successful C/NAV page sync: the CRC-validated 486-bit page and the
 resolved polarity. Produced by `try_sync`, threaded through
-`complement_buffer_if_necessary` to `decode_syncro_sequence`.
+`complement_buffer_if_necessary` to `decode_sync_unit`.
 
 # Fields
 
@@ -1581,7 +1581,7 @@ struct GalileoE6BSync
     """
     Whether the symbol stream is 180-degrees phase shifted
     """
-    polarity_flipped::Bool
+    is_polarity_inverted::Bool
 end
 
 """
@@ -1591,12 +1591,12 @@ C/NAV page sync (HAS SIS ICD, Issue 1.0, §2.3). Two gates, cheapest first:
 
  1. The 16-bit sync pattern `1011011101110000` must appear at both ends of the
     1016-symbol window (start of this page and start of the next), both upright
-    or both inverted (the shared `find_preamble_in_deque` rule, resolving the 180-degree
+    or both inverted (the shared `detect_preamble_pair` rule, resolving the 180-degree
     carrier ambiguity).
  2. The 984 encoded symbols must Viterbi-decode to a 486-bit page whose
     CRC-24Q over the leading 462 bits matches the broadcast checksum.
 
-Only then is the page handed to `decode_syncro_sequence`, so a corrupted page
+Only then is the page handed to `decode_sync_unit`, so a corrupted page
 can never enter the HAS page store — which matters more here than elsewhere,
 because the RS erasure decoder trusts every collected page absolutely: one bad
 octet corrupts the whole reassembled message, with no syndrome left to catch it
@@ -1604,19 +1604,19 @@ octet corrupts the whole reassembled message, with no syndrome left to catch it
 the page CRC removes errors first).
 """
 function try_sync(state::GNSSDecoderState{<:GalileoE6BData})
-    polarity_flipped = find_preamble_in_deque(
+    is_polarity_inverted = detect_preamble_pair(
         soft_buffer(state),
         state.constants.preamble,
         E6B_SYNC_SYMBOLS,
         E6B_PAGE_SYMBOLS,
     )
-    isnothing(polarity_flipped) && return nothing
+    isnothing(is_polarity_inverted) && return nothing
     window = copy_soft_window!(
         state.cache.fec_window,
         soft_buffer(state),
         E6B_SYNC_SYMBOLS,
         E6B_ENCODED_SYMBOLS,
-        polarity_flipped,
+        is_polarity_inverted,
     )
     page = galileo_viterbi(state.cache.viterbi, window, E6B_INTERLEAVER_COLUMNS, UInt512)
     # CRC-24Q over the whole 486-bit page (message ++ checksum) must be zero.
@@ -1624,7 +1624,7 @@ function try_sync(state::GNSSDecoderState{<:GalileoE6BData})
     # 61-octet representation are neutral because CRC-24Q initialises its
     # register to zero. GNSS-SDR and PocketSDR pad the same way.
     crc24q(page, E6B_PAGE_OCTETS) == 0 || return nothing
-    return GalileoE6BSync(page, polarity_flipped)
+    return GalileoE6BSync(page, is_polarity_inverted)
 end
 
 """
@@ -1638,7 +1638,7 @@ function complement_buffer_if_necessary(
     state::GNSSDecoderState{<:GalileoE6BData},
     sync::GalileoE6BSync,
 )
-    GNSSDecoderState(state; is_shifted_by_180_degrees = sync.polarity_flipped), sync
+    GNSSDecoderState(state; is_polarity_inverted = sync.is_polarity_inverted), sync
 end
 
 # ---- MT1 parsing (ICD §5) ----------------------------------------------------
@@ -2397,7 +2397,7 @@ function e6b_collect_page!(
 end
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
+    decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
 
 Consume one CRC-validated C/NAV page: read its HAS Page Header, discard dummy
 and unusable pages, add its HAS Encoded Page to the store for its Message ID,
@@ -2416,16 +2416,13 @@ Pages are dropped, before reaching the store, when
   - the Page ID is 0, which is reserved (ICD Table 8);
   - the Message Type is not 1, the only type defined (ICD Table 10).
 """
-function decode_syncro_sequence(
-    state::GNSSDecoderState{<:GalileoE6BData},
-    sync::GalileoE6BSync,
-)
+function decode_sync_unit(state::GNSSDecoderState{<:GalileoE6BData}, sync::GalileoE6BSync)
     cache = state.cache
     page = sync.page
     cache.page_counter[] += 1
     e6b_expire_stale!(cache)
     # Every page reaching here framed correctly and passed CRC-24Q, so it re-arms
-    # the framework's symbol counter whether or not its contents turn out usable:
+    # the framework's time-reference counter whether or not its contents turn out usable:
     # the field counts symbols since the last valid sync, which is how a consumer
     # tells a locked decoder from an unsynchronised one. Without this it would
     # stay `nothing` forever on E6-B, since `decode` only ever increments a
@@ -2433,7 +2430,7 @@ function decode_syncro_sequence(
     # sync `drain_after_sync!` leaves buffered (cf. `gps/cnav.jl`).
     state = GNSSDecoderState(
         state;
-        num_bits_after_valid_syncro_sequence = state.constants.preamble_length,
+        num_bits_since_time_reference = state.constants.preamble_length,
     )
 
     header = UInt32(get_bits(page, E6B_PAGE_BITS, E6B_HEADER_START, 24))
@@ -2664,7 +2661,7 @@ Test mode (`has_test_mode`) returns `false`: the data decodes normally and is
 published in `state.data`, but the ICD warns that "nominal performance may not
 be met", so it should not be trusted silently. `has_do_not_use` also returns
 `false`, and additionally causes every previously received message to be
-discarded (see `decode_syncro_sequence`).
+discarded (see `decode_sync_unit`).
 
 # Arguments
 

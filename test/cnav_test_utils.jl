@@ -172,7 +172,7 @@ function test_cnav_decode_allocation_free(make_state, messages)
     @test inverted.fresh == 0 skip = !CHECK_ALLOCATIONS
     @test inverted.warm == 0 skip = !CHECK_ALLOCATIONS
     @test inverted.reset == 0 skip = !CHECK_ALLOCATIONS
-    @test inverted.state.is_shifted_by_180_degrees
+    @test inverted.state.is_polarity_inverted
     @test inverted.state.data == d
 
     # A `copy` is independent: decoding into it leaves the original untouched.

@@ -117,28 +117,28 @@ end
 
     @testset "sync detector finds matching TOI pair (unambiguous range)" begin
         # TOI values in 144..255 have no inverted twin in the codebook
-        # (their would-be twin at toi+256 falls outside 0..399). They
+        # (their would-be twin at TOI+256 falls outside 0..399). They
         # yield a single unambiguous interpretation.
         for t in (144, 200, 250)
             a = BCH_TOI_CODEWORDS[t+1]
             b = BCH_TOI_CODEWORDS[((t+1)%TOI_RANGE)+1]
             hit = sync_bch_toi(a, b)
             @test hit isa BCHToiSync
-            @test hit.toi == t
-            @test hit.polarity_flipped == false
+            @test hit.TOI == t
+            @test hit.is_polarity_inverted == false
         end
     end
 
     @testset "sync wraps modulo 400" begin
-        # toi = 399 is in 144..255-equivalent unambiguous territory:
+        # TOI = 399 is in 144..255-equivalent unambiguous territory:
         # its twin would be at 655 (out of range). next TOI is 0.
         t = TOI_RANGE - 1
         a = BCH_TOI_CODEWORDS[t+1]
-        b = BCH_TOI_CODEWORDS[1]       # toi = 0
+        b = BCH_TOI_CODEWORDS[1]       # TOI = 0
         hit = sync_bch_toi(a, b)
         @test hit isa BCHToiSync
-        @test hit.toi == t
-        @test hit.polarity_flipped == false
+        @test hit.TOI == t
+        @test hit.is_polarity_inverted == false
     end
 
     @testset "polarity-flip detection (unambiguous range)" begin
@@ -150,8 +150,8 @@ end
             b = BCH_TOI_CODEWORDS[((t+1)%TOI_RANGE)+1] ⊻ TOI_BCH_MASK52
             hit = sync_bch_toi(a, b)
             @test hit isa BCHToiSync
-            @test hit.toi == t
-            @test hit.polarity_flipped == true
+            @test hit.TOI == t
+            @test hit.is_polarity_inverted == true
         end
     end
 
@@ -174,8 +174,8 @@ end
             # Detector picks the lower-TOI interpretation when both fit.
             hit = sync_bch_toi(cw_t, cw_t1)
             @test hit isa BCHToiSync
-            @test hit.toi == t
-            @test hit.polarity_flipped == false
+            @test hit.TOI == t
+            @test hit.is_polarity_inverted == false
         end
     end
 
@@ -186,7 +186,7 @@ end
         b_bits = [Bool((BCH_TOI_CODEWORDS[t+2] >> i) & 1) for i = 0:51]
         hit = sync_bch_toi(a_bits, b_bits)
         @test hit isa BCHToiSync
-        @test hit.toi == t
+        @test hit.TOI == t
     end
 
     @testset "sync rejects mismatched second window" begin

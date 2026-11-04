@@ -59,7 +59,7 @@ Base.@kwdef struct BeiDouB2aConstants <: AbstractGNSSConstants
     """
     Frame length drained after each decoded frame (600 symbols)
     """
-    syncro_sequence_length::Int = B2A_FRAME_SYMBOLS
+    sync_unit_length::Int = B2A_FRAME_SYMBOLS
     """
     Preamble length (24 symbols, `0xE24DE8`, ICD §6.2.1)
     """
@@ -94,7 +94,7 @@ observable on the air interface.
 
 $(TYPEDFIELDS)
 """
-Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouCNAVData
+Base.@kwdef struct BeiDouCNAV2Data <: AbstractBeiDouCNAVData
     """
     Message type of the most recently decoded frame (0 = none yet)
     """
@@ -441,8 +441,8 @@ Base.@kwdef struct BeiDouB2aData <: AbstractBeiDouCNAVData
     midi_almanacs::Union{Nothing,SlotDictionary{BeiDouMidiAlmanac,64}} = nothing
 end
 
-@inline function BeiDouB2aData(
-    data::BeiDouB2aData;
+@inline function BeiDouCNAV2Data(
+    data::BeiDouCNAV2Data;
     last_message_type = data.last_message_type,
     SOW = data.SOW,
     WN = data.WN,
@@ -523,7 +523,7 @@ end
     reduced_almanacs = data.reduced_almanacs,
     midi_almanacs = data.midi_almanacs,
 )
-    BeiDouB2aData(
+    BeiDouCNAV2Data(
         last_message_type,
         SOW,
         WN,
@@ -608,10 +608,10 @@ end
 
 # Field-by-field equality: the almanac `SlotDictionary` fields otherwise compare
 # by identity through the default struct `==`.
-Base.:(==)(a::BeiDouB2aData, b::BeiDouB2aData) = fields_equal(a, b)
+Base.:(==)(a::BeiDouCNAV2Data, b::BeiDouCNAV2Data) = fields_equal(a, b)
 
 # Every container field at its ICD size: one almanac slot per PRN (1-63).
-preallocated_data(::Type{BeiDouB2aData}) = BeiDouB2aData(;
+preallocated_data(::Type{BeiDouCNAV2Data}) = BeiDouCNAV2Data(;
     reduced_almanacs = SlotDictionary{BeiDouReducedAlmanac,64}(),
     midi_almanacs = SlotDictionary{BeiDouMidiAlmanac,64}(),
 )
@@ -653,7 +653,7 @@ struct BeiDouB2aCache <: AbstractGNSSCache
     Preallocated almanac stores `raw_data` and `data` are decoded into,
     overwritten in place by [`decode!`](@ref)
     """
-    storage::DataStorage{BeiDouB2aData}
+    storage::DataStorage{BeiDouCNAV2Data}
 end
 
 function BeiDouB2aCache()
@@ -662,7 +662,7 @@ function BeiDouB2aCache()
         committed_ldpc_scratch("bcnv2.alist"),
         Vector{Float32}(undef, B2A_ENCODED_SYMBOLS),
         false,
-        DataStorage{BeiDouB2aData}(),
+        DataStorage{BeiDouCNAV2Data}(),
     )
 end
 
@@ -679,19 +679,19 @@ end
 """
 True when the frame that just synced was decoded into `raw_data`.
 
-`decode_syncro_sequence` clears the flag as it starts and sets it only once the
+`decode_sync_unit` clears the flag as it starts and sets it only once the
 frame has cleared LDPC, CRC-24Q and the PRN gate. A frame whose preambles sync
 but whose payload fails one of those gates leaves `raw_data` untouched, so
 `raw_data.SOW` still names the *previous* frame; `validate_data` must not
-promote it then, since promotion re-anchors the symbol counter to the frame
+promote it then, since promotion re-anchors the time-reference counter to the frame
 that just synced and would freeze the time of transmission for one frame.
 """
-is_b2a_frame_decoded(state::GNSSDecoderState{<:BeiDouB2aData}) = state.cache.frame_decoded
+is_b2a_frame_decoded(state::GNSSDecoderState{<:BeiDouCNAV2Data}) = state.cache.frame_decoded
 
 # The LDPC decoder handle is stateless w.r.t. equality (a runtime Aff3ct
 # object); two B2a caches are equal when their soft buffers match.
 # `frame_decoded` is ignored too: it only carries one sync's outcome from
-# `decode_syncro_sequence` to `validate_data`.
+# `decode_sync_unit` to `validate_data`.
 function Base.:(==)(a::BeiDouB2aCache, b::BeiDouB2aCache)
     deques_equal(a.soft_buffer, b.soft_buffer)
 end
@@ -702,28 +702,28 @@ end
 # soft symbols by the LDPC decoder (cf. Galileo I/NAV, E5a, E6-B and BeiDou B2b).
 
 """
-    try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) -> Union{Nothing,Bool}
+    try_sync(state::GNSSDecoderState{<:BeiDouCNAV2Data}) -> Union{Nothing,Bool}
 
 B-CNAV2 frame sync: the 24-symbol preamble `0xE24DE8` must appear at both ends
 of the 624-symbol window (start of this frame and start of the next), both
 upright or both inverted. Returns the resolved polarity, or `nothing` when there
 is no sync. The LDPC + CRC-24Q + own-PRN gates then run in
-`decode_syncro_sequence`.
+`decode_sync_unit`.
 """
-try_sync(state::GNSSDecoderState{<:BeiDouB2aData}) = find_preamble_in_deque(
+try_sync(state::GNSSDecoderState{<:BeiDouCNAV2Data}) = detect_preamble_pair(
     soft_buffer(state),
     state.constants.preamble,
     B2A_PREAMBLE_SYMBOLS,
     B2A_FRAME_SYMBOLS,
 )
 
-# Record the polarity `try_sync` resolved; `decode_syncro_sequence` reads it back
+# Record the polarity `try_sync` resolved; `decode_sync_unit` reads it back
 # off the state when it copies the frame out of the deque (mirrors Galileo I/NAV).
 function complement_buffer_if_necessary(
-    state::GNSSDecoderState{<:BeiDouB2aData},
-    polarity_flipped::Bool,
+    state::GNSSDecoderState{<:BeiDouCNAV2Data},
+    is_polarity_inverted::Bool,
 )
-    GNSSDecoderState(state; is_shifted_by_180_degrees = polarity_flipped), polarity_flipped
+    GNSSDecoderState(state; is_polarity_inverted), is_polarity_inverted
 end
 
 # ---- Constructors ---------------------------------------------------------------
@@ -741,7 +741,7 @@ polarity); a matched frame is LDPC-decoded through the binary image of the
 ICD's 64-ary LDPC(96,48) code, gated on CRC-24Q and on the broadcast PRN
 matching this decoder's PRN, and dispatched to per-message-type parsers
 (message types 10, 11, 30-34, and 40). Decoded fields land in a
-[`BeiDouB2aData`](@ref).
+[`BeiDouCNAV2Data`](@ref).
 
 # Arguments
 
@@ -749,7 +749,7 @@ matching this decoder's PRN, and dispatched to per-message-type parsers
 
 # Returns
 
-  - `GNSSDecoderState{BeiDouB2aData}`: Initialized decoder state for BeiDou B2a
+  - `GNSSDecoderState{BeiDouCNAV2Data}`: Initialized decoder state for BeiDou B2a
 
 # Example
 
@@ -772,8 +772,8 @@ function BeiDouB2aDecoderState(prn)
     1 <= prn <= 63 || throw(ArgumentError("BeiDou PRN must be in 1..63"))
     GNSSDecoderState(
         prn,
-        BeiDouB2aData(),
-        BeiDouB2aData(),
+        BeiDouCNAV2Data(),
+        BeiDouCNAV2Data(),
         BeiDouB2aConstants(),
         BeiDouB2aCache(),
         nothing,
@@ -794,7 +794,7 @@ get_signal_type(::BeiDouB2aConstants) = BeiDouB2aI
 
 # ---- Completeness / health -----------------------------------------------------
 
-function is_ephemeris_decoded(data::BeiDouB2aData)
+function is_ephemeris_decoded(data::BeiDouCNAV2Data)
     # Message type 10 (ephemeris I + IODE) ...
     !isnothing(data.IODE) &&
         !isnothing(data.t_0e) &&
@@ -834,7 +834,7 @@ _b2a_sow_adjacent(::Integer, ::Nothing) = false
 _b2a_sow_adjacent(sow_a::Integer, sow_b::Integer) =
     abs(fold_week_crossover(sow_a - sow_b)) == 3
 
-function is_clock_correction_decoded(data::BeiDouB2aData)
+function is_clock_correction_decoded(data::BeiDouCNAV2Data)
     # The clock block + IODC are carried identically in message types 30-34.
     #
     # T_GD/ISC are deliberately NOT required here, and B2a is the one BeiDou
@@ -858,7 +858,7 @@ end
 
 # B-CNAV2 broadcasts the seconds of week as an 18-bit count in 3-second units,
 # scaled at parse (§7.3, Table 7-2).
-get_broadcast_time_of_week(data::BeiDouB2aData) = data.SOW
+get_broadcast_time_of_week(data::BeiDouCNAV2Data) = data.SOW
 
 """
 $(TYPEDSIGNATURES)
@@ -867,10 +867,10 @@ The BDT-to-`target` offset from message type 33, or `nothing` when this
 satellite is not currently broadcasting one for `target`. One set at a time,
 tagged by `GNSS_ID`; see `beidou_bgto_offset`.
 """
-get_time_offset(state::GNSSDecoderState{<:BeiDouB2aData}, target::TimeSystem) =
+get_time_offset(state::GNSSDecoderState{<:BeiDouCNAV2Data}, target::TimeSystem) =
     beidou_bgto_offset(state, target)
 
-function is_decoding_completed_for_positioning(data::BeiDouB2aData)
+function is_decoding_completed_for_positioning(data::BeiDouCNAV2Data)
     !isnothing(data.SOW) &&
         is_ephemeris_decoded(data) &&
         is_clock_correction_decoded(data) &&
@@ -897,13 +897,13 @@ as unhealthy.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:BeiDouB2aData}`: BeiDou B2a decoder state.
+  - `state::GNSSDecoderState{<:BeiDouCNAV2Data}`: BeiDou B2a decoder state.
 
 # Returns
 
   - `Bool`: `true` iff the broadcast health status indicates a usable satellite.
 """
-function is_sat_healthy(state::GNSSDecoderState{<:BeiDouB2aData})
+function is_sat_healthy(state::GNSSDecoderState{<:BeiDouCNAV2Data})
     !isnothing(state.data.HS) && state.data.HS == 0
 end
 
@@ -919,33 +919,33 @@ types. Mirrors the semantics of the GPS CNAV implementation.
 
 # Arguments
 
-  - `state::GNSSDecoderState{<:BeiDouB2aData}`: Current BeiDou B2a decoder state
+  - `state::GNSSDecoderState{<:BeiDouCNAV2Data}`: Current BeiDou B2a decoder state
 
 # Returns
 
-  - `GNSSDecoderState{<:BeiDouB2aData}`: Reset decoder state with cleared buffers
+  - `GNSSDecoderState{<:BeiDouCNAV2Data}`: Reset decoder state with cleared buffers
 
 # See Also
 
   - [`BeiDouB2aDecoderState`](@ref): Create a fresh decoder state
   - [`decode!`](@ref): Continue decoding after reset
 """
-function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouB2aData})
+function reset_decoder_state!(state::GNSSDecoderState{<:BeiDouCNAV2Data})
     empty!(state.cache.soft_buffer)
     GNSSDecoderState(
         state;
-        raw_data = BeiDouB2aData(state.raw_data; SOW = nothing),
-        data = BeiDouB2aData(),
+        raw_data = BeiDouCNAV2Data(state.raw_data; SOW = nothing),
+        data = BeiDouCNAV2Data(),
         cache = BeiDouB2aCache(state.cache; frame_decoded = false),
-        num_bits_after_valid_syncro_sequence = nothing,
-        is_shifted_by_180_degrees = false,
+        num_bits_since_time_reference = nothing,
+        is_polarity_inverted = false,
     )
 end
 
 # ---- Frame pipeline -------------------------------------------------------------
 
 """
-    decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, buffer)
+    decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV2Data}, buffer)
 
 Process one preamble-synchronized B-CNAV2 frame: LDPC-decode the 576 encoded
 soft symbols through the binary image of the 64-ary LDPC(96,48) code, gate on
@@ -959,21 +959,21 @@ header but no further fields.
 The 18-bit SOW field counts in 3-second units (Table 7-2: scale factor 3)
 and denotes the rising edge of the *current* frame's first preamble chip,
 which lies one frame plus one preamble (624 symbols) behind the newest
-buffered symbol. The symbol counter is not re-armed here but in
+buffered symbol. The time-reference counter is not re-armed here but in
 `validate_data`, when the frame is promoted.
 
 Sets the cache's `frame_decoded` flag (see `is_b2a_frame_decoded`) only when
 the frame clears every gate and is parsed into `raw_data`; a frame dropped by
 LDPC/CRC or the PRN gate leaves it false and `raw_data` untouched.
 """
-function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool)
+function decode_sync_unit(state::GNSSDecoderState{<:BeiDouCNAV2Data}, ::Bool)
     # Clear the flag first: every path out of this function leaves it false
     # unless the frame is parsed into `raw_data` below.
     state =
         GNSSDecoderState(state; cache = BeiDouB2aCache(state.cache; frame_decoded = false))
     # The 576 encoded symbols sit between the leading 24-symbol preamble and
     # the trailing preamble of the next frame (deque indices
-    # preamble_length+1 .. syncro_sequence_length). Resolve the 180-degree
+    # preamble_length+1 .. sync_unit_length). Resolve the 180-degree
     # polarity ambiguity by negating the LLRs when the sync hook flagged the
     # frame as inverted.
     llr = copy_soft_window!(
@@ -981,7 +981,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
         soft_buffer(state),
         B2A_PREAMBLE_SYMBOLS,
         B2A_ENCODED_SYMBOLS,
-        state.is_shifted_by_180_degrees,
+        state.is_polarity_inverted,
     )
 
     word = ldpc_decode_word(state.cache.ldpc, llr, UInt320)
@@ -996,7 +996,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
     # SOW: 18 bits in units of 3 s (Table 7-2), epoch at the current frame's
     # first preamble chip (§7.3).
     SOW = Int64(get_bits(word, word_length, 13, 18)) * 3
-    raw = BeiDouB2aData(state.raw_data; last_message_type = message_id, SOW)
+    raw = BeiDouCNAV2Data(state.raw_data; last_message_type = message_id, SOW)
 
     raw = if message_id == 10
         parse_b2a_mt10(raw, word)
@@ -1018,17 +1018,17 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
         raw  # unknown/reserved message type: header only
     end
 
-    # The symbol counter is deliberately NOT re-armed here. `get_broadcast_time_of_week`
-    # reads the *validated* `data.SOW`, which only advances when `validate_data`
-    # promotes — and the MT10/MT11 adjacency gate makes promotion skip the frame
-    # that carries a new ephemeris-I block until its partner arrives. Re-arming
-    # on every CRC-valid frame while the published SOW stands still made
-    # `tow + num_bits/rate` read exactly one 3-second frame low for the duration
-    # of every such skip — a ~9 km along-track error in every satellite position
-    # propagated from it (measured on TEX-CUP: a 2.2 km position excursion once
-    # per message cycle). The counter therefore keeps counting from the last
-    # *promoted* frame, which stays consistent through skipped promotions and
-    # CRC failures alike; `validate_data` re-anchors it whenever it promotes.
+    # The time-reference counter is deliberately NOT re-armed here.
+    # `get_broadcast_time_of_week` reads the *validated* `data.SOW`, which only advances
+    # when `validate_data` promotes — and the MT10/MT11 adjacency gate makes promotion skip
+    # the frame that carries a new ephemeris-I block until its partner arrives. Re-arming on
+    # every CRC-valid frame while the published SOW stands still made
+    # `tow + num_bits_since_time_reference/rate` read exactly one 3-second frame low for the
+    # duration of every such skip — a ~9 km along-track error in every satellite position
+    # propagated from it (measured on TEX-CUP: a 2.2 km position excursion once per message
+    # cycle). The counter therefore keeps counting from the last *promoted* frame, which
+    # stays consistent through skipped promotions and CRC failures alike; `validate_data`
+    # re-anchors it whenever it promotes.
     GNSSDecoderState(
         state;
         raw_data = raw,
@@ -1037,7 +1037,7 @@ function decode_syncro_sequence(state::GNSSDecoderState{<:BeiDouB2aData}, ::Bool
 end
 
 """
-    validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
+    validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
 
 Promote `raw_data` to `data` once the minimum positioning set is decoded and
 consistent: the MT10+MT11 ephemeris pair from adjacent frames, a clock set
@@ -1048,23 +1048,24 @@ promoted (see `is_b2a_frame_decoded`).
 Promotion overwrites the preallocated validated almanac stores with the raw
 ones (`publish_data`), so `data` never shares a container with `raw_data`.
 """
-function validate_data(state::GNSSDecoderState{<:BeiDouB2aData})
+function validate_data(state::GNSSDecoderState{<:BeiDouCNAV2Data})
     # `decode!` calls this hook after *every* sync, including one whose frame
     # failed LDPC/CRC or the PRN gate and left `raw_data` holding the previous
     # frame. Promoting that would publish the previous SOW against this frame's
     # sync epoch — one frame (3 s) low until the next decoded frame (#97).
     is_b2a_frame_decoded(state) || return state
     if is_decoding_completed_for_positioning(state.raw_data)
-        # Promotion publishes this frame's SOW, so the symbol counter re-anchors
+        # Promotion publishes this frame's SOW, so the time-reference counter re-anchors
         # to this frame's sync epoch with it — the two must move together for
-        # `tow + num_bits/rate` (see `get_broadcast_time_of_week`) to stay on the true
-        # time through frames the gate skips. The frame was decoded (checked
+        # `tow + num_bits_since_time_reference/rate` (see
+        # `get_broadcast_time_of_week`) to stay on the true time through frames the
+        # gate skips. The frame was decoded (checked
         # above), so `raw_data.SOW` is the just-decoded frame's.
         return GNSSDecoderState(
             state;
             data = publish_data(state.cache.storage, state.raw_data),
-            num_bits_after_valid_syncro_sequence = state.constants.syncro_sequence_length +
-                                                   state.constants.preamble_length,
+            num_bits_since_time_reference = state.constants.sync_unit_length +
+                                            state.constants.preamble_length,
         )
     end
     return state
@@ -1081,11 +1082,11 @@ end
 """
 Message type 10 — WN, integrity flags, IODE, ephemeris I (ICD Fig 6-3 / 6-11, Table 7-8).
 """
-function parse_b2a_mt10(raw::BeiDouB2aData, word::UInt320)
+function parse_b2a_mt10(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     SOW = raw.SOW
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    @split_nothing SOW BeiDouB2aData(
+    @split_nothing SOW BeiDouCNAV2Data(
         raw;
         WN = Int64(get_bits(word, word_length, 31, 13)),
         DIF_B2a = get_bit(word, word_length, 44),
@@ -1113,11 +1114,11 @@ end
 """
 Message type 11 — HS, integrity flags, ephemeris II (ICD Fig 6-4 / 6-12, Table 7-8).
 """
-function parse_b2a_mt11(raw::BeiDouB2aData, word::UInt320)
+function parse_b2a_mt11(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     SOW = raw.SOW
     # split: a Union keyword value takes the allocating kw path on Julia 1.10
-    @split_nothing SOW BeiDouB2aData(
+    @split_nothing SOW BeiDouCNAV2Data(
         raw;
         HS = Int64(get_bits(word, word_length, 31, 2)),
         DIF_B2a = get_bit(word, word_length, 33),
@@ -1144,9 +1145,9 @@ end
 
 # Common header block of message types 30-34 and 40: HS at bit 31, the six
 # integrity flags and SISMAI at bits 33-42 (Figures 6-5..6-10).
-function _parse_b2a_flags_block(raw::BeiDouB2aData, word::UInt320)
+function _parse_b2a_flags_block(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
-    BeiDouB2aData(
+    BeiDouCNAV2Data(
         raw;
         HS = Int64(get_bits(word, word_length, 31, 2)),
         DIF_B2a = get_bit(word, word_length, 33),
@@ -1165,23 +1166,23 @@ end
 # behind the BGTO block and a reduced almanac, MT34 to 134 behind the SISAIoc
 # block (Figures 6-5..6-9). Each parser reads it at its own offset; only the
 # four clock parameters are shared here.
-_parse_b2a_clock_block(raw::BeiDouB2aData, word::UInt320, start::Int) =
-    BeiDouB2aData(raw; beidou_clock_block(word, B2A_MESSAGE_BITS, start)...)
+_parse_b2a_clock_block(raw::BeiDouCNAV2Data, word::UInt320, start::Int) =
+    BeiDouCNAV2Data(raw; beidou_clock_block(word, B2A_MESSAGE_BITS, start)...)
 
 # SISAIoc data block (Figure 6-14) at 1-based bit `start`: t_op(11),
 # SISAI_ocb(5), SISAI_oc1(3), SISAI_oc2(3). Raw values — ICD v1.0 defers
 # their definition (§7.16).
-_parse_b2a_sisai_oc_block(raw::BeiDouB2aData, word::UInt320, start::Int) =
-    BeiDouB2aData(raw; beidou_sisai_oc_block(word, B2A_MESSAGE_BITS, start)...)
+_parse_b2a_sisai_oc_block(raw::BeiDouCNAV2Data, word::UInt320, start::Int) =
+    BeiDouCNAV2Data(raw; beidou_sisai_oc_block(word, B2A_MESSAGE_BITS, start)...)
 
 """
 Message type 30 — clock, IODC, group delay, BDGIM ionosphere (ICD Fig 6-5 / 6-13 / 6-15).
 """
-function parse_b2a_mt30(raw::BeiDouB2aData, word::UInt320)
+function parse_b2a_mt30(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
-    BeiDouB2aData(
+    BeiDouCNAV2Data(
         raw;
         IODC = Int64(get_bits(word, word_length, 112, 10)),
         T_GD_B2ap = get_twos_complement_num(word, word_length, 122, 12) * 2.0^-34,
@@ -1198,7 +1199,7 @@ Message type 31 — clock, IODC, three reduced almanacs (ICD Fig 6-6 / 6-17).
 Overwrites each broadcast PRN's slot of `raw.reduced_almanacs` in place — or,
 while that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
+function parse_b2a_mt31!(raw::BeiDouCNAV2Data, word::UInt320, spare::BeiDouCNAV2Data)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
@@ -1214,18 +1215,18 @@ function parse_b2a_mt31!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData
     IODC = Int64(get_bits(word, word_length, 112, 10))
     # Only pass a concrete store: a Union keyword value takes the allocating kw
     # path on Julia 1.10 (and `nothing` would leave the field as is).
-    almanacs === nothing && return BeiDouB2aData(raw; IODC)
-    BeiDouB2aData(raw; IODC, reduced_almanacs = almanacs)
+    almanacs === nothing && return BeiDouCNAV2Data(raw; IODC)
+    BeiDouCNAV2Data(raw; IODC, reduced_almanacs = almanacs)
 end
 
 """
 Message type 32 — clock, IODC, Earth orientation parameters (ICD Fig 6-7 / 6-18).
 """
-function parse_b2a_mt32(raw::BeiDouB2aData, word::UInt320)
+function parse_b2a_mt32(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
-    BeiDouB2aData(
+    BeiDouCNAV2Data(
         raw;
         IODC = Int64(get_bits(word, word_length, 112, 10)),
         # EOP block, bits 122-259 (Figure 6-18, Table 7-18).
@@ -1239,14 +1240,14 @@ Message type 33 — clock, BGTO, one reduced almanac, IODC (ICD Fig 6-8 / 6-17 /
 Overwrites the almanac PRN's slot of `raw.reduced_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.reduced_almanacs`.
 """
-function parse_b2a_mt33!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
+function parse_b2a_mt33!(raw::BeiDouCNAV2Data, word::UInt320, spare::BeiDouCNAV2Data)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_clock_block(raw, word, 43)
     WN_a = Int(get_bits(word, word_length, 228, 13))
     t_0a = Int(get_bits(word, word_length, 241, 8)) * 2^12
     packet = beidou_reduced_almanac(word, word_length, 180, WN_a, t_0a)
-    raw = BeiDouB2aData(
+    raw = BeiDouCNAV2Data(
         raw;
         # BGTO block, bits 112-179 (Figure 6-19, Table 7-21).
         beidou_bgto_block(word, word_length, 112)...,
@@ -1258,18 +1259,18 @@ function parse_b2a_mt33!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData
     isnothing(packet) && return raw
     reduced_almanacs = writable_container(raw.reduced_almanacs, spare.reduced_almanacs)
     set!(reduced_almanacs, packet.PRN_a, packet)
-    BeiDouB2aData(raw; reduced_almanacs)
+    BeiDouCNAV2Data(raw; reduced_almanacs)
 end
 
 """
 Message type 34 — SISAIoc, clock, IODC, BDT-UTC offset (ICD Fig 6-9 / 6-13 / 6-14 / 6-16).
 """
-function parse_b2a_mt34(raw::BeiDouB2aData, word::UInt320)
+function parse_b2a_mt34(raw::BeiDouCNAV2Data, word::UInt320)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
     raw = _parse_b2a_sisai_oc_block(raw, word, 43)
     raw = _parse_b2a_clock_block(raw, word, 65)
-    BeiDouB2aData(
+    BeiDouCNAV2Data(
         raw;
         IODC = Int64(get_bits(word, word_length, 134, 10)),
         # BDT-UTC block, bits 144-240 (Figure 6-16, Table 7-20).
@@ -1283,15 +1284,15 @@ Message type 40 — SISAIoe, SISAIoc, one midi almanac (ICD Fig 6-10 / 6-14 / 6-
 Overwrites the almanac PRN's slot of `raw.midi_almanacs` in place — or, while
 that is still `nothing`, of the preallocated `spare.midi_almanacs`.
 """
-function parse_b2a_mt40!(raw::BeiDouB2aData, word::UInt320, spare::BeiDouB2aData)
+function parse_b2a_mt40!(raw::BeiDouCNAV2Data, word::UInt320, spare::BeiDouCNAV2Data)
     word_length = B2A_MESSAGE_BITS
     raw = _parse_b2a_flags_block(raw, word)
-    raw = BeiDouB2aData(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
+    raw = BeiDouCNAV2Data(raw; SISAI_oe = Int64(get_bits(word, word_length, 43, 5)))
     raw = _parse_b2a_sisai_oc_block(raw, word, 48)
     # Midi almanac block, bits 70-225 (Figure 6-20, Table 7-13).
     alm = beidou_midi_almanac(word, word_length, 70)
     isnothing(alm) && return raw
     midi_almanacs = writable_container(raw.midi_almanacs, spare.midi_almanacs)
     set!(midi_almanacs, alm.PRN_a, alm)
-    BeiDouB2aData(raw; midi_almanacs)
+    BeiDouCNAV2Data(raw; midi_almanacs)
 end
